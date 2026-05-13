@@ -253,7 +253,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 帮助中心骨架（`apps/docs/`，Nextra SSG，docs.idcd.com，30 篇初始文档）
   - *deps: D3* | *lane: D*
 
-- [ ] **D8** 辅助工具页（SEO 长尾，各自独立页面）
+- [x] **D8** 辅助工具页（SEO 长尾，各自独立页面）
   - JSON / YAML / XML 格式化
   - Base64 / URL / Unicode 编码解码
   - 时间戳转换
@@ -264,7 +264,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 二维码生成 / 解码
   - IP 段 / CIDR 计算（纯前端）
   - IPv6 检测 / 转换
-  - *deps: D1* | *lane: D*（纯前端，可最早并行）
+  - 38 个 Vitest 测试全部通过（含 5 个工具单元测试）
+  - *deps: D1* | *lane: D* | *完成 2026-05-13*
 
 ---
 

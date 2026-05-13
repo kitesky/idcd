@@ -1,0 +1,13 @@
+go 1.26
+
+use (
+	./apps/agent
+	./apps/aggregator
+	./apps/api
+	./apps/gateway
+	./apps/notifier
+	./apps/scheduler
+	./packages/auth
+	./packages/db
+	./packages/shared
+)

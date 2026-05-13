@@ -15,7 +15,7 @@ Thumbs.db
 *.swp
 *.swo
 
-# Node (for future code)
+# Node
 node_modules/
 .env
 .env.local
@@ -25,7 +25,41 @@ node_modules/
 dist/
 build/
 .next/
+.turbo/
+out/
 
 # Logs
 *.log
 npm-debug.log*
+pnpm-debug.log*
+
+# Go
+*.exe
+*.test
+*.out
+vendor/
+
+# Config (actual env files; *.example.yaml is tracked)
+config/*.env.yaml
+!config/*.env.example.yaml
+config/*.local.yaml
+
+# Secrets / certs (never commit)
+*.pem
+*.key
+*.p12
+*.pfx
+*.crt
+*.jks
+infra/terraform/.terraform/
+infra/terraform/terraform.tfstate*
+infra/terraform/*.tfvars
+!infra/terraform/*.tfvars.example
+
+# Binary artifacts
+bin/
+dist-agent/
+
+# Misc
+.turbo
+.vercel

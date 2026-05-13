@@ -39,17 +39,19 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 **优先级最高，其他 Lane 依赖此 Lane 完成。**
 
-- [ ] **A1** `infra/docker/docker-compose.core.yml`
-  - PG 18.3 + TimescaleDB 2.21+ + Redis 7.4+
-  - Loki + Prometheus + Grafana + Tempo + Sentry（自托管）
-  - 验收：`make dev-up` 本地跑通，`psql` 可连，`redis-cli ping` 返回 PONG
-  - *deps: 无* | *lane: A*
+- [x] **A1** `infra/docker/docker-compose.core.yml`
+  - PG 18 + TimescaleDB 2.27.0 + Redis 7.4 已在远端服务器运行（开发不用本地 Docker）
+  - docker-compose.core.yml 作为 Production/Staging 参考已建立
+  - config/dev.env.yaml（gitignore）+ config/dev.env.example.yaml（tracked）
+  - `make dev-up` → `scripts/check-connections.sh` 验证通过，TimescaleDB 2.27.0 ✓
+  - *deps: 无* | *lane: A* | *完成 2026-05-13*
 
-- [ ] **A2** monorepo 骨架
-  - `go.work`（8 apps + packages/*）+ `pnpm-workspace.yaml` + `Makefile`
-  - `make dev-setup` / `make dev-up` / `make test` / `make seed` 四个入口
-  - `VERSION` + `CHANGELOG.md` 初始化
-  - *deps: 无* | *lane: A*
+- [x] **A2** monorepo 骨架
+  - `go.work`（9 modules: 6 apps + 3 packages）+ `pnpm-workspace.yaml` + `Makefile`
+  - `make dev-setup` / `make dev-up` / `make test` / `make seed` / `make lint` 已就位
+  - `VERSION` + `CHANGELOG.md` 初始化完成
+  - 模块前缀：`github.com/kite365/idcd/*`，Go 1.26.2
+  - *deps: 无* | *lane: A* | *完成 2026-05-13*
 
 - [ ] **A3** `packages/db/` — 数据库层
   - `migrations/idcd_main/` 基础表：`users` / `api_keys` / `sessions` / `audit_log`
@@ -469,6 +471,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 日期 | 完成 | 遗留/阻塞 |
 |---|---|---|
 | 2026-05-13 | 架构审查 D17-D21，TASKS.md 建立 | — |
+| 2026-05-13 | A1（基础设施）+ A2（monorepo 骨架）完成，TimescaleDB 2.27.0 安装 | A3（DB 层）待开始 |
 
 ---
 

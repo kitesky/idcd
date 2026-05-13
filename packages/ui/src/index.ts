@@ -10,6 +10,11 @@ export {
   SelectScrollDownButton, SelectScrollUpButton, SelectSeparator,
   SelectTrigger, SelectValue,
 } from './components/select'
+export { Label } from './components/label'
+export {
+  Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
+  useFormField
+} from './components/form'
 
 // Utils
 export { cn } from './lib/utils'

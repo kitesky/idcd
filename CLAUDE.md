@@ -54,6 +54,34 @@
 
 ---
 
+## 测试门禁（强制）
+
+**写代码必须写测试用例，不满足以下要求不得提交。**
+
+### Go 后端
+
+- 每个新包/函数必须有对应 `_test.go`，行覆盖率目标 ≥ 90%
+- 纯计算函数（ID 生成、错误类型、Duration 解析等）目标 100%
+- 数据库 / Redis 操作用 **miniredis**（stream）/ **pgx mock** 或测试库隔离，不依赖真实环境
+- 测试命令：`go test ./...`（在项目根运行，通过 go.work 覆盖所有 module）
+
+### 前端（Next.js / TypeScript）
+
+- 每个 utility 函数必须有 Vitest 单元测试
+- 组件测试用 Testing Library（关键交互路径）
+- 测试命令：`pnpm --recursive test --passWithNoTests`
+
+### 提交前检查清单
+
+```
+□ go test ./... 全绿（无 FAIL）
+□ 新文件有配套 _test.go（或 .test.ts）
+□ scripts/lint-cross-schema-fk.sh 通过（DB 迁移改动时）
+□ scripts/lint-attestation-words.sh 通过（probe 模块改动时）
+```
+
+---
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.

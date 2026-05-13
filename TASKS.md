@@ -73,11 +73,14 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - Full Strict TLS 模式
   - *deps: 无* | *lane: A* | *[👤] 需在 Cloudflare Dashboard 手动操作*
 
-- [ ] **A6** `packages/shared/` 公共包
-  - ID 生成：prefix + nanoid（`u_` `m_` `k_` `ar_` 等前缀，见 15-data-model D5）
-  - 错误类型 / 日志接口 / 配置读取
-  - Redis Streams 写入封装（含 `XADD ... MAXLEN ~ 500000`，D18）
-  - *deps: A2* | *lane: A*
+- [x] **A6** `packages/shared/` 公共包
+  - `idgen/`：prefix + nanoid(12, 62字母表)，30+ 实体前缀，APISecret/APIKeyPrefix/Node
+  - `apperr/`：9 种错误码 + HTTP 状态映射，Is()/AsError() 链式查找
+  - `logger/`：slog 封装，WithRequestID/UserID/TraceID context 注入，Discard()
+  - `config/`：YAML 加载，Duration 支持 "7d" 格式，IDCD_CONFIG 环境变量
+  - `stream/`：XADD MAXLEN ~ 500000（D18），5 个命名流，miniredis 测试
+  - 全部测试通过（idgen×5 / apperr×7 / logger×6 / config×8 / stream×9 = 35 个用例）
+  - *deps: A2* | *lane: A* | *完成 2026-05-13*
 
 - [ ] **A7** `packages/auth/` 认证包
   - JWT 签发 / 验证 / 刷新
@@ -473,7 +476,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 |---|---|---|
 | 2026-05-13 | 架构审查 D17-D21，TASKS.md 建立 | — |
 | 2026-05-13 | A1（基础设施）+ A2（monorepo 骨架）完成，TimescaleDB 2.27.0 安装 | — |
-| 2026-05-13 | A3（DB 层）完成：5 个迁移 + sqlc 生成 + 4 个 repository | A6（shared 包）或 A7（auth 包）待开始 |
+| 2026-05-13 | A3（DB 层）完成：5 个迁移 + sqlc 生成 + 4 个 repository | — |
+| 2026-05-13 | A6（shared 包）完成：idgen/apperr/logger/config/stream，35 个测试 | A7（auth 包）待开始 |
 
 ---
 

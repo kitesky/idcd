@@ -10,12 +10,16 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/api/internal/handler"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
+	"github.com/kite365/idcd/packages/auth/jwt"
+	"github.com/kite365/idcd/packages/auth/session"
+	"github.com/kite365/idcd/packages/db/gen/idcdmain"
 	"github.com/kite365/idcd/packages/shared/config"
 )
 
@@ -26,20 +30,22 @@ type Server struct {
 	logger     *slog.Logger
 	config     *config.Config
 	db         *sql.DB
+	pgxPool    *pgxpool.Pool
 	redis      *redis.Client
 
 	// Prometheus metrics
-	requestsTotal    *prometheus.CounterVec
+	requestsTotal   *prometheus.CounterVec
 	requestDuration *prometheus.HistogramVec
 }
 
 // New creates a new server instance with all middleware and routes configured.
-func New(cfg *config.Config, db *sql.DB, redis *redis.Client, logger *slog.Logger) *Server {
+func New(cfg *config.Config, db *sql.DB, pgxPool *pgxpool.Pool, redis *redis.Client, logger *slog.Logger) *Server {
 	s := &Server{
-		config: cfg,
-		db:     db,
-		redis:  redis,
-		logger: logger,
+		config:  cfg,
+		db:      db,
+		pgxPool: pgxPool,
+		redis:   redis,
+		logger:  logger,
 	}
 
 	s.setupMetrics()
@@ -94,6 +100,37 @@ func (s *Server) setupRouter() {
 
 	// Prometheus metrics endpoint
 	r.Handle("/metrics", promhttp.Handler())
+
+	// Auth & Account routes (requires pgxPool and JWT config)
+	if s.pgxPool != nil && s.config.JWT.Secret != "" {
+		jwtSvc, err := jwt.NewService(jwt.Config{SecretKey: s.config.JWT.Secret})
+		if err != nil {
+			panic("invalid JWT config: " + err.Error())
+		}
+		sessSvc := session.NewService(s.redis)
+		q := idcdmain.New(s.pgxPool)
+
+		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc)
+		acctH := handler.NewAccountHandler(q)
+		authnMW := middleware.Authn(jwtSvc, sessSvc)
+
+		r.Route("/v1", func(r chi.Router) {
+			r.Route("/auth", func(r chi.Router) {
+				r.Post("/register", authH.Register)
+				r.Post("/login", authH.Login)
+				r.Post("/logout", authH.Logout)
+				r.Post("/verify-email", authH.VerifyEmail)
+				r.Post("/forgot-password", authH.ForgotPassword)
+				r.Post("/reset-password", authH.ResetPassword)
+			})
+			r.Route("/account", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Get("/profile", acctH.GetProfile)
+				r.Patch("/profile", acctH.UpdateProfile)
+				r.Delete("/", acctH.DeleteAccount)
+			})
+		})
+	}
 
 	s.router = r
 }

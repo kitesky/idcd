@@ -10,8 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	_ "github.com/lib/pq" // PostgreSQL driver for sql.DB health check
 	"github.com/redis/go-redis/v9"
-	_ "github.com/lib/pq" // PostgreSQL driver
 
 	"github.com/kite365/idcd/apps/api/internal/server"
 	"github.com/kite365/idcd/packages/shared/config"
@@ -71,8 +72,16 @@ func main() {
 
 	slogLogger.Info("connected to Redis", "addr", cfg.Redis.Addr, "response", pong)
 
+	// Create pgxpool for handlers that need pgx (sqlc queries)
+	pgxPool, err := pgxpool.New(context.Background(), cfg.Database.Main.DSN)
+	if err != nil {
+		slogLogger.Error("failed to create pgx pool", "error", err)
+		os.Exit(1)
+	}
+	defer pgxPool.Close()
+
 	// Create and start server
-	srv := server.New(cfg, db, redisClient, slogLogger)
+	srv := server.New(cfg, db, pgxPool, redisClient, slogLogger)
 
 	// Start server in a goroutine
 	serverErr := make(chan error, 1)

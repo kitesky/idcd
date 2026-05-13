@@ -17,6 +17,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/server"
 	"github.com/kite365/idcd/packages/shared/config"
 	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 func main() {
@@ -28,6 +29,20 @@ func main() {
 
 	// Setup logger
 	slogLogger := logger.New(cfg.Server.Env)
+
+	// Initialize OpenTelemetry
+	telCfg := telemetry.Config{
+		ServiceName:    "idcd-api",
+		ServiceVersion: "v1.0.0",
+		OTLPEndpoint:   cfg.Observability.Telemetry.OTLPEndpoint,
+		SamplingRate:   cfg.Observability.Telemetry.SamplingRate,
+		Enabled:        cfg.Observability.Telemetry.Enabled,
+	}
+	shutdownTelemetry, err := telemetry.Init(telCfg)
+	if err != nil {
+		slogLogger.Error("failed to init telemetry", "error", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	// Connect to PostgreSQL
 	db, err := sql.Open("postgres", cfg.Database.Main.DSN)

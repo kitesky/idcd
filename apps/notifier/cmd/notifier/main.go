@@ -11,6 +11,7 @@ import (
 	"github.com/kite365/idcd/apps/notifier/internal/template"
 	"github.com/kite365/idcd/apps/notifier/internal/worker"
 	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 func main() {
@@ -19,6 +20,20 @@ func main() {
 
 	// Initialize logger
 	log := logger.New(cfg.Server.Env)
+
+	// Initialize OpenTelemetry
+	telCfg := telemetry.Config{
+		ServiceName:    "idcd-notifier",
+		ServiceVersion: "v1.0.0",
+		OTLPEndpoint:   "", // S1: stdout exporter
+		SamplingRate:   0.1,
+		Enabled:        true,
+	}
+	shutdownTelemetry, err := telemetry.Init(telCfg)
+	if err != nil {
+		log.Error("failed to init telemetry", "error", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	// Initialize templates
 	templates, err := template.New()

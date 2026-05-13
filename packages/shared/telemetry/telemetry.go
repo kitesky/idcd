@@ -1,0 +1,153 @@
+// Package telemetry provides OpenTelemetry trace initialization and middleware for idcd services.
+package telemetry
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"time"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
+)
+
+// Config holds OpenTelemetry configuration.
+type Config struct {
+	ServiceName    string  // e.g. "idcd-api"
+	ServiceVersion string  // e.g. "v1.0.0"
+	OTLPEndpoint   string  // e.g. "localhost:4317" (gRPC), empty = stdout exporter
+	SamplingRate   float64 // 0.0-1.0, default 0.1 for prod
+	Enabled        bool    // false disables tracing entirely
+}
+
+// Init initializes OpenTelemetry TracerProvider.
+// Returns a shutdown function to call on service exit.
+func Init(cfg Config) (shutdown func(context.Context) error, err error) {
+	if !cfg.Enabled {
+		log.Println("[telemetry] tracing disabled")
+		return func(context.Context) error { return nil }, nil
+	}
+
+	// Create resource with service info
+	res, err := resource.Merge(
+		resource.Default(),
+		resource.NewWithAttributes(
+			"",
+			attribute.String("service.name", cfg.ServiceName),
+			attribute.String("service.version", cfg.ServiceVersion),
+		),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("telemetry: failed to create resource: %w", err)
+	}
+
+	// Create exporter (S1: stdout for now, no OTLP Collector dependency)
+	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
+	if err != nil {
+		return nil, fmt.Errorf("telemetry: failed to create stdout exporter: %w", err)
+	}
+
+	// Create sampler (default 0.1 = 10% sampling)
+	samplingRate := cfg.SamplingRate
+	if samplingRate <= 0 {
+		samplingRate = 0.1
+	}
+	sampler := sdktrace.ParentBased(sdktrace.TraceIDRatioBased(samplingRate))
+
+	// Create TracerProvider
+	tp := sdktrace.NewTracerProvider(
+		sdktrace.WithSampler(sampler),
+		sdktrace.WithBatcher(exporter),
+		sdktrace.WithResource(res),
+	)
+
+	// Register as global provider
+	otel.SetTracerProvider(tp)
+
+	// Set global propagator (for extracting trace context from incoming requests)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+
+	log.Printf("[telemetry] initialized for service=%s version=%s sampling=%.2f", cfg.ServiceName, cfg.ServiceVersion, samplingRate)
+
+	// Return shutdown function
+	return func(ctx context.Context) error {
+		log.Println("[telemetry] shutting down TracerProvider")
+		return tp.Shutdown(ctx)
+	}, nil
+}
+
+// TraceMiddleware returns a chi middleware that creates spans per request.
+func TraceMiddleware(serviceName string) func(http.Handler) http.Handler {
+	tracer := otel.Tracer(serviceName)
+
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Extract trace context from incoming request headers
+			ctx := otel.GetTextMapPropagator().Extract(r.Context(), propagation.HeaderCarrier(r.Header))
+
+			// Start span
+			spanName := fmt.Sprintf("%s %s", r.Method, r.URL.Path)
+			ctx, span := tracer.Start(ctx, spanName,
+				trace.WithSpanKind(trace.SpanKindServer),
+				trace.WithAttributes(
+					attribute.String("http.method", r.Method),
+					attribute.String("http.target", r.URL.Path),
+					attribute.String("http.scheme", r.URL.Scheme),
+					attribute.String("http.user_agent", r.Header.Get("User-Agent")),
+					attribute.String("net.host.name", r.Host),
+				),
+			)
+			defer span.End()
+
+			// Wrap response writer to capture status code
+			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+			// Process request with trace context
+			start := time.Now()
+			next.ServeHTTP(rw, r.WithContext(ctx))
+			duration := time.Since(start)
+
+			// Add response attributes
+			span.SetAttributes(
+				attribute.Int("http.status_code", rw.statusCode),
+				attribute.Int64("http.response_time_ms", duration.Milliseconds()),
+			)
+
+			// Mark span as error if status >= 500
+			if rw.statusCode >= 500 {
+				span.SetAttributes(attribute.Bool("error", true))
+			}
+		})
+	}
+}
+
+// responseWriter wraps http.ResponseWriter to capture status code.
+type responseWriter struct {
+	http.ResponseWriter
+	statusCode int
+	written    bool
+}
+
+func (rw *responseWriter) WriteHeader(code int) {
+	if !rw.written {
+		rw.statusCode = code
+		rw.written = true
+		rw.ResponseWriter.WriteHeader(code)
+	}
+}
+
+func (rw *responseWriter) Write(b []byte) (int, error) {
+	if !rw.written {
+		rw.WriteHeader(http.StatusOK)
+	}
+	return rw.ResponseWriter.Write(b)
+}

@@ -18,6 +18,7 @@ import (
 	"github.com/kite365/idcd/apps/agent/internal/probe"
 	"github.com/kite365/idcd/apps/agent/internal/task"
 	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 // Agent represents the main agent process.
@@ -38,6 +39,20 @@ func main() {
 	// Initialize logger
 	log := logger.New("production") // Agent runs in production mode by default
 	log.Info("starting idcd agent", "node_id", cfg.NodeID, "version", "1.0")
+
+	// Initialize OpenTelemetry
+	telCfg := telemetry.Config{
+		ServiceName:    "idcd-agent",
+		ServiceVersion: "v1.0.0",
+		OTLPEndpoint:   "", // S1: stdout exporter
+		SamplingRate:   0.1,
+		Enabled:        true,
+	}
+	shutdownTelemetry, err := telemetry.Init(telCfg)
+	if err != nil {
+		log.Error("failed to init telemetry", "error", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	// Create agent instance
 	agent, err := NewAgent(cfg, log)

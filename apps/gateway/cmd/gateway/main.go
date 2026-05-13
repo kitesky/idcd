@@ -19,6 +19,7 @@ import (
 	"github.com/kite365/idcd/apps/gateway/internal/scheduler"
 	"github.com/kite365/idcd/apps/gateway/internal/server"
 	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 func main() {
@@ -38,6 +39,20 @@ func main() {
 	}))
 
 	loggerInst.Info("starting Gateway service", "env", cfg.Env)
+
+	// Initialize OpenTelemetry
+	telCfg := telemetry.Config{
+		ServiceName:    "idcd-gateway",
+		ServiceVersion: "v1.0.0",
+		OTLPEndpoint:   "", // S1: stdout exporter
+		SamplingRate:   0.1,
+		Enabled:        true,
+	}
+	shutdownTelemetry, err := telemetry.Init(telCfg)
+	if err != nil {
+		loggerInst.Error("failed to init telemetry", "error", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	// Setup Redis client
 	rdb := redis.NewClient(&redis.Options{

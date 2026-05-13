@@ -16,12 +16,27 @@ import (
 	"github.com/kite365/idcd/apps/aggregator/internal/dedup"
 	"github.com/kite365/idcd/apps/aggregator/internal/processor"
 	"github.com/kite365/idcd/packages/db"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
 
 	cfg := config.MustLoad(config.DefaultPath())
+
+	// Initialize OpenTelemetry
+	telCfg := telemetry.Config{
+		ServiceName:    "idcd-aggregator",
+		ServiceVersion: "v1.0.0",
+		OTLPEndpoint:   "", // S1: stdout exporter
+		SamplingRate:   0.1,
+		Enabled:        true,
+	}
+	shutdownTelemetry, err := telemetry.Init(telCfg)
+	if err != nil {
+		logger.Error("failed to init telemetry", "error", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	// PostgreSQL pool
 	pool, err := db.NewPool(context.Background(), db.Config{

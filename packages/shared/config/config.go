@@ -61,10 +61,17 @@ type EmailConfig struct {
 }
 
 type ObservabilityConfig struct {
-	PrometheusPort int    `yaml:"prometheus_port"`
-	OTELEndpoint  string `yaml:"otel_endpoint"`
-	LokiEndpoint  string `yaml:"loki_endpoint"`
-	SentryDSN     string `yaml:"sentry_dsn"`
+	PrometheusPort int       `yaml:"prometheus_port"`
+	OTELEndpoint   string    `yaml:"otel_endpoint"`
+	LokiEndpoint   string    `yaml:"loki_endpoint"`
+	SentryDSN      string    `yaml:"sentry_dsn"`
+	Telemetry      TelemetryConfig `yaml:"telemetry"`
+}
+
+type TelemetryConfig struct {
+	Enabled      bool    `yaml:"enabled"`
+	OTLPEndpoint string  `yaml:"otlp_endpoint"`
+	SamplingRate float64 `yaml:"sampling_rate"`
 }
 
 type AgentGatewayConfig struct {

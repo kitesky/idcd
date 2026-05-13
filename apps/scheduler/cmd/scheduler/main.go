@@ -18,6 +18,7 @@ import (
 	"github.com/kite365/idcd/apps/scheduler/internal/scheduler"
 	"github.com/kite365/idcd/packages/db"
 	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 func main() {
@@ -38,6 +39,20 @@ func run() error {
 	log.Printf("[main] Redis: %s", cfg.Redis.Addr)
 	log.Printf("[main] Leader key: %s, TTL: %v", cfg.Leader.Key, cfg.Leader.TTL)
 	log.Printf("[main] Workers: %d", cfg.Worker.Count)
+
+	// Initialize OpenTelemetry
+	telCfg := telemetry.Config{
+		ServiceName:    "idcd-scheduler",
+		ServiceVersion: "v1.0.0",
+		OTLPEndpoint:   "", // S1: stdout exporter
+		SamplingRate:   0.1,
+		Enabled:        true,
+	}
+	shutdownTelemetry, err := telemetry.Init(telCfg)
+	if err != nil {
+		log.Printf("[telemetry] failed to init: %v", err)
+	}
+	defer shutdownTelemetry(context.Background())
 
 	// Create Redis client
 	rdb := redis.NewClient(&redis.Options{

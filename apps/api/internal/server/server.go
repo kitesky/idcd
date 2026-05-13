@@ -22,6 +22,7 @@ import (
 	"github.com/kite365/idcd/packages/db/gen/idcdmain"
 	"github.com/kite365/idcd/packages/shared/config"
 	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/packages/shared/telemetry"
 )
 
 // Server represents the HTTP server with its dependencies.
@@ -84,8 +85,9 @@ func (s *Server) setupMetrics() {
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
 
-	// Middleware chain: Recover → RequestID → Logger → SecurityHeaders → CORS → CSRF
+	// Middleware chain: Recover → TraceMiddleware → RequestID → Logger → SecurityHeaders → CORS → CSRF
 	r.Use(middleware.Recover(s.logger))
+	r.Use(telemetry.TraceMiddleware("idcd-api"))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.SecurityHeaders(s.config.Server.Env))

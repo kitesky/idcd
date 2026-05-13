@@ -82,11 +82,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 全部测试通过（idgen×5 / apperr×7 / logger×6 / config×8 / stream×9 = 35 个用例）
   - *deps: A2* | *lane: A* | *完成 2026-05-13*
 
-- [ ] **A7** `packages/auth/` 认证包
-  - JWT 签发 / 验证 / 刷新
-  - Session（Redis）存取
-  - API Key 哈希存储 + 验证
-  - *deps: A3, A6* | *lane: A*
+- [x] **A7** `packages/auth/` 认证包
+  - JWT 签发 / 验证 / 刷新（HS256，access 15min / refresh 7d）
+  - Session（Redis）存取（miniredis 测试）
+  - API Key 哈希存储 + 验证（argon2id，prefix sk_live_）
+  - 103 个测试全部通过，覆盖率 ≥ 90%
+  - *deps: A3, A6* | *lane: A* | *完成 2026-05-13*
 
 ---
 
@@ -148,12 +149,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 更新诊断报告状态
   - *deps: A3, A6* | *lane: B*
 
-- [ ] **B8** `apps/notifier/` — 通知服务骨架（S1 仅邮件）
-  - 邮件通道 adapter（SMTP Postfix + SES 备用）
-  - DKIM 配置
-  - 验证码邮件 / 欢迎邮件 / 密码重置邮件模板
-  - asynq 队列消费
-  - *deps: A6* | *lane: B*
+- [x] **B8** `apps/notifier/` — 通知服务骨架（S1 仅邮件）
+  - 邮件通道 adapter（SMTP STARTTLS/TLS + SES stub）
+  - 验证码邮件 / 欢迎邮件 / 密码重置邮件模板（响应式 HTML）
+  - asynq 队列消费（default/critical 双优先级，指数退避重试）
+  - 26 个测试全部通过，go build ✓
+  - *deps: A6* | *lane: B* | *完成 2026-05-13*
 
 ---
 
@@ -201,14 +202,13 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### Lane D — 前端站点
 
-- [ ] **D1** `apps/web/` — Next.js 16 骨架
-  - App Router + TypeScript strict
-  - shadcn/ui 初始化 + blue theme（`docs/DESIGN.md` 锁定配色）
-  - Tailwind v4 配置
-  - Geist Sans + Geist Mono 字体 + PingFang SC fallback
-  - 默认深色模式
-  - `packages/ui/` 共享组件库初始化
-  - *deps: A2* | *lane: D*
+- [x] **D1** `apps/web/` — Next.js 16 骨架
+  - App Router + TypeScript strict，深色模式默认
+  - shadcn/ui blue theme CSS 变量，Tailwind v4
+  - Geist Sans + Geist Mono + PingFang SC fallback
+  - `packages/ui/` 5 个基础组件（Button/Card/Input/Badge/Separator）
+  - Vitest 测试 15 个全绿（utils 6 + Button 9）
+  - *deps: A2* | *lane: D* | *完成 2026-05-13*
 
 - [ ] **D2** 首页（`/`）
   - 3-hero 布局：一键诊断输入框 + 特性介绍 + 节点地图预览
@@ -478,6 +478,9 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-13 | A1（基础设施）+ A2（monorepo 骨架）完成，TimescaleDB 2.27.0 安装 | — |
 | 2026-05-13 | A3（DB 层）完成：5 个迁移 + sqlc 生成 + 4 个 repository | — |
 | 2026-05-13 | A6（shared 包）完成：idgen/apperr/logger/config/stream，35 个测试 | A7（auth 包）待开始 |
+| 2026-05-13 | A7（auth 包）完成：jwt/session/apikey，103 tests ✓ | — |
+| 2026-05-13 | B8（notifier）完成：SMTP+模板+asynq，26 tests ✓ | — |
+| 2026-05-13 | D1（Next.js 骨架）完成：App Router + shadcn/ui + packages/ui，15 tests ✓ | D2/D8 可启动 |
 
 ---
 

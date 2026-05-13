@@ -304,7 +304,24 @@
 | D13 | MCP SSE 状态边界 | ✅ 业务 stateless + SSE 连接 stateful;LB sticky session 必要;10k SSE/实例 | 14 §4.10/9.1, 19 §3.1 |
 | D14 | TimescaleDB → CK 触发 | ✅ 单日 monitor_check > 10GB 或 P99 write > 100ms(持续 1 周)→ 启动评估;两项都到 → 部署 | 14 §6.2, 17-roadmap M14 |
 
-### M.5 Reviewer Concerns 答复
+### M.5 第二次架构审查锁定(2026-05-13 plan-eng-review 二轮，5 项 D 新增)
+
+> 背景:2026-05-13 同日二次 /plan-eng-review，聚焦第一轮未覆盖的 5 个架构盲区。全部锁定 A。
+
+| # | 决策 | 锁定结论 | 影响模块 |
+|---|------|---------|---------|
+| D17 | Agent 24h 缓冲存储 | ✅ SQLite 本地持久化(modernc.org/sqlite cgo-free);进程重启后缓冲不丢失;replay 时 Aggregator ingest 侧按 `(node_id, task_id, timestamp)` 去重 | apps/agent/ |
+| D18 | Redis Streams MAXLEN | ✅ `probe.results` / `monitor.events` / `alert.events` 等全部 Streams 设 `XADD ... MAXLEN ~ 500000`;超出丢弃最旧数据,保护 Redis 内存 | 14 §5.3, 10 事件总线 |
+| D19 | S1 ECS 规格 | ✅ 主控 ECS 升至 **8C/16G**（原 4C/8G 全栈内存 4.5-6GB+overhead 过紧）;法兰克福热备维持 2C/4G(轻量备份用途) | 14 §7, ARCHITECTURE §4.1 |
+| D20 | attest-worker retry 退步 | ✅ 每步重试间隔 **1s → 4s → 16s 指数退步 + ±25% jitter**;AWS KMS 默认 5 TPS/key,立即三连重试必触限速;Go `time.Sleep` 即可 | apps/attest-worker/ |
+| D21 | MCP token 续期幂等 | ✅ `INSERT INTO mcp_token ... ON CONFLICT(token_hash) DO UPDATE SET renewed_at=NOW()` + Redis `SETNX` 30s 分布式锁防并发重复续期 | packages/auth/mcp_token.go |
+
+**跨模型审查新增 Gap(无需决策,直接写入文档)**:
+- D6 Self-verify 路径确认:保持公开接口路径(D6 原设计胜出)
+- OTA 3 级灰度缺 kill switch SOP → 补 `docs/RUNBOOKS/agent-mass-rollback.md`
+- LLM failover 触发条件 → 见 14 §4.11 补充
+
+### M.6 Reviewer Concerns 答复
 
 详 ENG-REVIEW-REPORT.md "Reviewer Concerns 答复" 章节,8 项 Concerns 全部规约:
 - Concern 1(Verdict 法定效力):verdict_report.report_type=observation_only + verify 接口返回 + 禁用词 CI lint

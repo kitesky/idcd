@@ -165,7 +165,11 @@ idcd/
 - 部署:Ansible + Terraform,初版 100+ 节点(Tier1 自有 + 海外 VPS)
 - 升级:**OTA 3 级灰度**(K-架构 + 14 §13.3):L1 (1%) 1h → L2 (10%) 4h → L3 (100%)
 - 任何阶段错误率 > 基线 2x → 自动回滚 + P1 + 暂停后续灰度
-- 24h 本地缓冲:主控挂了 Agent 仍持续拨测,主控恢复回放
+- **24h 本地缓冲(D17)**:主控挂了 Agent 仍持续拨测,主控恢复回放
+  - 存储:**SQLite**(modernc.org/sqlite, cgo-free，与 Go 静态二进制兼容)
+  - 路径:`$AGENT_DATA_DIR/buffer.db`,table `probe_result_buffer(task_id TEXT PK, node_id TEXT, ts INTEGER, payload BLOB)`
+  - 容量上限:默认 500MB(可配);超出后按 ts 顺序清除最旧数据
+  - **回放去重**:上传时带 `(node_id, task_id, timestamp)` 三元组唯一键,Aggregator 侧 `INSERT ... ON CONFLICT DO NOTHING`
 - mTLS 客户端证书 **7-30 天短期** + 自动 renewal + CRL/OCSP 撤销(失窃节点 1h 内完全踢出)
 
 ### 2.5 服务总计
@@ -343,6 +347,16 @@ idcd/
 | D12 | 3 档工单 SLA:纯自动 / 1h 仅 P0(KMS/节点失窃)/ 24h 常规 | `apps/admin/internal/ticket/sla.go`;详 11 §15.4 |
 | D14 | TimescaleDB → ClickHouse 触发指标:>10GB/d 或 P99>100ms(持续 1 周)| Prometheus alert rule;TODO 在 17-roadmap S3 末 |
 
+### 3.10 第二轮架构审查决策(D17-D21)
+
+| D | 概要 | 实施位置 |
+|---|---|---|
+| D17 | Agent SQLite 24h buffer:进程重启不丢数据;回放去重 `(node_id, task_id, timestamp) ON CONFLICT DO NOTHING` | `apps/agent/internal/buffer/sqlite.go`;buffer.db 500MB 上限 |
+| D18 | Redis Streams MAXLEN ~500k:`XADD ... MAXLEN ~ 500000` 所有 probe/monitor/alert streams | `packages/shared/streams.go` + 每处 XADD 调用 |
+| D19 | S1 ECS 升至 8C/16G(全栈内存 4.5-6GB+overhead,原 4C/8G 过紧)| `infra/docker/docker-compose.core.yml` + Ansible inventory |
+| D20 | attest-worker retry 1-4-16s 指数退步 + ±25% jitter | `apps/attest-worker/internal/wal/retry.go` |
+| D21 | MCP token 续期:ON CONFLICT DO UPDATE + Redis SETNX 30s lock 防并发重复续期 | `packages/auth/mcp_token.go:Renew()` |
+
 ---
 
 ## 4. 部署架构
@@ -351,8 +365,8 @@ idcd/
 
 ```text
 ┌──────────────────────────────┐    ┌──────────────────────────────┐
-│  阿里云 ECS 4C/8G(杭州)      │    │  Hetzner CCX13(法兰克福)    │
-│  ¥300/月 + ESSD 200GB        │    │  €13/月 80GB                 │
+│  阿里云 ECS 8C/16G(杭州,D19) │    │  Hetzner CCX13(法兰克福)    │
+│  ¥450/月 + ESSD 200GB        │    │  €10/月 2C/4G 80GB           │
 │  docker-compose 启全栈        │    │  docker-compose 启全栈        │
 │  ├─ api / scheduler / agg... │    │  ├─ api / scheduler / agg... │
 │  ├─ PostgreSQL(主)+ Redis    │◀──▶│  ├─ PostgreSQL(热备)+ Redis  │

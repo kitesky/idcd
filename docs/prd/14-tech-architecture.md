@@ -367,6 +367,10 @@
   - 主选阿里通义(国内主控同地,latency 低,合规);备选 DeepSeek(成本极低)
   - 月成本估算:S2 上线初 ¥300-500/月 vs Claude/GPT $500/月
   - per-Provider 独立 prompt + 独立 eval ≥4.0/5
+- **failover 触发条件(D20-关联,新增)**:阿里通义 → DeepSeek 切换触发于:
+  - 连续 3 次请求超时(超时阈值 30s)或返回 5xx,且退步后仍失败 → 自动切 DeepSeek
+  - DeepSeek 同样失败 → Verdict 报告 LLM 解读步骤跳过(降级输出"LLM 解读暂不可用")+ P1 告警
+  - 每次切换写 audit_log(provider, trigger_reason, timestamp)
 - 企业用户接入自家 LLM 时:可选 Claude / GPT / 自部署;需自行 prompt 调优 + eval
 - 后端可插拔:**阿里通义 / DeepSeek**(主)/ Anthropic Claude / OpenAI GPT / 用户自家(企业版)
 
@@ -385,6 +389,11 @@
 - **L2 (10%)**:扩到 10 节点,观察 4 小时
 - **L3 (100%)**:全量推送
 - 任何阶段错误率突增 > 基线 2x → 自动回滚 + P1 告警 + 暂停后续灰度
+
+**Kill switch(新增)**:
+- `feature_flag.agent_ota_enabled = false` → 立即停止所有灰度推进(不影响已升级节点)
+- `feature_flag.agent_ota_force_rollback_version = <version>` → 强制回退全部节点到指定版本(触发全量 L1→L3 回滚)
+- Kill switch 操作写 audit_log + P1 告警;详 `docs/RUNBOOKS/agent-mass-rollback.md`
 
 ---
 
@@ -427,6 +436,8 @@
 | db5 | 实时统计（在线用户、当前 RPS）|
 
 **部署**：S1 单实例 + 持久化，S3 起 Redis Cluster。
+
+**Redis Streams MAXLEN 策略(D18)**:所有 Stream 写入时加 `XADD ... MAXLEN ~ 500000`（近似裁剪，性能友好）。防止 Aggregator / Notifier 停机期间 probe 结果无限堆积导致 OOM。超出后丢弃最旧消息：已平稳消费时不丢数据；维护停机期间接受旧数据丢弃以保护 Redis 内存。
 
 ### 5.4 对象存储
 
@@ -532,8 +543,8 @@
 
 ### S1 主控配置
 
-- 杭州主：Hetzner 没有亚太，国内用阿里云 ECS 4C/8G + ESSD 200GB（~¥300/月）
-- 法兰克福备：Hetzner CCX13 2C/8G/80GB（€13/月）
+- 杭州主：阿里云 ECS **8C/16G** + ESSD 200GB（~¥450/月，D19：从 4C/8G 升级，全栈估算 4.5-6GB+overhead，8G 过紧）
+- 法兰克福备：Hetzner CCX13 2C/4G/80GB（€10/月，轻量热备用途）
 - 数据：主 → 备 流式复制（streaming replication）
 - 国内 / 海外用户就近接入
 

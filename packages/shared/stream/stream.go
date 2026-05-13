@@ -71,22 +71,20 @@ func (c *Client) Add(ctx context.Context, stream string, values map[string]any) 
 
 // AddProbeResult writes a probe result to the probe.results stream.
 func (c *Client) AddProbeResult(ctx context.Context, taskID, nodeID string, payload map[string]any) (string, error) {
-	vals := map[string]any{
-		"task_id": taskID,
-		"node_id": nodeID,
-	}
+	vals := make(map[string]any, len(payload)+2)
 	maps.Copy(vals, payload)
+	vals["task_id"] = taskID
+	vals["node_id"] = nodeID
 	return c.Add(ctx, Probe, vals)
 }
 
 // AddMonitorEvent writes a monitor state-change event.
 func (c *Client) AddMonitorEvent(ctx context.Context, monitorID, event string, extra map[string]any) (string, error) {
-	vals := map[string]any{
-		"monitor_id": monitorID,
-		"event":      event,
-		"ts":         time.Now().UnixMilli(),
-	}
+	vals := make(map[string]any, len(extra)+3)
 	maps.Copy(vals, extra)
+	vals["monitor_id"] = monitorID
+	vals["event"] = event
+	vals["ts"] = time.Now().UnixMilli()
 	return c.Add(ctx, Monitor, vals)
 }
 

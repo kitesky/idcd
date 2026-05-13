@@ -17,6 +17,7 @@ func TestNew_dev_text(t *testing.T) {
 	if !strings.Contains(got, "hello") {
 		t.Errorf("expected 'hello' in output, got: %q", got)
 	}
+	_ = logger.New("development") // cover the os.Stdout path
 }
 
 func TestNew_prod_json(t *testing.T) {
@@ -64,6 +65,20 @@ func TestFromContext_emptyContext(t *testing.T) {
 	l := logger.FromContext(context.Background(), base)
 	l.Info("no ids")
 	// should not panic, just log normally
+}
+
+func TestFromContext_injectsTraceID(t *testing.T) {
+	var buf bytes.Buffer
+	base := logger.NewWithWriter("development", &buf)
+
+	ctx := logger.WithTraceID(context.Background(), "trace-xyz")
+	l := logger.FromContext(ctx, base)
+	l.Info("test")
+
+	got := buf.String()
+	if !strings.Contains(got, "trace-xyz") {
+		t.Errorf("expected trace_id in output, got: %q", got)
+	}
 }
 
 func TestDiscard(t *testing.T) {

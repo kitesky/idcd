@@ -59,3 +59,70 @@ func TestNode(t *testing.T) {
 		t.Fatalf("unexpected node ID: %q", id)
 	}
 }
+
+func TestAPIKeyPrefix_short(t *testing.T) {
+	// Input shorter than expected — must return the input unchanged (no panic)
+	got := idgen.APIKeyPrefix("short")
+	if got != "short" {
+		t.Errorf("unexpected result for short input: %q", got)
+	}
+}
+
+type prefixGen struct {
+	fn     func() string
+	prefix string
+}
+
+func checkPrefixes(t *testing.T, gens []prefixGen) {
+	t.Helper()
+	for _, g := range gens {
+		id := g.fn()
+		if !strings.HasPrefix(id, g.prefix) {
+			t.Errorf("expected prefix %q, got %q", g.prefix, id)
+		}
+	}
+}
+
+// TestAllIDPrefixes smoke-tests every entity ID generator (S1 + S2/S3) to
+// ensure each returns the correct prefix. All delegate to New(), which is
+// stress-tested in TestNew_unique; this test exists for line coverage.
+func TestAllIDPrefixes(t *testing.T) {
+	checkPrefixes(t, []prefixGen{
+		// S1 entities
+		{idgen.Team, "t_"},
+		{idgen.APIKey, "ak_"},
+		{idgen.Session, "s_"},
+		{idgen.Monitor, "m_"},
+		{idgen.MonitorCheck, "mc_"},
+		{idgen.AlertEvent, "ae_"},
+		{idgen.AlertPolicy, "ap_"},
+		{idgen.Channel, "ch_"},
+		{idgen.StatusPage, "sp_"},
+		{idgen.StatusComponent, "sc_"},
+		{idgen.StatusIncident, "inc_"},
+		{idgen.ProbeTask, "pt_"},
+		{idgen.Report, "r_"},
+		{idgen.Order, "ord_"},
+		{idgen.Invoice, "inv_"},
+		{idgen.Subscription, "sub_"},
+		{idgen.PaymentMethod, "pm_"},
+		{idgen.Refund, "rf_"},
+		{idgen.Ticket, "tk_"},
+		{idgen.AuditLog, "al_"},
+		{idgen.WebhookEndpoint, "we_"},
+		{idgen.Dashboard, "db_"},
+		{idgen.UserOTP, "otp_"},
+		// S2/S3 entities
+		{idgen.VerdictOrder, "v_"},
+		{idgen.VerdictReport, "vr_"},
+		{idgen.AttestationRecord, "att_"},
+		{idgen.TSAResponse, "tsa_"},
+		{idgen.KeyCeremonyLog, "kc_"},
+		{idgen.MCPSession, "mcps_"},
+		{idgen.MCPToolCall, "mctc_"},
+		{idgen.MCPToken, "mcpt_"},
+		{idgen.AgentObsMonitor, "aom_"},
+		{idgen.AgentObsEvent, "aoe_"},
+		{idgen.ComplianceSubscription, "cs_"},
+	})
+}

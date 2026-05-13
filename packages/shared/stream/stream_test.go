@@ -20,6 +20,15 @@ func newTestClient(t *testing.T) *stream.Client {
 	return stream.New(rdb)
 }
 
+func TestNewFromConfig(t *testing.T) {
+	mr := miniredis.RunT(t)
+	c, rdb := stream.NewFromConfig(mr.Addr(), "", 0)
+	defer rdb.Close()
+	if err := c.Ping(context.Background()); err != nil {
+		t.Fatalf("NewFromConfig: Ping failed: %v", err)
+	}
+}
+
 func TestPing(t *testing.T) {
 	c := newTestClient(t)
 	if err := c.Ping(context.Background()); err != nil {
@@ -128,6 +137,98 @@ func TestAddAuditEvent(t *testing.T) {
 	n, _ := c.Len(context.Background(), stream.Audit)
 	if n != 1 {
 		t.Errorf("expected 1 message in %s, got %d", stream.Audit, n)
+	}
+}
+
+// newTestClientWithRDB is like newTestClient but also returns the underlying
+// *redis.Client so tests can read back stream entries for assertion.
+func newTestClientWithRDB(t *testing.T) (*stream.Client, *redis.Client) {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	return stream.New(rdb), rdb
+}
+
+// newStoppedClient returns a client pointing at a stopped Redis server.
+func newStoppedClient(t *testing.T) *stream.Client {
+	t.Helper()
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	c := stream.New(rdb)
+	mr.Close()
+	return c
+}
+
+func TestErrorPaths(t *testing.T) {
+	c := newStoppedClient(t)
+	ctx := context.Background()
+	t.Run("Add", func(t *testing.T) {
+		_, err := c.Add(ctx, "test.stream", map[string]any{"k": "v"})
+		if err == nil {
+			t.Error("expected error when Redis is unavailable")
+		}
+	})
+	t.Run("Ping", func(t *testing.T) {
+		if err := c.Ping(ctx); err == nil {
+			t.Error("expected error when Redis is unavailable")
+		}
+	})
+	t.Run("Len", func(t *testing.T) {
+		_, err := c.Len(ctx, "some.stream")
+		if err == nil {
+			t.Error("expected error when Redis is unavailable")
+		}
+	})
+}
+
+func TestAddProbeResult_requiredFieldsNotOverridden(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	_, err := c.AddProbeResult(ctx, "pt_real", "nd_real", map[string]any{
+		"task_id": "OVERRIDE",
+		"node_id": "OVERRIDE",
+		"extra":   "value",
+	})
+	if err != nil {
+		t.Fatalf("AddProbeResult failed: %v", err)
+	}
+	msgs, err := rdb.XRange(ctx, stream.Probe, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if got := msgs[0].Values["task_id"]; got != "pt_real" {
+		t.Errorf("task_id: expected %q, got %v", "pt_real", got)
+	}
+	if got := msgs[0].Values["node_id"]; got != "nd_real" {
+		t.Errorf("node_id: expected %q, got %v", "nd_real", got)
+	}
+}
+
+func TestAddMonitorEvent_requiredFieldsNotOverridden(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	_, err := c.AddMonitorEvent(ctx, "m_real", "up", map[string]any{
+		"monitor_id": "OVERRIDE",
+		"event":      "OVERRIDE",
+	})
+	if err != nil {
+		t.Fatalf("AddMonitorEvent failed: %v", err)
+	}
+	msgs, err := rdb.XRange(ctx, stream.Monitor, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	if got := msgs[0].Values["monitor_id"]; got != "m_real" {
+		t.Errorf("monitor_id: expected %q, got %v", "m_real", got)
+	}
+	if got := msgs[0].Values["event"]; got != "up" {
+		t.Errorf("event: expected %q, got %v", "up", got)
 	}
 }
 

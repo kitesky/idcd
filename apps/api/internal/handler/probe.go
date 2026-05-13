@@ -12,6 +12,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/packages/shared/apperr"
 	"github.com/kite365/idcd/packages/shared/idgen"
@@ -99,15 +100,9 @@ func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate target
-	if req.Target == "" {
-		response.Error(w, r, apperr.Validation("Target is required", ""))
-		return
-	}
-
-	// SSRF protection
-	if isPrivateTarget(req.Target) {
-		response.Error(w, r, apperr.Forbidden("Cannot probe private IP addresses"))
+	// Validate and check target (includes SSRF protection)
+	if err := denylist.CheckTarget(req.Target); err != nil {
+		response.Error(w, r, apperr.Validation(err.Error(), ""))
 		return
 	}
 
@@ -147,15 +142,9 @@ func (h *ProbeHandler) handleProbe(w http.ResponseWriter, r *http.Request, probe
 		return
 	}
 
-	// Validate target
-	if req.Target == "" {
-		response.Error(w, r, apperr.Validation("Target is required", ""))
-		return
-	}
-
-	// SSRF protection
-	if isPrivateTarget(req.Target) {
-		response.Error(w, r, apperr.Forbidden("Cannot probe private IP addresses"))
+	// Validate and check target (includes SSRF protection)
+	if err := denylist.CheckTarget(req.Target); err != nil {
+		response.Error(w, r, apperr.Validation(err.Error(), ""))
 		return
 	}
 
@@ -255,42 +244,6 @@ func (h *ProbeHandler) createProbeTask(
 	}
 
 	return taskID, nil
-}
-
-// isPrivateTarget checks if the target resolves to a private IP address.
-// Returns true for RFC1918 private addresses, loopback, and link-local.
-func isPrivateTarget(target string) bool {
-	// Extract host from target (remove port if present)
-	host := target
-	if strings.Contains(target, ":") {
-		var err error
-		host, _, err = net.SplitHostPort(target)
-		if err != nil {
-			// If SplitHostPort fails, try parsing as-is
-			host = target
-		}
-	}
-
-	// Resolve to IP
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		// If DNS lookup fails, check if it's an IP address string
-		ip := net.ParseIP(host)
-		if ip == nil {
-			return false // Cannot resolve, allow it (will fail at probe stage)
-		}
-		// Check the parsed IP
-		return isPrivateIP(ip.String())
-	}
-
-	// Check if any resolved IP is private
-	for _, ip := range ips {
-		if isPrivateIP(ip.String()) {
-			return true
-		}
-	}
-
-	return false
 }
 
 // normalizeTarget normalizes the target for database storage.

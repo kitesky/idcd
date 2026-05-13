@@ -137,8 +137,8 @@ func TestProbeHandler_SSRF_Protection(t *testing.T) {
 
 			handler.HTTP(rr, req)
 
-			if rr.Code != http.StatusForbidden {
-				t.Errorf("expected status %d for private IP %s, got %d", http.StatusForbidden, privateIP, rr.Code)
+			if rr.Code != http.StatusBadRequest {
+				t.Errorf("expected status %d for private IP %s, got %d", http.StatusBadRequest, privateIP, rr.Code)
 				t.Logf("Response body: %s", rr.Body.String())
 			}
 
@@ -153,8 +153,8 @@ func TestProbeHandler_SSRF_Protection(t *testing.T) {
 				t.Fatalf("failed to parse error response: %v", err)
 			}
 
-			if response.Error.Code != "FORBIDDEN" {
-				t.Errorf("expected error code FORBIDDEN, got %q", response.Error.Code)
+			if response.Error.Code != "VALIDATION" {
+				t.Errorf("expected error code VALIDATION, got %q", response.Error.Code)
 			}
 		})
 	}
@@ -396,27 +396,3 @@ func TestProbeHandler_InvalidRequest(t *testing.T) {
 	}
 }
 
-func TestIsPrivateTarget(t *testing.T) {
-	tests := []struct {
-		target   string
-		expected bool
-	}{
-		{"10.0.0.1", true},
-		{"172.16.0.1", true},
-		{"192.168.1.1", true},
-		{"127.0.0.1", true},
-		{"169.254.169.254", true},
-		{"localhost", true},
-		{"8.8.8.8", false},
-		{"1.1.1.1", false},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.target, func(t *testing.T) {
-			result := isPrivateTarget(tt.target)
-			if result != tt.expected {
-				t.Errorf("isPrivateTarget(%s) = %v, expected %v", tt.target, result, tt.expected)
-			}
-		})
-	}
-}

@@ -6,7 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 func TestGenerate(t *testing.T) {

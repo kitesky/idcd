@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 // SessionData represents stored session information.

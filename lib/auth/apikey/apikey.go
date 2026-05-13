@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/argon2"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 const (

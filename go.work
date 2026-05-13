@@ -7,8 +7,8 @@ use (
 	./apps/gateway
 	./apps/notifier
 	./apps/scheduler
-	./packages/auth
-	./packages/db
-	./packages/ratelimit
-	./packages/shared
+	./lib/auth
+	./lib/db
+	./lib/ratelimit
+	./lib/shared
 )

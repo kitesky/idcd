@@ -1,4 +1,4 @@
-module github.com/kite365/idcd/packages/db
+module github.com/kite365/idcd/lib/db
 
 go 1.26
 
@@ -12,4 +12,4 @@ require (
 	golang.org/x/text v0.37.0 // indirect
 )
 
-replace github.com/kite365/idcd/packages/shared => ../shared
+replace github.com/kite365/idcd/lib/shared => ../shared

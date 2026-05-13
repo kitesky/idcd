@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 )
 
 // SessionRepository wraps user_session sqlc queries.

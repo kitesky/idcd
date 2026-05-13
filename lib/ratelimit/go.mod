@@ -1,4 +1,4 @@
-module github.com/kite365/idcd/packages/ratelimit
+module github.com/kite365/idcd/lib/ratelimit
 
 go 1.26
 

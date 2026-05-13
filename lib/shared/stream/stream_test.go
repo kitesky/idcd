@@ -8,7 +8,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
 
 // newTestClient spins up a miniredis instance and returns a stream.Client.

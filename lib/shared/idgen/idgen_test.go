@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kite365/idcd/packages/shared/idgen"
+	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
 func TestNew_prefix(t *testing.T) {

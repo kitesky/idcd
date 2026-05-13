@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/lib/shared/logger"
 )
 
 func TestNew_dev_text(t *testing.T) {

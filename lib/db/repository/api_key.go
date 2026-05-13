@@ -5,7 +5,7 @@ import (
 	"fmt"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 )
 
 // APIKeyRepository wraps api_key sqlc queries.

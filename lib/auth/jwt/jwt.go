@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 // Claims represents the JWT token claims.

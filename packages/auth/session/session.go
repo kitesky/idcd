@@ -1,0 +1,173 @@
+// Package session provides Redis-based session storage for user sessions.
+package session
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"time"
+
+	"github.com/redis/go-redis/v9"
+	"github.com/kite365/idcd/packages/shared/apperr"
+)
+
+// SessionData represents stored session information.
+type SessionData struct {
+	UserID     string    `json:"user_id"`
+	CreatedAt  time.Time `json:"created_at"`
+	LastSeenAt time.Time `json:"last_seen_at"`
+}
+
+// Service provides session storage operations using Redis.
+type Service struct {
+	redis *redis.Client
+}
+
+// NewService creates a new session service with the given Redis client.
+func NewService(redisClient *redis.Client) *Service {
+	return &Service{redis: redisClient}
+}
+
+// Store creates or updates a session with the given session ID, user ID, and TTL.
+func (s *Service) Store(ctx context.Context, sessionID, userID string, ttl time.Duration) error {
+	if sessionID == "" {
+		return apperr.Validation("session ID is required", "")
+	}
+	if userID == "" {
+		return apperr.Validation("user ID is required", "")
+	}
+	if ttl <= 0 {
+		return apperr.Validation("TTL must be positive", "")
+	}
+
+	now := time.Now()
+	sessionData := SessionData{
+		UserID:     userID,
+		CreatedAt:  now,
+		LastSeenAt: now,
+	}
+
+	// Check if session already exists to preserve CreatedAt
+	key := s.sessionKey(sessionID)
+	existing, err := s.redis.Get(ctx, key).Result()
+	if err == nil {
+		// Session exists, preserve CreatedAt
+		var existingData SessionData
+		if err := json.Unmarshal([]byte(existing), &existingData); err == nil {
+			sessionData.CreatedAt = existingData.CreatedAt
+		}
+	}
+
+	data, err := json.Marshal(sessionData)
+	if err != nil {
+		return apperr.Internal("failed to marshal session data", err)
+	}
+
+	if err := s.redis.Set(ctx, key, data, ttl).Err(); err != nil {
+		return apperr.Internal("failed to store session", err)
+	}
+
+	return nil
+}
+
+// Get retrieves session data by session ID.
+func (s *Service) Get(ctx context.Context, sessionID string) (*SessionData, error) {
+	if sessionID == "" {
+		return nil, apperr.Validation("session ID is required", "")
+	}
+
+	key := s.sessionKey(sessionID)
+	data, err := s.redis.Get(ctx, key).Result()
+	if err != nil {
+		if err == redis.Nil {
+			return nil, apperr.NotFound("session not found")
+		}
+		return nil, apperr.Internal("failed to get session", err)
+	}
+
+	var sessionData SessionData
+	if err := json.Unmarshal([]byte(data), &sessionData); err != nil {
+		return nil, apperr.Internal("failed to unmarshal session data", err)
+	}
+
+	// Update LastSeenAt
+	sessionData.LastSeenAt = time.Now()
+	updatedData, err := json.Marshal(sessionData)
+	if err == nil {
+		// Best effort update, don't fail on error
+		ttl := s.redis.TTL(ctx, key).Val()
+		if ttl > 0 {
+			s.redis.Set(ctx, key, updatedData, ttl)
+		}
+	}
+
+	return &sessionData, nil
+}
+
+// Refresh extends the session TTL by the given duration.
+func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Duration) error {
+	if sessionID == "" {
+		return apperr.Validation("session ID is required", "")
+	}
+	if ttl <= 0 {
+		return apperr.Validation("TTL must be positive", "")
+	}
+
+	key := s.sessionKey(sessionID)
+
+	// Check if session exists
+	exists, err := s.redis.Exists(ctx, key).Result()
+	if err != nil {
+		return apperr.Internal("failed to check session existence", err)
+	}
+	if exists == 0 {
+		return apperr.NotFound("session not found")
+	}
+
+	// Update LastSeenAt and extend TTL
+	data, err := s.redis.Get(ctx, key).Result()
+	if err != nil {
+		return apperr.Internal("failed to get session for refresh", err)
+	}
+
+	var sessionData SessionData
+	if err := json.Unmarshal([]byte(data), &sessionData); err != nil {
+		return apperr.Internal("failed to unmarshal session data", err)
+	}
+
+	sessionData.LastSeenAt = time.Now()
+	updatedData, err := json.Marshal(sessionData)
+	if err != nil {
+		return apperr.Internal("failed to marshal updated session data", err)
+	}
+
+	if err := s.redis.Set(ctx, key, updatedData, ttl).Err(); err != nil {
+		return apperr.Internal("failed to refresh session", err)
+	}
+
+	return nil
+}
+
+// Delete removes a session by session ID.
+func (s *Service) Delete(ctx context.Context, sessionID string) error {
+	if sessionID == "" {
+		return apperr.Validation("session ID is required", "")
+	}
+
+	key := s.sessionKey(sessionID)
+	deleted, err := s.redis.Del(ctx, key).Result()
+	if err != nil {
+		return apperr.Internal("failed to delete session", err)
+	}
+
+	if deleted == 0 {
+		return apperr.NotFound("session not found")
+	}
+
+	return nil
+}
+
+// sessionKey returns the Redis key for a given session ID.
+func (s *Service) sessionKey(sessionID string) string {
+	return fmt.Sprintf("session:%s", sessionID)
+}

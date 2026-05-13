@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>欢迎加入 idcd</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background-color: #2563eb; padding: 20px; text-align: center; }
+        .logo { color: #ffffff; font-size: 24px; font-weight: bold; }
+        .content { padding: 40px 20px; }
+        .welcome-box { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 30px; border-radius: 12px; text-align: center; margin: 20px 0; }
+        .feature-list { margin: 30px 0; }
+        .feature-item { display: flex; align-items: center; margin: 15px 0; padding: 15px; background-color: #f8fafc; border-radius: 8px; }
+        .feature-icon { width: 40px; height: 40px; background-color: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 15px; color: white; font-weight: bold; }
+        .feature-text { flex: 1; }
+        .feature-title { font-weight: bold; color: #1f2937; margin-bottom: 5px; }
+        .feature-desc { color: #6b7280; font-size: 14px; }
+        .cta-button { display: inline-block; background-color: #2563eb; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+        .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb; }
+        @media (max-width: 600px) {
+            .content { padding: 30px 15px; }
+            .feature-item { flex-direction: column; text-align: center; }
+            .feature-icon { margin: 0 0 10px 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">idcd</div>
+        </div>
+        <div class="content">
+            <div class="welcome-box">
+                <h1 style="margin: 0 0 10px 0; font-size: 28px;">欢迎加入 idcd！</h1>
+                <p style="margin: 0; font-size: 16px; opacity: 0.9;">{{.Username}}，感谢您选择专业的网络诊断工具</p>
+            </div>
+
+            <p style="color: #4b5563; line-height: 1.6; margin-bottom: 30px; text-align: center;">
+                您的账户已成功创建！现在您可以使用以下强大功能：
+            </p>
+
+            <div class="feature-list">
+                <div class="feature-item">
+                    <div class="feature-icon">🌐</div>
+                    <div class="feature-text">
+                        <div class="feature-title">多地网络诊断</div>
+                        <div class="feature-desc">HTTP/HTTPS、Ping、DNS 解析、路由追踪等综合诊断</div>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📊</div>
+                    <div class="feature-text">
+                        <div class="feature-title">实时监控告警</div>
+                        <div class="feature-desc">7×24 监控您的服务，异常时及时通知</div>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📈</div>
+                    <div class="feature-text">
+                        <div class="feature-title">状态页与报告</div>
+                        <div class="feature-desc">专业的状态页面和详细的诊断报告</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="https://idcd.com/app/dashboard" class="cta-button">开始使用 idcd →</a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px; text-align: center; margin-top: 40px;">
+                需要帮助？访问我们的 <a href="https://docs.idcd.com" style="color: #2563eb;">帮助文档</a> 或 <a href="mailto:support@idcd.com" style="color: #2563eb;">联系客服</a>
+            </p>
+        </div>
+        <div class="footer">
+            © 2026 idcd.com - 专业网络诊断工具<br>
+            <a href="https://idcd.com/privacy" style="color: #6b7280; text-decoration: none;">隐私政策</a> |
+            <a href="https://idcd.com/terms" style="color: #6b7280; text-decoration: none;">服务条款</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -63,3 +63,5 @@ dist-agent/
 # Misc
 .turbo
 .vercel
+
+.devfleet-worktrees/

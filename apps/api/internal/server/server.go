@@ -84,12 +84,15 @@ func (s *Server) setupMetrics() {
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
 
-	// Middleware chain: Recover → RequestID → Logger → SecurityHeaders → CORS
+	// Middleware chain: Recover → RequestID → Logger → SecurityHeaders → CORS → CSRF
 	r.Use(middleware.Recover(s.logger))
 	r.Use(middleware.RequestID())
 	r.Use(middleware.Logger(s.logger))
-	r.Use(middleware.SecurityHeaders())
+	r.Use(middleware.SecurityHeaders(s.config.Server.Env))
 	r.Use(middleware.CORS(s.config.Server.Env, s.config.Server.CORSOrigins))
+
+	// Add CSRF protection (with exemptions for auth, probe, info endpoints)
+	r.Use(middleware.CSRF())
 
 	// Add metrics middleware
 	r.Use(s.metricsMiddleware())
@@ -101,6 +104,10 @@ func (s *Server) setupRouter() {
 
 	// Prometheus metrics endpoint
 	r.Handle("/metrics", promhttp.Handler())
+
+	// CSP violation reporting endpoint
+	cspReportHandler := handler.NewCSPReportHandler(s.logger)
+	r.Post("/v1/csp-report", cspReportHandler.Report)
 
 	// Auth & Account routes (requires pgxPool and JWT config)
 	if s.pgxPool != nil && s.config.JWT.Secret != "" {

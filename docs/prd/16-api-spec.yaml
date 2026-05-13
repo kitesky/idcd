@@ -1,0 +1,3487 @@
+openapi: 3.1.0
+info:
+  title: idcd.com Public API (v2)
+  version: 2.0.0
+  summary: |
+    idcd.com 网络可观测平台 v2 三栈 API:Core(api.idcd.com)/ Evidence(attest.idcd.com)/
+    MCP server(mcp.idcd.com,JSON-RPC,见附录)。本规范是 OpenAPI 3.1 source of truth,
+    用于 SDK 自动生成、Mintlify 文档站、契约测试。
+  description: |
+    # idcd.com v2 公共 API 规范
+
+    ## 三栈架构(v2 K1 锁定)
+
+    | 子域 | 协议 | 用途 |
+    |---|---|---|
+    | `api.idcd.com` | HTTPS REST(本规范主体)| Core 拨测 / 监控 / 告警 / 账户 / 计费 |
+    | `attest.idcd.com` | HTTPS REST(本规范 §Verdict/Attest)| Evidence-as-a-Service:Verdict 报告 / 公开验签 / 申诉 |
+    | `mcp.idcd.com` | JSON-RPC over stdio + HTTP+SSE(**非 OpenAPI**)| MCP server 给 AI Agent;详 §MCP Protocol 附录 |
+
+    三栈独立计量 / 独立 SLA / 独立 PRD 模块(详 OVERVIEW §5.2)。
+
+    ## 锁定决策反映(v2)
+
+    - **D2**:所有 MCP token 必有过期日,最长 90 天;MCP units 与 API 配额完全独立池
+    - **D4**:Verdict 生成走 WAL 状态机;attestation_record UNIQUE(report_id, action)
+    - **D5**:Verdict 失败 retry queue(5min/30min)+ 30min 强制道歉邮箱 + `refund_failed` 状态
+    - **D6**:Self-verify 独立进程 / VPC subnet / KMS 客户端
+    - **D-Concern1**:`/v1/attest/verify` 返回必含 `report_type=observation_only` + `legal_disclaimer`
+
+    ## 鉴权速查
+
+    - **API Key**:`X-API-Key: idc_live_xxx`(详 §components.securitySchemes.ApiKeyHeader)
+    - **Bearer**:`Authorization: Bearer idc_live_xxx`(同 API Key,可二选一)
+    - **MCP token**:走 `mcp.idcd.com`,**不是** API Key 体系(详 §Auth/MCP Tokens)
+    - **Webhook receiver 签名**:`X-IDCD-Signature: t=<ts>,v1=<hmac>`
+
+    ## 错误响应统一格式
+
+    详 §components.schemas.Error。所有错误码列表见 16-api-spec.md §2.9。
+
+    ## SDK 生成
+
+    本 yaml 是 SDK 自动生成 source of truth;CI 通过 OpenAPI Generator + 自家模板生成
+    JS / Go / Python SDK,人工 review 后发布。
+
+  termsOfService: https://idcd.com/legal/terms
+  contact:
+    name: idcd.com API support
+    url: https://idcd.com/support
+    email: api@idcd.com
+  license:
+    name: Proprietary
+    url: https://idcd.com/legal/terms
+
+servers:
+  - url: https://api.idcd.com/v1
+    description: 生产环境 — Core REST API(api.idcd.com)
+  - url: https://api-staging.idcd.com/v1
+    description: 预生产 — Core REST API staging
+  - url: https://attest.idcd.com/v1
+    description: 生产环境 — Evidence(Verdict + Attestation + Dispute)独立子域;公开验签接口不需登录
+  - url: https://attest-staging.idcd.com/v1
+    description: 预生产 — Attestation staging
+
+# MCP server 走 JSON-RPC over stdio + HTTP+SSE,与 OpenAPI 不直接兼容;详 §Auth/MCP Tokens
+# 和文档底部 "x-mcp-protocol" 扩展节。
+
+tags:
+  - name: Auth
+    description: 认证(注册 / 登录 / 2FA / session)
+  - name: API Keys
+    description: API Key 签发与管理(Core REST API 凭证)
+  - name: MCP Tokens
+    description: |
+      MCP token 签发与管理(给 AI Agent / Cursor / Claude Code 使用)。
+      **D2 锁定**:所有 token 最长 90 天,personal 24h auto-refresh,workspace/service 90d auto-renewal。
+      service 强制 IP 白名单。MCP units 与 API 配额完全独立池。
+  - name: Teams
+    description: 团队 / 组织 / 成员
+  - name: Probe
+    description: 一次性拨测(http / ping / tcping / dns / traceroute / mtr / udp / speedtest / websocket)
+  - name: Diagnose
+    description: 一键全面诊断
+  - name: Network Info
+    description: IP / ASN / WHOIS / DNS / SSL / ICP / Headers 网络信息查询
+  - name: Monitors
+    description: 监控项(M01-M23,含 Agent obs 的 M21-M23)
+  - name: Alerting
+    description: 告警策略 / 事件 / 通道
+  - name: Status Pages
+    description: 状态页(私有管理 + 公开访问)
+  - name: Reports
+    description: SLA 报告 / 数据导出 / Dashboards
+  - name: Heartbeat
+    description: 心跳监控(被动接收 cron / batch 任务心跳)
+  - name: Nodes
+    description: 节点目录(公开;Verdict 报告引用的节点必在此可查)
+  - name: Webhooks
+    description: Webhook 接收端(outbound 事件订阅)
+  - name: Billing
+    description: 订阅 / 订单 / 发票 / 余额 / 用量(Core + Compliance + Agent Pro)
+  - name: Plans
+    description: 公开价格档位
+  - name: Verdict
+    description: |
+      Evidence-as-a-Service:Verdict 件价报告订单 + 生成 + 分享。
+      位于 `attest.idcd.com` 子域(K1)。状态机走 D4 WAL + D5 refund retry。
+  - name: Attestation
+    description: |
+      Evidence-as-a-Service:公开验签 + 密钥仪式 transparency。
+      `POST /v1/attest/verify` 不需登录(纯只读);其他 attestation 接口走 API Key。
+      **D-Concern1**:验签响应必含 `report_type=observation_only` + `legal_disclaimer`。
+  - name: Dispute
+    description: |
+      Verdict 报告申诉(被报告对象提出)。位于 `attest.idcd.com`。
+      平台 24 小时内响应;违规报告下架 + 退款 + 公开 transparency 记录。
+  - name: Compliance
+    description: |
+      Compliance 年订(starter ¥3k / pro ¥12k / enterprise ¥30k)+ 周/月度报告生成。
+      位于 `attest.idcd.com`(年订生成的报告本质是周期性 Verdict)。
+  - name: Agent Observability
+    description: |
+      AI Agent 工作流可观测(M21 LLM endpoint / M22 Tool/API / M23 RAG/Vector store)。
+      事件流走 SSE long-lived(D13);LB sticky session by token_id;单实例 10k 并发。
+  - name: MCP Usage
+    description: MCP units 用量 + 计费明细;两条独立量表(MCP units / API calls)。
+  - name: Leaderboard
+    description: CDN / 云厂商排行榜厂商退出申请(K6 边界控制)。
+
+security:
+  - ApiKeyHeader: []
+  - BearerAuth: []
+
+paths:
+  # =====================================================================
+  # SECTION: Auth & Account
+  # =====================================================================
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: 邮箱注册
+      operationId: authRegister
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RegisterRequest'
+      responses:
+        '201':
+          description: 注册成功(需邮箱验证)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: 登录
+      operationId: authLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginRequest'
+      responses:
+        '200':
+          description: 登录成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /me:
+    get:
+      tags: [Auth]
+      summary: 当前用户
+      operationId: getMe
+      responses:
+        '200':
+          description: 当前用户信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponse'
+        '401': { $ref: '#/components/responses/Unauthorized' }
+
+  # =====================================================================
+  # SECTION: API Keys
+  # =====================================================================
+  /api-keys:
+    get:
+      tags: [API Keys]
+      summary: 列出 API Key
+      operationId: listApiKeys
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: API Key 列表(secret 不返回,只返回展示前缀)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKeyListResponse'
+    post:
+      tags: [API Keys]
+      summary: 创建 API Key
+      operationId: createApiKey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateApiKeyRequest'
+      responses:
+        '201':
+          description: 创建成功(secret 仅返回一次,务必保存)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateApiKeyResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+
+  /api-keys/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    delete:
+      tags: [API Keys]
+      summary: 撤销 API Key
+      operationId: revokeApiKey
+      responses:
+        '204':
+          description: 撤销成功
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # =====================================================================
+  # SECTION: Probe (一次性拨测,详 08 §5)
+  # =====================================================================
+  /probe/http:
+    post:
+      tags: [Probe]
+      summary: 多地 HTTP/HTTPS 拨测
+      operationId: probeHttp
+      description: |
+        从指定节点池或指定节点 ID 发起 HTTP 拨测;支持 sync(默认,等待结果)/ async(callback_url)。
+        权重 3。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HttpProbeRequest'
+      responses:
+        '200':
+          description: 拨测结果(sync)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpProbeResponse'
+        '202':
+          description: 拨测已入队(async)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProbeTaskAccepted'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /probe/ping:
+    post:
+      tags: [Probe]
+      summary: 多地 Ping
+      operationId: probePing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PingProbeRequest'
+      responses:
+        '200':
+          description: Ping 结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingProbeResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+
+  /probe/tcping:
+    post:
+      tags: [Probe]
+      summary: 多地 TCP Ping
+      operationId: probeTcping
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TcpingProbeRequest'
+      responses:
+        '200':
+          description: TCP Ping 结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PingProbeResponse'
+
+  /probe/dns:
+    post:
+      tags: [Probe]
+      summary: 多地 DNS 解析
+      operationId: probeDns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DnsProbeRequest'
+      responses:
+        '200':
+          description: DNS 解析结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DnsProbeResponse'
+
+  /probe/traceroute:
+    post:
+      tags: [Probe]
+      summary: 多地路由追踪
+      operationId: probeTraceroute
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TracerouteRequest'
+      responses:
+        '200':
+          description: Traceroute 结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TracerouteResponse'
+
+  /probe/tasks/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Probe]
+      summary: 查询拨测任务状态(async)
+      operationId: getProbeTask
+      responses:
+        '200':
+          description: 任务状态 + 结果(若已完成)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HttpProbeResponse'
+
+  # =====================================================================
+  # SECTION: Diagnose
+  # =====================================================================
+  /diagnose:
+    post:
+      tags: [Diagnose]
+      summary: 一键全面诊断
+      operationId: createDiagnose
+      description: 权重 20。包含多协议拨测 + 多地节点 + 综合分析。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DiagnoseRequest'
+      responses:
+        '202':
+          description: 诊断已入队(async)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProbeTaskAccepted'
+
+  /diagnose/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Diagnose]
+      summary: 诊断状态 + 结果
+      operationId: getDiagnose
+      responses:
+        '200':
+          description: 诊断详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagnoseResponse'
+
+  # =====================================================================
+  # SECTION: Network Info
+  # =====================================================================
+  /ip/{ip}:
+    parameters:
+      - name: ip
+        in: path
+        required: true
+        schema: { type: string }
+        example: "1.1.1.1"
+    get:
+      tags: [Network Info]
+      summary: IP 归属信息
+      operationId: getIpInfo
+      responses:
+        '200':
+          description: IP info
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IpInfoResponse'
+
+  /whois/{domain}:
+    parameters:
+      - name: domain
+        in: path
+        required: true
+        schema: { type: string }
+        example: example.com
+    get:
+      tags: [Network Info]
+      summary: WHOIS 查询
+      operationId: getWhois
+      responses:
+        '200':
+          description: WHOIS 数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WhoisResponse'
+
+  /icp/{domain}:
+    parameters:
+      - name: domain
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Network Info]
+      summary: ICP 备案查询
+      operationId: getIcp
+      responses:
+        '200':
+          description: ICP 备案信息
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IcpResponse'
+
+  /ssl:
+    get:
+      tags: [Network Info]
+      summary: SSL 证书查询
+      operationId: getSsl
+      parameters:
+        - name: host
+          in: query
+          required: true
+          schema: { type: string }
+        - name: port
+          in: query
+          schema: { type: integer, default: 443 }
+      responses:
+        '200':
+          description: SSL 证书 + 评分
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SslResponse'
+
+  # =====================================================================
+  # SECTION: Monitors
+  # =====================================================================
+  /monitors:
+    get:
+      tags: [Monitors]
+      summary: 列出监控项
+      operationId: listMonitors
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [http, ping, tcping, dns, ssl, domain, icp, keyword, json, heartbeat, browser]
+        - name: status
+          in: query
+          schema: { type: string, enum: [up, down, degraded, paused] }
+      responses:
+        '200':
+          description: 监控项列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorListResponse'
+    post:
+      tags: [Monitors]
+      summary: 创建监控项
+      operationId: createMonitor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMonitorRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorResponse'
+
+  /monitors/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Monitors]
+      summary: 监控项详情
+      operationId: getMonitor
+      responses:
+        '200':
+          description: 监控项详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorResponse'
+    patch:
+      tags: [Monitors]
+      summary: 更新监控项
+      operationId: updateMonitor
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateMonitorRequest'
+      responses:
+        '200':
+          description: 更新成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorResponse'
+    delete:
+      tags: [Monitors]
+      summary: 删除监控项
+      operationId: deleteMonitor
+      responses:
+        '204':
+          description: 删除成功
+
+  /monitors/{id}/checks:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+      - $ref: '#/components/parameters/FromTime'
+      - $ref: '#/components/parameters/ToTime'
+      - name: limit
+        in: query
+        schema: { type: integer, maximum: 1000, default: 100 }
+    get:
+      tags: [Monitors]
+      summary: 监控项历史检查
+      operationId: getMonitorChecks
+      responses:
+        '200':
+          description: 检查历史(时序数据)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MonitorChecksResponse'
+
+  # =====================================================================
+  # SECTION: Alerting
+  # =====================================================================
+  /alert-policies:
+    get:
+      tags: [Alerting]
+      summary: 列出告警策略
+      operationId: listAlertPolicies
+      responses:
+        '200':
+          description: 告警策略列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertPolicyListResponse'
+    post:
+      tags: [Alerting]
+      summary: 创建告警策略
+      operationId: createAlertPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertPolicy'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertPolicy'
+
+  /alert-events:
+    get:
+      tags: [Alerting]
+      summary: 列出告警事件
+      operationId: listAlertEvents
+      parameters:
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+        - name: state
+          in: query
+          schema: { type: string, enum: [open, ack, resolved] }
+      responses:
+        '200':
+          description: 告警事件列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertEventListResponse'
+
+  /alert-events/{id}/acknowledge:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    post:
+      tags: [Alerting]
+      summary: Ack 告警
+      operationId: ackAlertEvent
+      responses:
+        '200':
+          description: Ack 成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertEvent'
+
+  # =====================================================================
+  # SECTION: Status Pages (公开 + 私有)
+  # =====================================================================
+  /status-pages:
+    get:
+      tags: [Status Pages]
+      summary: 列出状态页
+      operationId: listStatusPages
+      responses:
+        '200':
+          description: 状态页列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusPageListResponse'
+
+  /status/{slug}/summary:
+    parameters:
+      - name: slug
+        in: path
+        required: true
+        schema: { type: string }
+    get:
+      tags: [Status Pages]
+      summary: 状态页公开摘要(无需鉴权)
+      operationId: getStatusPageSummary
+      security: []
+      responses:
+        '200':
+          description: 公开摘要
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/StatusPageSummary'
+
+  # =====================================================================
+  # SECTION: Reports / Dashboards
+  # =====================================================================
+  /reports/sla:
+    get:
+      tags: [Reports]
+      summary: SLA 报告
+      operationId: getSlaReport
+      parameters:
+        - name: period
+          in: query
+          required: true
+          schema: { type: string, pattern: '^\d{4}-\d{2}$' }
+          example: '2026-04'
+      responses:
+        '200':
+          description: SLA 报告
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SlaReport'
+
+  # =====================================================================
+  # SECTION: Heartbeat
+  # =====================================================================
+  /heartbeat/{token}:
+    parameters:
+      - name: token
+        in: path
+        required: true
+        schema: { type: string }
+    post:
+      tags: [Heartbeat]
+      summary: 接收心跳(被动监控)
+      operationId: postHeartbeat
+      security: []
+      responses:
+        '204':
+          description: 心跳已接收
+
+  # =====================================================================
+  # SECTION: Nodes (公开)
+  # =====================================================================
+  /nodes:
+    get:
+      tags: [Nodes]
+      summary: 列出公开节点目录
+      operationId: listNodes
+      security: []
+      responses:
+        '200':
+          description: 节点目录
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NodeListResponse'
+
+  /nodes/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Nodes]
+      summary: 节点详情
+      operationId: getNode
+      security: []
+      responses:
+        '200':
+          description: 节点详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Node'
+
+  # =====================================================================
+  # SECTION: Billing
+  # =====================================================================
+  /billing/subscription:
+    get:
+      tags: [Billing]
+      summary: 当前订阅
+      operationId: getSubscription
+      responses:
+        '200':
+          description: 当前订阅档位 + 用量
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SubscriptionResponse'
+
+  /billing/usage:
+    get:
+      tags: [Billing]
+      summary: 用量统计
+      operationId: getUsage
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, pattern: '^\d{4}-\d{2}$' }
+      responses:
+        '200':
+          description: 用量统计
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UsageResponse'
+
+  /plans:
+    get:
+      tags: [Plans]
+      summary: 公开价格档位
+      operationId: listPlans
+      security: []
+      responses:
+        '200':
+          description: 价格档位列表(Core + Compliance + Agent Pro)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlanListResponse'
+
+  # =====================================================================
+  # SECTION: Webhook receivers
+  # =====================================================================
+  /webhook-endpoints:
+    get:
+      tags: [Webhooks]
+      summary: 列出 webhook endpoint
+      operationId: listWebhookEndpoints
+      responses:
+        '200':
+          description: webhook endpoint 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookEndpointListResponse'
+    post:
+      tags: [Webhooks]
+      summary: 创建 webhook endpoint
+      operationId: createWebhookEndpoint
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookEndpointRequest'
+      responses:
+        '201':
+          description: 创建成功(secret 仅返回一次)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateWebhookEndpointResponse'
+
+  # =====================================================================
+  # SECTION: VERDICT (Evidence-as-a-Service, attest.idcd.com)
+  # =====================================================================
+  /verdict/quote:
+    post:
+      tags: [Verdict]
+      servers:
+        - url: https://attest.idcd.com/v1
+      summary: Verdict 报价 + 数据可用性预检
+      operationId: createVerdictQuote
+      description: |
+        在创建订单前检查:
+        1. **数据可用性** — 目标在指定时间窗内是否有足够监控历史(≥3 节点连续观测)
+        2. **目标合规** — 目标是否命中黑名单 / 不可测项目
+        3. **价格** — 返回模板对应价格(SLA ¥299 / Incident ¥199 / Compliance ¥499 / Legal ¥999, K5 锁定)
+
+        若 `eligible=false`,响应中 `reason` 字段说明原因(数据不足 / 目标黑名单 / 节点<3 等)。
+        客户端应根据 `eligible` 决定是否进入下单流程。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/VerdictQuoteRequest'
+      responses:
+        '200':
+          description: 报价 + 预检结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictQuoteResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /verdict/orders:
+    post:
+      tags: [Verdict]
+      servers:
+        - url: https://attest.idcd.com/v1
+      summary: 创建 Verdict 订单
+      operationId: createVerdictOrder
+      description: |
+        创建订单 → 返回 Paddle checkout URL(用户跳转支付)。
+        支付完成由 Paddle webhook → `verdict_order(status=paid)` → 进入 generation queue。
+        状态机:`pending → paid → generating → delivered`(成功)或
+        `pending → paid → generating → failed → refunded`(D5 兑底)或
+        `... → refund_failed`(D5 兑底失败,P0 告警 + admin dashboard)。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateVerdictOrderRequest'
+      responses:
+        '201':
+          description: 订单创建成功 + Paddle checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateVerdictOrderResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '422': { $ref: '#/components/responses/Unprocessable' }
+
+  /verdict/orders/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Verdict]
+      summary: 订单状态查询
+      operationId: getVerdictOrder
+      description: |
+        返回完整状态机字段。SLA 承诺:90% 报告 60s 内生成,99% 5min 内。
+        失败 → `status=failed → refunded`;refund 兑底失败 → `status=refund_failed`(D5)。
+      responses:
+        '200':
+          description: 订单详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictOrder'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /verdict/reports/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Verdict]
+      summary: 报告详情 + PDF 下载链接
+      operationId: getVerdictReport
+      description: |
+        返回报告详情(签名 / TSA / 节点列表 / self_verify_status / `report_type=observation_only`)。
+        `pdf_url` 是 S3 预签名链接(有效期 1 小时,可重新获取);`archived_url` 是 WORM 永久归档链接。
+      responses:
+        '200':
+          description: 报告详情
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/VerdictReport'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /verdict/reports/{id}/share:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    servers:
+      - url: https://attest.idcd.com/v1
+    post:
+      tags: [Verdict]
+      summary: 生成报告分享 token
+      operationId: shareVerdictReport
+      description: 生成可分享的 token(可设过期 + 可设密码),给第三方查看 PDF 不需登录。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateShareTokenRequest'
+      responses:
+        '201':
+          description: 分享 token 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ShareTokenResponse'
+
+  # =====================================================================
+  # SECTION: ATTESTATION (公开验签 + transparency)
+  # =====================================================================
+  /attest/verify:
+    post:
+      tags: [Attestation]
+      servers:
+        - url: https://attest.idcd.com/v1
+      summary: 公开 PDF 验签
+      operationId: verifyAttestation
+      security: []
+      description: |
+        任何第三方可上传由 idcd.com 签发的 Verdict PDF,系统提取嵌入签名 + 时间戳,
+        返回验证结果。**不需登录,纯只读,不限频**。
+
+        **D-Concern1 响应必含**:`report_type`(默认 `observation_only`)+ `legal_disclaimer`,
+        明确告知第三方"本报告是一手观测数据,不是司法鉴定结论"。
+
+        实施细节:根据请求中报告 metadata 中的 `signature_key_id + key_version`,从 KMS
+        GetPublicKey 拉取对应版本 public key(撤销 / 过期 key 仍保留 public key 只读),
+        因此 revoke 期间历史报告仍可正常验签。
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [pdf]
+              properties:
+                pdf:
+                  type: string
+                  format: binary
+                  description: 待验签的 PDF 文件
+      responses:
+        '200':
+          description: 验签结果
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttestVerifyResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '413': { $ref: '#/components/responses/PayloadTooLarge' }
+
+  /attest/key/{key_id}:
+    parameters:
+      - name: key_id
+        in: path
+        required: true
+        schema: { type: string }
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Attestation]
+      summary: 查询签名公钥 + 元数据
+      operationId: getAttestKey
+      security: []
+      description: |
+        返回指定 sign key 的 public key + 元数据(版本 / 创建时间 / 撤销状态 / 仪式记录)。
+        撤销的 key 仍可查询 public key(只读),用于历史报告验签。
+      responses:
+        '200':
+          description: 公钥 + 元数据
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AttestKeyResponse'
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /attest/ceremony:
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Attestation]
+      summary: 密钥仪式公开记录(transparency)
+      operationId: listKeyCeremony
+      security: []
+      description: |
+        借鉴 DNSSEC root key ceremony 范式作为信任背书;公开 root key 生成 / 切分 /
+        sign key 轮换 / 应急撤销 的完整历史 + 录像 / 公证 PDF 链接。
+      parameters:
+        - name: action
+          in: query
+          schema:
+            type: string
+            enum: [root_gen, root_split, sign_key_rotate, emergency_revoke]
+      responses:
+        '200':
+          description: 仪式记录列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/KeyCeremonyListResponse'
+
+  # =====================================================================
+  # SECTION: DISPUTE (Verdict 报告申诉)
+  # =====================================================================
+  /attest/dispute/{report_id}:
+    parameters:
+      - name: report_id
+        in: path
+        required: true
+        schema: { type: string }
+        example: vr_xyz123
+    servers:
+      - url: https://attest.idcd.com/v1
+    post:
+      tags: [Dispute]
+      summary: 提交 Verdict 报告申诉
+      operationId: createDispute
+      security: []
+      description: |
+        任何被报告对象可提交申诉:"我是 [example.com] 所有者,你们 5/13 的 Verdict 报告
+        声称我们宕机 X 分钟,但实际是 ..."。平台 24h 内响应。
+        若申诉成立 → 报告下架 + 退款用户 + 公开 transparency 记录(K6 边界控制)。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDisputeRequest'
+      responses:
+        '201':
+          description: 申诉已提交
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeResponse'
+
+  /attest/dispute/{dispute_id}:
+    parameters:
+      - name: dispute_id
+        in: path
+        required: true
+        schema: { type: string }
+        example: dsp_xyz
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Dispute]
+      summary: 申诉状态查询
+      operationId: getDispute
+      security: []
+      responses:
+        '200':
+          description: 申诉详情 + 处理状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DisputeResponse'
+
+  # =====================================================================
+  # SECTION: COMPLIANCE (年订)
+  # =====================================================================
+  /compliance/subscriptions:
+    servers:
+      - url: https://attest.idcd.com/v1
+    post:
+      tags: [Compliance]
+      summary: 创建 Compliance 年订
+      operationId: createComplianceSubscription
+      description: |
+        K5b 锁定档位:
+        - Starter ¥3,000/年 — 50 监控持续证据存证 + 月度报告 + 12 个月历史
+        - Pro ¥12,000/年 — 200 监控 + 周度报告 + 24 个月历史 + 5 份免费 Verdict 件
+        - Enterprise ¥30,000/年(议价)— 1000 监控 + 任意频率 + 6 年历史 + 不限 Verdict
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateComplianceSubscriptionRequest'
+      responses:
+        '201':
+          description: 创建成功 + Paddle checkout URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceSubscriptionResponse'
+
+  /compliance/subscriptions/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Compliance]
+      summary: Compliance 订阅详情
+      operationId: getComplianceSubscription
+      responses:
+        '200':
+          description: 订阅详情(含用量 / 周/月度报告生成统计)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceSubscription'
+
+  /compliance/reports:
+    servers:
+      - url: https://attest.idcd.com/v1
+    get:
+      tags: [Compliance]
+      summary: 列出年订生成的周/月度报告
+      operationId: listComplianceReports
+      parameters:
+        - name: subscription_id
+          in: query
+          schema: { type: string }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: 报告列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ComplianceReportListResponse'
+
+  # =====================================================================
+  # SECTION: MCP TOKENS (D2 锁定:无永久 token + 三种形态)
+  # =====================================================================
+  /mcp/tokens:
+    get:
+      tags: [MCP Tokens]
+      summary: 列出 MCP token
+      operationId: listMcpTokens
+      description: |
+        列出当前账户的 MCP token(token 原文不返回,只返回 `token_display` 后 4 位 + 前缀)。
+        MCP token **不同于** API Key — MCP token 走 `mcp.idcd.com`,只能给 MCP client(Cursor / Claude Code / Codex)使用;
+        API Key 走 `api.idcd.com`,给 REST 客户端使用。
+        计量也完全独立(D2):MCP units 与 API calls 是两条独立量表。
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [personal, workspace, service] }
+        - name: revoked
+          in: query
+          schema: { type: boolean }
+      responses:
+        '200':
+          description: token 列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpTokenListResponse'
+    post:
+      tags: [MCP Tokens]
+      summary: 签发 MCP token
+      operationId: createMcpToken
+      description: |
+        **D2 锁定规则**:
+        - 所有 token 都有过期日;`expires_at` 必填,最长 90 天
+        - **personal**:24h,OAuth-like 自动 refresh,IP 白名单可选
+        - **workspace**:90d,过期前 24h auto_renewal(基于 last_used_at;超 30 天未用不续),IP 白名单可选
+        - **service**:90d,过期前 24h auto_renewal,**IP 白名单强制**(无白名单不签发,返回 422)
+
+        响应中 `token` 字段是完整 token 明文,**仅此一次返回**;后续接口只能拿到 `token_display`。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMcpTokenRequest'
+      responses:
+        '201':
+          description: 签发成功(token 仅返回一次)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreateMcpTokenResponse'
+        '422':
+          description: service token 缺少 IP 白名单 / 其他校验失败
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /mcp/tokens/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    delete:
+      tags: [MCP Tokens]
+      summary: 撤销 MCP token
+      operationId: revokeMcpToken
+      description: |
+        即时撤销:所有 active SSE 连接通过 Redis pub-sub broadcast 立即断开(详 12 §22)。
+        被撤销的 token 调用历史保留可审计;`revoked=true` 标记;前端用红色显示。
+      responses:
+        '204':
+          description: 撤销成功
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # =====================================================================
+  # SECTION: AGENT OBSERVABILITY (M21-M23 + SSE event stream)
+  # =====================================================================
+  /agent-obs/monitors:
+    get:
+      tags: [Agent Observability]
+      summary: 列出 Agent obs 监控项
+      operationId: listAgentObsMonitors
+      parameters:
+        - name: type
+          in: query
+          schema: { type: string, enum: [llm, tool, rag, other] }
+        - name: status
+          in: query
+          schema: { type: string, enum: [active, paused, exceeded_budget] }
+        - $ref: '#/components/parameters/Page'
+        - $ref: '#/components/parameters/PageSize'
+      responses:
+        '200':
+          description: Agent obs 监控项列表
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentObsMonitorListResponse'
+    post:
+      tags: [Agent Observability]
+      summary: 创建 Agent obs 监控项
+      operationId: createAgentObsMonitor
+      description: |
+        创建监控类型:
+        - **M21 LLM Endpoint Health** — OpenAI / Anthropic / Bedrock / 自家 LLM;
+          **强制要求 `budget_per_check_usd`**(防爆账单);
+        - **M22 Tool/API Endpoint** — Agent 调用的工具 / API(MCP server / 自家 webhook)
+        - **M23 RAG/Vector Store** — Qdrant / Pinecone / pgvector / Elastic
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAgentObsMonitorRequest'
+      responses:
+        '201':
+          description: 创建成功
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentObsMonitor'
+
+  /agent-obs/monitors/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Agent Observability]
+      summary: Agent obs 监控项详情
+      operationId: getAgentObsMonitor
+      responses:
+        '200':
+          description: 详情(含 budget 统计 / 当月花费)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentObsMonitor'
+
+  /agent-obs/events:
+    get:
+      tags: [Agent Observability]
+      summary: Agent obs 事件流(SSE long-lived)
+      operationId: streamAgentObsEvents
+      description: |
+        **长连 SSE 接口**(text/event-stream),**非常规 HTTP GET**。
+
+        **D13 状态边界**:本端点是 SSE long-lived;LB 必须基于 `Authorization` token_id 做 sticky session,
+        否则跨实例重连导致事件丢失。单实例支持 10k 并发连接(详 14 §9.1)。
+
+        多实例横向扩展:跨实例事件通过 Redis Streams 广播,客户端不感知。
+
+        **使用方式**:
+        ```
+        GET /v1/agent-obs/events?monitor_id=aom_xyz&from=2026-05-13T00:00:00Z
+        Accept: text/event-stream
+        Authorization: Bearer idc_live_xxx
+        ```
+
+        服务端推送格式:
+        ```
+        event: agent_obs.event
+        data: {"id": "aoe_abc", "monitor_id": "aom_xyz", ...}
+        ```
+
+        客户端断线后用 `Last-Event-ID` header 续传。
+      parameters:
+        - name: monitor_id
+          in: query
+          schema: { type: string }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: SSE 事件流(text/event-stream)
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/AgentObsEventStreamFrame'
+
+  # =====================================================================
+  # SECTION: MCP USAGE (D2 锁定:与 API 配额独立池)
+  # =====================================================================
+  /mcp/usage:
+    get:
+      tags: [MCP Usage]
+      summary: MCP 用量 + 计费明细
+      operationId: getMcpUsage
+      description: |
+        **D2 锁定**:MCP units 配额池与 API 调用配额池**完全独立**。用户控制台看到两条独立量表:
+        `mcp_units_used` 与 `api_calls_used` 各自有 quota / remaining / reset。
+
+        档位独立 MCP units 额度:Free 100/day, Pro 5k/day, Team 30k/day, Business 200k/day,
+        Agent Pro 1M/day(独立加大 SKU, S3 GA)。1 unit ≈ ¥0.002。
+
+        响应同时返回:
+        - **本期总用量**(units / cost CNY)
+        - **按 tool 拆分**(idcd_ping / idcd_http_probe / ...)
+        - **按 client_id 拆分**(Cursor / ClaudeCode / Codex / sdk-py / sdk-ts / other)
+        - **按时间序列**(daily breakdown,可下钻 hourly)
+      parameters:
+        - name: period
+          in: query
+          schema: { type: string, pattern: '^\d{4}-\d{2}$' }
+          example: '2026-05'
+        - name: group_by
+          in: query
+          schema:
+            type: string
+            enum: [tool, client, day, hour]
+            default: tool
+      responses:
+        '200':
+          description: 用量 + 计费明细
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/McpUsageResponse'
+
+  # =====================================================================
+  # SECTION: LEADERBOARD OPTOUT (K6 厂商退出申请)
+  # =====================================================================
+  /leaderboard/optout:
+    post:
+      tags: [Leaderboard]
+      summary: 厂商退出 leaderboard 申请
+      operationId: createLeaderboardOptout
+      security: []
+      description: |
+        K6 锁定:CDN / 云厂商可申请在 `/leaderboard` 中退出。需提交主体认证材料。
+        平台 24h 内响应;若批准 → 该厂商在所有后续 leaderboard_report 中被剔除;
+        历史已发布报告通过 `errata_pdf_url` 勘误公告补充(不直接删除原报告, D-Concern3)。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateLeaderboardOptoutRequest'
+      responses:
+        '201':
+          description: 申请已提交
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaderboardOptoutRequest'
+
+  /leaderboard/optout/{id}:
+    parameters:
+      - $ref: '#/components/parameters/ResourceId'
+    get:
+      tags: [Leaderboard]
+      summary: 退出申请状态查询
+      operationId: getLeaderboardOptout
+      security: []
+      responses:
+        '200':
+          description: 申请详情 + 处理状态
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LeaderboardOptoutRequest'
+
+# =====================================================================
+# COMPONENTS
+# =====================================================================
+components:
+  securitySchemes:
+    ApiKeyHeader:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: |
+        Core REST API 鉴权 — `X-API-Key: idc_live_xxx`。
+        与 BearerAuth 二选一(同一 key)。详 03 §5。
+        **MCP token 不能在此使用**:MCP token 走 `mcp.idcd.com` JSON-RPC,详 §MCP Tokens tag。
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: idc_live_xxx
+      description: |
+        Core REST API 鉴权 — `Authorization: Bearer idc_live_xxx`。
+        与 ApiKeyHeader 二选一(同一 key)。
+    PaddleWebhookSignature:
+      type: apiKey
+      in: header
+      name: Paddle-Signature
+      description: |
+        Paddle webhook 签名(Paddle 服务端 → idcd 服务端,**反向接收**)。
+        校验算法见 Paddle 官方文档;本规范不暴露 webhook 接收端 path。
+    IdcdWebhookSignature:
+      type: apiKey
+      in: header
+      name: X-IDCD-Signature
+      description: |
+        idcd → 用户 webhook 出站签名(`t=<unix_ts>,v1=<hmac_sha256_hex>`)。
+        用户端验签:`hmac_sha256(secret, "<t>.<raw_body>")`;5 分钟新鲜度窗口。
+        详 16-api-spec.md §10。
+
+  parameters:
+    Page:
+      name: page
+      in: query
+      schema: { type: integer, minimum: 1, default: 1 }
+    PageSize:
+      name: page_size
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 200, default: 20 }
+    ResourceId:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+      description: 资源 ID(带语义前缀,如 `m_xyz`, `v_xyz`, `mcpt_xyz`)
+    FromTime:
+      name: from
+      in: query
+      schema: { type: string, format: date-time }
+      description: 起始时间 ISO 8601 UTC;支持相对 `-7d` / `-1h`
+    ToTime:
+      name: to
+      in: query
+      schema: { type: string, format: date-time }
+      description: 结束时间 ISO 8601 UTC
+
+  responses:
+    BadRequest:
+      description: 400 请求参数错误 / 校验失败
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unauthorized:
+      description: 401 未鉴权 / API Key 无效 / 已撤销 / 已过期
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: 403 权限不足 / scope 不足 / 档位限制
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: 404 资源不存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Conflict:
+      description: 409 资源冲突 / 已存在
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    PayloadTooLarge:
+      description: 413 请求 body 超出限制(32KB)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Unprocessable:
+      description: 422 业务校验失败(目标命中黑名单 / 节点不足 / 数据缺失 等)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RateLimited:
+      description: 429 限速 / 配额超出
+      headers:
+        Retry-After:
+          schema: { type: integer }
+          description: 建议等待秒数
+        X-RateLimit-Limit:
+          schema: { type: integer }
+        X-RateLimit-Remaining:
+          schema: { type: integer }
+        X-RateLimit-Reset:
+          schema: { type: string, format: date-time }
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InternalError:
+      description: 5xx 服务端错误
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    ServiceUnavailable:
+      description: 503 服务不可用(维护 / 过载 / 节点不可用)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+
+  schemas:
+    # ---------- 通用 ----------
+    Error:
+      type: object
+      required: [error, meta]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code:
+              type: string
+              description: |
+                统一错误码。完整列表详 16-api-spec.md §2.9:
+                `unauthorized` / `invalid_api_key` / `api_key_revoked` / `api_key_expired` /
+                `forbidden` / `scope_required` / `validation_error` / `invalid_target` /
+                `target_in_denylist` / `target_unresolvable` / `target_high_risk` /
+                `unsupported_protocol` / `not_found` / `already_exists` / `conflict` / `gone` /
+                `precondition_failed` / `request_too_large` / `unsupported_media` /
+                `rate_limit_exceeded` / `quota_exceeded` / `idempotency_key_mismatch` /
+                `payment_required` / `internal_error` / `service_unavailable` /
+                `node_unavailable` / `gateway_timeout`
+              example: validation_error
+            message:
+              type: string
+              example: Invalid request
+            details:
+              type: object
+              description: 字段级错误等
+              additionalProperties: true
+            doc_url:
+              type: string
+              format: uri
+              example: https://docs.idcd.com/errors/validation_error
+        meta:
+          type: object
+          properties:
+            request_id:
+              type: string
+              example: req_xyz
+
+    Meta:
+      type: object
+      properties:
+        request_id: { type: string, example: req_xyz }
+        took_ms: { type: integer, example: 42 }
+        rate_limit:
+          type: object
+          properties:
+            limit: { type: integer, example: 5000 }
+            remaining: { type: integer, example: 4982 }
+            reset: { type: string, format: date-time }
+        pagination:
+          type: object
+          properties:
+            page: { type: integer }
+            page_size: { type: integer }
+            total: { type: integer }
+            has_more: { type: boolean }
+            next_cursor: { type: string }
+        cache:
+          type: object
+          properties:
+            hit: { type: boolean }
+            age_sec: { type: integer }
+
+    Envelope:
+      type: object
+      description: 所有响应的标准 envelope(data + meta)
+      properties:
+        data: {}
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    NodeSelection:
+      type: object
+      description: 节点选择(详 04 §3 / 08 §5)
+      properties:
+        mode:
+          type: string
+          enum: [pool, fixed]
+          default: pool
+          description: pool=自动从池中挑选 N 个;fixed=指定节点 ID
+        size:
+          type: integer
+          minimum: 1
+          maximum: 50
+          default: 3
+        regions:
+          type: array
+          items: { type: string }
+          example: [CN, US, EU]
+        isps:
+          type: array
+          items: { type: string }
+          example: [chinatelecom, chinaunicom]
+        tags:
+          type: array
+          items: { type: string }
+        ids:
+          type: array
+          items: { type: string }
+          description: 节点 ID 列表(mode=fixed 必填)
+
+    Assertion:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [status_code, response_time, body_contains, body_regex, json_path, header_value, ssl_days_remaining]
+        op:
+          type: string
+          enum: [eq, ne, gt, gte, lt, lte, in, not_in, contains, regex]
+        value: {}
+
+    # ---------- Auth / User ----------
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 12 }
+        invite_code: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string }
+        otp: { type: string, description: 2FA TOTP(若启用) }
+
+    AuthResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        expires_in: { type: integer, example: 3600 }
+        user: { $ref: '#/components/schemas/User' }
+
+    User:
+      type: object
+      properties:
+        id: { type: string, example: u_aBcDeFg }
+        email: { type: string, format: email }
+        username: { type: string }
+        plan: { type: string, enum: [free, pro, team, business, agent_pro, compliance_starter, compliance_pro, compliance_enterprise] }
+        created_at: { type: string, format: date-time }
+
+    UserResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/User' }
+
+    # ---------- API Key ----------
+    CreateApiKeyRequest:
+      type: object
+      required: [name, scopes]
+      properties:
+        name: { type: string }
+        scopes:
+          type: array
+          items: { type: string, enum: [probe, probe:read, monitor:read, monitor:write, alert:read, alert:write, status:read, status:write, billing:read, billing:write] }
+        allowed_origins:
+          type: array
+          items: { type: string }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    ApiKey:
+      type: object
+      properties:
+        id: { type: string, example: ak_xyz }
+        name: { type: string }
+        prefix: { type: string, example: idc_live_ }
+        token_display: { type: string, example: "idc_live_***1234" }
+        scopes:
+          type: array
+          items: { type: string }
+        revoked: { type: boolean }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        expires_at: { type: string, format: date-time, nullable: true }
+
+    CreateApiKeyResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                key: { $ref: '#/components/schemas/ApiKey' }
+                secret:
+                  type: string
+                  description: API Key 完整 secret;**仅返回一次**;务必保存。
+                  example: idc_live_aBcDeF...
+
+    ApiKeyListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/ApiKey' }
+
+    # ---------- Probe ----------
+    HttpProbeRequest:
+      type: object
+      required: [url]
+      properties:
+        url: { type: string, format: uri, example: "https://example.com" }
+        method:
+          type: string
+          enum: [GET, HEAD, POST, PUT, DELETE, OPTIONS, PATCH]
+          default: GET
+        headers:
+          type: object
+          additionalProperties: { type: string }
+        body: { type: string, maxLength: 32768 }
+        timeout_ms: { type: integer, minimum: 1000, maximum: 30000, default: 10000 }
+        follow_redirect: { type: boolean, default: true }
+        ip_version: { type: string, enum: [v4, v6, auto], default: auto }
+        nodes: { $ref: '#/components/schemas/NodeSelection' }
+        wait: { type: string, enum: [sync, async], default: sync }
+        callback_url:
+          type: string
+          format: uri
+          description: async 模式必填;拨测完成回调此 URL
+
+    PingProbeRequest:
+      type: object
+      required: [target]
+      properties:
+        target: { type: string, example: "1.1.1.1" }
+        count: { type: integer, minimum: 1, maximum: 50, default: 4 }
+        timeout_ms: { type: integer, default: 5000 }
+        ip_version: { type: string, enum: [v4, v6, auto], default: auto }
+        nodes: { $ref: '#/components/schemas/NodeSelection' }
+
+    TcpingProbeRequest:
+      type: object
+      required: [target, port]
+      properties:
+        target: { type: string }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        count: { type: integer, minimum: 1, maximum: 50, default: 4 }
+        timeout_ms: { type: integer, default: 5000 }
+        nodes: { $ref: '#/components/schemas/NodeSelection' }
+
+    DnsProbeRequest:
+      type: object
+      required: [domain]
+      properties:
+        domain: { type: string, example: "example.com" }
+        type:
+          type: string
+          enum: [A, AAAA, CNAME, MX, TXT, NS, SOA, CAA, ANY]
+          default: A
+        server: { type: string, description: 自定义 DNS server }
+        nodes: { $ref: '#/components/schemas/NodeSelection' }
+
+    TracerouteRequest:
+      type: object
+      required: [target]
+      properties:
+        target: { type: string }
+        max_hops: { type: integer, default: 30 }
+        nodes: { $ref: '#/components/schemas/NodeSelection' }
+
+    ProbeTaskAccepted:
+      type: object
+      properties:
+        task_id: { type: string, example: pt_xyz }
+        status: { type: string, enum: [running] }
+        callback_url: { type: string }
+
+    HttpProbeResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                task_id: { type: string, example: pt_xyz }
+                status: { type: string, enum: [running, completed, failed] }
+                target: { type: string }
+                summary:
+                  type: object
+                  properties:
+                    success_count: { type: integer }
+                    fail_count: { type: integer }
+                    avg_response_ms: { type: number }
+                    p95_response_ms: { type: number }
+                node_results:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node_id: { type: string }
+                      node:
+                        type: object
+                        properties:
+                          country: { type: string }
+                          city: { type: string }
+                          isp: { type: string }
+                          asn: { type: integer }
+                      success: { type: boolean }
+                      status_code: { type: integer }
+                      response_ms: { type: integer }
+                      timing:
+                        type: object
+                        properties:
+                          dns_ms: { type: integer }
+                          tcp_ms: { type: integer }
+                          tls_ms: { type: integer }
+                          ttfb_ms: { type: integer }
+                          download_ms: { type: integer }
+                      tls:
+                        type: object
+                        properties:
+                          version: { type: string }
+                          cipher: { type: string }
+                      response_size: { type: integer }
+                      final_url: { type: string }
+                      headers:
+                        type: object
+                        additionalProperties: { type: string }
+                      error: { type: string, nullable: true }
+
+    PingProbeResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                task_id: { type: string }
+                target: { type: string }
+                summary:
+                  type: object
+                  properties:
+                    avg_ms: { type: number }
+                    min_ms: { type: number }
+                    max_ms: { type: number }
+                    packet_loss: { type: number }
+                node_results:
+                  type: array
+                  items: { type: object, additionalProperties: true }
+
+    DnsProbeResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                domain: { type: string }
+                type: { type: string }
+                records_by_node:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node_id: { type: string }
+                      records:
+                        type: array
+                        items: { type: object, additionalProperties: true }
+                pollution_detected:
+                  type: boolean
+                  description: 多节点解析不一致(可能 DNS 污染)
+
+    TracerouteResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                target: { type: string }
+                hops_by_node:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      node_id: { type: string }
+                      hops:
+                        type: array
+                        items:
+                          type: object
+                          properties:
+                            ttl: { type: integer }
+                            ip: { type: string }
+                            rtt_ms: { type: number }
+
+    DiagnoseRequest:
+      type: object
+      required: [target]
+      properties:
+        target: { type: string }
+        scope:
+          type: array
+          items: { type: string, enum: [http, ping, dns, traceroute, ssl, security_headers] }
+        nodes: { $ref: '#/components/schemas/NodeSelection' }
+
+    DiagnoseResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id: { type: string }
+                target: { type: string }
+                status: { type: string, enum: [running, completed, failed] }
+                overall_score: { type: integer, minimum: 0, maximum: 100 }
+                sections: { type: object, additionalProperties: true }
+
+    # ---------- Network Info ----------
+    IpInfoResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                ip: { type: string }
+                country: { type: string }
+                region: { type: string }
+                city: { type: string }
+                isp: { type: string }
+                asn: { type: integer }
+                org: { type: string }
+
+    WhoisResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                domain: { type: string }
+                registrar: { type: string }
+                created_at: { type: string, format: date-time }
+                expires_at: { type: string, format: date-time }
+                name_servers:
+                  type: array
+                  items: { type: string }
+                status:
+                  type: array
+                  items: { type: string }
+                raw: { type: string }
+
+    IcpResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                domain: { type: string }
+                license: { type: string, example: "京ICP备XXXXX号" }
+                organization: { type: string }
+                organization_type: { type: string }
+                issued_at: { type: string, format: date }
+
+    SslResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                host: { type: string }
+                port: { type: integer }
+                issuer: { type: string }
+                subject: { type: string }
+                valid_from: { type: string, format: date-time }
+                valid_until: { type: string, format: date-time }
+                days_remaining: { type: integer }
+                score: { type: string, enum: [A+, A, B, C, D, F] }
+
+    # ---------- Monitors ----------
+    CreateMonitorRequest:
+      type: object
+      required: [name, type, target, interval_sec]
+      properties:
+        name: { type: string, maxLength: 200 }
+        type:
+          type: string
+          enum: [http, ping, tcping, dns, ssl, domain, icp, keyword, json, heartbeat, browser]
+        target: { type: string }
+        params:
+          type: object
+          additionalProperties: true
+        interval_sec:
+          type: integer
+          enum: [10, 30, 60, 300, 900]
+        node_selection: { $ref: '#/components/schemas/NodeSelection' }
+        assertions:
+          type: array
+          items: { $ref: '#/components/schemas/Assertion' }
+        trigger_rule:
+          type: object
+          properties:
+            consecutive_fail: { type: integer, default: 2 }
+            fail_node_quorum: { type: string, default: "2/3" }
+        alert_policy_id: { type: string, nullable: true }
+        tags:
+          type: array
+          items: { type: string }
+        group_id: { type: string, nullable: true }
+
+    UpdateMonitorRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateMonitorRequest'
+
+    Monitor:
+      allOf:
+        - $ref: '#/components/schemas/CreateMonitorRequest'
+        - type: object
+          properties:
+            id: { type: string, example: m_xyz }
+            status: { type: string, enum: [up, down, degraded, paused] }
+            last_check_at: { type: string, format: date-time }
+            uptime_30d: { type: number, example: 99.95 }
+            owner_id: { type: string }
+            created_at: { type: string, format: date-time }
+
+    MonitorResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data: { $ref: '#/components/schemas/Monitor' }
+
+    MonitorListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Monitor' }
+
+    MonitorCheck:
+      type: object
+      properties:
+        id: { type: string, example: mc_xyz }
+        monitor_id: { type: string }
+        node_id: { type: string }
+        started_at: { type: string, format: date-time }
+        response_ms: { type: integer }
+        success: { type: boolean }
+        status_code: { type: integer, nullable: true }
+        error: { type: string, nullable: true }
+
+    MonitorChecksResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/MonitorCheck' }
+
+    # ---------- Alerting ----------
+    AlertPolicy:
+      type: object
+      properties:
+        id: { type: string, example: ap_xyz }
+        name: { type: string }
+        rules:
+          type: array
+          items:
+            type: object
+            properties:
+              match:
+                type: object
+                properties:
+                  severity:
+                    type: array
+                    items: { type: string, enum: [critical, warning, info] }
+                  tags_any:
+                    type: array
+                    items: { type: string }
+                  time_window:
+                    type: object
+                    properties:
+                      timezone: { type: string, example: Asia/Shanghai }
+                      days:
+                        type: array
+                        items: { type: string, enum: [mon, tue, wed, thu, fri, sat, sun] }
+                      start: { type: string, pattern: '^\d{2}:\d{2}$' }
+                      end: { type: string, pattern: '^\d{2}:\d{2}$' }
+              channels:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    type: { type: string, enum: [email, sms, webhook, slack, dingtalk, feishu, lark, wechatwork, telegram, voice] }
+                    channel_id: { type: string }
+                    to:
+                      type: array
+                      items: { type: string }
+              delay_sec: { type: integer, default: 0 }
+              repeat:
+                type: object
+                properties:
+                  enabled: { type: boolean }
+                  interval_sec: { type: integer }
+                  max_count: { type: integer }
+        escalation: { type: object, additionalProperties: true }
+        suppression: { type: object, additionalProperties: true }
+        on_recovery: { type: object, additionalProperties: true }
+
+    AlertPolicyListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/AlertPolicy' }
+
+    AlertEvent:
+      type: object
+      properties:
+        id: { type: string, example: ae_xyz }
+        monitor_id: { type: string }
+        severity: { type: string, enum: [critical, warning, info] }
+        state: { type: string, enum: [open, ack, resolved] }
+        opened_at: { type: string, format: date-time }
+        acked_at: { type: string, format: date-time, nullable: true }
+        resolved_at: { type: string, format: date-time, nullable: true }
+        message: { type: string }
+
+    AlertEventListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/AlertEvent' }
+
+    # ---------- Status Pages ----------
+    StatusPage:
+      type: object
+      properties:
+        id: { type: string, example: sp_xyz }
+        slug: { type: string, example: my-status }
+        name: { type: string }
+        custom_domain: { type: string, nullable: true }
+        public_url: { type: string, format: uri }
+
+    StatusPageListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/StatusPage' }
+
+    StatusPageSummary:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                slug: { type: string }
+                name: { type: string }
+                status: { type: string, enum: [operational, degraded, partial_outage, major_outage] }
+                components:
+                  type: array
+                  items: { type: object, additionalProperties: true }
+                active_incidents:
+                  type: array
+                  items: { type: object, additionalProperties: true }
+
+    # ---------- Reports ----------
+    SlaReport:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                period: { type: string, example: "2026-04" }
+                uptime_pct: { type: number }
+                total_incidents: { type: integer }
+                total_downtime_minutes: { type: integer }
+
+    # ---------- Nodes ----------
+    Node:
+      type: object
+      properties:
+        id: { type: string, example: nd_jp_tk_01_vultr }
+        country: { type: string }
+        city: { type: string }
+        isp: { type: string }
+        asn: { type: integer }
+        region: { type: string }
+        provider: { type: string }
+        status: { type: string, enum: [healthy, degraded, unhealthy, offline] }
+        tags:
+          type: array
+          items: { type: string }
+        confidence_label:
+          type: string
+          enum: [high, medium, low]
+          description: |
+            Anchor 节点偏差检测后的可信度分类(详 10 §6.5,D10);
+            `low` 节点不参与 Verdict 报告生成(详 18 §3.2 step 2)。
+
+    NodeListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Node' }
+
+    # ---------- Webhooks ----------
+    CreateWebhookEndpointRequest:
+      type: object
+      required: [url, events]
+      properties:
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items: { type: string, example: monitor.down }
+        description: { type: string }
+
+    WebhookEndpoint:
+      type: object
+      properties:
+        id: { type: string, example: we_xyz }
+        url: { type: string, format: uri }
+        events:
+          type: array
+          items: { type: string }
+        active: { type: boolean }
+        created_at: { type: string, format: date-time }
+
+    CreateWebhookEndpointResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                endpoint: { $ref: '#/components/schemas/WebhookEndpoint' }
+                secret:
+                  type: string
+                  description: 签名 secret;**仅返回一次**;用户端用此 secret 校验出站 webhook 签名。
+
+    WebhookEndpointListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/WebhookEndpoint' }
+
+    WebhookEventPayload:
+      type: object
+      required: [id, type, created_at, data]
+      properties:
+        id: { type: string, example: evt_xyz }
+        type:
+          type: string
+          example: monitor.down
+          description: |
+            事件类型(完整列表详 16-api-spec.md §6):
+            monitor.down / monitor.up / monitor.degraded / monitor.created / monitor.updated /
+            monitor.deleted / monitor.paused /
+            alert.triggered / alert.acknowledged / alert.resolved /
+            incident.created / incident.updated / incident.resolved /
+            maintenance.scheduled / maintenance.started / maintenance.ended /
+            probe.completed / probe.failed /
+            ssl.expiring / domain.expiring / icp.changed /
+            subscription.created / subscription.updated / subscription.canceled /
+            subscription.renewed / subscription.payment_failed /
+            invoice.issued /
+            api_key.created / api_key.revoked / api_key.leaked_detected /
+            team.member_added / team.member_removed /
+            report.ready / usage.threshold_reached /
+            verdict.order_paid / verdict.report_ready / verdict.report_failed /
+            verdict.refund_initiated / verdict.refund_failed /
+            mcp.token_revoked / mcp.usage_threshold_reached
+        created_at: { type: string, format: date-time }
+        data: { type: object, additionalProperties: true }
+        metadata:
+          type: object
+          properties:
+            api_version: { type: string, example: v1 }
+            delivery_id: { type: string }
+            attempt: { type: integer }
+
+    # ---------- Billing ----------
+    SubscriptionResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                tier: { type: string, enum: [free, pro, team, business, agent_pro] }
+                status: { type: string, enum: [active, past_due, canceled, expired] }
+                period_end: { type: string, format: date-time }
+                cancel_at_period_end: { type: boolean }
+
+    UsageResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              description: |
+                D2 锁定:`api_calls` 与 `mcp_units` 是两条独立量表,不混合。
+              properties:
+                period: { type: string, example: "2026-05" }
+                api_calls:
+                  type: object
+                  properties:
+                    used: { type: integer }
+                    quota: { type: integer }
+                    remaining: { type: integer }
+                mcp_units:
+                  type: object
+                  properties:
+                    used: { type: integer }
+                    quota: { type: integer }
+                    remaining: { type: integer }
+                monitors_count: { type: integer }
+                monitor_checks_count: { type: integer }
+
+    Plan:
+      type: object
+      properties:
+        code: { type: string, example: pro }
+        name: { type: string, example: Pro }
+        tier_group: { type: string, enum: [core, compliance, agent_pro] }
+        price_cny_monthly: { type: number, nullable: true }
+        price_cny_yearly: { type: number, nullable: true }
+        features:
+          type: array
+          items: { type: string }
+        limits:
+          type: object
+          additionalProperties: true
+
+    PlanListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/Plan' }
+
+    # =====================================================================
+    # VERDICT MODULE SCHEMAS (Evidence-as-a-Service)
+    # =====================================================================
+    VerdictTemplate:
+      type: string
+      enum: [sla, incident, compliance, legal]
+      description: |
+        Verdict 场景模板(K5 锁定):
+        - `sla` ¥299 — SLA 索赔证据(企业用户 vs CDN/云厂商)
+        - `incident` ¥199 — 故障取证
+        - `compliance` ¥499 — 合规自证(等保/审计)
+        - `legal` ¥999 — 争议取证(法务高保真)
+
+    VerdictQuoteRequest:
+      type: object
+      required: [template, target, time_window_start, time_window_end]
+      properties:
+        template: { $ref: '#/components/schemas/VerdictTemplate' }
+        target:
+          type: string
+          example: example.com
+          description: domain / url / ip
+        time_window_start: { type: string, format: date-time }
+        time_window_end: { type: string, format: date-time }
+        regions:
+          type: array
+          items: { type: string }
+          description: 限定参与节点的地理范围(可选)
+
+    VerdictQuoteResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              required: [eligible, price_cny]
+              properties:
+                eligible:
+                  type: boolean
+                  description: 是否可生成(若 false,见 reason)
+                reason:
+                  type: string
+                  enum:
+                    - ok
+                    - data_insufficient
+                    - target_in_denylist
+                    - nodes_lt_3
+                    - target_high_risk
+                    - target_unresolvable
+                  description: 不可生成原因(eligible=true 时为 ok)
+                price_cny: { type: number, example: 299 }
+                template: { $ref: '#/components/schemas/VerdictTemplate' }
+                available_nodes_count:
+                  type: integer
+                  description: 时间窗内有数据的节点数;< 3 时 eligible=false
+                data_coverage_pct:
+                  type: number
+                  description: 时间窗内数据覆盖率(0-100);< 50% 时 eligible=false
+                legal_disclaimer:
+                  type: string
+                  description: 法律边界声明文案(产品 UI 必须展示)
+                  example: 本报告为 idcd.com 提供的一手观测数据,不构成司法鉴定结论。
+
+    CreateVerdictOrderRequest:
+      type: object
+      required: [template, target, time_window_start, time_window_end]
+      properties:
+        template: { $ref: '#/components/schemas/VerdictTemplate' }
+        target: { type: string }
+        time_window_start: { type: string, format: date-time }
+        time_window_end: { type: string, format: date-time }
+        notify_email:
+          type: string
+          format: email
+          description: 报告生成完成通知邮箱(默认账户邮箱)
+        webhook_url:
+          type: string
+          format: uri
+          description: 报告生成完成时回调(可选;与邮件并行)
+        notes: { type: string }
+        idempotency_key:
+          type: string
+          description: 客户端去重 key(也可通过 Idempotency-Key header 传)
+
+    CreateVerdictOrderResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                order: { $ref: '#/components/schemas/VerdictOrder' }
+                paddle_checkout_url:
+                  type: string
+                  format: uri
+                  description: |
+                    跳转 Paddle Checkout 完成支付;支付成功 Paddle webhook 触发 generation。
+                    URL 有效期 24 小时;过期需重新创建订单。
+                  example: https://pay.paddle.com/checkout/xyz
+
+    VerdictOrder:
+      type: object
+      properties:
+        id: { type: string, example: v_abc123, description: 订单 ID(v_ 前缀) }
+        owner_id: { type: string }
+        template: { $ref: '#/components/schemas/VerdictTemplate' }
+        target: { type: string }
+        time_window_start: { type: string, format: date-time }
+        time_window_end: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [pending, paid, generating, delivered, failed, refunded, refund_failed]
+          description: |
+            订单状态机(D4 + D5):
+            - `pending` 待支付(刚创建)
+            - `paid` 已支付(Paddle webhook 确认)
+            - `generating` 报告生成中(WAL 走 attestation_record)
+            - `delivered` 报告已交付(self_verify 通过)
+            - `failed` 生成失败(任一 step DLQ 或 self_verify 失败)
+            - `refunded` 已退款(D5 自动 retry 成功 或 人工手动)
+            - **`refund_failed`** — D5 兜底失败状态:Paddle refund 30min retry 全失败,
+              进入 admin dashboard 等待人工处理;P0 告警创始人(7×24)。
+        price_cny: { type: number, example: 299 }
+        price_paid_cny: { type: number, description: 实收(Paddle 扣费后) }
+        paddle_order_id: { type: string }
+        refund_reason: { type: string, nullable: true }
+        refund_attempt_count:
+          type: integer
+          description: D5 refund retry queue 累计次数(0-3+)
+        refund_apology_sent_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: D5 道歉邮箱发送时间(无论 refund 是否成功,30min 内必发)
+        created_at: { type: string, format: date-time }
+        paid_at: { type: string, format: date-time, nullable: true }
+        delivered_at: { type: string, format: date-time, nullable: true }
+        failed_at: { type: string, format: date-time, nullable: true }
+        refunded_at: { type: string, format: date-time, nullable: true }
+
+    VerdictReport:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                id: { type: string, example: vr_xyz }
+                order_id: { type: string, example: v_abc123 }
+                pdf_url:
+                  type: string
+                  format: uri
+                  description: S3 预签名 URL(1h 有效);可重新获取
+                pdf_size_bytes: { type: integer }
+                content_hash:
+                  type: string
+                  description: SHA-256 of PDF bytes
+                  example: "sha256:abc123..."
+                signature_key_id: { type: string }
+                signature_key_version: { type: integer }
+                tsa_provider:
+                  type: string
+                  enum: [digicert, globalsign, ntsc]
+                tsa_time: { type: string, format: date-time }
+                blockchain_anchor:
+                  type: object
+                  nullable: true
+                  description: 可选区块链锚定(K8;S3 评估)
+                  properties:
+                    chain: { type: string, enum: [polygon, ethereum, arweave] }
+                    tx_hash: { type: string }
+                nodes_used:
+                  type: array
+                  items: { type: string }
+                  description: 报告引用的节点 ID 列表
+                node_consistency_pct:
+                  type: number
+                  minimum: 0
+                  maximum: 100
+                  description: 多节点一致性百分比
+                llm_used: { type: boolean }
+                llm_model: { type: string, nullable: true }
+                llm_prompt_version: { type: string, nullable: true }
+                self_verify_status:
+                  type: string
+                  enum: [pass, fail, pending]
+                  description: |
+                    D6 Self-Verify Worker(独立进程 / VPC / KMS 客户端)的自检结果。
+                    `fail` → 触发 D5 退款 + 道歉邮箱;`pass` → status=delivered。
+                self_verify_at: { type: string, format: date-time, nullable: true }
+                confidence_label:
+                  type: string
+                  enum: [high, medium, low]
+                report_type:
+                  type: string
+                  enum: [observation_only]
+                  default: observation_only
+                  description: |
+                    D-Concern1 锁定:默认 `observation_only`,明确告知"一手观测数据 + 第三方背书,
+                    不构成司法鉴定结论"。保留枚举供 S4 司法鉴定所合作通道升级。
+                archived_url:
+                  type: string
+                  format: uri
+                  description: S3 WORM 永久归档(只读;6 年合规留存)
+                created_at: { type: string, format: date-time }
+
+    CreateShareTokenRequest:
+      type: object
+      properties:
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: 过期时间(null = 永不过期)
+        password:
+          type: string
+          nullable: true
+          description: 访问密码(可选)
+        max_views:
+          type: integer
+          nullable: true
+          description: 最大查看次数
+
+    ShareTokenResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                share_url:
+                  type: string
+                  format: uri
+                  example: https://attest.idcd.com/r/share_xyz
+                token: { type: string, example: share_xyz }
+                expires_at: { type: string, format: date-time, nullable: true }
+
+    # =====================================================================
+    # ATTESTATION SCHEMAS (公开验签)
+    # =====================================================================
+    AttestVerifyResponse:
+      type: object
+      description: D-Concern1 锁定响应字段;不走 Envelope(此接口公开 + 不限频 + 缓存友好)。
+      required: [valid, report_type, legal_disclaimer]
+      properties:
+        valid:
+          type: boolean
+          description: 验签结果
+          example: true
+        signature_chain:
+          type: string
+          description: 签名证书链 PEM
+        public_key_fingerprint:
+          type: string
+          description: 公钥 SHA-256 指纹
+          example: "sha256:abcdef..."
+        signed_at:
+          type: string
+          format: date-time
+          description: 签名时间(由签名内嵌字段提取)
+          example: "2026-05-13T01:00:00Z"
+        tsa_provider:
+          type: string
+          enum: [digicert, globalsign, ntsc]
+          description: 时间戳颁发者
+        tsa_time:
+          type: string
+          format: date-time
+          description: RFC3161 时间戳时间
+        content_hash:
+          type: string
+          description: SHA-256 of PDF bytes
+          example: "sha256:..."
+        signature_key_id:
+          type: string
+          description: 签名所用 key id
+        signature_key_version:
+          type: integer
+          description: 签名所用 key version(可能已撤销/过期;public key 仍可拉取用于历史验签,详 18 §7.1)
+        report_type:
+          type: string
+          enum: [observation_only]
+          default: observation_only
+          description: |
+            D-Concern1 必含字段。默认 `observation_only`,明确告知第三方:
+            "本报告是一手观测数据,不是司法鉴定结论"。
+        legal_disclaimer:
+          type: string
+          description: 法律边界声明(中英双语,UI 必须展示)
+          example: 本报告为 idcd.com 提供的一手观测数据,不构成司法鉴定结论。This report is observation data from idcd.com and does not constitute a forensic conclusion.
+        invalid_reason:
+          type: string
+          nullable: true
+          enum: [null, signature_mismatch, tsa_invalid, content_modified, key_unknown, malformed_pdf]
+          description: valid=false 时填充
+
+    AttestKeyResponse:
+      type: object
+      properties:
+        key_id: { type: string }
+        key_version: { type: integer }
+        public_key_pem: { type: string }
+        public_key_fingerprint: { type: string }
+        algorithm: { type: string, example: ECDSA_P256_SHA256 }
+        status:
+          type: string
+          enum: [active, rotated, revoked]
+          description: revoked / rotated key 仍可查询 public key(只读)
+        created_at: { type: string, format: date-time }
+        rotated_at: { type: string, format: date-time, nullable: true }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        ceremony_log_id:
+          type: string
+          description: 关联的 key_ceremony_log 记录
+
+    KeyCeremonyLog:
+      type: object
+      properties:
+        id: { type: string, example: kc_xyz }
+        action:
+          type: string
+          enum: [root_gen, root_split, sign_key_rotate, emergency_revoke]
+        key_id: { type: string, nullable: true }
+        key_version: { type: integer, nullable: true }
+        actors:
+          type: array
+          description: 参与方(双人/多人审批 + 公证)
+          items:
+            type: object
+            properties:
+              identity: { type: string, example: founder@idcd.com }
+              role: { type: string, example: kms_admin }
+        evidence_url:
+          type: string
+          format: uri
+          description: 录像 / 公证 PDF 链接(transparency 公开)
+        notes: { type: string }
+        created_at: { type: string, format: date-time }
+
+    KeyCeremonyListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items: { $ref: '#/components/schemas/KeyCeremonyLog' }
+        meta: { $ref: '#/components/schemas/Meta' }
+
+    AttestationRecord:
+      type: object
+      description: D4 WAL 行;每 step 完成写一条。
+      properties:
+        id: { type: string, example: att_xyz }
+        report_id: { type: string }
+        action:
+          type: string
+          enum: [signed, tsa_stamped, anchored, s3_archived, self_verified, revoked]
+        status:
+          type: string
+          enum: [pending, success, failure]
+        external_id:
+          type: string
+          description: TSA serial / chain tx hash / KMS req id / S3 ETag
+        idempotency_key:
+          type: string
+          description: 提供给外部 API(AWS KMS / TSA)的 idempotency token
+        result: { type: string, enum: [success, failure] }
+        error_detail: { type: string, nullable: true }
+        retry_count: { type: integer, description: D4 step 重试次数(0-3) }
+        created_at: { type: string, format: date-time }
+        completed_at: { type: string, format: date-time, nullable: true }
+
+    TsaResponse:
+      type: object
+      description: 单次 TSA 调用记录;用于 transparency 审计。
+      properties:
+        id: { type: string, example: tsa_xyz }
+        provider:
+          type: string
+          enum: [digicert, globalsign, ntsc]
+        request_hash: { type: string }
+        serial_number: { type: string }
+        issued_at: { type: string, format: date-time }
+        valid_until: { type: string, format: date-time }
+        status:
+          type: string
+          enum: [success, failure, timeout]
+        latency_ms: { type: integer }
+        used_by_report_id: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    # =====================================================================
+    # DISPUTE SCHEMAS
+    # =====================================================================
+    CreateDisputeRequest:
+      type: object
+      required: [contact_email, claim, evidence_description]
+      properties:
+        contact_email: { type: string, format: email }
+        contact_phone: { type: string, nullable: true }
+        organization:
+          type: string
+          description: 申诉方组织名(如 example.com 的所有公司)
+        claim:
+          type: string
+          description: 核心诉求(如"该报告对我方网站不可用的认定不实")
+          maxLength: 2000
+        evidence_description:
+          type: string
+          description: 反证描述
+          maxLength: 5000
+        evidence_urls:
+          type: array
+          items: { type: string, format: uri }
+        identity_proof_url:
+          type: string
+          format: uri
+          description: 申诉方身份/所有权证明(域名 TXT 验证 / 营业执照 / 等)
+
+    DisputeResponse:
+      type: object
+      properties:
+        id: { type: string, example: dsp_xyz }
+        report_id: { type: string }
+        status:
+          type: string
+          enum: [pending, reviewing, accepted, rejected, withdrawn]
+          description: |
+            处理状态机:
+            - `pending` 已提交,待平台 24h 内响应
+            - `reviewing` 平台审核中
+            - `accepted` 申诉成立 → 报告下架 + 退款 + transparency 记录
+            - `rejected` 申诉不成立(返回 review_reason)
+            - `withdrawn` 申诉方撤回
+        review_reason: { type: string, nullable: true }
+        decided_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    # =====================================================================
+    # COMPLIANCE SCHEMAS
+    # =====================================================================
+    CreateComplianceSubscriptionRequest:
+      type: object
+      required: [tier]
+      properties:
+        tier:
+          type: string
+          enum: [starter, pro, enterprise]
+          description: |
+            K5b 锁定档位:
+            - `starter` ¥3k/年 — 50 监控 + 月度报告 + 12 月历史
+            - `pro` ¥12k/年 — 200 监控 + 周度报告 + 24 月历史 + 5 份免费 Verdict
+            - `enterprise` ¥30k/年(议价)— 1000 监控 + 任意频率 + 6 年历史 + 不限 Verdict
+        contact_company:
+          type: string
+          description: 企业用户合规对接所需
+        contact_email: { type: string, format: email }
+        billing_address:
+          type: object
+          additionalProperties: true
+
+    ComplianceSubscription:
+      type: object
+      properties:
+        id: { type: string, example: cs_xyz }
+        owner_id: { type: string }
+        tier:
+          type: string
+          enum: [starter, pro, enterprise]
+        status:
+          type: string
+          enum: [active, past_due, canceled, expired]
+        period_start: { type: string, format: date-time }
+        period_end: { type: string, format: date-time }
+        monitors_quota: { type: integer }
+        reports_frequency:
+          type: string
+          enum: [monthly, weekly, custom]
+        history_retention_months: { type: integer }
+        free_verdict_count: { type: integer }
+        free_verdict_used: { type: integer }
+        price_cny: { type: number }
+        paddle_subscription_id: { type: string }
+        created_at: { type: string, format: date-time }
+        canceled_at: { type: string, format: date-time, nullable: true }
+
+    ComplianceSubscriptionResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                subscription: { $ref: '#/components/schemas/ComplianceSubscription' }
+                paddle_checkout_url:
+                  type: string
+                  format: uri
+                  description: 跳 Paddle 完成支付
+
+    ComplianceReport:
+      type: object
+      description: Compliance 年订自动生成的周/月度报告
+      properties:
+        id: { type: string, example: cr_xyz }
+        subscription_id: { type: string }
+        period_year: { type: integer }
+        period_month: { type: integer, nullable: true }
+        period_week: { type: integer, nullable: true }
+        pdf_url: { type: string, format: uri }
+        signature: { type: string }
+        tsa_provider: { type: string, enum: [digicert, globalsign, ntsc] }
+        tsa_time: { type: string, format: date-time }
+        monitors_included: { type: integer }
+        report_type: { type: string, enum: [observation_only], default: observation_only }
+        created_at: { type: string, format: date-time }
+
+    ComplianceReportListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/ComplianceReport' }
+
+    # =====================================================================
+    # MCP TOKEN / SESSION / TOOL CALL SCHEMAS
+    # =====================================================================
+    CreateMcpTokenRequest:
+      type: object
+      required: [type, name]
+      properties:
+        type:
+          type: string
+          enum: [personal, workspace, service]
+          description: |
+            D2 锁定三种形态。区别详 03 §5a.1。
+        name:
+          type: string
+          example: Cursor on MacBook
+        scope:
+          type: object
+          description: 限定 tools / regions(默认全开)
+          properties:
+            tools:
+              type: array
+              items: { type: string }
+              example: [idcd_ping, idcd_http_probe, idcd_diagnose]
+            regions:
+              type: array
+              items: { type: string }
+              example: [CN, US, EU]
+        ip_whitelist:
+          type: array
+          items: { type: string, format: cidr }
+          description: |
+            CIDR 列表(如 `["1.2.3.4/32", "5.6.7.0/24"]`)。
+            **service 必填**;personal / workspace 可选。
+            无白名单的 service 创建请求返回 422 `validation_error`。
+          example: ["1.2.3.4/32"]
+        expires_at:
+          type: string
+          format: date-time
+          description: |
+            **必填,最长 90 天**(D2):
+            - personal 默认 24h(也是最长)
+            - workspace 最长 90d
+            - service 最长 90d
+            超过最长值返回 422。
+        auto_renew:
+          type: boolean
+          default: true
+          description: |
+            D2:workspace / service 默认 true(过期前 24h auto_renewal,基于 last_used_at;
+            超 30 天未用不续 → 等于自动撤销);personal 走 OAuth-like refresh,此字段忽略。
+
+    McpToken:
+      type: object
+      properties:
+        id: { type: string, example: mcpt_xyz }
+        owner_id: { type: string }
+        type: { type: string, enum: [personal, workspace, service] }
+        name: { type: string }
+        token_display:
+          type: string
+          example: "mcpt_***1234"
+          description: 后 4 位 + 前缀;完整 token 仅创建时返回一次
+        scope:
+          type: object
+          properties:
+            tools:
+              type: array
+              items: { type: string }
+            regions:
+              type: array
+              items: { type: string }
+        ip_whitelist:
+          type: array
+          items: { type: string }
+        revoked: { type: boolean }
+        revoke_reason: { type: string, nullable: true }
+        expires_at: { type: string, format: date-time }
+        auto_renew: { type: boolean }
+        last_renewed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        last_used_at: { type: string, format: date-time, nullable: true }
+
+    CreateMcpTokenResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                token: { $ref: '#/components/schemas/McpToken' }
+                secret:
+                  type: string
+                  description: |
+                    完整 token 明文(`mcpt_xxx...`)**仅此一次返回**;
+                    存到 Cursor / Claude Code / Codex 配置文件,后续不可再查。
+                  example: mcpt_aBcDeFg...
+
+    McpTokenListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/McpToken' }
+
+    McpSession:
+      type: object
+      description: |
+        MCP 会话(MCP client 连接 mcp.idcd.com 时建立)。SSE 连接 stateful(D13),
+        LB sticky session 必要。
+      properties:
+        id: { type: string, example: mcps_xyz }
+        token_id: { type: string }
+        owner_id: { type: string }
+        client_id:
+          type: string
+          enum: [Cursor, ClaudeCode, Codex, sdk-py, sdk-ts, other]
+        client_version: { type: string }
+        client_ip: { type: string, format: ipv4 }
+        started_at: { type: string, format: date-time }
+        last_activity_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        total_tool_calls: { type: integer }
+        total_units: { type: integer }
+
+    McpToolCall:
+      type: object
+      description: |
+        单次 MCP tool 调用(高频写入;TimescaleDB Hypertable)。
+        默认 payload 哈希存储(隐私);D7 用户可在 /app/mcp/settings 开启
+        "失败 case 临时存 7 天原 payload",仅 status=failure 写入 `*_raw` jsonb,
+        过期 cron 自动清理。
+      properties:
+        id: { type: string, example: mctc_xyz }
+        session_id: { type: string }
+        owner_id: { type: string }
+        tool_name:
+          type: string
+          enum:
+            - idcd_ping
+            - idcd_http_probe
+            - idcd_dns_resolve
+            - idcd_traceroute
+            - idcd_ssl_cert
+            - idcd_diagnose
+            - idcd_ip_info
+            - idcd_whois
+            - idcd_icp
+            - idcd_create_monitor
+            - idcd_check_monitor
+            - idcd_generate_verdict
+            - idcd_list_nodes
+        request_payload_hash: { type: string }
+        response_payload_hash: { type: string }
+        request_payload_raw:
+          type: object
+          nullable: true
+          additionalProperties: true
+          description: D7 失败 case + 用户授权下临时存(7 天自动清理)
+        response_payload_raw:
+          type: object
+          nullable: true
+          additionalProperties: true
+        payload_retain_until: { type: string, format: date-time, nullable: true }
+        units_charged: { type: integer }
+        status:
+          type: string
+          enum: [success, failure, timeout, rate_limited]
+        latency_ms: { type: integer }
+        error_class: { type: string, nullable: true }
+        error_detail: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    McpUsageResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                period: { type: string, example: "2026-05" }
+                total_units_used: { type: integer, example: 4250 }
+                total_units_quota: { type: integer, example: 5000 }
+                total_cost_cny: { type: number, example: 8.5 }
+                by_tool:
+                  type: array
+                  description: 按 tool 拆分
+                  items:
+                    type: object
+                    properties:
+                      tool_name: { type: string }
+                      calls: { type: integer }
+                      units: { type: integer }
+                      cost_cny: { type: number }
+                      avg_latency_ms: { type: number }
+                by_client:
+                  type: array
+                  description: 按 client 拆分
+                  items:
+                    type: object
+                    properties:
+                      client_id: { type: string }
+                      calls: { type: integer }
+                      units: { type: integer }
+                time_series:
+                  type: array
+                  description: 按时间序列(daily / hourly,取决于 group_by)
+                  items:
+                    type: object
+                    properties:
+                      bucket: { type: string, format: date-time }
+                      units: { type: integer }
+                      calls: { type: integer }
+
+    # =====================================================================
+    # AGENT OBSERVABILITY SCHEMAS
+    # =====================================================================
+    CreateAgentObsMonitorRequest:
+      type: object
+      required: [agent_name, type, endpoint_url, frequency_seconds, failure_threshold]
+      properties:
+        agent_name:
+          type: string
+          description: 用户给 Agent 起的名(如 `customer_support_v3`)
+        step_name:
+          type: string
+          description: Agent 工作流 step 名(可选,如 `retrieval`)
+        type:
+          type: string
+          enum: [llm, tool, rag, other]
+          description: |
+            - `llm` = M21 LLM Endpoint Health(OpenAI/Anthropic/Bedrock/自家)— **强制 `budget_per_check_usd`**
+            - `tool` = M22 Tool/API Endpoint
+            - `rag` = M23 RAG/Vector Store
+            - `other` = 其他类型(S4 扩展)
+        endpoint_url: { type: string, format: uri }
+        endpoint_config:
+          type: object
+          description: 不同 type 不同字段(详 04 §3.15-3.17);如 LLM 类型含 prompt / model
+          additionalProperties: true
+        frequency_seconds:
+          type: integer
+          minimum: 10
+          example: 300
+        budget_per_check_usd:
+          type: number
+          description: |
+            M21 必填(防爆账单);单次 check 预估 USD 成本。
+            原子 UPDATE budget(D7);超额 → status=`exceeded_budget`。
+        failure_threshold:
+          type: object
+          additionalProperties: true
+          description: 失败阈值定义(latency / status_codes / payload_assertions)
+        notification_channels:
+          type: array
+          items: { type: string }
+          description: 关联 channel ID 列表
+
+    AgentObsMonitor:
+      allOf:
+        - $ref: '#/components/schemas/CreateAgentObsMonitorRequest'
+        - type: object
+          properties:
+            id: { type: string, example: aom_xyz }
+            owner_id: { type: string }
+            status:
+              type: string
+              enum: [active, paused, exceeded_budget]
+              description: |
+                状态机:
+                - `active` 正常运行
+                - `paused` 用户手动暂停
+                - `exceeded_budget` D7 budget 触发自动暂停(发邮件通知);需用户手动调整 budget 后 resume
+            total_cost_this_month_usd:
+              type: number
+              description: D7 原子 UPDATE 累加;同 transaction 内做 budget 检查
+            created_at: { type: string, format: date-time }
+            paused_at: { type: string, format: date-time, nullable: true }
+
+    AgentObsMonitorListResponse:
+      allOf:
+        - $ref: '#/components/schemas/Envelope'
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: '#/components/schemas/AgentObsMonitor' }
+
+    AgentObsEvent:
+      type: object
+      properties:
+        id: { type: string, example: aoe_xyz }
+        monitor_id: { type: string }
+        owner_id: { type: string }
+        region:
+          type: string
+          description: 哪个节点验证
+        occurred_at: { type: string, format: date-time }
+        latency_ms: { type: integer, nullable: true }
+        success: { type: boolean }
+        failure_class:
+          type: string
+          enum: [timeout, "4xx", "5xx", malformed, semantic, budget]
+          nullable: true
+        failure_detail:
+          type: object
+          additionalProperties: true
+          nullable: true
+        cost_usd:
+          type: number
+          nullable: true
+          description: M21 实际花费
+        trace_id:
+          type: string
+          nullable: true
+          description: 可选 Agent 端 trace 关联
+
+    AgentObsEventStreamFrame:
+      type: object
+      description: |
+        SSE 流单帧;实际响应是 `text/event-stream`,格式:
+        ```
+        event: agent_obs.event
+        id: <event_id>
+        data: <json AgentObsEvent>
+        ```
+        客户端断线后用 `Last-Event-ID` header 续传。
+      properties:
+        event: { type: string, example: agent_obs.event }
+        id: { type: string }
+        data: { $ref: '#/components/schemas/AgentObsEvent' }
+
+    # =====================================================================
+    # LEADERBOARD SCHEMAS
+    # =====================================================================
+    CreateLeaderboardOptoutRequest:
+      type: object
+      required: [vendor_name, applicant_email, identity_proof_url]
+      properties:
+        vendor_name:
+          type: string
+          example: ExampleCDN Inc
+        applicant_email: { type: string, format: email }
+        applicant_organization: { type: string }
+        reason:
+          type: string
+          maxLength: 5000
+          description: 退出原因
+        contact_phone: { type: string }
+        identity_proof_url:
+          type: string
+          format: uri
+          description: 主体认证材料(营业执照 / 公章 文件)
+
+    LeaderboardOptoutRequest:
+      allOf:
+        - $ref: '#/components/schemas/CreateLeaderboardOptoutRequest'
+        - type: object
+          properties:
+            id: { type: string }
+            status:
+              type: string
+              enum: [pending, approved, rejected]
+            decision_reason: { type: string, nullable: true }
+            created_at: { type: string, format: date-time }
+            decided_at: { type: string, format: date-time, nullable: true }
+
+    LeaderboardReport:
+      type: object
+      description: |
+        CDN/云厂商月度排行榜报告(K6 边界控制)。
+        勘误公告通过 `errata_pdf_url`(D-Concern3);不直接删除原报告。
+      properties:
+        id: { type: string, example: lb_2026_05 }
+        period_year: { type: integer }
+        period_month: { type: integer }
+        methodology_version: { type: string }
+        excluded_vendors:
+          type: array
+          items: { type: string }
+          description: 已申请退出的厂商
+        pdf_url: { type: string, format: uri }
+        verdict_report_id:
+          type: string
+          nullable: true
+          description: 配套 Verdict 报告(自我背书)
+        status:
+          type: string
+          enum: [draft, reviewing, published, archived]
+        errata_pdf_url:
+          type: string
+          format: uri
+          nullable: true
+          description: D-Concern3 勘误公告 PDF(已发布后修订用此 URL,不删除原报告)
+        errata_reason:
+          type: string
+          nullable: true
+          description: 勘误原因(厂商申诉 / 内部修订 等)
+        published_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+
+# =====================================================================
+# x-mcp-protocol — MCP 协议附录(非 OpenAPI;描述性文档)
+# =====================================================================
+x-mcp-protocol:
+  description: |
+    `mcp.idcd.com` 走 **Anthropic MCP protocol**(JSON-RPC over stdio + HTTP+SSE),
+    与 OpenAPI 3.1 不直接兼容,因此**不在本规范的 paths 中暴露**。
+    本节作为描述性附录,供 SDK / 文档生成器参考。
+
+    完整规范见 `docs.mcp.idcd.com`(独立子域,D3)。`mcp.idcd.com/docs` 走 302 redirect。
+
+  protocol: anthropic-mcp
+  protocol_version: "2024-11-05"
+
+  transports:
+    - name: stdio
+      description: 主流;用于 Cursor / Claude Code / Codex / 自家 SDK 本地客户端
+    - name: http+sse
+      description: |
+        长连 SSE(D13 stateful);LB sticky session 必要;
+        单实例 10k 并发;多实例横向扩展跨实例事件通过 Redis Streams 广播。
+
+  auth:
+    method: bearer_mcp_token
+    description: |
+      Header `Authorization: Bearer mcpt_xxx`;
+      token 通过 `POST /v1/mcp/tokens`(在 `api.idcd.com`)签发,
+      详 §components.schemas.McpToken + §Auth/MCP Tokens tag。
+    constraints:
+      - 所有 token 必有 expires_at,最长 90 天(D2)
+      - personal 24h auto-refresh
+      - workspace 90d auto_renewal
+      - service 90d auto_renewal + IP 白名单强制
+      - 撤销立即生效:active SSE 连接通过 Redis pub-sub broadcast 断开
+
+  pricing:
+    unit_cny: 0.002
+    notes: |
+      MCP units 与 API calls 是两条独立配额池(D2)。
+      Free 100/day, Pro 5k/day, Team 30k/day, Business 200k/day, Agent Pro 1M/day(独立加大 SKU)。
+
+  tools:
+    - name: idcd_ping
+      units: 1
+      description: 多地 Ping(指定/默认节点选择)
+    - name: idcd_http_probe
+      units: 2
+      description: 多地 HTTP/HTTPS 拨测
+    - name: idcd_dns_resolve
+      units: 2
+      description: 多地 DNS 解析 + 污染检测
+    - name: idcd_traceroute
+      units: 3
+      description: 多地路由追踪
+    - name: idcd_ssl_cert
+      units: 1
+      description: SSL 证书查询 + 安全评分
+    - name: idcd_diagnose
+      units: 10
+      description: 一键全面诊断
+    - name: idcd_ip_info
+      units: 1
+      description: IP 归属 / ASN / ISP 查询
+    - name: idcd_whois
+      units: 1
+      description: WHOIS 查询
+    - name: idcd_icp
+      units: 1
+      description: ICP 备案查询
+    - name: idcd_create_monitor
+      units: 0
+      description: 创建监控项(需 API key 权限;触发订阅档计费)
+    - name: idcd_check_monitor
+      units: 1
+      description: 查询监控历史
+    - name: idcd_generate_verdict
+      units: 0
+      description: 触发 Verdict 报告生成(报告本身按 K5 件价计费,不消耗 MCP units)
+    - name: idcd_list_nodes
+      units: 0
+      description: 列出可用节点(transparency 公开)
+
+  clients_supported:
+    - { name: Claude Code, transport: [stdio, "http+sse"], status: S3 alpha }
+    - { name: Cursor, transport: [stdio], status: S3 alpha }
+    - { name: Codex CLI, transport: [stdio], status: S3 GA }
+    - { name: Anthropic Console MCP Gallery, transport: ["http+sse"], status: S3 GA }
+    - { name: idcd-mcp-py (自家 SDK), transport: [stdio, "http+sse"], status: S3 GA }
+    - { name: idcd-mcp-ts (自家 SDK), transport: [stdio, "http+sse"], status: S3 GA }
+
+  links:
+    docs: https://docs.mcp.idcd.com
+    quickstart: https://docs.mcp.idcd.com/quickstart
+    tool_reference: https://docs.mcp.idcd.com/tools

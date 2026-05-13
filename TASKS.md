@@ -190,7 +190,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 目标：`ansible-playbook agent.yml` 30 分钟内完成 100 节点部署
   - *deps: C1, C3* | *lane: C*
 
-- [ ] **C5** 节点目录 API
+- [x] **C5** 节点目录 API
   - `GET /v1/nodes` — 公开节点列表（ASN / 运营商 / 地理 / 出口 IP）
   - 节点心跳写入 + 自动剔除（5 min 无心跳 → inactive）
   - 节点健康打分（每日 cron）
@@ -215,7 +215,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 14 个 Vitest 测试全部通过
   - *deps: D1* | *lane: D* | *完成 2026-05-13*
 
-- [ ] **D3** 工具页 SSG（50 个，`/tools/[slug]`）
+- [x] **D3** 工具页 SSG（50 个，`/tools/[slug]`）
   - 路由：`/tools/ping` `/tools/http` `/tools/dns` `/tools/traceroute` `/tools/ssl` `/tools/whois` `/tools/icp` `/tools/ip` `/tools/diagnose` ...（完整列表见 02-public-tools.md）
   - 每页：独立 URL + SSG 构建 + Cloudflare CDN 缓存
   - 组件：拨测表单 + 实时结果展示（SSE 或 polling）+ 节点选择器

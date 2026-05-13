@@ -16,6 +16,7 @@ import {
 import { Menu, X } from "lucide-react"
 
 const tools = [
+  { slug: 'diagnose', name: '一键诊断' },
   { slug: 'http', name: 'HTTP/HTTPS 拨测' },
   { slug: 'ping', name: '多地 Ping' },
   { slug: 'tcping', name: 'TCP 端口测试' },

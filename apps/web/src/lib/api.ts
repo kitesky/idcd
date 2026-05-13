@@ -100,3 +100,30 @@ export async function probeTraceroute(params: ProbeParams): Promise<ProbeResult>
 export async function getProbeTask(taskId: string): Promise<ProbeResult> {
   return apiRequest<ProbeResult>(`/v1/probe/tasks/${taskId}`)
 }
+
+// Info API
+export interface SSLInfo {
+  domain: string
+  issuer: string
+  valid_from: string
+  valid_to: string
+  days_remaining: number
+  is_valid: boolean
+}
+
+export interface WhoisInfo {
+  domain: string
+  registrar: string
+  creation_date?: string
+  expiration_date?: string
+  registrant?: string
+  name_servers?: string[]
+}
+
+export async function getSSLInfo(domain: string): Promise<SSLInfo> {
+  return apiRequest<SSLInfo>(`/v1/info/ssl?q=${encodeURIComponent(domain)}`)
+}
+
+export async function getWhoisInfo(domain: string): Promise<WhoisInfo> {
+  return apiRequest<WhoisInfo>(`/v1/info/whois?q=${encodeURIComponent(domain)}`)
+}

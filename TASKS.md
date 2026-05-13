@@ -245,7 +245,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 节点地图可视化（ECharts）
   - *deps: D1, C5* | *lane: D*
 
-- [ ] **D7** SEO 基础
+- [x] **D7** SEO 基础
   - `sitemap.xml` 动态生成（工具页 + 节点页 + 博客）
   - `robots.txt`（`/legacy/*` noindex）
   - `manifest.json` + favicon

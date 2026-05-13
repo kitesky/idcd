@@ -1,0 +1,329 @@
+// Package handler implements HTTP handlers for the API server.
+package handler
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"net"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgconn"
+
+	"github.com/kite365/idcd/apps/api/internal/response"
+	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/packages/shared/idgen"
+	"github.com/kite365/idcd/packages/shared/stream"
+)
+
+// ProbeHandler handles probe task endpoints.
+type ProbeHandler struct {
+	pool         ProbePool
+	streamClient *stream.Client
+}
+
+// ProbePool is the interface for database operations.
+type ProbePool interface {
+	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+}
+
+// NewProbeHandler creates a new ProbeHandler.
+func NewProbeHandler(pool ProbePool, streamClient *stream.Client) *ProbeHandler {
+	return &ProbeHandler{
+		pool:         pool,
+		streamClient: streamClient,
+	}
+}
+
+// ProbeRequest is the common request structure for probe endpoints.
+type ProbeRequest struct {
+	Target string                 `json:"target"`
+	Nodes  []string               `json:"nodes,omitempty"`
+	Params map[string]interface{} `json:"params,omitempty"`
+}
+
+// ProbeResponse is the response structure for probe endpoints.
+type ProbeResponse struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"`
+}
+
+// DiagnoseResponse is the response structure for diagnose endpoint.
+type DiagnoseResponse struct {
+	DiagnosisID string   `json:"diagnosis_id"`
+	TaskIDs     []string `json:"task_ids"`
+	Status      string   `json:"status"`
+}
+
+// HTTP handles HTTP/HTTPS probe requests.
+// POST /v1/probe/http
+func (h *ProbeHandler) HTTP(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "http")
+}
+
+// Ping handles ICMP Ping probe requests.
+// POST /v1/probe/ping
+func (h *ProbeHandler) Ping(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "ping")
+}
+
+// TCP handles TCP connection probe requests.
+// POST /v1/probe/tcp
+func (h *ProbeHandler) TCP(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "tcp")
+}
+
+// DNS handles DNS resolution probe requests.
+// POST /v1/probe/dns
+func (h *ProbeHandler) DNS(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "dns")
+}
+
+// Traceroute handles traceroute probe requests.
+// POST /v1/probe/traceroute
+func (h *ProbeHandler) Traceroute(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "traceroute")
+}
+
+// Diagnose handles comprehensive diagnostic requests.
+// POST /v1/diagnose
+func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	// Parse request
+	var req ProbeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, r, apperr.Validation("Invalid JSON request body", ""))
+		return
+	}
+
+	// Validate target
+	if req.Target == "" {
+		response.Error(w, r, apperr.Validation("Target is required", ""))
+		return
+	}
+
+	// SSRF protection
+	if isPrivateTarget(req.Target) {
+		response.Error(w, r, apperr.Forbidden("Cannot probe private IP addresses"))
+		return
+	}
+
+	// Generate diagnosis ID
+	diagnosisID := idgen.ProbeTask()
+
+	// Create 5 probe tasks: http, ping, dns, tcp, traceroute
+	probeTypes := []string{"http", "ping", "dns", "tcp", "traceroute"}
+	taskIDs := make([]string, 0, len(probeTypes))
+
+	for _, probeType := range probeTypes {
+		taskID, err := h.createProbeTask(ctx, r, probeType, req.Target, req.Nodes, req.Params)
+		if err != nil {
+			response.Error(w, r, apperr.Internal("Failed to create probe task", err))
+			return
+		}
+		taskIDs = append(taskIDs, taskID)
+	}
+
+	resp := DiagnoseResponse{
+		DiagnosisID: diagnosisID,
+		TaskIDs:     taskIDs,
+		Status:      "queued",
+	}
+
+	response.JSON(w, r, http.StatusOK, resp)
+}
+
+// handleProbe is the common handler for all single probe types.
+func (h *ProbeHandler) handleProbe(w http.ResponseWriter, r *http.Request, probeType string) {
+	ctx := r.Context()
+
+	// Parse request
+	var req ProbeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, r, apperr.Validation("Invalid JSON request body", ""))
+		return
+	}
+
+	// Validate target
+	if req.Target == "" {
+		response.Error(w, r, apperr.Validation("Target is required", ""))
+		return
+	}
+
+	// SSRF protection
+	if isPrivateTarget(req.Target) {
+		response.Error(w, r, apperr.Forbidden("Cannot probe private IP addresses"))
+		return
+	}
+
+	// Create probe task
+	taskID, err := h.createProbeTask(ctx, r, probeType, req.Target, req.Nodes, req.Params)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("Failed to create probe task", err))
+		return
+	}
+
+	resp := ProbeResponse{
+		TaskID: taskID,
+		Status: "queued",
+	}
+
+	response.JSON(w, r, http.StatusOK, resp)
+}
+
+// createProbeTask creates a probe task in the database and pushes it to Redis Stream.
+func (h *ProbeHandler) createProbeTask(
+	ctx context.Context,
+	r *http.Request,
+	probeType string,
+	target string,
+	nodes []string,
+	params map[string]interface{},
+) (string, error) {
+	taskID := idgen.ProbeTask()
+
+	// Normalize target
+	targetNormalized := normalizeTarget(target)
+
+	// Get user info from context (set by authn middleware, may be nil)
+	var initiatedBy *string
+	if userID, ok := r.Context().Value("user_id").(string); ok && userID != "" {
+		initiatedBy = &userID
+	}
+
+	// Get API key ID from context (if available)
+	var apiKeyID *string
+	if keyID, ok := r.Context().Value("api_key_id").(string); ok && keyID != "" {
+		apiKeyID = &keyID
+	}
+
+	// Get client IP
+	clientIP := getClientIP(r)
+
+	// Get user agent
+	userAgent := r.UserAgent()
+
+	// Serialize params and node_selection
+	paramsJSON, err := json.Marshal(params)
+	if err != nil {
+		return "", fmt.Errorf("marshal params: %w", err)
+	}
+
+	nodeSelectionJSON, err := json.Marshal(nodes)
+	if err != nil {
+		return "", fmt.Errorf("marshal node_selection: %w", err)
+	}
+
+	// Insert into database
+	query := `
+		INSERT INTO probe_task (
+			id, type, target, target_normalized, params,
+			initiated_by, api_key_id, client_ip, user_agent,
+			node_selection, status, created_at
+		) VALUES (
+			$1, $2, $3, $4, $5,
+			$6, $7, $8, $9,
+			$10, 'queued', NOW()
+		)
+	`
+
+	_, err = h.pool.Exec(ctx, query,
+		taskID, probeType, target, targetNormalized, paramsJSON,
+		initiatedBy, apiKeyID, clientIP, userAgent,
+		nodeSelectionJSON,
+	)
+	if err != nil {
+		return "", fmt.Errorf("insert probe_task: %w", err)
+	}
+
+	// Push to Redis Stream "probe.tasks"
+	streamData := map[string]any{
+		"task_id":          taskID,
+		"type":             probeType,
+		"target":           target,
+		"target_normalized": targetNormalized,
+		"params":           string(paramsJSON),
+		"node_selection":   string(nodeSelectionJSON),
+		"created_at":       time.Now().Unix(),
+	}
+
+	if _, err := h.streamClient.Add(ctx, "probe.tasks", streamData); err != nil {
+		return "", fmt.Errorf("push to stream: %w", err)
+	}
+
+	return taskID, nil
+}
+
+// isPrivateTarget checks if the target resolves to a private IP address.
+// Returns true for RFC1918 private addresses, loopback, and link-local.
+func isPrivateTarget(target string) bool {
+	// Extract host from target (remove port if present)
+	host := target
+	if strings.Contains(target, ":") {
+		var err error
+		host, _, err = net.SplitHostPort(target)
+		if err != nil {
+			// If SplitHostPort fails, try parsing as-is
+			host = target
+		}
+	}
+
+	// Resolve to IP
+	ips, err := net.LookupIP(host)
+	if err != nil {
+		// If DNS lookup fails, check if it's an IP address string
+		ip := net.ParseIP(host)
+		if ip == nil {
+			return false // Cannot resolve, allow it (will fail at probe stage)
+		}
+		// Check the parsed IP
+		return isPrivateIP(ip.String())
+	}
+
+	// Check if any resolved IP is private
+	for _, ip := range ips {
+		if isPrivateIP(ip.String()) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// normalizeTarget normalizes the target for database storage.
+func normalizeTarget(target string) string {
+	// Convert to lowercase and trim spaces
+	normalized := strings.ToLower(strings.TrimSpace(target))
+
+	// Remove http:// or https:// prefix if present
+	normalized = strings.TrimPrefix(normalized, "http://")
+	normalized = strings.TrimPrefix(normalized, "https://")
+
+	return normalized
+}
+
+// getClientIP extracts the real client IP from the request.
+func getClientIP(r *http.Request) string {
+	// Check X-Forwarded-For header first (set by proxies)
+	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+		// X-Forwarded-For may contain multiple IPs, take the first one
+		ips := strings.Split(xff, ",")
+		return strings.TrimSpace(ips[0])
+	}
+
+	// Check X-Real-IP header
+	if xri := r.Header.Get("X-Real-IP"); xri != "" {
+		return xri
+	}
+
+	// Fallback to RemoteAddr
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+
+	return ip
+}

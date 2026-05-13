@@ -21,6 +21,7 @@ import (
 	"github.com/kite365/idcd/packages/auth/session"
 	"github.com/kite365/idcd/packages/db/gen/idcdmain"
 	"github.com/kite365/idcd/packages/shared/config"
+	"github.com/kite365/idcd/packages/shared/stream"
 )
 
 // Server represents the HTTP server with its dependencies.
@@ -137,6 +138,17 @@ func (s *Server) setupRouter() {
 				r.Get("/ssl", infoH.SSL)
 				r.Get("/icp", infoH.ICP)
 			})
+			// Probe endpoints
+			streamClient := stream.New(s.redis)
+			probeH := handler.NewProbeHandler(s.pgxPool, streamClient)
+			r.Route("/probe", func(r chi.Router) {
+				r.Post("/http", probeH.HTTP)
+				r.Post("/ping", probeH.Ping)
+				r.Post("/tcp", probeH.TCP)
+				r.Post("/dns", probeH.DNS)
+				r.Post("/traceroute", probeH.Traceroute)
+			})
+			r.Post("/diagnose", probeH.Diagnose)
 		})
 	}
 

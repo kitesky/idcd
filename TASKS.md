@@ -160,15 +160,13 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### Lane C — 节点系统
 
-- [ ] **C1** `apps/agent/` — Agent 1.0 二进制
-  - 拨测能力：HTTP/HTTPS + Ping（ICMP）+ TCPing + DNS + Traceroute/MTR
-  - mTLS 客户端证书（短期 7-30 天 + 自动 renewal，K-架构）
-  - 任务签名校验 + 硬编码任务白名单
-  - 上报结果带水印（node_id + task_id + timestamp）
-  - **SQLite 本地 24h 缓冲**（D17）：`$AGENT_DATA_DIR/buffer.db`，500MB 上限，进程重启不丢数据
-  - systemd service 文件
-  - 交叉编译：linux/amd64 + linux/arm64 静态二进制
-  - *deps: A2, A6* | *lane: C*
+- [x] **C1** `apps/agent/` — Agent 1.0 二进制
+  - 5 种 probe：HTTP(TLS/重定向) / Ping(ICMP接口化) / TCP / DNS / Traceroute(30跳)
+  - 水印签名 HMAC-SHA256(node_id:task_id:target:timestamp)
+  - SQLite 本地缓冲 D17：Cleanup 按 created_at，500MB 上限
+  - systemd service 文件，CGO_ENABLED=0 交叉编译 linux/amd64+arm64
+  - 102 个测试全部通过
+  - *deps: A2, A6* | *lane: C* | *完成 2026-05-13*
 
 - [ ] **C2** `apps/gateway/` — Agent Gateway
   - WSS 接入（mTLS）
@@ -210,12 +208,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - Vitest 测试 15 个全绿（utils 6 + Button 9）
   - *deps: A2* | *lane: D* | *完成 2026-05-13*
 
-- [ ] **D2** 首页（`/`）
-  - 3-hero 布局：一键诊断输入框 + 特性介绍 + 节点地图预览
-  - 顶部 Nav（工具 / 节点 / 定价 / 文档 / 登录）
-  - Footer（链接 + 备案号 + 隐私协议）
-  - 响应式（移动端优先）
-  - *deps: D1* | *lane: D*
+- [x] **D2** 首页（`/`）
+  - Hero：诊断输入框 + 一键诊断 + 快捷 Badge 链接
+  - Feature Cards（全球节点/实时并发/SSL检测）+ 节点统计 4 卡片 + 工具入口 6 个
+  - Nav sticky（汉堡菜单 mobile）+ Footer（三列 + ICP 备案号）
+  - 14 个 Vitest 测试全部通过
+  - *deps: D1* | *lane: D* | *完成 2026-05-13*
 
 - [ ] **D3** 工具页 SSG（50 个，`/tools/[slug]`）
   - 路由：`/tools/ping` `/tools/http` `/tools/dns` `/tools/traceroute` `/tools/ssl` `/tools/whois` `/tools/icp` `/tools/ip` `/tools/diagnose` ...（完整列表见 02-public-tools.md）

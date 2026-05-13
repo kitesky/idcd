@@ -273,13 +273,13 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 **必须 S1 上线，不能省。**
 
-- [ ] **E1** 拒测黑名单
+- [x] **E1** 拒测黑名单
   - 私有 IP 段（RFC1918）/ 政府 / 银行 / 友站列表
   - 接入 B2 限速中间件，拨测前校验目标
   - 后台可配置黑名单（初期写死配置文件）
   - *deps: B1* | *lane: E*
 
-- [ ] **E2** 测试报告水印
+- [x] **E2** 测试报告水印
   - 每条拨测结果写入：`node_id + task_id + target + timestamp` 签名
   - 水印可被追溯（abuse 举报时可还原来源）
   - *deps: C1* | *lane: E*
@@ -292,7 +292,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - `/about` 关于页
   - *deps: D1* | *lane: E* | *[👤] 法律文本需人工起草或购买模板*
 
-- [ ] **E4** 安全头 + CSRF
+- [x] **E4** 安全头 + CSRF
   - CSP / HSTS / X-Frame-Options / X-Content-Type-Options
   - Same-Site Cookie
   - CSRF Token（表单提交）

@@ -9,5 +9,6 @@ use (
 	./apps/scheduler
 	./packages/auth
 	./packages/db
+	./packages/ratelimit
 	./packages/shared
 )

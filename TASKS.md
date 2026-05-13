@@ -223,7 +223,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - SEO：`<title>` + `<meta description>` + Schema.org + hreflang
   - *deps: D1, B4, B5* | *lane: D*
 
-- [ ] **D4** 一键诊断（`/tools/diagnose`）
+- [x] **D4** 一键诊断（`/tools/diagnose`）
   - 输入域名 → 并发发起：DNS + HTTPS + Ping + Traceroute + SSL + 备案 + WHOIS + 安全头
   - 进度条实时展示（SSE）
   - 诊断报告页面 `/report/<id>`（SSR + OG 卡片）
@@ -239,7 +239,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - `/app/settings/account`（注销 + 数据导出入口）
   - *deps: D1, B3* | *lane: D*
 
-- [ ] **D6** 公开节点目录（`/nodes`）
+- [x] **D6** 公开节点目录（`/nodes`）
   - 节点列表：ASN + 运营商 + 地区 + 出口 IP + 在线状态
   - 按国家 / 运营商筛选
   - 节点地图可视化（ECharts）

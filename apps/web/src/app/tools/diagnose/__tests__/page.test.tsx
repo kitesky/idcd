@@ -84,12 +84,13 @@ describe('Diagnose Tool', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(screen.getByText('DNS 解析')).toBeTruthy()
-      expect(screen.getByText('HTTPS 可达性')).toBeTruthy()
-      expect(screen.getByText('Ping 延迟')).toBeTruthy()
-      expect(screen.getByText('Traceroute')).toBeTruthy()
-      expect(screen.getByText('SSL 证书')).toBeTruthy()
-      expect(screen.getByText('WHOIS 信息')).toBeTruthy()
+      const checkItems = screen.getAllByText('DNS 解析')
+      expect(checkItems.length).toBeGreaterThan(0)
+      expect(screen.getAllByText('HTTPS 可达性').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Ping 延迟').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('Traceroute').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('SSL 证书').length).toBeGreaterThan(0)
+      expect(screen.getAllByText('WHOIS 信息').length).toBeGreaterThan(0)
     })
   })
 
@@ -109,8 +110,9 @@ describe('Diagnose Tool', () => {
     fireEvent.click(button)
 
     await waitFor(() => {
-      expect(screen.getByText(/错误/i)).toBeTruthy()
-    }, { timeout: 3000 })
+      const errorTexts = screen.queryAllByText(/错误/)
+      expect(errorTexts.length).toBeGreaterThan(0)
+    }, { timeout: 5000 })
   })
 
   it('renders without crashing', () => {

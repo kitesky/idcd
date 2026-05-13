@@ -9,60 +9,82 @@ import (
 func TestSecurityHeaders(t *testing.T) {
 	tests := []struct {
 		name     string
+		env      string
 		path     string
 		method   string
 		expected map[string]string
+		absent   []string
 	}{
 		{
-			name:   "sets all security headers for normal requests",
+			name:   "production - sets all security headers including HSTS",
+			env:    "production",
 			path:   "/api/users",
 			method: "GET",
 			expected: map[string]string{
-				"Content-Security-Policy":           "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; child-src 'none'; worker-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';",
-				"Strict-Transport-Security":         "max-age=63072000; includeSubDomains; preload",
-				"X-Frame-Options":                   "DENY",
-				"X-Content-Type-Options":            "nosniff",
-				"X-XSS-Protection":                  "1; mode=block",
-				"Referrer-Policy":                   "strict-origin-when-cross-origin",
-				"X-Download-Options":                "noopen",
-				"X-Permitted-Cross-Domain-Policies": "none",
-				"Cache-Control":                     "no-cache, no-store, must-revalidate",
-				"Pragma":                            "no-cache",
-				"Expires":                           "0",
+				"Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.idcd.com; font-src 'self' data:; report-uri /v1/csp-report",
+				"Permissions-Policy":                   "camera=(), microphone=(), geolocation=(), payment=()",
+				"Strict-Transport-Security":            "max-age=31536000; includeSubDomains",
+				"X-Frame-Options":                      "DENY",
+				"X-Content-Type-Options":               "nosniff",
+				"Referrer-Policy":                      "strict-origin-when-cross-origin",
+				"Cache-Control":                        "no-cache, no-store, must-revalidate",
+				"Pragma":                               "no-cache",
+				"Expires":                              "0",
 			},
 		},
 		{
-			name:   "sets security headers but no cache headers for health endpoint",
+			name:   "development - no HSTS",
+			env:    "development",
+			path:   "/api/users",
+			method: "GET",
+			expected: map[string]string{
+				"Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.idcd.com; font-src 'self' data:; report-uri /v1/csp-report",
+				"Permissions-Policy":                   "camera=(), microphone=(), geolocation=(), payment=()",
+				"X-Frame-Options":                      "DENY",
+				"X-Content-Type-Options":               "nosniff",
+				"Referrer-Policy":                      "strict-origin-when-cross-origin",
+				"Cache-Control":                        "no-cache, no-store, must-revalidate",
+			},
+			absent: []string{"Strict-Transport-Security"},
+		},
+		{
+			name:   "staging - no HSTS",
+			env:    "staging",
+			path:   "/api/users",
+			method: "GET",
+			expected: map[string]string{
+				"X-Frame-Options":        "DENY",
+				"X-Content-Type-Options": "nosniff",
+				"Referrer-Policy":        "strict-origin-when-cross-origin",
+			},
+			absent: []string{"Strict-Transport-Security"},
+		},
+		{
+			name:   "health endpoint - no cache headers",
+			env:    "production",
 			path:   "/health",
 			method: "GET",
 			expected: map[string]string{
-				"Content-Security-Policy":           "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; child-src 'none'; worker-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';",
-				"Strict-Transport-Security":         "max-age=63072000; includeSubDomains; preload",
-				"X-Frame-Options":                   "DENY",
-				"X-Content-Type-Options":            "nosniff",
-				"X-XSS-Protection":                  "1; mode=block",
-				"Referrer-Policy":                   "strict-origin-when-cross-origin",
-				"X-Download-Options":                "noopen",
-				"X-Permitted-Cross-Domain-Policies": "none",
+				"Content-Security-Policy-Report-Only": "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://api.idcd.com; font-src 'self' data:; report-uri /v1/csp-report",
+				"X-Frame-Options":                      "DENY",
+				"X-Content-Type-Options":               "nosniff",
 			},
+			absent: []string{"Cache-Control", "Pragma", "Expires"},
 		},
 		{
-			name:   "sets security headers but no cache headers for metrics endpoint",
+			name:   "metrics endpoint - no cache headers",
+			env:    "production",
 			path:   "/metrics",
 			method: "GET",
 			expected: map[string]string{
-				"Content-Security-Policy":           "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self'; object-src 'none'; child-src 'none'; worker-src 'none'; frame-ancestors 'none'; form-action 'self'; base-uri 'self';",
-				"Strict-Transport-Security":         "max-age=63072000; includeSubDomains; preload",
-				"X-Frame-Options":                   "DENY",
-				"X-Content-Type-Options":            "nosniff",
-				"X-XSS-Protection":                  "1; mode=block",
-				"Referrer-Policy":                   "strict-origin-when-cross-origin",
-				"X-Download-Options":                "noopen",
-				"X-Permitted-Cross-Domain-Policies": "none",
+				"X-Frame-Options":        "DENY",
+				"X-Content-Type-Options": "nosniff",
 			},
+			absent: []string{"Cache-Control", "Pragma", "Expires"},
 		},
 		{
-			name:   "sets cache headers for POST requests",
+			name:   "POST request - has cache headers",
+			env:    "development",
 			path:   "/api/users",
 			method: "POST",
 			expected: map[string]string{
@@ -81,7 +103,7 @@ func TestSecurityHeaders(t *testing.T) {
 			})
 
 			// Wrap with SecurityHeaders middleware
-			handler := SecurityHeaders()(testHandler)
+			handler := SecurityHeaders(tt.env)(testHandler)
 
 			// Create request
 			req := httptest.NewRequest(tt.method, tt.path, nil)
@@ -98,13 +120,10 @@ func TestSecurityHeaders(t *testing.T) {
 				}
 			}
 
-			// For health and metrics endpoints, verify cache headers are NOT set
-			if tt.path == "/health" || tt.path == "/metrics" {
-				cacheHeaders := []string{"Cache-Control", "Pragma", "Expires"}
-				for _, header := range cacheHeaders {
-					if rr.Header().Get(header) != "" {
-						t.Errorf("cache header %q should not be set for %s, but got: %q", header, tt.path, rr.Header().Get(header))
-					}
+			// Verify absent headers are not set
+			for _, headerName := range tt.absent {
+				if actualValue := rr.Header().Get(headerName); actualValue != "" {
+					t.Errorf("header %q should not be set, but got: %q", headerName, actualValue)
 				}
 			}
 		})
@@ -119,7 +138,7 @@ func TestSecurityHeadersCallsNext(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	handler := SecurityHeaders()(testHandler)
+	handler := SecurityHeaders("production")(testHandler)
 
 	req := httptest.NewRequest("GET", "/test", nil)
 	rr := httptest.NewRecorder()

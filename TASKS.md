@@ -284,7 +284,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 水印可被追溯（abuse 举报时可还原来源）
   - *deps: C1* | *lane: E*
 
-- [ ] **E3** 法律页面（静态页）
+- [x] **E3** 法律页面（静态页）
   - `/terms` 服务条款
   - `/privacy` 隐私政策（含 PIPL 合规条款）
   - `/aup` 可接受使用政策（明确禁止 DDoS 放大 / 端口扫描 / 漏洞探测）
@@ -298,7 +298,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - CSRF Token（表单提交）
   - *deps: B1* | *lane: E*
 
-- [ ] **E5** 可观测性接入
+- [x] **E5** 可观测性接入
   - 所有 Go service：Prometheus metrics + OpenTelemetry trace + Loki 日志（含 request_id）
   - Next.js：Sentry 接入（前端错误追踪）
   - Grafana dashboard：RPS / 延迟 / 错误率 / 节点在线数

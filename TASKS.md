@@ -61,7 +61,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 迁移已应用到远端 idcd_dev DB，`psql` 验证 8 张表 + 1 个 hypertable
   - *deps: A1* | *lane: A* | *完成 2026-05-13*
 
-- [ ] **A4** GitHub Actions CI/CD 基础
+- [x] **A4** GitHub Actions CI/CD 基础
   - `.github/workflows/ci.yml`：golangci-lint + eslint + tsc + go test + vitest
   - `.github/workflows/deploy.yml`：build docker image → push GHCR → staging deploy
   - lint 规则：`scripts/lint-cross-schema-fk.sh`（D1）+ `scripts/lint-attestation-words.sh`（D-Concern1）
@@ -116,7 +116,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 密码哈希：Argon2id（已决策 §4.11 合规）
   - *deps: B1, A7* | *lane: B*
 
-- [ ] **B4** `apps/api/` — 公开拨测接口（核心 API）
+- [x] **B4** `apps/api/` — 公开拨测接口（核心 API）
   - `POST /v1/probe/http` — 多地 HTTP/HTTPS 拨测
   - `POST /v1/probe/ping` — 多地 ICMP Ping
   - `POST /v1/probe/tcp` — TCPing
@@ -127,7 +127,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 拨测报告持久化 + 分享 token（30 天过期，未登录用户）
   - *deps: B1, B2, C2* | *lane: B*
 
-- [ ] **B5** `apps/api/` — 网络信息查询接口
+- [x] **B5** `apps/api/` — 网络信息查询接口
   - `GET /v1/info/ip?q=` — IP 归属 + ASN + ISP + 地理
   - `GET /v1/info/whois?q=` — 域名/IP WHOIS
   - `GET /v1/info/dns?q=&type=` — DNS 记录（A/AAAA/MX/TXT/CNAME/NS/CAA/DMARC/SPF）
@@ -135,7 +135,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - `GET /v1/info/icp?q=` — ICP 备案查询（国内特色）
   - *deps: B1, B2* | *lane: B*
 
-- [ ] **B6** `apps/scheduler/` — 调度器骨架（S1 最简版）
+- [x] **B6** `apps/scheduler/` — 调度器骨架（S1 最简版）
   - 接收拨测任务 → 节点筛选 + 打分 → 任务下发 → ack / 完成处理
   - Redis leader election（S1 用 Redis，S2 迁 etcd，见 D16）
   - 优先级队列 P0-P5
@@ -168,7 +168,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 102 个测试全部通过
   - *deps: A2, A6* | *lane: C* | *完成 2026-05-13*
 
-- [ ] **C2** `apps/gateway/` — Agent Gateway
+- [x] **C2** `apps/gateway/` — Agent Gateway
   - WSS 接入（mTLS）
   - 心跳处理（30s timeout → drain）
   - 任务下发（来自 Scheduler）+ 结果上报（推 Aggregator）
@@ -231,7 +231,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - PDF 导出按钮（S2 实现，S1 占位即可）
   - *deps: D3, B4* | *lane: D*
 
-- [ ] **D5** 账号页面
+- [x] **D5** 账号页面
   - `/auth/register` `/auth/login` `/auth/logout`
   - `/auth/verify-email`（OTP 输入）
   - `/auth/forgot-password` `/auth/reset-password`

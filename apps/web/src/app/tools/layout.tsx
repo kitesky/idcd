@@ -16,6 +16,11 @@ import {
 import { Menu, X } from "lucide-react"
 
 const tools = [
+  { slug: 'http', name: 'HTTP/HTTPS 拨测' },
+  { slug: 'ping', name: '多地 Ping' },
+  { slug: 'tcping', name: 'TCP 端口测试' },
+  { slug: 'dns', name: 'DNS 解析' },
+  { slug: 'traceroute', name: '路由追踪' },
   { slug: 'json-formatter', name: 'JSON 格式化' },
   { slug: 'base64', name: 'Base64 编解码' },
   { slug: 'timestamp', name: '时间戳转换' },

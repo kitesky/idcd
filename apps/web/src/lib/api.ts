@@ -26,3 +26,77 @@ export async function apiRequest<T = any>(path: string, options?: RequestInit): 
 
   return res.json()
 }
+
+// Types
+export interface Node {
+  id: string
+  name: string
+  country_code: string
+  city: string
+  tier: string
+  is_active: boolean
+}
+
+export interface ProbeParams {
+  target: string
+  node_ids?: string[]
+  [key: string]: any
+}
+
+export interface ProbeResult {
+  task_id: string
+  status: string
+  results?: Array<{
+    node_id: string
+    node_name: string
+    success: boolean
+    latency_ms?: number
+    error?: string
+    details?: any
+  }>
+}
+
+// Nodes API
+export async function getNodes(): Promise<{ data: Node[] }> {
+  return apiRequest<{ data: Node[] }>("/v1/nodes")
+}
+
+// Probe API
+export async function probeHttp(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/http", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
+export async function probePing(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/ping", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
+export async function probeTcp(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/tcping", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
+export async function probeDns(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/dns", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
+export async function probeTraceroute(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/traceroute", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
+export async function getProbeTask(taskId: string): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>(`/v1/probe/tasks/${taskId}`)
+}

@@ -1,0 +1,67 @@
+"use client"
+
+import { useState } from "react"
+import ProbeForm from "@/components/probe/ProbeForm"
+import NodeSelector from "@/components/probe/NodeSelector"
+import ProbeResults from "@/components/probe/ProbeResults"
+import { probeDns, type ProbeResult } from "@/lib/api"
+import { Card, CardContent, CardHeader, CardTitle } from "@idcd/ui"
+
+export default function DnsProbeClient() {
+  const [selectedNodes, setSelectedNodes] = useState<string[]>([])
+  const [loading, setLoading] = useState(false)
+  const [result, setResult] = useState<ProbeResult | null>(null)
+  const [error, setError] = useState("")
+
+  const handleSubmit = async (target: string, params: Record<string, any>) => {
+    try {
+      setLoading(true)
+      setError("")
+      const probeResult = await probeDns({
+        target,
+        node_ids: selectedNodes.length > 0 ? selectedNodes : undefined,
+        ...params
+      })
+      setResult(probeResult)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "拨测失败")
+      setResult(null)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">DNS 解析查询</h1>
+        <p className="text-muted-foreground mt-2">
+          从全球多个节点查询 DNS 记录，检测域名解析结果和响应时间
+        </p>
+      </div>
+
+      <div className="grid gap-6 lg:grid-cols-2">
+        <div className="space-y-6">
+          <ProbeForm type="dns" onSubmit={handleSubmit} loading={loading} />
+          <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
+        </div>
+
+        <div>
+          <ProbeResults result={result} loading={loading} error={error} />
+        </div>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>使用说明</CardTitle>
+        </CardHeader>
+        <CardContent className="text-sm text-muted-foreground space-y-2">
+          <p>• <strong>目标域名</strong>：输入要查询的域名（如 example.com）</p>
+          <p>• <strong>记录类型</strong>：A(IPv4)、AAAA(IPv6)、MX(邮件)、TXT(文本)、CNAME(别名)、NS(域名服务器)</p>
+          <p>• <strong>查询内容</strong>：显示 DNS 解析结果、响应时间和权威服务器</p>
+          <p>• <strong>节点选择</strong>：可选择特定节点，默认使用所有可用节点</p>
+        </CardContent>
+      </Card>
+    </div>
+  )
+}

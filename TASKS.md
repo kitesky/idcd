@@ -93,12 +93,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### Lane B — 后端服务
 
-- [ ] **B1** `apps/api/` — API Gateway 骨架
-  - chi router + middleware 链（request_id / auth / rate_limit / cors / security_headers）
-  - 统一错误格式（`{error: {code, message, request_id}}`）
-  - 健康检查：`GET /health` + `GET /health/deep`
-  - Prometheus metrics endpoint
-  - *deps: A3, A6, A7* | *lane: B*
+- [x] **B1** `apps/api/` — API Gateway 骨架
+  - chi v5 router + 中间件链（Recover→RequestID→Logger→SecurityHeaders→CORS）
+  - 统一响应格式 JSON()/Error()，apperr code+status 映射
+  - GET /health（版本）、GET /health/deep（PG+Redis）、GET /metrics（Prometheus）
+  - 49 个测试全部通过，覆盖率 ≥ 90%
+  - *deps: A3, A6, A7* | *lane: B* | *完成 2026-05-13*
 
 - [ ] **B2** `apps/api/` — 限速模块
   - Redis 滑动窗口，多维度：单 IP / 单用户 / 单目标域名

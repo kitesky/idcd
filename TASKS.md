@@ -100,13 +100,13 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 49 个测试全部通过，覆盖率 ≥ 90%
   - *deps: A3, A6, A7* | *lane: B* | *完成 2026-05-13*
 
-- [ ] **B2** `apps/api/` — 限速模块
+- [x] **B2** `apps/api/` — 限速模块
   - Redis 滑动窗口，多维度：单 IP / 单用户 / 单目标域名
   - 免登录用户：HTTP 拨测 30/h，Ping 60/h（Turnstile 通过后放宽）
   - 登录 Free 用户：API 100 calls/day
   - *deps: B1* | *lane: B*
 
-- [ ] **B3** `apps/api/` — 账号接口
+- [x] **B3** `apps/api/` — 账号接口
   - `POST /v1/auth/register`（邮箱 + 密码）
   - `POST /v1/auth/login` / `POST /v1/auth/logout`
   - `POST /v1/auth/verify-email`（6 位 OTP，Redis 10min TTL）
@@ -142,7 +142,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 超时重试（路由到候补节点）
   - *deps: A3, A6, C1* | *lane: B*
 
-- [ ] **B7** `apps/aggregator/` — 聚合器
+- [x] **B7** `apps/aggregator/` — 聚合器
   - 消费 `probe.results` Redis Stream
   - 幂等设计（同 task_id 重复处理无副作用）
   - 写 TimescaleDB `probe_result` hypertable

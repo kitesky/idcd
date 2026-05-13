@@ -33,6 +33,6 @@ describe('JSON Formatter Tool', () => {
     fireEvent.click(buttons[0])
     // After formatting, at least one textarea should have content
     const updatedInputs = screen.getAllByRole('textbox')
-    expect(updatedInputs.some((t: HTMLTextAreaElement) => (t as HTMLTextAreaElement).value.length > 0)).toBeTruthy()
+    expect(updatedInputs.some((t) => (t as HTMLTextAreaElement).value.length > 0)).toBeTruthy()
   })
 })

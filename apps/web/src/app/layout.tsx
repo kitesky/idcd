@@ -21,7 +21,19 @@ export const metadata: Metadata = {
   title: "idcd — 网络诊断工具",
   description: "专业的网络诊断和监控平台，提供多地拨测、实时监控、Evidence证据服务",
   keywords: ["网络诊断", "拨测", "监控", "ping", "http", "traceroute", "dns"],
-  authors: [{ name: "idcd.com" }]
+  authors: [{ name: "idcd.com" }],
+  manifest: "/manifest.webmanifest",
+  openGraph: {
+    title: "idcd — 全球網絡診斷",
+    description: "多節點拨測、一鍵診斷",
+    url: "https://idcd.com",
+    siteName: "idcd",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "idcd — 全球網絡診斷"
+  },
 }
 
 export default function RootLayout({

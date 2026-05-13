@@ -15,6 +15,7 @@ export {
   Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage,
   useFormField
 } from './components/form'
+export { Skeleton } from './components/skeleton'
 
 // Utils
 export { cn } from './lib/utils'

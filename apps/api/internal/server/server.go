@@ -129,6 +129,14 @@ func (s *Server) setupRouter() {
 				r.Patch("/profile", acctH.UpdateProfile)
 				r.Delete("/", acctH.DeleteAccount)
 			})
+			r.Route("/info", func(r chi.Router) {
+				infoH := handler.NewInfoHandler()
+				r.Get("/ip", infoH.IP)
+				r.Get("/whois", infoH.Whois)
+				r.Get("/dns", infoH.DNS)
+				r.Get("/ssl", infoH.SSL)
+				r.Get("/icp", infoH.ICP)
+			})
 		})
 	}
 

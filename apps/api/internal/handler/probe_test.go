@@ -12,7 +12,7 @@ import (
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
 
 // setupTestProbeHandler creates a ProbeHandler with mock dependencies.
@@ -50,8 +50,8 @@ func TestProbeHandler_HTTP(t *testing.T) {
 		WithArgs(
 			pgxmock.AnyArg(), // id
 			"http",           // type
-			"example.com",    // target
-			"example.com",    // target_normalized
+			pgxmock.AnyArg(), // target (may be resolved IP after SSRF check)
+			pgxmock.AnyArg(), // target_normalized
 			pgxmock.AnyArg(), // params
 			pgxmock.AnyArg(), // initiated_by
 			pgxmock.AnyArg(), // api_key_id
@@ -206,8 +206,8 @@ func TestProbeHandler_TCP(t *testing.T) {
 		WithArgs(
 			pgxmock.AnyArg(),
 			"tcp",
-			"example.com:443",
-			"example.com:443",
+			pgxmock.AnyArg(), // target (may be resolved IP after SSRF check)
+			pgxmock.AnyArg(), // target_normalized
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
@@ -243,8 +243,8 @@ func TestProbeHandler_DNS(t *testing.T) {
 		WithArgs(
 			pgxmock.AnyArg(),
 			"dns",
-			"example.com",
-			"example.com",
+			pgxmock.AnyArg(), // target (may be resolved IP after SSRF check)
+			pgxmock.AnyArg(), // target_normalized
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
@@ -280,8 +280,8 @@ func TestProbeHandler_Traceroute(t *testing.T) {
 		WithArgs(
 			pgxmock.AnyArg(),
 			"traceroute",
-			"example.com",
-			"example.com",
+			pgxmock.AnyArg(), // target (may be resolved IP after SSRF check)
+			pgxmock.AnyArg(), // target_normalized
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
 			pgxmock.AnyArg(),
@@ -319,8 +319,8 @@ func TestProbeHandler_Diagnose(t *testing.T) {
 			WithArgs(
 				pgxmock.AnyArg(),
 				pgxmock.AnyArg(), // type varies
-				"example.com",
-				"example.com",
+				pgxmock.AnyArg(), // target (may be resolved IP after SSRF check)
+				pgxmock.AnyArg(), // target_normalized
 				pgxmock.AnyArg(),
 				pgxmock.AnyArg(),
 				pgxmock.AnyArg(),

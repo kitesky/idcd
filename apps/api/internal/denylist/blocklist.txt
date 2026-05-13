@@ -1,8 +1,0 @@
-# Static deny list for probe targets
-# One domain per line
-# This file is reserved for S2 backend management feature
-# For now, it's empty - all blocking is done via IP range checks
-
-# Example (commented out):
-# malicious-domain.com
-# phishing-site.example

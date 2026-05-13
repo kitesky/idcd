@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Badge, cn } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Badge, cn } from "@/components/ui"
 import { getNodes, type Node } from "@/lib/api"
 
 interface NodeSelectorProps {

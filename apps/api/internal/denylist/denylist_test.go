@@ -2,6 +2,7 @@ package denylist
 
 import (
 	"net"
+	"strings"
 	"testing"
 )
 
@@ -89,7 +90,7 @@ func TestCheckTarget(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := CheckTarget(tt.target)
+			_, err := CheckTarget(tt.target)
 
 			if tt.shouldError {
 				if err == nil {
@@ -207,8 +208,7 @@ func TestIsMetadataIP(t *testing.T) {
 	}
 }
 
-func TestResolveHost(t *testing.T) {
-	// Test with well-known public hostnames
+func TestResolveAllIPs(t *testing.T) {
 	publicHosts := []string{
 		"example.com",
 		"google.com",
@@ -217,26 +217,23 @@ func TestResolveHost(t *testing.T) {
 
 	for _, host := range publicHosts {
 		t.Run(host, func(t *testing.T) {
-			ip, err := resolveHost(host)
+			ips, err := resolveAllIPs(host)
 			if err != nil {
-				// Skip if DNS resolution fails (e.g., no network)
 				t.Skipf("DNS resolution failed (network issue?): %v", err)
 			}
-
-			if ip == nil {
-				t.Errorf("resolveHost(%s) returned nil IP without error", host)
+			if len(ips) == 0 {
+				t.Errorf("resolveAllIPs(%s) returned empty slice without error", host)
 			}
-
-			// Verify it's not a private IP (these domains should resolve to public IPs)
-			if isPrivateIP(ip) {
-				t.Errorf("resolveHost(%s) resolved to private IP %s", host, ip)
+			for _, ip := range ips {
+				if isPrivateIP(ip) {
+					t.Errorf("resolveAllIPs(%s) resolved to private IP %s", host, ip)
+				}
 			}
 		})
 	}
 
-	// Test with invalid hostname
 	t.Run("invalid hostname", func(t *testing.T) {
-		_, err := resolveHost("this-domain-definitely-does-not-exist-12345.invalid")
+		_, err := resolveAllIPs("this-domain-definitely-does-not-exist-12345.invalid")
 		if err == nil {
 			t.Error("expected error for invalid hostname, got nil")
 		}
@@ -267,7 +264,7 @@ func TestCheckTarget_PortParsing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := CheckTarget(tt.target)
+			_, err := CheckTarget(tt.target)
 
 			// For this test, we only care if parsing succeeds
 			// The target might still be rejected for other reasons (like being private)
@@ -344,7 +341,7 @@ func TestIsPrivateIP_Comprehensive(t *testing.T) {
 func TestCheckTarget_Integration(t *testing.T) {
 	// Test that localhost resolves and is blocked
 	t.Run("localhost blocks", func(t *testing.T) {
-		err := CheckTarget("localhost")
+		_, err := CheckTarget("localhost")
 		if err == nil {
 			t.Error("expected localhost to be blocked, got nil error")
 		}
@@ -355,7 +352,7 @@ func TestCheckTarget_Integration(t *testing.T) {
 
 	// Test that public domains are allowed (if DNS works)
 	t.Run("public domain allowed", func(t *testing.T) {
-		err := CheckTarget("example.com")
+		_, err := CheckTarget("example.com")
 		if err != nil {
 			t.Logf("Note: example.com blocked or DNS failed: %v", err)
 			// Don't fail the test - DNS might not be available in CI
@@ -363,18 +360,5 @@ func TestCheckTarget_Integration(t *testing.T) {
 	})
 }
 
-// contains checks if a string contains a substring (case-insensitive helper)
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && anyContains(s, substr)))
-}
-
-func anyContains(s, substr string) bool {
-	// Simple substring search
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}
+// contains is a thin wrapper kept for test readability.
+func contains(s, substr string) bool { return strings.Contains(s, substr) }

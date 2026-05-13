@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Input, Textarea, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Input, Textarea, Badge } from "@/components/ui"
 
 interface MatchResult {
   match: string

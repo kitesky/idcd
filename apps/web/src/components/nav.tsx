@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { Menu, X } from "lucide-react"
-import { Button } from "@idcd/ui"
+import { Button } from "@/components/ui"
 
 const navigation = [
   { name: "工具", href: "/tools" },

@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"runtime/debug"
 
-	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/lib/shared/logger"
 )
 
 // Recover middleware catches panics and returns a 500 error response.

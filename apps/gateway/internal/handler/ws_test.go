@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
-	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/lib/shared/logger"
 )
 
 func TestMessage_Marshal(t *testing.T) {

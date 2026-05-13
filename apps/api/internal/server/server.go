@@ -17,12 +17,13 @@ import (
 
 	"github.com/kite365/idcd/apps/api/internal/handler"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
-	"github.com/kite365/idcd/packages/auth/jwt"
-	"github.com/kite365/idcd/packages/auth/session"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
-	"github.com/kite365/idcd/packages/shared/config"
-	"github.com/kite365/idcd/packages/shared/stream"
-	"github.com/kite365/idcd/packages/shared/telemetry"
+	"github.com/kite365/idcd/lib/auth/jwt"
+	"github.com/kite365/idcd/lib/auth/session"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/ratelimit"
+	"github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/stream"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 // Server represents the HTTP server with its dependencies.
@@ -76,9 +77,14 @@ func (s *Server) setupMetrics() {
 		[]string{"method", "path"},
 	)
 
-	// Register metrics
-	prometheus.MustRegister(s.requestsTotal)
-	prometheus.MustRegister(s.requestDuration)
+	// Register metrics — tolerate duplicate registration (e.g., tests creating multiple Server instances).
+	for _, c := range []prometheus.Collector{s.requestsTotal, s.requestDuration} {
+		if err := prometheus.Register(c); err != nil {
+			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
+				panic("failed to register prometheus metric: " + err.Error())
+			}
+		}
+	}
 }
 
 // setupRouter configures the chi router with middleware and routes.
@@ -104,8 +110,8 @@ func (s *Server) setupRouter() {
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/deep", healthHandler.DeepHealth)
 
-	// Prometheus metrics endpoint
-	r.Handle("/metrics", promhttp.Handler())
+	// Prometheus metrics are served on a separate internal port (see startMetricsServer).
+	// Do NOT expose /metrics on the public router.
 
 	// CSP violation reporting endpoint
 	cspReportHandler := handler.NewCSPReportHandler(s.logger)
@@ -120,15 +126,24 @@ func (s *Server) setupRouter() {
 		sessSvc := session.NewService(s.redis)
 		q := idcdmain.New(s.pgxPool)
 
-		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc)
+		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret)
 		acctH := handler.NewAccountHandler(q)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
+		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
+		authLimiter := ratelimit.NewLimiter(s.redis, ratelimit.Config{
+			WindowSize:  time.Minute,
+			MaxRequests: 5,
+			KeyPrefix:   "rl:auth:",
+		})
+		authRateMW := middleware.RateLimit(authLimiter)
+
 		r.Route("/v1", func(r chi.Router) {
 			r.Route("/auth", func(r chi.Router) {
+				r.Use(authRateMW)
 				r.Post("/register", authH.Register)
 				r.Post("/login", authH.Login)
-				r.Post("/logout", authH.Logout)
+				r.With(authnMW).Post("/logout", authH.Logout)
 				r.Post("/verify-email", authH.VerifyEmail)
 				r.Post("/forgot-password", authH.ForgotPassword)
 				r.Post("/reset-password", authH.ResetPassword)
@@ -194,8 +209,8 @@ func (s *Server) metricsMiddleware() func(http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			start := time.Now()
 
-			// Wrap response writer to capture status
-			rw := &responseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+			// Wrap response writer to capture status — reuse middleware.StatusRecorder.
+			rw := &middleware.StatusRecorder{ResponseWriter: w, StatusCode: http.StatusOK}
 
 			// Process request
 			next.ServeHTTP(rw, r)
@@ -204,7 +219,7 @@ func (s *Server) metricsMiddleware() func(http.Handler) http.Handler {
 			duration := time.Since(start).Seconds()
 			method := r.Method
 			path := r.URL.Path
-			status := strconv.Itoa(rw.statusCode)
+			status := strconv.Itoa(rw.StatusCode)
 
 			s.requestsTotal.WithLabelValues(method, path, status).Inc()
 			s.requestDuration.WithLabelValues(method, path).Observe(duration)
@@ -212,32 +227,28 @@ func (s *Server) metricsMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-// responseWriter wraps http.ResponseWriter to capture status code.
-type responseWriter struct {
-	http.ResponseWriter
-	statusCode int
-	written    bool
-}
 
-func (rw *responseWriter) WriteHeader(code int) {
-	if !rw.written {
-		rw.statusCode = code
-		rw.written = true
-		rw.ResponseWriter.WriteHeader(code)
-	}
-}
-
-func (rw *responseWriter) Write(b []byte) (int, error) {
-	if !rw.written {
-		rw.WriteHeader(http.StatusOK)
-	}
-	return rw.ResponseWriter.Write(b)
-}
-
-// Start starts the HTTP server.
+// Start starts the HTTP server and the internal metrics server.
 func (s *Server) Start() error {
+	go s.startMetricsServer()
 	s.logger.Info("starting HTTP server", "addr", s.httpServer.Addr)
 	return s.httpServer.ListenAndServe()
+}
+
+// startMetricsServer exposes Prometheus metrics on an internal-only port (:9091).
+// This port must NOT be exposed to public traffic (bind to loopback or internal VPC only).
+func (s *Server) startMetricsServer() {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	metricsServer := &http.Server{
+		Addr:        ":9091",
+		Handler:     mux,
+		ReadTimeout: 5 * time.Second,
+	}
+	s.logger.Info("starting metrics server", "addr", metricsServer.Addr)
+	if err := metricsServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		s.logger.Error("metrics server error", "error", err)
+	}
 }
 
 // Shutdown gracefully shuts down the HTTP server.

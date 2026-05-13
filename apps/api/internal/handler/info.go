@@ -12,8 +12,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/response"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 // InfoHandler handles network information query endpoints.
@@ -97,25 +98,16 @@ func (h *InfoHandler) IP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve to IP if domain is provided
-	ip := query
-	if !isIP(query) {
-		resolvedIPs, err := net.LookupIP(query)
-		if err != nil {
-			response.Error(w, r, apperr.Validation("Invalid IP or domain", err.Error()))
-			return
-		}
-		if len(resolvedIPs) == 0 {
-			response.Error(w, r, apperr.NotFound("No IP address found for domain"))
-			return
-		}
-		ip = resolvedIPs[0].String()
-	}
-
-	// SSRF protection: block private IPs
-	if isPrivateIP(ip) {
-		response.Error(w, r, apperr.Forbidden("Query for private IP addresses is not allowed"))
+	// SSRF protection: resolve hostname and validate all returned IPs.
+	resolvedAddr, err := denylist.CheckTarget(query)
+	if err != nil {
+		response.Error(w, r, apperr.Forbidden(err.Error()))
 		return
+	}
+	// Extract the bare IP from the resolved address (strip port if present).
+	ip := resolvedAddr
+	if host, _, splitErr := net.SplitHostPort(resolvedAddr); splitErr == nil {
+		ip = host
 	}
 
 	// Query ip-api.com
@@ -331,17 +323,24 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Remove protocol prefix if present
+	// Normalise: strip protocol prefix and path.
 	query = strings.TrimPrefix(query, "https://")
 	query = strings.TrimPrefix(query, "http://")
-	// Remove path if present
 	if idx := strings.Index(query, "/"); idx != -1 {
 		query = query[:idx]
 	}
 
-	// Connect to port 443 with 10s timeout
+	// SSRF protection: resolve and validate before dialing.
+	// CheckTarget returns the pre-resolved IP to prevent DNS rebinding.
+	resolvedAddr, ssrfErr := denylist.CheckTarget(query + ":443")
+	if ssrfErr != nil {
+		response.Error(w, r, apperr.Forbidden(ssrfErr.Error()))
+		return
+	}
+
+	// Connect using the pre-resolved IP; preserve original hostname as SNI.
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
-	conn, err := tls.DialWithDialer(dialer, "tcp", query+":443", &tls.Config{
+	conn, err := tls.DialWithDialer(dialer, "tcp", resolvedAddr, &tls.Config{
 		InsecureSkipVerify: false,
 		ServerName:         query,
 	})

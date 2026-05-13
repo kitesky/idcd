@@ -1,10 +1,12 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { Button } from "@idcd/ui"
+import { Button } from "@/components/ui"
 import { ArrowLeft } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "服务条款 - idcd",
+  alternates: { canonical: "https://idcd.com/terms" },
+  robots: { index: false, follow: false },
   description: "idcd 服务条款",
 }
 

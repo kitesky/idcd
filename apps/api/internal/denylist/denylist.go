@@ -8,133 +8,124 @@ import (
 	"strings"
 )
 
-// CheckTarget validates whether a probe target is allowed.
-// Returns an error with the rejection reason, or nil if allowed.
-func CheckTarget(target string) error {
-	// Reject empty targets
+// CheckTarget validates whether a probe target is allowed and returns
+// the pre-resolved IP (as a string) to eliminate DNS rebinding (TOCTOU).
+// Callers MUST use the returned resolvedAddr instead of the original hostname
+// so that the same IP that passed the check is the one that gets dialed.
+// Returns ("", err) if the target is rejected.
+func CheckTarget(target string) (resolvedAddr string, err error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
-		return fmt.Errorf("target cannot be empty")
+		return "", fmt.Errorf("target cannot be empty")
 	}
 
-	// Extract host from target (remove port if present)
+	// Extract host and optional port.
 	host := target
 	port := ""
 	if strings.Contains(target, "]:") {
 		// IPv6 with port: [::1]:8080
 		lastColon := strings.LastIndex(target, ":")
-		host = target[:lastColon]
+		host = strings.Trim(target[:lastColon], "[]")
 		port = target[lastColon+1:]
-		// Remove brackets
-		host = strings.Trim(host, "[]")
 	} else if strings.Count(target, ":") == 1 {
 		// IPv4 or hostname with port: example.com:443 or 1.1.1.1:443
-		var err error
-		host, port, err = net.SplitHostPort(target)
-		if err != nil {
-			// If SplitHostPort fails, treat as host without port
+		var splitErr error
+		host, port, splitErr = net.SplitHostPort(target)
+		if splitErr != nil {
 			host = target
 			port = ""
 		}
-	} else if strings.Count(target, ":") > 1 {
-		// IPv6 without port: ::1 or 2001:db8::1
-		// Just use as-is
-		host = target
 	}
+	// else: bare IPv6 (multiple colons, no brackets) or plain hostname — host == target
 
-	// Validate port range if present
 	if port != "" {
-		portNum, err := strconv.Atoi(port)
-		if err != nil || portNum < 1 || portNum > 65535 {
-			return fmt.Errorf("invalid port: must be between 1 and 65535")
+		portNum, atoiErr := strconv.Atoi(port)
+		if atoiErr != nil || portNum < 1 || portNum > 65535 {
+			return "", fmt.Errorf("invalid port: must be between 1 and 65535")
 		}
 	}
 
-	// Try to parse as IP first
-	ip := net.ParseIP(host)
-	if ip != nil {
-		// It's an IP address
-		// Check metadata service first (more specific error message)
+	// If the host is a literal IP address, validate it directly.
+	if ip := net.ParseIP(host); ip != nil {
 		if isMetadataIP(ip) {
-			return fmt.Errorf("cannot probe cloud metadata service")
+			return "", fmt.Errorf("cannot probe cloud metadata service")
 		}
 		if isPrivateIP(ip) {
-			return fmt.Errorf("cannot probe private IP addresses")
+			return "", fmt.Errorf("cannot probe private IP addresses")
 		}
-		return nil
+		resolved := ip.String()
+		if port != "" {
+			resolved = net.JoinHostPort(resolved, port)
+		}
+		return resolved, nil
 	}
 
-	// It's a hostname, resolve it
-	resolvedIP, err := resolveHost(host)
-	if err != nil {
-		// If DNS resolution fails, allow it (will fail at probe stage with clear error)
-		// This prevents blocking valid hostnames due to temporary DNS issues
-		return nil
+	// Hostname: resolve and check ALL returned IPs to prevent partial-alias bypass.
+	ips, resolveErr := resolveAllIPs(host)
+	if resolveErr != nil {
+		// DNS failure: allow through; the probe agent will fail with a clear error.
+		return target, nil
+	}
+	for _, ip := range ips {
+		if isMetadataIP(ip) {
+			return "", fmt.Errorf("hostname resolves to cloud metadata service")
+		}
+		if isPrivateIP(ip) {
+			return "", fmt.Errorf("hostname resolves to private IP address")
+		}
 	}
 
-	// Check resolved IP (metadata service first, then private)
-	if isMetadataIP(resolvedIP) {
-		return fmt.Errorf("hostname resolves to cloud metadata service")
+	// Return the first resolved IP so the caller can dial it directly,
+	// avoiding a second DNS lookup that could return a different address.
+	resolved := ips[0].String()
+	if port != "" {
+		resolved = net.JoinHostPort(resolved, port)
 	}
-	if isPrivateIP(resolvedIP) {
-		return fmt.Errorf("hostname resolves to private IP address")
-	}
-
-	return nil
+	return resolved, nil
 }
 
-// isPrivateIP checks if an IP address is private, reserved, or should be denied.
-// Covers RFC1918, loopback, link-local, IPv6 private ranges, and other reserved blocks.
-func isPrivateIP(ip net.IP) bool {
-	// Check for loopback (127.0.0.0/8 for IPv4, ::1 for IPv6)
-	if ip.IsLoopback() {
-		return true
-	}
-
-	// Check for link-local (169.254.0.0/16 for IPv4, fe80::/10 for IPv6)
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Define all private and reserved ranges
-	privateRanges := []string{
-		// RFC1918 private IPv4
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-
-		// IPv6 unique local addresses (ULA)
-		"fc00::/7",
-
-		// Additional reserved/special ranges
-		"0.0.0.0/8",          // Invalid/this network
-		"100.64.0.0/10",      // Carrier-grade NAT (RFC6598)
-		"192.0.2.0/24",       // TEST-NET-1 (RFC5737)
-		"198.51.100.0/24",    // TEST-NET-2 (RFC5737)
-		"203.0.113.0/24",     // TEST-NET-3 (RFC5737)
-		"224.0.0.0/4",        // Multicast (RFC5771)
-		"240.0.0.0/4",        // Reserved for future use (RFC1112)
+// privateNets holds pre-parsed CIDR blocks for private/reserved IP ranges.
+// Parsing once at init avoids repeated allocations on every probe request.
+var privateNets = func() []*net.IPNet {
+	cidrs := []string{
+		"10.0.0.0/8",         // RFC1918
+		"172.16.0.0/12",      // RFC1918
+		"192.168.0.0/16",     // RFC1918
+		"fc00::/7",           // IPv6 ULA
+		"0.0.0.0/8",          // this-network
+		"100.64.0.0/10",      // CGN (RFC6598)
+		"192.0.2.0/24",       // TEST-NET-1
+		"198.51.100.0/24",    // TEST-NET-2
+		"203.0.113.0/24",     // TEST-NET-3
+		"224.0.0.0/4",        // Multicast
+		"240.0.0.0/4",        // Reserved
 		"255.255.255.255/32", // Broadcast
-
-		// IPv6 special ranges
-		"::/128",       // Unspecified
-		"::1/128",      // Loopback (also caught by IsLoopback, but explicit)
-		"fe80::/10",    // Link-local (also caught above, but explicit)
-		"ff00::/8",     // Multicast
-		"2001:db8::/32", // Documentation (RFC3849)
+		"::/128",             // Unspecified
+		"::1/128",            // IPv6 loopback
+		"fe80::/10",          // IPv6 link-local
+		"ff00::/8",           // IPv6 multicast
+		"2001:db8::/32",      // Documentation
 	}
-
-	// Check if IP falls within any private/reserved range
-	for _, cidr := range privateRanges {
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
 		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
+		if err == nil {
+			nets = append(nets, ipNet)
 		}
-		if ipNet.Contains(ip) {
+	}
+	return nets
+}()
+
+// isPrivateIP reports whether ip is private, reserved, or otherwise denied.
+func isPrivateIP(ip net.IP) bool {
+	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
+		return true
+	}
+	for _, n := range privateNets {
+		if n.Contains(ip) {
 			return true
 		}
 	}
-
 	return false
 }
 
@@ -153,19 +144,14 @@ func isMetadataIP(ip net.IP) bool {
 	return false
 }
 
-// resolveHost resolves a hostname to its first IP address.
-// Returns an error if resolution fails.
-func resolveHost(host string) (net.IP, error) {
+// resolveAllIPs resolves a hostname and returns all IP addresses.
+func resolveAllIPs(host string) ([]net.IP, error) {
 	ips, err := net.LookupIP(host)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve hostname: %w", err)
 	}
-
 	if len(ips) == 0 {
 		return nil, fmt.Errorf("hostname resolved to no IP addresses")
 	}
-
-	// Return the first IP
-	// Note: In production, might want to check all IPs, but first is sufficient for validation
-	return ips[0], nil
+	return ips, nil
 }

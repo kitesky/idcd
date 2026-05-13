@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -13,10 +12,11 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/denylist"
+	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
-	"github.com/kite365/idcd/packages/shared/apperr"
-	"github.com/kite365/idcd/packages/shared/idgen"
-	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/idgen"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
 
 // ProbeHandler handles probe task endpoints.
@@ -100,8 +100,9 @@ func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate and check target (includes SSRF protection)
-	if err := denylist.CheckTarget(req.Target); err != nil {
+	// Validate target and get pre-resolved IP to prevent DNS rebinding.
+	resolvedTarget, err := denylist.CheckTarget(req.Target)
+	if err != nil {
 		response.Error(w, r, apperr.Validation(err.Error(), ""))
 		return
 	}
@@ -114,7 +115,7 @@ func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
 	taskIDs := make([]string, 0, len(probeTypes))
 
 	for _, probeType := range probeTypes {
-		taskID, err := h.createProbeTask(ctx, r, probeType, req.Target, req.Nodes, req.Params)
+		taskID, err := h.createProbeTask(ctx, r, probeType, resolvedTarget, req.Nodes, req.Params)
 		if err != nil {
 			response.Error(w, r, apperr.Internal("Failed to create probe task", err))
 			return
@@ -142,14 +143,15 @@ func (h *ProbeHandler) handleProbe(w http.ResponseWriter, r *http.Request, probe
 		return
 	}
 
-	// Validate and check target (includes SSRF protection)
-	if err := denylist.CheckTarget(req.Target); err != nil {
-		response.Error(w, r, apperr.Validation(err.Error(), ""))
+	// Validate target and get pre-resolved IP to prevent DNS rebinding.
+	resolvedTarget, checkErr := denylist.CheckTarget(req.Target)
+	if checkErr != nil {
+		response.Error(w, r, apperr.Validation(checkErr.Error(), ""))
 		return
 	}
 
 	// Create probe task
-	taskID, err := h.createProbeTask(ctx, r, probeType, req.Target, req.Nodes, req.Params)
+	taskID, err := h.createProbeTask(ctx, r, probeType, resolvedTarget, req.Nodes, req.Params)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("Failed to create probe task", err))
 		return
@@ -258,25 +260,7 @@ func normalizeTarget(target string) string {
 	return normalized
 }
 
-// getClientIP extracts the real client IP from the request.
+// getClientIP delegates to the middleware package so proxy-header trust logic is centralised.
 func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header first (set by proxies)
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// X-Forwarded-For may contain multiple IPs, take the first one
-		ips := strings.Split(xff, ",")
-		return strings.TrimSpace(ips[0])
-	}
-
-	// Check X-Real-IP header
-	if xri := r.Header.Get("X-Real-IP"); xri != "" {
-		return xri
-	}
-
-	// Fallback to RemoteAddr
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-
-	return ip
+	return middleware.ClientIP(r)
 }

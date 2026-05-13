@@ -1,6 +1,0 @@
-packages:
-  - 'apps/web'
-  - 'apps/docs'
-  - 'apps/admin'
-  - 'apps/status'
-  - 'packages/ui'

@@ -17,8 +17,8 @@ import (
 	"github.com/kite365/idcd/apps/agent/internal/config"
 	"github.com/kite365/idcd/apps/agent/internal/probe"
 	"github.com/kite365/idcd/apps/agent/internal/task"
-	"github.com/kite365/idcd/packages/shared/logger"
-	"github.com/kite365/idcd/packages/shared/telemetry"
+	"github.com/kite365/idcd/lib/shared/logger"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 // Agent represents the main agent process.
@@ -44,15 +44,20 @@ func main() {
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-agent",
 		ServiceVersion: "v1.0.0",
-		OTLPEndpoint:   "", // S1: stdout exporter
-		SamplingRate:   0.1,
-		Enabled:        true,
+		OTLPEndpoint:   cfg.Observability.Telemetry.OTLPEndpoint,
+		SamplingRate:   cfg.Observability.Telemetry.SamplingRate,
+		Enabled:        cfg.Observability.Telemetry.Enabled,
 	}
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
 		log.Error("failed to init telemetry", "error", err)
+		os.Exit(1)
 	}
-	defer shutdownTelemetry(context.Background())
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTelemetry(ctx)
+	}()
 
 	// Create agent instance
 	agent, err := NewAgent(cfg, log)

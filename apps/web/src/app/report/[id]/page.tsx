@@ -1,7 +1,7 @@
 "use client"
 
 import { useParams } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle, Button } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Button } from "@/components/ui"
 import { Share2, FileDown, Clock } from "lucide-react"
 import { useState } from "react"
 

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Textarea, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Textarea, Badge } from "@/components/ui"
 
 interface JWTData {
   header: any

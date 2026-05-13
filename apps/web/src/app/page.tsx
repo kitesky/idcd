@@ -16,7 +16,7 @@ import {
   Route,
   Lock
 } from "lucide-react"
-import { Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge } from "@idcd/ui"
+import { Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge } from "@/components/ui"
 
 const features = [
   {

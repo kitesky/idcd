@@ -3,20 +3,23 @@ package config
 
 import (
 	"time"
+
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 )
 
 // Config holds the Gateway service configuration.
 type Config struct {
-	ListenAddr       string        `yaml:"listen_addr"`        // e.g. ":8081"
-	TLSCert          string        `yaml:"tls_cert"`           // path to TLS cert (optional)
-	TLSKey           string        `yaml:"tls_key"`            // path to TLS key (optional)
-	RedisAddr        string        `yaml:"redis_addr"`         // Redis address for streams
-	RedisPassword    string        `yaml:"redis_password"`     // Redis password
-	RedisDB          int           `yaml:"redis_db"`           // Redis DB number
-	PGDSN            string        `yaml:"pg_dsn"`             // PostgreSQL DSN (for future use)
-	HeartbeatTimeout time.Duration `yaml:"heartbeat_timeout"`  // e.g. 30s
-	MaxConnections   int           `yaml:"max_connections"`    // max concurrent WSS connections
-	Env              string        `yaml:"env"`                // development | staging | production
+	ListenAddr       string                           `yaml:"listen_addr"`
+	TLSCert          string                           `yaml:"tls_cert"`
+	TLSKey           string                           `yaml:"tls_key"`
+	RedisAddr        string                           `yaml:"redis_addr"`
+	RedisPassword    string                           `yaml:"redis_password"`
+	RedisDB          int                              `yaml:"redis_db"`
+	PGDSN            string                           `yaml:"pg_dsn"`
+	HeartbeatTimeout time.Duration                    `yaml:"heartbeat_timeout"`
+	MaxConnections   int                              `yaml:"max_connections"`
+	Env              string                           `yaml:"env"`
+	Observability    sharedconfig.ObservabilityConfig `yaml:"observability"`
 }
 
 // Default returns a Config with sensible defaults for development.

@@ -3,6 +3,7 @@ package handler
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
@@ -16,12 +17,13 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
-	"github.com/kite365/idcd/packages/auth/password"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
-	"github.com/kite365/idcd/packages/db/repository"
-	"github.com/kite365/idcd/packages/shared/apperr"
-	"github.com/kite365/idcd/packages/shared/idgen"
+	"github.com/kite365/idcd/lib/auth/password"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/db/repository"
+	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
 const (
@@ -62,14 +64,16 @@ type SessionStorer interface {
 
 // AuthHandler implements all auth and account endpoints.
 type AuthHandler struct {
-	q       AuthQuerier
-	jwtSvc  JWTSigner
-	sessSvc SessionStorer
+	q         AuthQuerier
+	jwtSvc    JWTSigner
+	sessSvc   SessionStorer
+	otpSecret []byte // HMAC key for OTP hashing
 }
 
 // NewAuthHandler creates an AuthHandler wired to the given services.
-func NewAuthHandler(q AuthQuerier, jwtSvc JWTSigner, sessSvc SessionStorer) *AuthHandler {
-	return &AuthHandler{q: q, jwtSvc: jwtSvc, sessSvc: sessSvc}
+// otpSecret must be a strong random secret (≥ 32 bytes); the JWT secret is a good choice.
+func NewAuthHandler(q AuthQuerier, jwtSvc JWTSigner, sessSvc SessionStorer, otpSecret string) *AuthHandler {
+	return &AuthHandler{q: q, jwtSvc: jwtSvc, sessSvc: sessSvc, otpSecret: []byte(otpSecret)}
 }
 
 // --- Register ---
@@ -133,17 +137,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, sessionID, err := h.issueToken(r.Context(), user.ID)
+	token, _, err := h.issueToken(r.Context(), user.ID)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
 	}
-	_ = sessionID
 
+	setAuthCookie(w, r, token)
 	response.JSON(w, r, http.StatusCreated, authResponse{
-		AccessToken: token,
-		ExpiresIn:   int(accessTokenTTL.Seconds()),
-		UserID:      user.ID,
+		ExpiresIn: int(accessTokenTTL.Seconds()),
+		UserID:    user.ID,
 	})
 }
 
@@ -187,19 +190,18 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, sessionID, err := h.issueToken(r.Context(), user.ID)
+	token, _, err := h.issueToken(r.Context(), user.ID)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
 	}
-	_ = sessionID
 
 	_ = h.q.UpdateUserLastLogin(r.Context(), idcdmain.UpdateUserLastLoginParams{ID: user.ID})
 
+	setAuthCookie(w, r, token)
 	response.JSON(w, r, http.StatusOK, authResponse{
-		AccessToken: token,
-		ExpiresIn:   int(accessTokenTTL.Seconds()),
-		UserID:      user.ID,
+		ExpiresIn: int(accessTokenTTL.Seconds()),
+		UserID:    user.ID,
 	})
 }
 
@@ -207,16 +209,39 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 // Logout handles POST /v1/auth/logout (requires auth middleware).
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
-	// The session ID is embedded in the JWT claims; the middleware has already
-	// validated the JWT. We extract the session ID from the token again.
-	// For simplicity in S1, just delete all sessions (the SessionID isn't
-	// directly accessible here without re-parsing). We use the Authorization
-	// header to get the session ID from claims.
-	//
-	// Better approach: store session_id in context (Authn middleware can do this).
-	// For S1: accept the limitation that logout doesn't revoke the short-lived JWT.
-
+	sessionID := middleware.SessionIDFromContext(r.Context())
+	if sessionID != "" {
+		_ = h.sessSvc.Delete(r.Context(), sessionID)
+	}
+	clearAuthCookie(w, r)
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "logged out"})
+}
+
+// setAuthCookie issues the JWT as an HttpOnly, Secure, SameSite=Strict cookie.
+// Storing the token in a cookie (not localStorage) prevents XSS-based token theft.
+func setAuthCookie(w http.ResponseWriter, r *http.Request, token string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    token,
+		Path:     "/",
+		MaxAge:   int(accessTokenTTL.Seconds()),
+		HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		SameSite: http.SameSiteStrictMode,
+	})
+}
+
+// clearAuthCookie expires the access_token cookie on logout.
+func clearAuthCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     "access_token",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
+		SameSite: http.SameSiteStrictMode,
+	})
 }
 
 // --- Verify Email ---
@@ -264,10 +289,6 @@ type forgotPasswordRequest struct {
 	Email string `json:"email"`
 }
 
-type otpIssuedResponse struct {
-	OtpID   string `json:"otp_id"`
-	Message string `json:"message"`
-}
 
 // ForgotPassword handles POST /v1/auth/forgot-password.
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
@@ -281,12 +302,14 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	const sameMsg = "if the email exists, a reset code has been sent"
+
 	user, err := h.q.GetUserByEmail(r.Context(), req.Email)
 	if err != nil {
-		// Do not reveal whether the email exists.
-		response.JSON(w, r, http.StatusOK, map[string]string{
-			"message": "if the email exists, a reset code has been sent",
-		})
+		// Timing equalisation: sleep approximately as long as issueOTP would take
+		// so that attackers cannot enumerate registered emails via response-time differences.
+		time.Sleep(50 * time.Millisecond)
+		response.JSON(w, r, http.StatusOK, map[string]string{"message": sameMsg})
 		return
 	}
 
@@ -295,13 +318,9 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("failed to issue OTP", err))
 		return
 	}
-
-	// In production: send email via notifier. For S1, otp_id is returned
-	// directly so the frontend can submit it.
-	response.JSON(w, r, http.StatusOK, otpIssuedResponse{
-		OtpID:   otpID,
-		Message: "reset code sent to email",
-	})
+	// otp_id must only travel via email to the user — never returned in the API response.
+	_ = otpID
+	response.JSON(w, r, http.StatusOK, map[string]string{"message": sameMsg})
 }
 
 // --- Reset Password ---
@@ -377,7 +396,7 @@ func (h *AuthHandler) issueOTP(ctx context.Context, userID, otpType string, ttl 
 	if err != nil {
 		return "", "", err
 	}
-	codeHash := hashOTP(code)
+	codeHash := h.hashOTP(code)
 	otpID = idgen.New("otp")
 
 	expiresAt := pgtype.Timestamptz{}
@@ -418,7 +437,7 @@ func (h *AuthHandler) verifyOTP(ctx context.Context, userID, otpID, code, otpTyp
 		return apperr.Unauthorized("code expired")
 	}
 
-	if hashOTP(code) != otp.CodeHash {
+	if h.hashOTP(code) != otp.CodeHash {
 		_ = h.q.IncrementUserOTPAttempts(ctx, otp.ID)
 		return apperr.Unauthorized("invalid code")
 	}
@@ -436,7 +455,8 @@ func generateOTP() (string, error) {
 	return fmt.Sprintf("%06d", n.Int64()), nil
 }
 
-func hashOTP(code string) string {
-	h := sha256.Sum256([]byte(code))
-	return hex.EncodeToString(h[:])
+func (h *AuthHandler) hashOTP(code string) string {
+	mac := hmac.New(sha256.New, h.otpSecret)
+	mac.Write([]byte(code))
+	return hex.EncodeToString(mac.Sum(nil))
 }

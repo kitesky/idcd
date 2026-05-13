@@ -7,11 +7,16 @@ import "net/http"
 func SecurityHeaders(env string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Content Security Policy - S1 uses report-only mode
+			// Enforced CSP — API only serves JSON; no scripts or styles needed.
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'none'; "+
+					"frame-ancestors 'none'; "+
+					"report-uri /v1/csp-report")
+			// Report-Only retains the broader policy for monitoring during transition.
 			w.Header().Set("Content-Security-Policy-Report-Only",
 				"default-src 'self'; "+
-					"script-src 'self' 'unsafe-inline' 'unsafe-eval'; "+
-					"style-src 'self' 'unsafe-inline'; "+
+					"script-src 'self'; "+
+					"style-src 'self'; "+
 					"img-src 'self' data: https:; "+
 					"connect-src 'self' https://api.idcd.com; "+
 					"font-src 'self' data:; "+
@@ -21,8 +26,8 @@ func SecurityHeaders(env string) func(http.Handler) http.Handler {
 			w.Header().Set("Permissions-Policy",
 				"camera=(), microphone=(), geolocation=(), payment=()")
 
-			// HTTP Strict Transport Security - only in production
-			if env == "production" {
+			// HTTP Strict Transport Security — set for non-dev environments.
+			if env != "development" {
 				w.Header().Set("Strict-Transport-Security",
 					"max-age=31536000; includeSubDomains")
 			}

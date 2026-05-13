@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
 	"strings"
@@ -113,6 +114,5 @@ func validateCSRFToken(r *http.Request) bool {
 		return false
 	}
 
-	// Constant-time comparison to prevent timing attacks
-	return headerToken == cookieToken
+	return subtle.ConstantTimeCompare([]byte(headerToken), []byte(cookieToken)) == 1
 }

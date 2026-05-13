@@ -1,15 +1,14 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
 export async function apiRequest<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const token = typeof window !== "undefined" ? localStorage.getItem("access_token") : null
   const headers: HeadersInit = { "Content-Type": "application/json" }
-  if (token) {
-    headers["Authorization"] = `Bearer ${token}`
-  }
 
   const res = await fetch(API_BASE + path, {
     ...options,
-    headers: { ...headers, ...options?.headers }
+    // credentials: "include" sends the HttpOnly access_token cookie automatically.
+    // Tokens are no longer stored in localStorage.
+    credentials: "include",
+    headers: { ...headers, ...options?.headers },
   })
 
   if (!res.ok) {

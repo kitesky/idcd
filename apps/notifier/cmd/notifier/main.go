@@ -5,13 +5,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/kite365/idcd/apps/notifier/internal/config"
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
 	"github.com/kite365/idcd/apps/notifier/internal/worker"
-	"github.com/kite365/idcd/packages/shared/logger"
-	"github.com/kite365/idcd/packages/shared/telemetry"
+	"github.com/kite365/idcd/lib/shared/logger"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 func main() {
@@ -25,15 +26,20 @@ func main() {
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-notifier",
 		ServiceVersion: "v1.0.0",
-		OTLPEndpoint:   "", // S1: stdout exporter
-		SamplingRate:   0.1,
-		Enabled:        true,
+		OTLPEndpoint:   cfg.Observability.Telemetry.OTLPEndpoint,
+		SamplingRate:   cfg.Observability.Telemetry.SamplingRate,
+		Enabled:        cfg.Observability.Telemetry.Enabled,
 	}
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
 		log.Error("failed to init telemetry", "error", err)
+		os.Exit(1)
 	}
-	defer shutdownTelemetry(context.Background())
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTelemetry(ctx)
+	}()
 
 	// Initialize templates
 	templates, err := template.New()

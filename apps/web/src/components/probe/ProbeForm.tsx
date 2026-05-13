@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Input, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Input, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui"
 
 export type ProbeType = "http" | "ping" | "tcp" | "dns" | "traceroute"
 

@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kite365/idcd/packages/auth/jwt"
-	"github.com/kite365/idcd/packages/auth/session"
+	"github.com/kite365/idcd/lib/auth/jwt"
+	"github.com/kite365/idcd/lib/auth/session"
 )
 
 // --- mock JWT verifier ---

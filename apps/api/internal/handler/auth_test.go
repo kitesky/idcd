@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -12,9 +11,9 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
-	"github.com/kite365/idcd/packages/auth/password"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
-	"github.com/kite365/idcd/packages/db/repository"
+	"github.com/kite365/idcd/lib/auth/password"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/db/repository"
 )
 
 // --- mocks ---
@@ -171,7 +170,7 @@ func (m *mockSession) Delete(_ context.Context, _ string) error                 
 // helper
 
 func newTestAuthHandler() *AuthHandler {
-	return NewAuthHandler(newMockAuthQuerier(), &mockJWT{token: "tok.en.here"}, &mockSession{})
+	return NewAuthHandler(newMockAuthQuerier(), &mockJWT{token: "tok.en.here"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!")
 }
 
 // --- tests ---
@@ -190,15 +189,16 @@ func TestRegister_success(t *testing.T) {
 		t.Errorf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	// response.JSON wraps data in {"data": {...}, "request_id": "..."}
-	var wrapped struct {
-		Data authResponse `json:"data"`
+	// Token is now delivered via HttpOnly cookie, not in the response body.
+	cookie := rr.Result().Cookies()
+	var hasTokenCookie bool
+	for _, c := range cookie {
+		if c.Name == "access_token" && c.Value != "" {
+			hasTokenCookie = true
+		}
 	}
-	if err := json.Unmarshal(rr.Body.Bytes(), &wrapped); err != nil {
-		t.Fatalf("decode response: %v", err)
-	}
-	if wrapped.Data.AccessToken == "" {
-		t.Errorf("expected access_token in response, body: %s", rr.Body.String())
+	if !hasTokenCookie {
+		t.Errorf("expected access_token cookie, got cookies: %v, body: %s", cookie, rr.Body.String())
 	}
 }
 
@@ -245,7 +245,7 @@ func TestLogin_success(t *testing.T) {
 		Timezone:     "Asia/Shanghai",
 	}
 
-	h := NewAuthHandler(q, &mockJWT{token: "tok.en.here"}, &mockSession{})
+	h := NewAuthHandler(q, &mockJWT{token: "tok.en.here"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!")
 
 	body := `{"email":"user@example.com","password":"Password123"}`
 	req := httptest.NewRequest("POST", "/v1/auth/login", strings.NewReader(body))
@@ -271,7 +271,7 @@ func TestLogin_wrongPassword(t *testing.T) {
 		Timezone:     "Asia/Shanghai",
 	}
 
-	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{})
+	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!")
 
 	body := `{"email":"user@example.com","password":"WrongPassword1"}`
 	req := httptest.NewRequest("POST", "/v1/auth/login", strings.NewReader(body))
@@ -341,7 +341,7 @@ func TestResetPassword_success(t *testing.T) {
 		Timezone:     "Asia/Shanghai",
 	}
 
-	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{})
+	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!")
 
 	// Manually issue an OTP.
 	ctx := context.Background()

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui"
 import { Loader2, CheckCircle2, XCircle, Circle, Clock } from "lucide-react"
 import {
   probeDns,

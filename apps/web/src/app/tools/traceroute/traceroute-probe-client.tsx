@@ -5,7 +5,7 @@ import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
 import { probeTraceroute, type ProbeResult } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 
 export default function TracerouteProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])

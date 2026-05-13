@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge, cn } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge, cn } from "@/components/ui"
 
 type TabType = 'encode' | 'decode'
 

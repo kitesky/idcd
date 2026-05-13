@@ -1,6 +1,6 @@
 "use client"
 
-import { Card, CardContent, CardHeader, CardTitle, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
 import type { ProbeResult } from "@/lib/api"
 
 interface ProbeResultsProps {

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge, Input, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui"
 import QRCode from "qrcode"
 
 interface QROptions {

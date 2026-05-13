@@ -20,7 +20,7 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
-} from "@idcd/ui"
+} from "@/components/ui"
 import { apiRequest } from "@/lib/api"
 
 const profileSchema = z.object({
@@ -55,12 +55,6 @@ export default function ProfilePage() {
   })
 
   useEffect(() => {
-    const token = localStorage.getItem("access_token")
-    if (!token) {
-      router.push("/auth/login" as any)
-      return
-    }
-
     async function loadProfile() {
       try {
         const profile = await apiRequest<UserProfile>("/v1/account/profile")
@@ -71,8 +65,7 @@ export default function ProfilePage() {
         })
       } catch (err) {
         console.error("Failed to load profile:", err)
-        localStorage.removeItem("access_token")
-        localStorage.removeItem("refresh_token")
+        // Cookie may be expired — redirect to login.
         router.push("/auth/login" as any)
       }
     }
@@ -117,8 +110,7 @@ export default function ProfilePage() {
         method: "DELETE",
       })
 
-      localStorage.removeItem("access_token")
-      localStorage.removeItem("refresh_token")
+      // Cookie is cleared server-side by the delete-account endpoint.
       router.push("/")
     } catch (err) {
       setError(err instanceof Error ? err.message : "删除账号失败")

@@ -1,10 +1,11 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { Button, Card, CardContent, CardHeader, CardTitle } from "@idcd/ui"
-import { ArrowLeft, Globe, Zap, Shield, Github, Mail } from "lucide-react"
+import { Button, Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
+import { ArrowLeft, Globe, Zap, Shield, GitBranch, Mail } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "关于 idcd - 全球网络诊断平台",
+  alternates: { canonical: "https://idcd.com/about" },
   description: "idcd 是专业的多节点网络诊断平台，提供全球拨测、DNS/SSL/IP 查询、一键诊断等功能",
 }
 
@@ -106,7 +107,7 @@ export default function AboutPage() {
             </p>
             <ul className="list-disc list-inside space-y-2 ml-4">
               <li><strong>后端</strong>：Go 语言开发，提供高性能的 API 服务和拨测引擎</li>
-              <li><strong>前端</strong>：Next.js 16 (App Router) + TypeScript + shadcn/ui，提供流畅的用户界面</li>
+              <li><strong>前端</strong>：Next.js (App Router) + TypeScript + shadcn/ui，提供流畅的用户界面</li>
               <li><strong>数据库</strong>：PostgreSQL 16，支持多 schema 数据隔离</li>
               <li><strong>缓存</strong>：Redis 7，用于会话管理和高频查询优化</li>
               <li><strong>安全</strong>：KMS 签名系统、TLS 1.3 加密传输、多层安全防护</li>
@@ -154,7 +155,7 @@ export default function AboutPage() {
               </div>
 
               <div className="flex items-center gap-3 text-muted-foreground">
-                <Github className="h-5 w-5 text-primary" />
+                <GitBranch className="h-5 w-5 text-primary" />
                 <div>
                   <p className="text-sm font-medium text-foreground">GitHub</p>
                   <a

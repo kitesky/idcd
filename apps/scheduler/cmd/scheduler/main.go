@@ -16,9 +16,9 @@ import (
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
 	"github.com/kite365/idcd/apps/scheduler/internal/queue"
 	"github.com/kite365/idcd/apps/scheduler/internal/scheduler"
-	"github.com/kite365/idcd/packages/db"
-	"github.com/kite365/idcd/packages/shared/stream"
-	"github.com/kite365/idcd/packages/shared/telemetry"
+	"github.com/kite365/idcd/lib/db"
+	"github.com/kite365/idcd/lib/shared/stream"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 func main() {
@@ -44,15 +44,20 @@ func run() error {
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-scheduler",
 		ServiceVersion: "v1.0.0",
-		OTLPEndpoint:   "", // S1: stdout exporter
-		SamplingRate:   0.1,
-		Enabled:        true,
+		OTLPEndpoint:   cfg.Observability.Telemetry.OTLPEndpoint,
+		SamplingRate:   cfg.Observability.Telemetry.SamplingRate,
+		Enabled:        cfg.Observability.Telemetry.Enabled,
 	}
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
 		log.Printf("[telemetry] failed to init: %v", err)
+		os.Exit(1)
 	}
-	defer shutdownTelemetry(context.Background())
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTelemetry(ctx)
+	}()
 
 	// Create Redis client
 	rdb := redis.NewClient(&redis.Options{

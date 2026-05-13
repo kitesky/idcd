@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge } from "@/components/ui"
 import CryptoJS from "crypto-js"
 
 type HashAlgorithm = 'MD5' | 'SHA1' | 'SHA256' | 'SHA512'

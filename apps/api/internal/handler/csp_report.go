@@ -7,7 +7,7 @@ import (
 	"net/http"
 
 	"github.com/kite365/idcd/apps/api/internal/response"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 // CSPReportHandler handles Content Security Policy violation reports.

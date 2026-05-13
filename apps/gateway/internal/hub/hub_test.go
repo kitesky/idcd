@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/lib/shared/logger"
 )
 
 func TestNew(t *testing.T) {

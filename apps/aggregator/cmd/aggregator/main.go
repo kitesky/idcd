@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 
@@ -15,8 +16,8 @@ import (
 	"github.com/kite365/idcd/apps/aggregator/internal/consumer"
 	"github.com/kite365/idcd/apps/aggregator/internal/dedup"
 	"github.com/kite365/idcd/apps/aggregator/internal/processor"
-	"github.com/kite365/idcd/packages/db"
-	"github.com/kite365/idcd/packages/shared/telemetry"
+	"github.com/kite365/idcd/lib/db"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 func main() {
@@ -28,15 +29,20 @@ func main() {
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-aggregator",
 		ServiceVersion: "v1.0.0",
-		OTLPEndpoint:   "", // S1: stdout exporter
-		SamplingRate:   0.1,
-		Enabled:        true,
+		OTLPEndpoint:   cfg.Observability.Telemetry.OTLPEndpoint,
+		SamplingRate:   cfg.Observability.Telemetry.SamplingRate,
+		Enabled:        cfg.Observability.Telemetry.Enabled,
 	}
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
 		logger.Error("failed to init telemetry", "error", err)
+		os.Exit(1)
 	}
-	defer shutdownTelemetry(context.Background())
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTelemetry(ctx)
+	}()
 
 	// PostgreSQL pool
 	pool, err := db.NewPool(context.Background(), db.Config{

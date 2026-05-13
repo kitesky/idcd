@@ -15,7 +15,7 @@ import {
   FormItem,
   FormLabel,
   FormMessage,
-} from "@idcd/ui"
+} from "@/components/ui"
 import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
@@ -44,16 +44,11 @@ export default function LoginPage() {
     setError(null)
 
     try {
-      const response = await apiRequest<{ access_token: string; refresh_token: string }>(
-        "/v1/auth/login",
-        {
-          method: "POST",
-          body: JSON.stringify(values),
-        }
-      )
-
-      localStorage.setItem("access_token", response.access_token)
-      localStorage.setItem("refresh_token", response.refresh_token)
+      // The server sets an HttpOnly cookie — no token handling needed on the client.
+      await apiRequest("/v1/auth/login", {
+        method: "POST",
+        body: JSON.stringify(values),
+      })
 
       router.push("/app/dashboard" as any)
     } catch (err) {

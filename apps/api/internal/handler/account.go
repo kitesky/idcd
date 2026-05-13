@@ -7,8 +7,8 @@ import (
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 // AccountQuerier is the subset of sqlc Queries used by AccountHandler.

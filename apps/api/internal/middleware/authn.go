@@ -7,14 +7,17 @@ import (
 	"strings"
 
 	"github.com/kite365/idcd/apps/api/internal/response"
-	"github.com/kite365/idcd/packages/auth/jwt"
-	"github.com/kite365/idcd/packages/auth/session"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/auth/jwt"
+	"github.com/kite365/idcd/lib/auth/session"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 type contextKey string
 
-const userIDKey contextKey = "user_id"
+const (
+	userIDKey    contextKey = "user_id"
+	sessionIDKey contextKey = "session_id"
+)
 
 // TokenVerifier verifies a JWT and returns its claims.
 type TokenVerifier interface {
@@ -49,6 +52,7 @@ func Authn(jwtSvc TokenVerifier, sessSvc SessionChecker) func(http.Handler) http
 			}
 
 			ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
+			ctx = context.WithValue(ctx, sessionIDKey, claims.SessionID)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
@@ -61,13 +65,26 @@ func UserIDFromContext(ctx context.Context) string {
 	return v
 }
 
+// SessionIDFromContext retrieves the authenticated session ID from the request context.
+// Returns "" if not authenticated (only call after Authn middleware).
+func SessionIDFromContext(ctx context.Context) string {
+	v, _ := ctx.Value(sessionIDKey).(string)
+	return v
+}
+
 // UserIDContextKey returns the context key used to store user IDs.
 // Exposed for tests that need to inject a user ID without running the full middleware.
 func UserIDContextKey() any {
 	return userIDKey
 }
 
+// extractBearerToken extracts a JWT from the Authorization header or the
+// access_token HttpOnly cookie. Cookie takes precedence for browser clients;
+// Bearer is kept for non-browser API clients (CLI tools, server-to-server).
 func extractBearerToken(r *http.Request) string {
+	if cookie, err := r.Cookie("access_token"); err == nil && cookie.Value != "" {
+		return cookie.Value
+	}
 	auth := r.Header.Get("Authorization")
 	if !strings.HasPrefix(auth, "Bearer ") {
 		return ""

@@ -11,18 +11,28 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
-	"github.com/kite365/idcd/packages/auth/apikey"
-	"github.com/kite365/idcd/packages/db/gen/idcdmain"
-	"github.com/kite365/idcd/packages/shared/apperr"
-	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/lib/auth/apikey"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
+	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
+
+// allowedOrigins lists the origins permitted to open WebSocket connections.
+// Empty origin (non-browser clients) is always allowed.
+var allowedOrigins = map[string]bool{
+	"https://idcd.com":     true,
+	"https://app.idcd.com": true,
+}
 
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		// TODO: In production, validate origin properly
-		return true
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			return true // non-browser / server-to-server
+		}
+		return allowedOrigins[origin]
 	},
 }
 
@@ -246,9 +256,10 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 	h.logger.Info("probe result received", "node_id", c.NodeID, "task_id", result.TaskID, "stream_id", streamID)
 
 	// Send ack back to node
+	ackPayload, _ := json.Marshal(map[string]string{"task_id": result.TaskID})
 	ackMsg := Message{
-		Type: MsgTypeAck,
-		Payload: json.RawMessage(`{"task_id":"` + result.TaskID + `"}`),
+		Type:    MsgTypeAck,
+		Payload: json.RawMessage(ackPayload),
 	}
 	ackBytes, _ := json.Marshal(ackMsg)
 	h.hub.Broadcast(c.NodeID, ackBytes)

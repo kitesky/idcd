@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Input, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Input, Badge } from "@/components/ui"
 
 interface CIDRResult {
   networkAddress: string

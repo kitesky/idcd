@@ -3,31 +3,48 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
+	"unicode"
 
-	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/lib/shared/logger"
 )
 
-// responseWriter wraps http.ResponseWriter to capture status code.
-type responseWriter struct {
+// StatusRecorder wraps http.ResponseWriter to capture the response status code.
+// Exported so that other packages (e.g., server metrics middleware) can reuse it.
+type StatusRecorder struct {
 	http.ResponseWriter
-	statusCode int
+	StatusCode int
 	written    bool
 }
 
-func (rw *responseWriter) WriteHeader(code int) {
+func (rw *StatusRecorder) WriteHeader(code int) {
 	if !rw.written {
-		rw.statusCode = code
+		rw.StatusCode = code
 		rw.written = true
 		rw.ResponseWriter.WriteHeader(code)
 	}
 }
 
-func (rw *responseWriter) Write(b []byte) (int, error) {
+func (rw *StatusRecorder) Write(b []byte) (int, error) {
 	if !rw.written {
 		rw.WriteHeader(http.StatusOK)
 	}
 	return rw.ResponseWriter.Write(b)
+}
+
+// responseWriter is kept as an alias for package-internal use.
+type responseWriter = StatusRecorder
+
+// sanitizeHeader strips control characters (newlines, ANSI escapes) from header values
+// before writing them to structured logs, preventing log injection attacks.
+func sanitizeHeader(s string) string {
+	return strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
 }
 
 // Logger middleware logs HTTP requests with structured logging.
@@ -40,7 +57,7 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 			// Wrap response writer to capture status
 			rw := &responseWriter{
 				ResponseWriter: w,
-				statusCode:     http.StatusOK,
+				StatusCode:     http.StatusOK,
 			}
 
 			// Extract request ID from context for logging
@@ -54,9 +71,9 @@ func Logger(log *slog.Logger) func(http.Handler) http.Handler {
 			requestLog.Info("HTTP request completed",
 				"method", r.Method,
 				"path", r.URL.Path,
-				"status", rw.statusCode,
+				"status", rw.StatusCode,
 				"latency", latency.String(),
-				"user_agent", r.Header.Get("User-Agent"),
+				"user_agent", sanitizeHeader(r.Header.Get("User-Agent")),
 				"remote_addr", r.RemoteAddr,
 			)
 		})

@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kite365/idcd/packages/ratelimit"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/ratelimit"
+	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/apps/api/internal/response"
 )
 
@@ -69,55 +69,87 @@ func setRateLimitHeaders(w http.ResponseWriter, result *ratelimit.Result) {
 
 	// When rate limited, set Retry-After header (seconds until reset)
 	if !result.Allowed {
-		retryAfterSeconds := int64(result.ResetAt.Sub(time.Now()).Seconds())
+		retryAfterSeconds := int64(time.Until(result.ResetAt).Seconds())
 		if retryAfterSeconds < 1 {
-			retryAfterSeconds = 1 // Minimum 1 second
+			retryAfterSeconds = 1
 		}
 		w.Header().Set("Retry-After", strconv.FormatInt(retryAfterSeconds, 10))
 	}
 }
 
-// getClientIP extracts the real client IP from the request.
-// Handles X-Forwarded-For, X-Real-IP headers for proxy scenarios.
-func getClientIP(r *http.Request) string {
-	// Check X-Forwarded-For header (standard proxy header)
-	xff := r.Header.Get("X-Forwarded-For")
-	if xff != "" {
-		// X-Forwarded-For can contain multiple IPs: "client, proxy1, proxy2"
-		// We want the first (leftmost) IP which is the original client
-		ips := strings.Split(xff, ",")
-		clientIP := strings.TrimSpace(ips[0])
-		if net.ParseIP(clientIP) != nil {
-			return clientIP
+// trustedProxyCIDRs are the networks from which X-Forwarded-For / X-Real-IP headers are trusted.
+// Only loopback and RFC1918 ranges are trusted by default — direct Internet traffic never
+// comes from these addresses, so spoofing via a forged header is not possible when the
+// TCP connection itself originates from one of these ranges.
+var trustedProxyCIDRs = func() []*net.IPNet {
+	cidrs := []string{
+		"127.0.0.0/8",    // loopback
+		"10.0.0.0/8",     // RFC1918
+		"172.16.0.0/12",  // RFC1918
+		"192.168.0.0/16", // RFC1918
+		"::1/128",        // IPv6 loopback
+		"fc00::/7",       // IPv6 ULA
+	}
+	nets := make([]*net.IPNet, 0, len(cidrs))
+	for _, cidr := range cidrs {
+		_, ipNet, err := net.ParseCIDR(cidr)
+		if err == nil {
+			nets = append(nets, ipNet)
 		}
 	}
+	return nets
+}()
 
-	// Check X-Real-IP header (commonly used by nginx)
-	xri := r.Header.Get("X-Real-IP")
-	if xri != "" && net.ParseIP(xri) != nil {
-		return xri
+// isTrustedProxy reports whether the IP belongs to a trusted proxy range.
+func isTrustedProxy(ip net.IP) bool {
+	for _, n := range trustedProxyCIDRs {
+		if n.Contains(ip) {
+			return true
+		}
 	}
+	return false
+}
 
-	// Check X-Forwarded (less common)
-	xf := r.Header.Get("X-Forwarded")
-	if xf != "" {
-		// Format: X-Forwarded: for=192.0.2.60;proto=http;by=203.0.113.43
-		parts := strings.Split(xf, ";")
-		for _, part := range parts {
-			part = strings.TrimSpace(part)
-			if strings.HasPrefix(part, "for=") {
-				ip := strings.TrimPrefix(part, "for=")
-				if net.ParseIP(ip) != nil {
-					return ip
+// ClientIP is the exported entry point for extracting the real client IP.
+// Use this instead of duplicating the logic in each handler.
+func ClientIP(r *http.Request) string { return getClientIP(r) }
+
+// getClientIP extracts the real client IP from the request.
+// X-Forwarded-For and X-Real-IP are only trusted when the direct TCP connection
+// comes from a trusted proxy (loopback / RFC1918). This prevents IP spoofing by
+// external clients who set these headers themselves.
+func getClientIP(r *http.Request) string {
+	// Resolve the direct connection IP.
+	remoteHost, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		remoteHost = r.RemoteAddr
+	}
+	remoteIP := net.ParseIP(remoteHost)
+
+	// Only honour proxy headers when the direct connection is from a trusted proxy.
+	if remoteIP != nil && isTrustedProxy(remoteIP) {
+		// X-Real-IP: set by nginx to the single real client IP.
+		if xri := strings.TrimSpace(r.Header.Get("X-Real-IP")); xri != "" {
+			if ip := net.ParseIP(xri); ip != nil {
+				return ip.String()
+			}
+		}
+
+		// X-Forwarded-For: "client, proxy1, proxy2" — use the leftmost non-private IP.
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			parts := strings.Split(xff, ",")
+			for _, p := range parts {
+				candidate := strings.TrimSpace(p)
+				if ip := net.ParseIP(candidate); ip != nil && !isTrustedProxy(ip) {
+					return ip.String()
 				}
 			}
 		}
 	}
 
-	// Fall back to remote address from connection
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr // Return as-is if split fails
+	// Fall back to the direct connection address.
+	if remoteIP != nil {
+		return remoteIP.String()
 	}
-	return host
+	return remoteHost
 }

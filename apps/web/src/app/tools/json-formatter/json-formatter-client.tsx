@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Textarea, Button, Badge } from "@/components/ui"
 
 export default function JsonFormatterClient() {
   const [input, setInput] = useState('')

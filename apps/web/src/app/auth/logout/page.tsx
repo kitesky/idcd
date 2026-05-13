@@ -14,8 +14,7 @@ export default function LogoutPage() {
       } catch (err) {
         console.error("Logout error:", err)
       } finally {
-        localStorage.removeItem("access_token")
-        localStorage.removeItem("refresh_token")
+        // Cookie is cleared server-side by the logout endpoint.
         router.push("/")
       }
     }

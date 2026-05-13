@@ -12,7 +12,7 @@ import {
   SelectTrigger,
   SelectValue,
   cn
-} from "@idcd/ui"
+} from "@/components/ui"
 import { Menu, X } from "lucide-react"
 
 const tools = [

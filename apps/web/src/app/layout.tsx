@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/providers"
 import { Nav } from "@/components/nav"
 import { Footer } from "@/components/footer"
+import { CookieBanner } from "@/components/cookie-banner"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -52,6 +53,7 @@ export default function RootLayout({
           <Nav />
           {children}
           <Footer />
+          <CookieBanner />
         </ThemeProvider>
       </body>
     </html>

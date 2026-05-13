@@ -15,7 +15,7 @@ import (
 	"github.com/kite365/idcd/apps/gateway/internal/config"
 	"github.com/kite365/idcd/apps/gateway/internal/handler"
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
-	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
 
 // Server represents the Gateway HTTP server.

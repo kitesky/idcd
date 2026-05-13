@@ -1,10 +1,12 @@
 import type { Metadata } from "next"
 import Link from "next/link"
-import { Button, Alert, AlertDescription } from "@idcd/ui"
+import { Button, Alert, AlertDescription } from "@/components/ui"
 import { ArrowLeft, AlertTriangle } from "lucide-react"
 
 export const metadata: Metadata = {
   title: "可接受使用政策 (AUP) - idcd",
+  alternates: { canonical: "https://idcd.com/aup" },
+  robots: { index: false, follow: false },
   description: "idcd 可接受使用政策 - 明确禁止的网络行为和使用规范",
 }
 

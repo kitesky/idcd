@@ -1,4 +1,5 @@
-import { Separator } from "@idcd/ui"
+import Link from "next/link"
+import { Separator } from "@/components/ui"
 
 const productLinks = [
   { name: "工具", href: "/tools" },
@@ -16,6 +17,7 @@ const companyLinks = [
   { name: "关于", href: "/about" },
   { name: "条款", href: "/terms" },
   { name: "隐私", href: "/privacy" },
+  { name: "AUP", href: "/aup" },
 ]
 
 export function Footer() {
@@ -29,12 +31,12 @@ export function Footer() {
             <ul className="mt-4 space-y-3">
               {productLinks.map((link) => (
                 <li key={link.name}>
-                  <a
-                    href={link.href}
+                  <Link
+                    href={link.href as any}
                     className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {link.name}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -45,12 +47,12 @@ export function Footer() {
             <ul className="mt-4 space-y-3">
               {resourceLinks.map((link) => (
                 <li key={link.name}>
-                  <a
-                    href={link.href}
+                  <Link
+                    href={link.href as any}
                     className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {link.name}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -61,12 +63,12 @@ export function Footer() {
             <ul className="mt-4 space-y-3">
               {companyLinks.map((link) => (
                 <li key={link.name}>
-                  <a
-                    href={link.href}
+                  <Link
+                    href={link.href as any}
                     className="text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
                     {link.name}
-                  </a>
+                  </Link>
                 </li>
               ))}
             </ul>
@@ -77,22 +79,9 @@ export function Footer() {
 
         {/* Copyright */}
         <div className="flex flex-col items-center space-y-2 sm:flex-row sm:justify-between sm:space-y-0">
-          <div className="flex flex-col items-center space-y-1 sm:flex-row sm:space-y-0 sm:space-x-4">
-            <p className="text-sm text-muted-foreground">
-              © 2026 idcd.com. 保留所有权利。
-            </p>
-            <span className="text-sm text-muted-foreground">
-              京ICP备XXXXXXXX号
-            </span>
-          </div>
-          <div>
-            <a
-              href="/privacy"
-              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-            >
-              隐私协议
-            </a>
-          </div>
+          <p className="text-sm text-muted-foreground">
+            © 2026 idcd.com. 保留所有权利。
+          </p>
         </div>
       </div>
     </footer>

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Input, Button, Badge } from "@idcd/ui"
+import { Card, CardContent, CardHeader, CardTitle, Input, Button, Badge } from "@/components/ui"
 
 export default function TimestampPage() {
   const [timestamp, setTimestamp] = useState('')

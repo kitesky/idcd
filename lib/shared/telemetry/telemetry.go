@@ -34,6 +34,8 @@ func Init(cfg Config) (shutdown func(context.Context) error, err error) {
 		return func(context.Context) error { return nil }, nil
 	}
 
+	noop := func(context.Context) error { return nil }
+
 	// Create resource with service info
 	res, err := resource.Merge(
 		resource.Default(),
@@ -44,13 +46,13 @@ func Init(cfg Config) (shutdown func(context.Context) error, err error) {
 		),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("telemetry: failed to create resource: %w", err)
+		return noop, fmt.Errorf("telemetry: failed to create resource: %w", err)
 	}
 
 	// Create exporter (S1: stdout for now, no OTLP Collector dependency)
 	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
 	if err != nil {
-		return nil, fmt.Errorf("telemetry: failed to create stdout exporter: %w", err)
+		return noop, fmt.Errorf("telemetry: failed to create stdout exporter: %w", err)
 	}
 
 	// Create sampler (default 0.1 = 10% sampling)
@@ -99,11 +101,12 @@ func TraceMiddleware(serviceName string) func(http.Handler) http.Handler {
 			ctx, span := tracer.Start(ctx, spanName,
 				trace.WithSpanKind(trace.SpanKindServer),
 				trace.WithAttributes(
-					attribute.String("http.method", r.Method),
-					attribute.String("http.target", r.URL.Path),
-					attribute.String("http.scheme", r.URL.Scheme),
-					attribute.String("http.user_agent", r.Header.Get("User-Agent")),
-					attribute.String("net.host.name", r.Host),
+					// OTel HTTP semconv v1.21+ stable attribute names.
+					attribute.String("http.request.method", r.Method),
+					attribute.String("url.path", r.URL.Path),
+					attribute.String("url.scheme", r.URL.Scheme),
+					attribute.String("user_agent.original", r.Header.Get("User-Agent")),
+					attribute.String("server.address", r.Host),
 				),
 			)
 			defer span.End()
@@ -118,7 +121,7 @@ func TraceMiddleware(serviceName string) func(http.Handler) http.Handler {
 
 			// Add response attributes
 			span.SetAttributes(
-				attribute.Int("http.status_code", rw.statusCode),
+				attribute.Int("http.response.status_code", rw.statusCode),
 				attribute.Int64("http.response_time_ms", duration.Milliseconds()),
 			)
 

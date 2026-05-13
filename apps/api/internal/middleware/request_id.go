@@ -5,8 +5,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/kite365/idcd/packages/shared/idgen"
-	"github.com/kite365/idcd/packages/shared/logger"
+	"github.com/kite365/idcd/lib/shared/idgen"
+	"github.com/kite365/idcd/lib/shared/logger"
 )
 
 // RequestID middleware injects a unique request ID into each request.
@@ -25,8 +25,10 @@ func RequestID() func(http.Handler) http.Handler {
 			// Set response header
 			w.Header().Set("X-Request-ID", requestID)
 
-			// Store in context for downstream use
-			ctx := context.WithValue(r.Context(), "request_id", requestID)
+			// Store in context for downstream use.
+			// Note: bare string key is intentional — multiple packages (response, logger)
+			// read this value and share the same string literal as the convention.
+			ctx := context.WithValue(r.Context(), "request_id", requestID) //nolint:staticcheck
 			ctx = logger.WithRequestID(ctx, requestID)
 
 			// Continue with updated context

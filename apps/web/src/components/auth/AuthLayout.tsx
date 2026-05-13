@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@idcd/ui"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui"
 import Link from "next/link"
 
 interface AuthLayoutProps {

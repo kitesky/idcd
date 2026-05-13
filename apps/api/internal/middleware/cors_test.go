@@ -16,11 +16,11 @@ func TestCORS(t *testing.T) {
 		shouldAllowCORS bool
 	}{
 		{
-			name:            "development environment allows all origins",
+			name:            "development environment echoes specific origin (not wildcard) to allow credentials",
 			env:             "development",
 			allowedOrigins:  []string{"https://idcd.com"},
 			requestOrigin:   "https://evil.com",
-			expectedOrigin:  "*",
+			expectedOrigin:  "https://evil.com",
 			shouldAllowCORS: true,
 		},
 		{
@@ -173,12 +173,13 @@ func TestIsAllowedOrigin(t *testing.T) {
 
 // verifyCommonCORSHeaders checks that all expected CORS headers are set correctly
 func verifyCommonCORSHeaders(t *testing.T, rr *httptest.ResponseRecorder) {
+	// Allow-Credentials is only sent when the origin is specifically matched,
+	// so we check the non-credentials headers here and test credentials separately.
 	expectedHeaders := map[string]string{
-		"Access-Control-Allow-Methods":     "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-		"Access-Control-Allow-Headers":     "Accept, Authorization, Content-Type, X-API-Key, X-Request-ID",
-		"Access-Control-Expose-Headers":    "X-Request-ID",
-		"Access-Control-Allow-Credentials": "true",
-		"Access-Control-Max-Age":           "86400",
+		"Access-Control-Allow-Methods":  "GET, POST, PUT, PATCH, DELETE, OPTIONS",
+		"Access-Control-Allow-Headers":  "Accept, Authorization, Content-Type, X-API-Key, X-Request-ID, X-CSRF-Token",
+		"Access-Control-Expose-Headers": "X-Request-ID",
+		"Access-Control-Max-Age":        "86400",
 	}
 
 	for header, expected := range expectedHeaders {

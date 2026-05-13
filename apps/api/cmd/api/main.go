@@ -15,9 +15,9 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/api/internal/server"
-	"github.com/kite365/idcd/packages/shared/config"
-	"github.com/kite365/idcd/packages/shared/logger"
-	"github.com/kite365/idcd/packages/shared/telemetry"
+	"github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/logger"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 func main() {
@@ -41,8 +41,13 @@ func main() {
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
 		slogLogger.Error("failed to init telemetry", "error", err)
+		os.Exit(1)
 	}
-	defer shutdownTelemetry(context.Background())
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = shutdownTelemetry(ctx)
+	}()
 
 	// Connect to PostgreSQL
 	db, err := sql.Open("postgres", cfg.Database.Main.DSN)

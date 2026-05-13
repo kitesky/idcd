@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kite365/idcd/packages/ratelimit"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/ratelimit"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 // mockRateLimiter implements RateLimitFunc for testing.
@@ -204,12 +204,12 @@ func TestGetClientIP(t *testing.T) {
 			expectedIP: "203.0.113.42",
 		},
 		{
-			name:       "handles X-Forwarded with for= format",
+			name:       "ignores non-standard X-Forwarded header (only X-Forwarded-For and X-Real-IP are trusted)",
 			remoteAddr: "10.0.0.1:12345",
 			headers: map[string]string{
 				"X-Forwarded": "for=203.0.113.42;proto=http;by=10.0.0.2",
 			},
-			expectedIP: "203.0.113.42",
+			expectedIP: "10.0.0.1",
 		},
 		{
 			name:       "ignores invalid IPs in headers",

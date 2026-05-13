@@ -2,7 +2,9 @@
 # D1: 禁止跨 schema FOREIGN KEY REFERENCES
 # CI 如发现 REFERENCES other_schema.table 格式则报错
 
-MIGRATION_DIR="packages/db/migrations"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+MIGRATION_DIR="$REPO_ROOT/packages/db/migrations"
 FAILED=0
 
 if [ ! -d "$MIGRATION_DIR" ]; then

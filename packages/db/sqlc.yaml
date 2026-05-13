@@ -1,0 +1,38 @@
+version: "2"
+sql:
+  - engine: "postgresql"
+    queries: "queries/idcd_main"
+    schema: "migrations/idcd_main"
+    gen:
+      go:
+        package: "idcdmain"
+        out: "gen/idcdmain"
+        sql_package: "pgx/v5"
+        emit_json_tags: true
+        emit_interface: true
+        emit_pointers_for_null_types: true
+        emit_empty_slices: true
+        overrides:
+          # citext → plain string
+          - db_type: "citext"
+            go_type: "string"
+          # inet 非空 → netip.Addr
+          - db_type: "pg_catalog.inet"
+            nullable: false
+            go_type:
+              import: "net/netip"
+              type: "Addr"
+          # inet 可空 → *netip.Addr
+          - db_type: "pg_catalog.inet"
+            nullable: true
+            go_type:
+              import: "net/netip"
+              type: "Addr"
+              pointer: true
+          # cidr 可空 → *netip.Prefix
+          - db_type: "pg_catalog.cidr"
+            nullable: true
+            go_type:
+              import: "net/netip"
+              type: "Prefix"
+              pointer: true

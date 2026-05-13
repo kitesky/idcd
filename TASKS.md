@@ -53,12 +53,13 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 模块前缀：`github.com/kite365/idcd/*`，Go 1.26.2
   - *deps: 无* | *lane: A* | *完成 2026-05-13*
 
-- [ ] **A3** `packages/db/` — 数据库层
-  - `migrations/idcd_main/` 基础表：`users` / `api_keys` / `sessions` / `audit_log`
-  - sqlc 配置 + `sqlc generate` 跑通
-  - `packages/db/repository/` 基础抽象
-  - DDL 规则：**严禁跨 schema REFERENCES**（D1），CI lint 脚本 `scripts/lint-cross-schema-fk.sh`
-  - *deps: A1* | *lane: A*
+- [x] **A3** `packages/db/` — 数据库层
+  - `migrations/idcd_main/` 5 个迁移：extensions / users+otp / session / api_key / audit_log(hypertable)
+  - sqlc v1.31.1 生成 `gen/idcdmain/`（models + querier + 4 个查询文件）
+  - `packages/db/repository/`：User / Session / APIKey / AuditLog 四个 repository，pgx/v5 驱动
+  - DDL 规则 D1 lint 通过，audit_log TimescaleDB hypertable 已验证
+  - 迁移已应用到远端 idcd_dev DB，`psql` 验证 8 张表 + 1 个 hypertable
+  - *deps: A1* | *lane: A* | *完成 2026-05-13*
 
 - [ ] **A4** GitHub Actions CI/CD 基础
   - `.github/workflows/ci.yml`：golangci-lint + eslint + tsc + go test + vitest
@@ -471,7 +472,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 日期 | 完成 | 遗留/阻塞 |
 |---|---|---|
 | 2026-05-13 | 架构审查 D17-D21，TASKS.md 建立 | — |
-| 2026-05-13 | A1（基础设施）+ A2（monorepo 骨架）完成，TimescaleDB 2.27.0 安装 | A3（DB 层）待开始 |
+| 2026-05-13 | A1（基础设施）+ A2（monorepo 骨架）完成，TimescaleDB 2.27.0 安装 | — |
+| 2026-05-13 | A3（DB 层）完成：5 个迁移 + sqlc 生成 + 4 个 repository | A6（shared 包）或 A7（auth 包）待开始 |
 
 ---
 

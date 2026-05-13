@@ -101,13 +101,17 @@ clean:
 	pnpm --recursive exec -- rm -rf .next dist 2>/dev/null || true
 
 # ── DB 迁移快捷命令 ────────────────────────────────────────────
+_DSN := $(shell python3 -c "import yaml; c=yaml.safe_load(open('config/dev.env.yaml')); print(c['database']['main']['dsn'])" 2>/dev/null)
+_GOOSE := go run github.com/pressly/goose/v3/cmd/goose@latest
+
 migrate-up:
-	goose -dir packages/db/migrations/idcd_main postgres \
-	  "$$(python3 -c "import yaml; c=yaml.safe_load(open('config/dev.env.yaml')); print(c['database']['main']['dsn'])")" up
+	$(_GOOSE) -dir packages/db/migrations/idcd_main postgres "$(_DSN)" up
+
+migrate-down:
+	$(_GOOSE) -dir packages/db/migrations/idcd_main postgres "$(_DSN)" down
 
 migrate-status:
-	goose -dir packages/db/migrations/idcd_main postgres \
-	  "$$(python3 -c "import yaml; c=yaml.safe_load(open('config/dev.env.yaml')); print(c['database']['main']['dsn'])")" status
+	$(_GOOSE) -dir packages/db/migrations/idcd_main postgres "$(_DSN)" status
 
 sqlc-gen:
 	sqlc generate -f packages/db/sqlc.yaml

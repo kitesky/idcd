@@ -4,6 +4,12 @@ export { Card, CardHeader, CardFooter, CardTitle, CardDescription, CardContent }
 export { Input } from './components/input'
 export { Badge, badgeVariants } from './components/badge'
 export { Separator } from './components/separator'
+export { Textarea } from './components/textarea'
+export {
+  Select, SelectContent, SelectGroup, SelectItem, SelectLabel,
+  SelectScrollDownButton, SelectScrollUpButton, SelectSeparator,
+  SelectTrigger, SelectValue,
+} from './components/select'
 
 // Utils
 export { cn } from './lib/utils'

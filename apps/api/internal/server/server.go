@@ -149,6 +149,9 @@ func (s *Server) setupRouter() {
 				r.Post("/traceroute", probeH.Traceroute)
 			})
 			r.Post("/diagnose", probeH.Diagnose)
+			// Node directory endpoint
+			nodesH := handler.NewNodesHandler(s.pgxPool)
+			r.Get("/nodes", nodesH.List)
 		})
 	}
 

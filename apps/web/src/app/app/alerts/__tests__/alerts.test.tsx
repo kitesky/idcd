@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest"
-import { render, screen, fireEvent, within } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import { AlertsClient } from "../alerts-client"
 import {
@@ -9,170 +9,279 @@ import {
   MOCK_NOTIFICATIONS,
 } from "../mock-data"
 
-// AlertsClient uses only standard React state — no external mocks needed.
+// Mock the API module so tests don't hit a real server
+vi.mock("@/lib/api", () => ({
+  apiRequest: vi.fn(),
+  API_BASE: "http://localhost:8080",
+}))
+
+import { apiRequest } from "@/lib/api"
+const mockApiRequest = vi.mocked(apiRequest)
+
+function setupDefaultMocks() {
+  mockApiRequest.mockImplementation(async (path: string, options?: RequestInit) => {
+    const method = options?.method?.toUpperCase() ?? "GET"
+
+    // Events
+    if (path === "/v1/alert-events" && method === "GET") {
+      return { data: { events: MOCK_ALERT_EVENTS } }
+    }
+    if (path.startsWith("/v1/alert-events/") && path.endsWith("/ack") && method === "POST") {
+      return {}
+    }
+
+    // Channels
+    if (path === "/v1/alert-channels" && method === "GET") {
+      return { data: { channels: MOCK_ALERT_CHANNELS } }
+    }
+    if (path === "/v1/alert-channels" && method === "POST") {
+      const body = JSON.parse(options?.body as string)
+      const newCh = {
+        id: `ch-new-${Date.now()}`,
+        name: body.name,
+        type: body.type,
+        config: body.config?.target ?? "",
+        verified: false,
+      }
+      return { data: { channel: newCh } }
+    }
+    if (path.startsWith("/v1/alert-channels/") && method === "DELETE") {
+      return {}
+    }
+
+    // Policies
+    if (path === "/v1/alert-policies" && method === "GET") {
+      return { data: { policies: MOCK_ALERT_POLICIES } }
+    }
+    if (path === "/v1/alert-policies" && method === "POST") {
+      const body = JSON.parse(options?.body as string)
+      const newPol = { id: `pol-new-${Date.now()}`, ...body }
+      return { data: { policy: newPol } }
+    }
+    if (path.startsWith("/v1/alert-policies/") && method === "PATCH") {
+      const id = path.split("/")[3]
+      const body = JSON.parse(options?.body as string)
+      const existing = MOCK_ALERT_POLICIES.find((p) => p.id === id) ?? MOCK_ALERT_POLICIES[0]
+      return { data: { policy: { ...existing, ...body } } }
+    }
+    if (path.startsWith("/v1/alert-policies/") && method === "DELETE") {
+      return {}
+    }
+
+    throw new Error(`Unmocked API call: ${method} ${path}`)
+  })
+}
+
+beforeEach(() => {
+  vi.clearAllMocks()
+  setupDefaultMocks()
+})
 
 describe("AlertsClient — 事件历史 Tab", () => {
-  it("默认显示事件历史 Tab", () => {
+  it("默认显示事件历史 Tab", async () => {
     render(<AlertsClient />)
     const tab = screen.getByRole("tab", { name: "事件历史" })
     expect(tab).toHaveAttribute("aria-selected", "true")
   })
 
-  it("渲染所有 5 个告警事件行", () => {
+  it("渲染所有 5 个告警事件行", async () => {
     render(<AlertsClient />)
-    MOCK_ALERT_EVENTS.forEach((evt) => {
-      expect(screen.getByTestId(`event-row-${evt.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_EVENTS.forEach((evt) => {
+        expect(screen.getByTestId(`event-row-${evt.id}`)).toBeInTheDocument()
+      })
     })
   })
 
-  it("firing 事件显示红色 destructive Badge（告警中）", () => {
+  it("firing 事件显示红色 destructive Badge（告警中）", async () => {
     render(<AlertsClient />)
-    const firingBadges = screen.getAllByText("告警中")
-    const firingCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "firing").length
-    expect(firingBadges.length).toBe(firingCount)
-  })
-
-  it("resolved 事件显示绿色 Badge（已恢复）", () => {
-    render(<AlertsClient />)
-    const resolvedBadges = screen.getAllByText("已恢复")
-    const resolvedCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "resolved").length
-    expect(resolvedBadges.length).toBe(resolvedCount)
-  })
-
-  it("acknowledged 事件显示 gray Badge（已确认）", () => {
-    render(<AlertsClient />)
-    const ackBadges = screen.getAllByText("已确认")
-    const ackCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "acknowledged").length
-    expect(ackBadges.length).toBe(ackCount)
-  })
-
-  it("firing 事件行有 Acknowledge 按钮", () => {
-    render(<AlertsClient />)
-    const firingEvents = MOCK_ALERT_EVENTS.filter((e) => e.status === "firing")
-    firingEvents.forEach((evt) => {
-      expect(screen.getByTestId(`ack-btn-${evt.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      const firingBadges = screen.getAllByText("告警中")
+      const firingCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "firing").length
+      expect(firingBadges.length).toBe(firingCount)
     })
   })
 
-  it("非 firing 事件没有 Acknowledge 按钮", () => {
+  it("resolved 事件显示绿色 Badge（已恢复）", async () => {
     render(<AlertsClient />)
-    const nonFiringEvents = MOCK_ALERT_EVENTS.filter((e) => e.status !== "firing")
-    nonFiringEvents.forEach((evt) => {
-      expect(screen.queryByTestId(`ack-btn-${evt.id}`)).not.toBeInTheDocument()
+    await waitFor(() => {
+      const resolvedBadges = screen.getAllByText("已恢复")
+      const resolvedCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "resolved").length
+      expect(resolvedBadges.length).toBe(resolvedCount)
     })
   })
 
-  it("顶部 Alert 展示当前 firing 事件数量", () => {
+  it("acknowledged 事件显示 gray Badge（已确认）", async () => {
     render(<AlertsClient />)
-    const firingCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "firing").length
-    const alert = screen.getByTestId("firing-alert")
-    expect(alert).toBeInTheDocument()
-    expect(alert.textContent).toContain(String(firingCount))
+    await waitFor(() => {
+      const ackBadges = screen.getAllByText("已确认")
+      const ackCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "acknowledged").length
+      expect(ackBadges.length).toBe(ackCount)
+    })
   })
 
-  it("点击 Acknowledge 按钮后，该事件状态变为已确认", () => {
+  it("firing 事件行有 Acknowledge 按钮", async () => {
+    render(<AlertsClient />)
+    await waitFor(() => {
+      const firingEvents = MOCK_ALERT_EVENTS.filter((e) => e.status === "firing")
+      firingEvents.forEach((evt) => {
+        expect(screen.getByTestId(`ack-btn-${evt.id}`)).toBeInTheDocument()
+      })
+    })
+  })
+
+  it("非 firing 事件没有 Acknowledge 按钮", async () => {
+    render(<AlertsClient />)
+    await waitFor(() => {
+      const nonFiringEvents = MOCK_ALERT_EVENTS.filter((e) => e.status !== "firing")
+      nonFiringEvents.forEach((evt) => {
+        expect(screen.queryByTestId(`ack-btn-${evt.id}`)).not.toBeInTheDocument()
+      })
+    })
+  })
+
+  it("顶部 Alert 展示当前 firing 事件数量", async () => {
+    render(<AlertsClient />)
+    await waitFor(() => {
+      const firingCount = MOCK_ALERT_EVENTS.filter((e) => e.status === "firing").length
+      const alert = screen.getByTestId("firing-alert")
+      expect(alert).toBeInTheDocument()
+      expect(alert.textContent).toContain(String(firingCount))
+    })
+  })
+
+  it("点击 Acknowledge 按钮后，该事件状态变为已确认", async () => {
     render(<AlertsClient />)
     const firstFiring = MOCK_ALERT_EVENTS.find((e) => e.status === "firing")!
+    await waitFor(() => {
+      expect(screen.getByTestId(`ack-btn-${firstFiring.id}`)).toBeInTheDocument()
+    })
     const ackBtn = screen.getByTestId(`ack-btn-${firstFiring.id}`)
     fireEvent.click(ackBtn)
-    // After acknowledging, no more Acknowledge button for this event
-    expect(screen.queryByTestId(`ack-btn-${firstFiring.id}`)).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.queryByTestId(`ack-btn-${firstFiring.id}`)).not.toBeInTheDocument()
+    })
   })
 
-  it("监控名称显示在表格中", () => {
+  it("监控名称显示在表格中", async () => {
     render(<AlertsClient />)
-    MOCK_ALERT_EVENTS.forEach((evt) => {
-      const row = screen.getByTestId(`event-row-${evt.id}`)
-      expect(within(row).getByText(evt.monitorName)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_EVENTS.forEach((evt) => {
+        const row = screen.getByTestId(`event-row-${evt.id}`)
+        expect(within(row).getByText(evt.monitorName)).toBeInTheDocument()
+      })
     })
   })
 })
 
 describe("AlertsClient — 告警通道 Tab", () => {
-  it("切换到通道 Tab 显示通道内容", () => {
+  it("切换到通道 Tab 显示通道内容", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    expect(screen.getByTestId("add-channel-btn")).toBeInTheDocument()
-  })
-
-  it("渲染所有 3 个通道卡片", () => {
-    render(<AlertsClient />)
-    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    MOCK_ALERT_CHANNELS.forEach((ch) => {
-      expect(screen.getByTestId(`channel-card-${ch.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("add-channel-btn")).toBeInTheDocument()
     })
   })
 
-  it("通道卡片显示通道名称", () => {
+  it("渲染所有 3 个通道卡片", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    MOCK_ALERT_CHANNELS.forEach((ch) => {
-      const card = screen.getByTestId(`channel-card-${ch.id}`)
-      expect(within(card).getByText(ch.name)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_CHANNELS.forEach((ch) => {
+        expect(screen.getByTestId(`channel-card-${ch.id}`)).toBeInTheDocument()
+      })
     })
   })
 
-  it("已验证通道显示已验证 Badge", () => {
+  it("通道卡片显示通道名称", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    const verifiedChannels = MOCK_ALERT_CHANNELS.filter((c) => c.verified)
-    const verifiedBadges = screen.getAllByText("已验证")
-    expect(verifiedBadges.length).toBe(verifiedChannels.length)
-  })
-
-  it("未验证通道显示未验证 Badge", () => {
-    render(<AlertsClient />)
-    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    const unverifiedChannels = MOCK_ALERT_CHANNELS.filter((c) => !c.verified)
-    const unverifiedBadges = screen.getAllByText("未验证")
-    expect(unverifiedBadges.length).toBe(unverifiedChannels.length)
-  })
-
-  it("每个通道有测试发送按钮", () => {
-    render(<AlertsClient />)
-    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    MOCK_ALERT_CHANNELS.forEach((ch) => {
-      expect(screen.getByTestId(`test-channel-btn-${ch.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_CHANNELS.forEach((ch) => {
+        const card = screen.getByTestId(`channel-card-${ch.id}`)
+        expect(within(card).getByText(ch.name)).toBeInTheDocument()
+      })
     })
   })
 
-  it("每个通道有删除按钮", () => {
+  it("已验证通道显示已验证 Badge", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    MOCK_ALERT_CHANNELS.forEach((ch) => {
-      expect(screen.getByTestId(`delete-channel-btn-${ch.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      const verifiedChannels = MOCK_ALERT_CHANNELS.filter((c) => c.verified)
+      const verifiedBadges = screen.getAllByText("已验证")
+      expect(verifiedBadges.length).toBe(verifiedChannels.length)
     })
   })
 
-  it("点击添加通道按钮打开侧滑 Sheet", () => {
+  it("未验证通道显示未验证 Badge", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    await waitFor(() => {
+      const unverifiedChannels = MOCK_ALERT_CHANNELS.filter((c) => !c.verified)
+      const unverifiedBadges = screen.getAllByText("未验证")
+      expect(unverifiedBadges.length).toBe(unverifiedChannels.length)
+    })
+  })
+
+  it("每个通道有测试发送按钮", async () => {
+    render(<AlertsClient />)
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    await waitFor(() => {
+      MOCK_ALERT_CHANNELS.forEach((ch) => {
+        expect(screen.getByTestId(`test-channel-btn-${ch.id}`)).toBeInTheDocument()
+      })
+    })
+  })
+
+  it("每个通道有删除按钮", async () => {
+    render(<AlertsClient />)
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    await waitFor(() => {
+      MOCK_ALERT_CHANNELS.forEach((ch) => {
+        expect(screen.getByTestId(`delete-channel-btn-${ch.id}`)).toBeInTheDocument()
+      })
+    })
+  })
+
+  it("点击添加通道按钮打开侧滑 Sheet", async () => {
+    render(<AlertsClient />)
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    await waitFor(() => expect(screen.getByTestId("add-channel-btn")).toBeInTheDocument())
     fireEvent.click(screen.getByTestId("add-channel-btn"))
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
     expect(screen.getByText("添加告警通道")).toBeInTheDocument()
   })
 
-  it("点击删除通道按钮打开确认对话框", () => {
+  it("点击删除通道按钮打开确认对话框", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    await waitFor(() =>
+      expect(screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0].id}`)).toBeInTheDocument()
+    )
     const deleteBtn = screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0].id}`)
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
     expect(screen.getByText("删除通道")).toBeInTheDocument()
   })
 
-  it("通道 Card 显示「查看交付记录」按钮", () => {
+  it("通道 Card 显示「查看交付记录」按钮", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    MOCK_ALERT_CHANNELS.forEach((ch) => {
-      expect(screen.getByTestId(`delivery-history-toggle-${ch.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_CHANNELS.forEach((ch) => {
+        expect(screen.getByTestId(`delivery-history-toggle-${ch.id}`)).toBeInTheDocument()
+      })
     })
   })
 
-  it("点击交付记录按钮后展开显示通知列表", () => {
+  it("点击交付记录按钮后展开显示通知列表", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     const firstCh = MOCK_ALERT_CHANNELS[0]
+    await waitFor(() =>
+      expect(screen.getByTestId(`delivery-history-toggle-${firstCh.id}`)).toBeInTheDocument()
+    )
     const toggle = screen.getByTestId(`delivery-history-toggle-${firstCh.id}`)
     fireEvent.mouseDown(toggle)
     fireEvent.click(toggle)
@@ -186,82 +295,104 @@ describe("AlertsClient — 告警通道 Tab", () => {
 })
 
 describe("AlertsClient — 告警策略 Tab", () => {
-  it("切换到策略 Tab 显示策略内容", () => {
+  it("切换到策略 Tab 显示策略内容", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    expect(screen.getByTestId("add-policy-btn")).toBeInTheDocument()
-  })
-
-  it("渲染所有 2 条策略行", () => {
-    render(<AlertsClient />)
-    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    MOCK_ALERT_POLICIES.forEach((pol) => {
-      expect(screen.getByTestId(`policy-row-${pol.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("add-policy-btn")).toBeInTheDocument()
     })
   })
 
-  it("策略行显示策略名", () => {
+  it("渲染所有 2 条策略行", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    MOCK_ALERT_POLICIES.forEach((pol) => {
-      expect(screen.getByText(pol.name)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_POLICIES.forEach((pol) => {
+        expect(screen.getByTestId(`policy-row-${pol.id}`)).toBeInTheDocument()
+      })
     })
   })
 
-  it("每条策略有启用/关闭 Switch", () => {
+  it("策略行显示策略名", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    MOCK_ALERT_POLICIES.forEach((pol) => {
-      expect(screen.getByTestId(`policy-toggle-${pol.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_POLICIES.forEach((pol) => {
+        expect(screen.getByText(pol.name)).toBeInTheDocument()
+      })
     })
   })
 
-  it("每条策略有编辑按钮", () => {
+  it("每条策略有启用/关闭 Switch", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    MOCK_ALERT_POLICIES.forEach((pol) => {
-      expect(screen.getByTestId(`edit-policy-btn-${pol.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_POLICIES.forEach((pol) => {
+        expect(screen.getByTestId(`policy-toggle-${pol.id}`)).toBeInTheDocument()
+      })
     })
   })
 
-  it("每条策略有删除按钮", () => {
+  it("每条策略有编辑按钮", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    MOCK_ALERT_POLICIES.forEach((pol) => {
-      expect(screen.getByTestId(`delete-policy-btn-${pol.id}`)).toBeInTheDocument()
+    await waitFor(() => {
+      MOCK_ALERT_POLICIES.forEach((pol) => {
+        expect(screen.getByTestId(`edit-policy-btn-${pol.id}`)).toBeInTheDocument()
+      })
     })
   })
 
-  it("点击 Toggle 切换策略启用状态", () => {
+  it("每条策略有删除按钮", async () => {
+    render(<AlertsClient />)
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
+    await waitFor(() => {
+      MOCK_ALERT_POLICIES.forEach((pol) => {
+        expect(screen.getByTestId(`delete-policy-btn-${pol.id}`)).toBeInTheDocument()
+      })
+    })
+  })
+
+  it("点击 Toggle 切换策略启用状态", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     const firstPol = MOCK_ALERT_POLICIES[0]
+    await waitFor(() =>
+      expect(screen.getByTestId(`policy-toggle-${firstPol.id}`)).toBeInTheDocument()
+    )
     const toggle = screen.getByTestId(`policy-toggle-${firstPol.id}`) as HTMLInputElement
     const initialChecked = toggle.checked
     fireEvent.click(toggle)
     expect(toggle.checked).toBe(!initialChecked)
   })
 
-  it("点击编辑按钮打开侧滑 Sheet（编辑模式）", () => {
+  it("点击编辑按钮打开侧滑 Sheet（编辑模式）", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
+    await waitFor(() =>
+      expect(screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)).toBeInTheDocument()
+    )
     const editBtn = screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)
     fireEvent.click(editBtn)
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
     expect(screen.getByText("编辑告警策略")).toBeInTheDocument()
   })
 
-  it("点击新建策略按钮打开侧滑 Sheet（新建模式）", () => {
+  it("点击新建策略按钮打开侧滑 Sheet（新建模式）", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
+    await waitFor(() => expect(screen.getByTestId("add-policy-btn")).toBeInTheDocument())
     fireEvent.click(screen.getByTestId("add-policy-btn"))
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
     expect(screen.getByText("新建告警策略")).toBeInTheDocument()
   })
 
-  it("点击删除策略按钮打开确认对话框", () => {
+  it("点击删除策略按钮打开确认对话框", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
+    await waitFor(() =>
+      expect(screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)).toBeInTheDocument()
+    )
     const deleteBtn = screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
@@ -288,5 +419,13 @@ describe("AlertsClient — 通用", () => {
     fireEvent.mouseDown(channelsTab)
     expect(channelsTab).toHaveAttribute("aria-selected", "true")
     expect(screen.getByTestId("tab-events")).toHaveAttribute("aria-selected", "false")
+  })
+
+  it("加载失败时显示错误 Alert", async () => {
+    mockApiRequest.mockRejectedValueOnce(new Error("网络错误"))
+    render(<AlertsClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("events-error")).toBeInTheDocument()
+    })
   })
 })

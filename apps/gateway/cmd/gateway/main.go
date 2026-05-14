@@ -24,20 +24,20 @@ import (
 )
 
 func main() {
-	// Load configuration
-	cfg := config.Default()
+	// Load configuration from dev.env.yaml (falls back to defaults if missing).
+	cfg := config.Load()
 
-	// Setup logger
-	var logLevel slog.Level
+	// Setup logger: text+DEBUG in dev, JSON+INFO in prod.
+	var loggerInst *slog.Logger
 	if cfg.IsDev() {
-		logLevel = slog.LevelDebug
+		loggerInst = slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		}))
 	} else {
-		logLevel = slog.LevelInfo
+		loggerInst = slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelInfo,
+		}))
 	}
-
-	loggerInst := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: logLevel,
-	}))
 
 	loggerInst.Info("starting Gateway service", "env", cfg.Env)
 

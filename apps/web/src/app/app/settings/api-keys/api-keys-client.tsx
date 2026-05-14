@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Button,
   Card,
@@ -30,38 +30,20 @@ import {
   SelectValue,
 } from "@/components/ui"
 import { Copy, CheckCircle2, Plus, Trash2 } from "lucide-react"
+import { apiRequest } from "@/lib/api"
 
 // ── Types ─────────────────────────────────────────────────────────────────
 
 interface APIKey {
   id: string
   name: string
-  prefix: string
-  key_type: string
+  key_prefix: string
+  type: string
+  status: string
   created_at: string
   last_used_at: string | null
+  expires_at: string | null
 }
-
-// ── Mock data ─────────────────────────────────────────────────────────────
-
-const MOCK_KEYS: APIKey[] = [
-  {
-    id: "key_001",
-    name: "生产环境",
-    prefix: "sk_live_abc...xyz",
-    key_type: "production",
-    created_at: "2025-03-01",
-    last_used_at: "2025-05-13",
-  },
-  {
-    id: "key_002",
-    name: "CI/CD 流水线",
-    prefix: "sk_live_def...uvw",
-    key_type: "production",
-    created_at: "2025-04-15",
-    last_used_at: null,
-  },
-]
 
 // ── KeyTypeBadge ──────────────────────────────────────────────────────────
 
@@ -91,12 +73,15 @@ function KeyTypeBadge({ keyType }: { keyType: string }) {
 // ── APIKeysClient ─────────────────────────────────────────────────────────
 
 export function APIKeysClient() {
-  const [keys, setKeys] = useState<APIKey[]>(MOCK_KEYS)
+  const [keys, setKeys] = useState<APIKey[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // ── Create dialog state ──────────────────────────────────────────────────
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState("")
-  const [newKeyType, setNewKeyType] = useState<string>("production")
+  const [newKeyType, setNewKeyType] = useState<string>("live")
+  const [newKeyExpiry, setNewKeyExpiry] = useState<string>("never")
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
@@ -105,6 +90,27 @@ export function APIKeysClient() {
   // ── Revoke confirm state ─────────────────────────────────────────────────
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
   const [revokeLoading, setRevokeLoading] = useState(false)
+
+  // ── Load keys ─────────────────────────────────────────────────────────────
+
+  const loadKeys = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const res = await apiRequest<{ data: { api_keys: APIKey[] } }>(
+        "/v1/account/api-keys"
+      )
+      setKeys(res.data.api_keys ?? [])
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadKeys()
+  }, [loadKeys])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -116,22 +122,23 @@ export function APIKeysClient() {
     setCreating(true)
     setCreateError(null)
     try {
-      // Mock: real impl calls POST /v1/account/api-keys
-      await new Promise((r) => setTimeout(r, 300))
-      const pfx = newKeyType === "test" ? "sk_test_" : "sk_live_"
-      const mockFullKey = `${pfx}${Math.random().toString(36).slice(2, 10)}...${Math.random().toString(36).slice(2, 6)}`
-      const newKey: APIKey = {
-        id: `key_${Date.now()}`,
-        name: newKeyName.trim(),
-        prefix: mockFullKey.slice(0, 18) + "...",
-        key_type: newKeyType,
-        created_at: new Date().toISOString().slice(0, 10),
-        last_used_at: null,
-      }
-      setKeys((prev) => [newKey, ...prev])
-      setCreatedKey(mockFullKey)
-    } catch {
-      setCreateError("创建失败，请稍后重试")
+      const res = await apiRequest<{ data: APIKey & { key: string } }>(
+        "/v1/account/api-keys",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: newKeyName.trim(),
+            type: newKeyType,
+            expires_in: newKeyExpiry,
+          }),
+        }
+      )
+      setKeys((prev) => [res.data, ...prev])
+      setCreatedKey(res.data.key)
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : "创建失败，请稍后重试"
+      )
     } finally {
       setCreating(false)
     }
@@ -140,7 +147,8 @@ export function APIKeysClient() {
   function handleCloseCreateDialog() {
     setShowCreateDialog(false)
     setNewKeyName("")
-    setNewKeyType("production")
+    setNewKeyType("live")
+    setNewKeyExpiry("never")
     setCreateError(null)
     setCreatedKey(null)
     setCopied(false)
@@ -160,12 +168,11 @@ export function APIKeysClient() {
   async function handleRevoke(id: string) {
     setRevokeLoading(true)
     try {
-      // Mock: real impl calls DELETE /v1/account/api-keys/:id
-      await new Promise((r) => setTimeout(r, 300))
+      await apiRequest(`/v1/account/api-keys/${id}`, { method: "DELETE" })
       setKeys((prev) => prev.filter((k) => k.id !== id))
       setRevokeTarget(null)
     } catch {
-      // ignore for mock
+      // keep confirm panel open on error; user can retry
     } finally {
       setRevokeLoading(false)
     }
@@ -192,7 +199,18 @@ export function APIKeysClient() {
           </div>
         </CardHeader>
         <CardContent>
-          {keys.length === 0 ? (
+          {loading ? (
+            <p
+              className="text-sm text-muted-foreground py-4 text-center"
+              data-testid="loading-keys-message"
+            >
+              加载中...
+            </p>
+          ) : loadError ? (
+            <Alert variant="destructive" data-testid="load-keys-error">
+              <AlertDescription>{loadError}</AlertDescription>
+            </Alert>
+          ) : keys.length === 0 ? (
             <p
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="empty-keys-message"
@@ -216,18 +234,20 @@ export function APIKeysClient() {
                   <TableRow key={key.id} data-testid={`key-row-${key.id}`}>
                     <TableCell className="font-medium">{key.name}</TableCell>
                     <TableCell>
-                      <KeyTypeBadge keyType={key.key_type} />
+                      <KeyTypeBadge keyType={key.type} />
                     </TableCell>
                     <TableCell>
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                        {key.prefix}
+                        {key.key_prefix}
                       </code>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {key.created_at}
+                      {new Date(key.created_at).toLocaleDateString("zh-CN")}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {key.last_used_at ?? (
+                      {key.last_used_at ? (
+                        new Date(key.last_used_at).toLocaleDateString("zh-CN")
+                      ) : (
                         <Badge variant="secondary" className="text-xs">
                           从未使用
                         </Badge>
@@ -323,8 +343,27 @@ export function APIKeysClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="production" data-testid="select-item-production">生产（Production）</SelectItem>
+                    <SelectItem value="live" data-testid="select-item-production">生产（Live）</SelectItem>
                     <SelectItem value="test" data-testid="select-item-test">测试（Test）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">有效期</label>
+                <Select
+                  value={newKeyExpiry}
+                  onValueChange={setNewKeyExpiry}
+                  disabled={creating}
+                >
+                  <SelectTrigger data-testid="select-key-expiry">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="30d">30 天</SelectItem>
+                    <SelectItem value="90d">90 天</SelectItem>
+                    <SelectItem value="365d">1 年</SelectItem>
+                    <SelectItem value="never">永不过期</SelectItem>
                   </SelectContent>
                 </Select>
               </div>

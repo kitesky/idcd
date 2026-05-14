@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -14,10 +14,12 @@ import {
   Server,
   Trash2,
 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -42,14 +44,69 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
-import {
-  type Monitor,
-  type MonitorStatus,
-  type MonitorType,
-  TYPE_LABELS,
-} from "./mock-data"
+import { apiRequest } from "@/lib/api"
+import { type MonitorType, TYPE_LABELS } from "./mock-data"
 
-function statusBadge(status: MonitorStatus) {
+// ── Backend API types ────────────────────────────────────────────────────────
+
+export type MonitorStatus = "active" | "paused" | "down" | "degraded"
+
+// Frontend-normalised Monitor shape (camelCase).
+export interface Monitor {
+  id: string
+  name: string
+  type: MonitorType
+  target: string
+  /** Normalised frontend status: UP / DOWN / PAUSED / degraded */
+  status: "UP" | "DOWN" | "PAUSED" | "degraded"
+  uptimePercent: number
+  lastCheckedAt: string
+  intervalSeconds: number
+}
+
+// Raw shape returned by GET /v1/monitors
+interface ApiMonitor {
+  id: string
+  name: string
+  type: string
+  target: string
+  status: string
+  uptime_percent: number
+  last_checked_at: string
+  interval_seconds: number
+}
+
+function normaliseStatus(s: string): Monitor["status"] {
+  switch (s) {
+    case "active":
+      return "UP"
+    case "down":
+      return "DOWN"
+    case "paused":
+      return "PAUSED"
+    case "degraded":
+      return "degraded"
+    default:
+      return "UP"
+  }
+}
+
+function fromApi(m: ApiMonitor): Monitor {
+  return {
+    id: m.id,
+    name: m.name,
+    type: m.type as MonitorType,
+    target: m.target,
+    status: normaliseStatus(m.status),
+    uptimePercent: m.uptime_percent ?? 0,
+    lastCheckedAt: m.last_checked_at ?? new Date().toISOString(),
+    intervalSeconds: m.interval_seconds ?? 300,
+  }
+}
+
+// ── UI helpers ────────────────────────────────────────────────────────────────
+
+function statusBadge(status: Monitor["status"]) {
   switch (status) {
     case "UP":
       return <Badge variant="success">UP</Badge>
@@ -74,18 +131,41 @@ function formatRelativeTime(iso: string): string {
   return `${Math.floor(diff / 86400)}天前`
 }
 
-interface MonitorsClientProps {
-  initialMonitors: Monitor[]
-}
+// ── Component ─────────────────────────────────────────────────────────────────
 
-export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
+export function MonitorsClient() {
   const router = useRouter()
-  const [monitors, setMonitors] = useState<Monitor[]>(initialMonitors)
+  const [monitors, setMonitors] = useState<Monitor[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
   const [pendingBulkAction, setPendingBulkAction] = useState<
     "pause" | "resume" | "delete" | null
   >(null)
+
+  // ── Data fetching ───────────────────────────────────────────────────────────
+
+  const fetchMonitors = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiRequest<{ data: { monitors: ApiMonitor[]; total: number } }>(
+        "/v1/monitors"
+      )
+      setMonitors((res.data?.monitors ?? []).map(fromApi))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载失败")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchMonitors()
+  }, [fetchMonitors])
+
+  // ── Derived stats ───────────────────────────────────────────────────────────
 
   const total = monitors.length
   const upCount = monitors.filter((m) => m.status === "UP").length
@@ -94,6 +174,8 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
 
   const allSelected =
     monitors.length > 0 && selectedIds.size === monitors.length
+
+  // ── Selection helpers ───────────────────────────────────────────────────────
 
   function toggleSelectAll() {
     if (allSelected) {
@@ -115,45 +197,75 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
     })
   }
 
-  function togglePause(id: string) {
+  // ── Individual PATCH pause/resume ───────────────────────────────────────────
+
+  async function togglePause(id: string) {
+    const monitor = monitors.find((m) => m.id === id)
+    if (!monitor) return
+    const newApiStatus = monitor.status === "PAUSED" ? "active" : "paused"
+    // Optimistic update
     setMonitors((prev) =>
-      prev.map((m) => {
-        if (m.id !== id) return m
-        return {
-          ...m,
-          status: m.status === "PAUSED" ? "UP" : "PAUSED",
-        } as Monitor
-      })
+      prev.map((m) =>
+        m.id === id ? { ...m, status: newApiStatus === "paused" ? "PAUSED" : "UP" } : m
+      )
     )
+    try {
+      await apiRequest(`/v1/monitors/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newApiStatus }),
+      })
+    } catch {
+      // Roll back on failure
+      await fetchMonitors()
+    }
   }
 
-  function deleteMonitor(id: string) {
+  // ── Individual DELETE ───────────────────────────────────────────────────────
+
+  async function deleteMonitor(id: string) {
+    // Optimistic removal
     setMonitors((prev) => prev.filter((m) => m.id !== id))
     setSelectedIds((prev) => {
       const next = new Set(prev)
       next.delete(id)
       return next
     })
+    try {
+      await apiRequest(`/v1/monitors/${id}`, { method: "DELETE" })
+    } catch {
+      await fetchMonitors()
+    }
   }
 
-  function executeBulkAction(action: "pause" | "resume" | "delete") {
+  // ── Bulk operations ─────────────────────────────────────────────────────────
+
+  async function executeBulkAction(action: "pause" | "resume" | "delete") {
+    const ids = Array.from(selectedIds)
+    setSelectedIds(new Set())
+    setPendingBulkAction(null)
+
+    // Optimistic UI update
     if (action === "pause") {
       setMonitors((prev) =>
-        prev.map((m) =>
-          selectedIds.has(m.id) ? { ...m, status: "PAUSED" as MonitorStatus } : m
-        )
+        prev.map((m) => (selectedIds.has(m.id) ? { ...m, status: "PAUSED" as const } : m))
       )
     } else if (action === "resume") {
       setMonitors((prev) =>
-        prev.map((m) =>
-          selectedIds.has(m.id) ? { ...m, status: "UP" as MonitorStatus } : m
-        )
+        prev.map((m) => (selectedIds.has(m.id) ? { ...m, status: "UP" as const } : m))
       )
-    } else if (action === "delete") {
+    } else {
       setMonitors((prev) => prev.filter((m) => !selectedIds.has(m.id)))
     }
-    setSelectedIds(new Set())
-    setPendingBulkAction(null)
+
+    try {
+      await apiRequest("/v1/monitors/bulk", {
+        method: "POST",
+        body: JSON.stringify({ action, ids }),
+      })
+    } catch {
+      // On error re-fetch to restore consistent state
+      await fetchMonitors()
+    }
   }
 
   function requestBulkAction(action: "pause" | "resume" | "delete") {
@@ -164,6 +276,8 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
       executeBulkAction(action)
     }
   }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -177,7 +291,11 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold tabular-nums">{total}</p>
+            {loading ? (
+              <Skeleton className="h-9 w-12" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums">{total}</p>
+            )}
           </CardContent>
         </Card>
 
@@ -189,9 +307,13 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold tabular-nums text-success">
-              {upCount}
-            </p>
+            {loading ? (
+              <Skeleton className="h-9 w-12" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums text-success">
+                {upCount}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -203,9 +325,13 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold tabular-nums text-destructive">
-              {downCount}
-            </p>
+            {loading ? (
+              <Skeleton className="h-9 w-12" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums text-destructive">
+                {downCount}
+              </p>
+            )}
           </CardContent>
         </Card>
 
@@ -217,10 +343,23 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-bold tabular-nums">{checkingCount}</p>
+            {loading ? (
+              <Skeleton className="h-9 w-12" />
+            ) : (
+              <p className="text-3xl font-bold tabular-nums">{checkingCount}</p>
+            )}
           </CardContent>
         </Card>
       </div>
+
+      {/* 错误提示 */}
+      {error && (
+        <Alert variant="destructive">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>加载失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
 
       {/* 操作栏 */}
       <div className="flex items-center justify-between">
@@ -255,7 +394,36 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {monitors.length === 0 ? (
+            {loading ? (
+              Array.from({ length: 5 }).map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell>
+                    <Skeleton className="h-4 w-4 rounded" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-4 w-32" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-16 rounded-full" />
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Skeleton className="h-4 w-40" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-5 w-12 rounded-full" />
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Skeleton className="h-4 w-20" />
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">
+                    <Skeleton className="h-4 w-12" />
+                  </TableCell>
+                  <TableCell>
+                    <Skeleton className="h-8 w-16" />
+                  </TableCell>
+                </TableRow>
+              ))
+            ) : monitors.length === 0 ? (
               <TableRow>
                 <TableCell
                   colSpan={8}
@@ -332,7 +500,9 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
                           <DropdownMenuItem
-                            onClick={() => router.push(`/app/monitors/${monitor.id}`)}
+                            onClick={() =>
+                              router.push(`/app/monitors/${monitor.id}`)
+                            }
                           >
                             <Activity className="h-4 w-4" />
                             查看详情
@@ -359,8 +529,13 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100vw-2rem)]">
           <div className="flex items-center gap-2 rounded-xl border bg-background px-4 py-3 shadow-lg">
-            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap" data-testid="bulk-selection-count">
-              <span className="hidden sm:inline">已选择 </span>{selectedIds.size}<span className="hidden sm:inline"> 个监控</span>
+            <span
+              className="text-sm font-medium text-muted-foreground whitespace-nowrap"
+              data-testid="bulk-selection-count"
+            >
+              <span className="hidden sm:inline">已选择 </span>
+              {selectedIds.size}
+              <span className="hidden sm:inline"> 个监控</span>
             </span>
             <div className="h-4 w-px bg-border" />
             <Button

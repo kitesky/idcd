@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect, useCallback } from "react"
 import {
   Button,
   Card,
@@ -32,38 +32,21 @@ import {
   Label,
 } from "@/components/ui"
 import { Copy, CheckCircle2, Plus, Trash2 } from "lucide-react"
+import { apiRequest } from "@/lib/api"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface PAT {
   id: string
   name: string
-  token_prefix: string
+  // key_prefix is returned from backend as part of the Token object
+  key_prefix?: string
   scopes: string[]
-  expires_at: string | null
+  status: string
   created_at: string
+  expires_at: string | null
+  last_used_at: string | null
 }
-
-// ── Mock data ─────────────────────────────────────────────────────────────────
-
-const MOCK_TOKENS: PAT[] = [
-  {
-    id: "pat_001",
-    name: "本地 CLI",
-    token_prefix: "idcd_pat_a1b2c3d4",
-    scopes: ["read:monitors", "write:monitors"],
-    expires_at: null,
-    created_at: "2025-05-01",
-  },
-  {
-    id: "pat_002",
-    name: "MCP 集成",
-    token_prefix: "idcd_pat_e5f6a7b8",
-    scopes: ["read:monitors"],
-    expires_at: "2026-05-01T00:00:00Z",
-    created_at: "2025-05-10",
-  },
-]
 
 const AVAILABLE_SCOPES = [
   { value: "read:monitors", label: "read:monitors" },
@@ -73,22 +56,25 @@ const AVAILABLE_SCOPES = [
 ]
 
 const EXPIRY_OPTIONS = [
-  { value: "30", label: "30 天" },
-  { value: "90", label: "90 天" },
-  { value: "365", label: "1 年" },
-  { value: "0", label: "永不过期" },
+  { value: "7d", label: "7 天" },
+  { value: "30d", label: "30 天" },
+  { value: "90d", label: "90 天" },
+  { value: "365d", label: "1 年" },
+  { value: "never", label: "永不过期" },
 ]
 
 // ── TokensClient ──────────────────────────────────────────────────────────────
 
 export function TokensClient() {
-  const [tokens, setTokens] = useState<PAT[]>(MOCK_TOKENS)
+  const [tokens, setTokens] = useState<PAT[]>([])
+  const [loading, setLoading] = useState(true)
+  const [loadError, setLoadError] = useState<string | null>(null)
 
   // ── Create dialog state ──────────────────────────────────────────────────
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newTokenName, setNewTokenName] = useState("")
   const [selectedScopes, setSelectedScopes] = useState<string[]>([])
-  const [expiresDays, setExpiresDays] = useState("365")
+  const [expiresIn, setExpiresIn] = useState("365d")
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createdToken, setCreatedToken] = useState<string | null>(null)
@@ -97,6 +83,27 @@ export function TokensClient() {
   // ── Revoke state ─────────────────────────────────────────────────────────
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
   const [revokeLoading, setRevokeLoading] = useState(false)
+
+  // ── Load tokens ───────────────────────────────────────────────────────────
+
+  const loadTokens = useCallback(async () => {
+    setLoading(true)
+    setLoadError(null)
+    try {
+      const res = await apiRequest<{ data: { tokens: PAT[] } }>(
+        "/v1/account/tokens"
+      )
+      setTokens(res.data.tokens ?? [])
+    } catch (err) {
+      setLoadError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    loadTokens()
+  }, [loadTokens])
 
   // ── Handlers ─────────────────────────────────────────────────────────────
 
@@ -114,28 +121,23 @@ export function TokensClient() {
     setCreating(true)
     setCreateError(null)
     try {
-      await new Promise((r) => setTimeout(r, 300))
-      const rawHex = Array.from(crypto.getRandomValues(new Uint8Array(16)))
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join("")
-      const fullToken = `idcd_pat_${rawHex}`
-      const newPAT: PAT = {
-        id: `pat_${Date.now()}`,
-        name: newTokenName.trim(),
-        token_prefix: `idcd_pat_${rawHex.slice(0, 8)}`,
-        scopes: selectedScopes,
-        expires_at:
-          expiresDays !== "0"
-            ? new Date(
-                Date.now() + parseInt(expiresDays) * 86400000
-              ).toISOString()
-            : null,
-        created_at: new Date().toISOString().slice(0, 10),
-      }
-      setTokens((prev) => [newPAT, ...prev])
-      setCreatedToken(fullToken)
-    } catch {
-      setCreateError("创建失败，请稍后重试")
+      const res = await apiRequest<{ data: PAT & { token: string } }>(
+        "/v1/account/tokens",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            name: newTokenName.trim(),
+            scopes: selectedScopes,
+            expires_in: expiresIn,
+          }),
+        }
+      )
+      setTokens((prev) => [res.data, ...prev])
+      setCreatedToken(res.data.token)
+    } catch (err) {
+      setCreateError(
+        err instanceof Error ? err.message : "创建失败，请稍后重试"
+      )
     } finally {
       setCreating(false)
     }
@@ -145,7 +147,7 @@ export function TokensClient() {
     setShowCreateDialog(false)
     setNewTokenName("")
     setSelectedScopes([])
-    setExpiresDays("365")
+    setExpiresIn("365d")
     setCreateError(null)
     setCreatedToken(null)
     setCopied(false)
@@ -165,11 +167,11 @@ export function TokensClient() {
   async function handleRevoke(id: string) {
     setRevokeLoading(true)
     try {
-      await new Promise((r) => setTimeout(r, 300))
+      await apiRequest(`/v1/account/tokens/${id}`, { method: "DELETE" })
       setTokens((prev) => prev.filter((t) => t.id !== id))
       setRevokeTarget(null)
     } catch {
-      // ignore for mock
+      // keep confirm panel open on error; user can retry
     } finally {
       setRevokeLoading(false)
     }
@@ -211,7 +213,18 @@ export function TokensClient() {
           </div>
         </CardHeader>
         <CardContent>
-          {tokens.length === 0 ? (
+          {loading ? (
+            <p
+              className="text-sm text-muted-foreground py-4 text-center"
+              data-testid="loading-tokens-message"
+            >
+              加载中...
+            </p>
+          ) : loadError ? (
+            <Alert variant="destructive" data-testid="load-tokens-error">
+              <AlertDescription>{loadError}</AlertDescription>
+            </Alert>
+          ) : tokens.length === 0 ? (
             <p
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="empty-tokens-message"
@@ -236,7 +249,7 @@ export function TokensClient() {
                     <TableCell className="font-medium">{tok.name}</TableCell>
                     <TableCell>
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                        {tok.token_prefix}
+                        {tok.key_prefix ?? "—"}
                       </code>
                     </TableCell>
                     <TableCell>
@@ -261,7 +274,7 @@ export function TokensClient() {
                     </TableCell>
                     <TableCell>{formatExpiry(tok.expires_at)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {tok.created_at}
+                      {new Date(tok.created_at).toLocaleDateString("zh-CN")}
                     </TableCell>
                     <TableCell className="text-right">
                       {revokeTarget === tok.id ? (
@@ -381,8 +394,8 @@ export function TokensClient() {
               <div className="space-y-2">
                 <Label htmlFor="token-expiry">有效期</Label>
                 <Select
-                  value={expiresDays}
-                  onValueChange={setExpiresDays}
+                  value={expiresIn}
+                  onValueChange={setExpiresIn}
                   disabled={creating}
                 >
                   <SelectTrigger

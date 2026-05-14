@@ -1,6 +1,5 @@
 import type { Metadata } from "next"
 import { MonitorsClient } from "./monitors-client"
-import { MOCK_MONITORS } from "./mock-data"
 
 export const metadata: Metadata = {
   title: "监控控制台 - idcd",
@@ -18,7 +17,7 @@ export default function MonitorsPage() {
           </p>
         </div>
 
-        <MonitorsClient initialMonitors={MOCK_MONITORS} />
+        <MonitorsClient />
       </div>
     </div>
   )

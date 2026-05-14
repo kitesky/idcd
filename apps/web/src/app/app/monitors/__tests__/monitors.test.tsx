@@ -18,31 +18,72 @@ vi.mock("next/link", () => ({
   }) => <a href={href}>{children}</a>,
 }))
 
-// Default fetch mock: returns empty buckets
-beforeEach(() => {
-  global.fetch = vi.fn().mockResolvedValue({
-    ok: true,
-    json: async () => ({
-      data: {
-        monitor_id: "mon-001",
-        hours: 24,
-        resolution_minutes: 30,
-        buckets: [],
-      },
-    }),
-  } as Response)
-})
-
 import { MonitorsClient } from "../monitors-client"
 import { MOCK_MONITORS } from "../mock-data"
 import { MonitorDetailClient } from "../[id]/monitor-detail-client"
 
-// ─── MonitorsClient unit tests ──────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+// Build the GET /v1/monitors response from MOCK_MONITORS.
+// Maps frontend camelCase to backend snake_case so fromApi() can normalise them.
+function mockMonitorsResponse(monitors = MOCK_MONITORS) {
+  return {
+    data: {
+      monitors: monitors.map((m) => ({
+        id: m.id,
+        name: m.name,
+        type: m.type,
+        target: m.target,
+        // Map frontend status back to API status strings
+        status:
+          m.status === "UP"
+            ? "active"
+            : m.status === "DOWN"
+              ? "down"
+              : m.status === "PAUSED"
+                ? "paused"
+                : "degraded",
+        uptime_percent: m.uptimePercent,
+        last_checked_at: m.lastCheckedAt,
+        interval_seconds: m.intervalSeconds,
+      })),
+      total: monitors.length,
+    },
+  }
+}
+
+// Default fetch mock: first call → monitors list; subsequent calls (trend / SSE) → empty buckets
+beforeEach(() => {
+  global.fetch = vi.fn().mockImplementation((url: string) => {
+    const path = typeof url === "string" ? url : String(url)
+    if (path.includes("/v1/monitors") && !path.match(/\/v1\/monitors\//)) {
+      // GET /v1/monitors
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockMonitorsResponse(),
+      } as Response)
+    }
+    // trend / check history buckets
+    return Promise.resolve({
+      ok: true,
+      json: async () => ({
+        data: {
+          monitor_id: "mon-001",
+          hours: 24,
+          resolution_minutes: 30,
+          buckets: [],
+        },
+      }),
+    } as Response)
+  })
+})
+
+// ─── MonitorsClient unit tests ────────────────────────────────────────────────
 
 describe("MonitorsClient — 列表渲染", () => {
-  it("渲染所有 6 个监控行", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
-    expect(screen.getByText("idcd.com 主站")).toBeInTheDocument()
+  it("渲染所有 6 个监控行", async () => {
+    render(<MonitorsClient />)
+    expect(await screen.findByText("idcd.com 主站")).toBeInTheDocument()
     expect(screen.getByText("API 网关健康检查")).toBeInTheDocument()
     expect(screen.getByText("香港节点 Ping")).toBeInTheDocument()
     expect(screen.getByText("日本东京 Ping")).toBeInTheDocument()
@@ -50,57 +91,88 @@ describe("MonitorsClient — 列表渲染", () => {
     expect(screen.getByText("DNS 解析检查")).toBeInTheDocument()
   })
 
-  it("统计卡片：监控总数为 6", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("统计卡片：监控总数为 6", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const sixes = screen.getAllByText("6")
     expect(sixes.length).toBeGreaterThan(0)
   })
 
-  it("统计卡片：UP 数量为 4", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
-    // 4 UP monitors: mon-001, mon-003, mon-004, mon-005
+  it("统计卡片：UP 数量为 4", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const fours = screen.getAllByText("4")
     expect(fours.length).toBeGreaterThan(0)
   })
 
-  it("统计卡片：DOWN 数量为 1", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("统计卡片：DOWN 数量为 1", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const ones = screen.getAllByText("1")
     expect(ones.length).toBeGreaterThan(0)
   })
 
-  it("DOWN 状态 Badge 渲染", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("DOWN 状态 Badge 渲染", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     expect(screen.getAllByText("DOWN").length).toBeGreaterThan(0)
   })
 
-  it("UP 状态 Badge 渲染（多个）", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("UP 状态 Badge 渲染（多个）", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     expect(screen.getAllByText("UP").length).toBeGreaterThan(0)
   })
 
-  it("降级状态 Badge 渲染", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
-    expect(screen.getByText("降级")).toBeInTheDocument()
+  it("降级状态 Badge 渲染", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("降级")
   })
 
-  it("类型 Badge 渲染：HTTP、Ping、SSL到期、DNS", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("类型 Badge 渲染：HTTP、Ping、SSL到期、DNS", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     expect(screen.getAllByText("HTTP").length).toBeGreaterThan(0)
     expect(screen.getAllByText("Ping").length).toBeGreaterThan(0)
     expect(screen.getByText("SSL到期")).toBeInTheDocument()
     expect(screen.getByText("DNS")).toBeInTheDocument()
   })
 
-  it("点击暂停按钮后状态变为 PAUSED（恢复按钮出现）", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("点击暂停按钮后状态变为 PAUSED（恢复按钮出现）", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      const path = typeof url === "string" ? url : String(url)
+      if (path.match(/\/v1\/monitors\/[^/]+$/) && !path.endsWith("/v1/monitors")) {
+        // PATCH /v1/monitors/:id — accept and succeed
+        return Promise.resolve({ ok: true, json: async () => ({}) } as Response)
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockMonitorsResponse(),
+      } as Response)
+    })
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const pauseButtons = screen.getAllByTitle("暂停检测")
     fireEvent.click(pauseButtons[0])
-    expect(screen.getAllByTitle("恢复检测").length).toBeGreaterThan(0)
+    await waitFor(() =>
+      expect(screen.getAllByTitle("恢复检测").length).toBeGreaterThan(0)
+    )
   })
 
-  it("点击删除后监控从列表移除", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("点击删除后监控从列表移除", async () => {
+    global.fetch = vi.fn().mockImplementation((url: string) => {
+      const path = typeof url === "string" ? url : String(url)
+      if (path.match(/\/v1\/monitors\/[^/]+$/) && !path.endsWith("/v1/monitors")) {
+        // DELETE /v1/monitors/:id
+        return Promise.resolve({ ok: true, json: async () => ({}) } as Response)
+      }
+      return Promise.resolve({
+        ok: true,
+        json: async () => mockMonitorsResponse(),
+      } as Response)
+    })
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     // Open dropdown menu for first monitor via pointerDown (Radix DropdownMenu event)
     const moreButtons = screen.getAllByLabelText("更多操作")
     fireEvent.pointerDown(moreButtons[0], {
@@ -111,49 +183,64 @@ describe("MonitorsClient — 列表渲染", () => {
     })
     const deleteBtn = screen.queryByText("删除")
     if (deleteBtn) {
-      // Portal rendered — click delete
       fireEvent.click(deleteBtn)
-      expect(screen.queryByText("idcd.com 主站")).not.toBeInTheDocument()
+      await waitFor(() =>
+        expect(screen.queryByText("idcd.com 主站")).not.toBeInTheDocument()
+      )
     } else {
-      // Portal not rendered in jsdom — invoke delete directly via pause/delete row
-      // Find the first pause button and verify the monitor row exists
+      // Portal not rendered in jsdom — verify row is present and interactive
       expect(screen.getByText("idcd.com 主站")).toBeInTheDocument()
-      // Simulate delete by clicking the pause button to confirm row is interactive
       const pauseButtons = screen.getAllByTitle("暂停检测")
       expect(pauseButtons.length).toBeGreaterThan(0)
     }
   })
 
-  it("新建监控链接存在并有正确 href", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
-    const newBtn = screen.getByRole("link", { name: /新建监控/ })
+  it("新建监控链接存在并有正确 href", async () => {
+    render(<MonitorsClient />)
+    // The button is present even during loading
+    const newBtn = await screen.findByRole("link", { name: /新建监控/ })
     expect(newBtn).toHaveAttribute("href", "/app/monitors/new")
   })
 
-  it("渲染 Checkbox 列——每行有 Checkbox", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("渲染 Checkbox 列——每行有 Checkbox", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const checkboxes = screen.getAllByRole("checkbox")
     expect(checkboxes.length).toBeGreaterThanOrEqual(MOCK_MONITORS.length + 1)
   })
 
-  it("选择一个 monitor 后浮动操作栏出现", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("选择一个 monitor 后浮动操作栏出现", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const checkboxes = screen.getAllByRole("checkbox")
     const rowCheckbox = checkboxes[1]
     fireEvent.click(rowCheckbox)
     expect(screen.getByTestId("bulk-selection-count")).toBeInTheDocument()
   })
 
-  it("点击全选后所有 monitor 被选中", () => {
-    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+  it("点击全选后所有 monitor 被选中", async () => {
+    render(<MonitorsClient />)
+    await screen.findByText("idcd.com 主站")
     const checkboxes = screen.getAllByRole("checkbox")
     const selectAllCheckbox = checkboxes[0]
     fireEvent.click(selectAllCheckbox)
     expect(screen.getByTestId("bulk-selection-count")).toBeInTheDocument()
   })
+
+  it("fetch 失败时显示错误 Alert", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      statusText: "Internal Server Error",
+      json: async () => ({ error: { message: "服务器错误" } }),
+    } as Response)
+    render(<MonitorsClient />)
+    await screen.findByText("加载失败")
+    expect(screen.getByText("服务器错误")).toBeInTheDocument()
+  })
 })
 
-// ─── MonitorDetailClient tests ───────────────────────────────────────────────
+// ─── MonitorDetailClient tests ────────────────────────────────────────────────
 
 describe("MonitorDetailClient — 详情页渲染", () => {
   const upMonitor = MOCK_MONITORS[0] // mon-001 UP

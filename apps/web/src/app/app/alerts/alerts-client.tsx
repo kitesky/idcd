@@ -1,6 +1,6 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useRef, useState, useEffect, useCallback } from "react"
 import {
   Bell,
   Mail,
@@ -21,6 +21,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Slider } from "@/components/ui/slider"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import {
   AlertDialog,
@@ -60,17 +61,14 @@ import {
   type AlertNotification,
   type AlertSilence,
   type ChannelType,
-  MOCK_ALERT_EVENTS,
-  MOCK_ALERT_CHANNELS,
-  MOCK_ALERT_POLICIES,
   MOCK_NOTIFICATIONS,
-  MOCK_ALERT_SILENCES,
   MOCK_MONITOR_NAMES,
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPES,
   formatDuration,
   truncateConfig,
 } from "./mock-data"
+import { apiRequest } from "@/lib/api"
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -744,13 +742,88 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
   )
 }
 
+// ─── API response shapes ──────────────────────────────────────────────────────
+
+interface EventsResponse {
+  data: { events: AlertEvent[] }
+}
+interface ChannelsResponse {
+  data: { channels: AlertChannel[] }
+}
+interface PoliciesResponse {
+  data: { policies: AlertPolicy[] }
+}
+
+// ─── Skeleton loaders ─────────────────────────────────────────────────────────
+
+function EventsSkeleton() {
+  return (
+    <div className="space-y-4" data-testid="events-skeleton">
+      <Skeleton className="h-14 w-full rounded-md" />
+      <Card>
+        <div className="p-4 space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full rounded" />
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+function ChannelsSkeleton() {
+  return (
+    <div className="space-y-4" data-testid="channels-skeleton">
+      <div className="flex justify-between">
+        <Skeleton className="h-5 w-24 rounded" />
+        <Skeleton className="h-8 w-24 rounded" />
+      </div>
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-40 w-full rounded-lg" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PoliciesSkeleton() {
+  return (
+    <div className="space-y-4" data-testid="policies-skeleton">
+      <div className="flex justify-between">
+        <Skeleton className="h-5 w-24 rounded" />
+        <Skeleton className="h-8 w-24 rounded" />
+      </div>
+      <Card>
+        <div className="p-4 space-y-3">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <Skeleton key={i} className="h-8 w-full rounded" />
+          ))}
+        </div>
+      </Card>
+    </div>
+  )
+}
+
 // ─── Main AlertsClient ────────────────────────────────────────────────────────
 
 export function AlertsClient() {
-  const [events, setEvents] = useState<AlertEvent[]>(MOCK_ALERT_EVENTS)
-  const [channels, setChannels] = useState<AlertChannel[]>(MOCK_ALERT_CHANNELS)
-  const [policies, setPolicies] = useState<AlertPolicy[]>(MOCK_ALERT_POLICIES)
-  const [silences, setSilences] = useState<AlertSilence[]>(MOCK_ALERT_SILENCES)
+  // Per-tab data state
+  const [events, setEvents] = useState<AlertEvent[]>([])
+  const [channels, setChannels] = useState<AlertChannel[]>([])
+  const [policies, setPolicies] = useState<AlertPolicy[]>([])
+  const [silences, setSilences] = useState<AlertSilence[]>([])
+
+  // Per-tab loading & error state
+  const [eventsLoading, setEventsLoading] = useState(true)
+  const [eventsError, setEventsError] = useState<string | null>(null)
+  const [channelsLoading, setChannelsLoading] = useState(false)
+  const [channelsError, setChannelsError] = useState<string | null>(null)
+  const [policiesLoading, setPoliciesLoading] = useState(false)
+  const [policiesError, setPoliciesError] = useState<string | null>(null)
+
+  // Track which tabs have been fetched
+  const fetchedRef = useRef<Record<string, boolean>>({ events: false, channels: false, policies: false })
 
   // Toast
   const { toasts, toast } = useToast()
@@ -770,17 +843,81 @@ export function AlertsClient() {
     policy?: AlertPolicy
   }>({ open: false, mode: "add-channel" })
 
+  // ── Data fetchers ──
+
+  const fetchEvents = useCallback(async () => {
+    if (fetchedRef.current.events) return
+    fetchedRef.current.events = true
+    setEventsLoading(true)
+    setEventsError(null)
+    try {
+      const res = await apiRequest<EventsResponse>("/v1/alert-events")
+      setEvents(res.data.events)
+    } catch (err) {
+      setEventsError(err instanceof Error ? err.message : "加载失败")
+    } finally {
+      setEventsLoading(false)
+    }
+  }, [])
+
+  const fetchChannels = useCallback(async () => {
+    if (fetchedRef.current.channels) return
+    fetchedRef.current.channels = true
+    setChannelsLoading(true)
+    setChannelsError(null)
+    try {
+      const res = await apiRequest<ChannelsResponse>("/v1/alert-channels")
+      setChannels(res.data.channels)
+    } catch (err) {
+      setChannelsError(err instanceof Error ? err.message : "加载失败")
+    } finally {
+      setChannelsLoading(false)
+    }
+  }, [])
+
+  const fetchPolicies = useCallback(async () => {
+    if (fetchedRef.current.policies) return
+    fetchedRef.current.policies = true
+    setPoliciesLoading(true)
+    setPoliciesError(null)
+    try {
+      const res = await apiRequest<PoliciesResponse>("/v1/alert-policies")
+      setPolicies(res.data.policies)
+    } catch (err) {
+      setPoliciesError(err instanceof Error ? err.message : "加载失败")
+    } finally {
+      setPoliciesLoading(false)
+    }
+  }, [])
+
+  // Fetch events on mount (default tab)
+  useEffect(() => {
+    void fetchEvents()
+  }, [fetchEvents])
+
+  // ── Tab change handler ──
+
+  const handleTabChange = (value: string) => {
+    if (value === "channels") void fetchChannels()
+    if (value === "policies") void fetchPolicies()
+  }
+
   // ── Event handlers ──
 
-  const handleAcknowledge = (id: string) => {
-    setEvents((prev) =>
-      prev.map((e) =>
-        e.id === id
-          ? { ...e, status: "acknowledged", acknowledgedAt: new Date().toISOString() }
-          : e
+  const handleAcknowledge = async (id: string) => {
+    try {
+      await apiRequest(`/v1/alert-events/${id}/ack`, { method: "POST" })
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, status: "acknowledged", acknowledgedAt: new Date().toISOString() }
+            : e
+        )
       )
-    )
-    toast("告警已确认")
+      toast("告警已确认")
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "确认失败，请重试")
+    }
   }
 
   const handleTestChannel = (id: string) => {
@@ -794,10 +931,16 @@ export function AlertsClient() {
       open: true,
       title: "删除通道",
       description: `确认删除通道 "${ch?.name}"？此操作不可撤销。`,
-      onConfirm: () => {
-        setChannels((prev) => prev.filter((c) => c.id !== id))
-        setConfirm((p) => ({ ...p, open: false }))
-        toast(`通道 "${ch?.name}" 已删除`)
+      onConfirm: async () => {
+        try {
+          await apiRequest(`/v1/alert-channels/${id}`, { method: "DELETE" })
+          setChannels((prev) => prev.filter((c) => c.id !== id))
+          setConfirm((p) => ({ ...p, open: false }))
+          toast(`通道 "${ch?.name}" 已删除`)
+        } catch (err) {
+          setConfirm((p) => ({ ...p, open: false }))
+          toast(err instanceof Error ? err.message : "删除失败，请重试")
+        }
       },
     })
   }
@@ -805,21 +948,45 @@ export function AlertsClient() {
   const handleAddChannel = () =>
     setSheet({ open: true, mode: "add-channel" })
 
-  const handleSaveChannel = (partial: Omit<AlertChannel, "id" | "verified">) => {
-    const newCh: AlertChannel = {
-      ...partial,
-      id: `ch-${Date.now()}`,
-      verified: false,
+  const handleSaveChannel = async (partial: Omit<AlertChannel, "id" | "verified">) => {
+    try {
+      const res = await apiRequest<{ data: { channel: AlertChannel } }>("/v1/alert-channels", {
+        method: "POST",
+        body: JSON.stringify({
+          name: partial.name,
+          type: partial.type,
+          config: { target: partial.config },
+        }),
+      })
+      const newCh = res.data.channel
+      setChannels((prev) => [...prev, newCh])
+      setSheet((p) => ({ ...p, open: false }))
+      toast(`通道 "${newCh.name}" 已添加`)
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "创建失败，请重试")
     }
-    setChannels((prev) => [...prev, newCh])
-    setSheet((p) => ({ ...p, open: false }))
-    toast(`通道 "${newCh.name}" 已添加`)
   }
 
-  const handleTogglePolicy = (id: string) => {
+  const handleTogglePolicy = async (id: string) => {
+    const pol = policies.find((p) => p.id === id)
+    if (!pol) return
+    const newEnabled = !pol.enabled
+    // Optimistic update
     setPolicies((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, enabled: !p.enabled } : p))
+      prev.map((p) => (p.id === id ? { ...p, enabled: newEnabled } : p))
     )
+    try {
+      await apiRequest(`/v1/alert-policies/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ enabled: newEnabled }),
+      })
+    } catch (err) {
+      // Revert on failure
+      setPolicies((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, enabled: pol.enabled } : p))
+      )
+      toast(err instanceof Error ? err.message : "更新失败，请重试")
+    }
   }
 
   const handleEditPolicy = (pol: AlertPolicy) =>
@@ -831,10 +998,16 @@ export function AlertsClient() {
       open: true,
       title: "删除策略",
       description: `确认删除策略 "${pol?.name}"？此操作不可撤销。`,
-      onConfirm: () => {
-        setPolicies((prev) => prev.filter((p) => p.id !== id))
-        setConfirm((p) => ({ ...p, open: false }))
-        toast(`策略 "${pol?.name}" 已删除`)
+      onConfirm: async () => {
+        try {
+          await apiRequest(`/v1/alert-policies/${id}`, { method: "DELETE" })
+          setPolicies((prev) => prev.filter((p) => p.id !== id))
+          setConfirm((p) => ({ ...p, open: false }))
+          toast(`策略 "${pol?.name}" 已删除`)
+        } catch (err) {
+          setConfirm((p) => ({ ...p, open: false }))
+          toast(err instanceof Error ? err.message : "删除失败，请重试")
+        }
       },
     })
   }
@@ -842,18 +1015,36 @@ export function AlertsClient() {
   const handleAddPolicy = () =>
     setSheet({ open: true, mode: "add-policy" })
 
-  const handleSavePolicy = (partial: Omit<AlertPolicy, "id">) => {
+  const handleSavePolicy = async (partial: Omit<AlertPolicy, "id">) => {
     if (sheet.mode === "edit-policy" && sheet.policy) {
-      setPolicies((prev) =>
-        prev.map((p) =>
-          p.id === sheet.policy!.id ? { ...p, ...partial } : p
+      try {
+        const res = await apiRequest<{ data: { policy: AlertPolicy } }>(
+          `/v1/alert-policies/${sheet.policy.id}`,
+          {
+            method: "PATCH",
+            body: JSON.stringify(partial),
+          }
         )
-      )
-      toast("策略已更新")
+        const updated = res.data.policy
+        setPolicies((prev) =>
+          prev.map((p) => (p.id === sheet.policy!.id ? updated : p))
+        )
+        toast("策略已更新")
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "更新失败，请重试")
+      }
     } else {
-      const newPol: AlertPolicy = { ...partial, id: `pol-${Date.now()}` }
-      setPolicies((prev) => [...prev, newPol])
-      toast(`策略 "${newPol.name}" 已创建`)
+      try {
+        const res = await apiRequest<{ data: { policy: AlertPolicy } }>("/v1/alert-policies", {
+          method: "POST",
+          body: JSON.stringify(partial),
+        })
+        const newPol = res.data.policy
+        setPolicies((prev) => [...prev, newPol])
+        toast(`策略 "${newPol.name}" 已创建`)
+      } catch (err) {
+        toast(err instanceof Error ? err.message : "创建失败，请重试")
+      }
     }
     setSheet((p) => ({ ...p, open: false }))
   }
@@ -861,7 +1052,7 @@ export function AlertsClient() {
   return (
     <div className="space-y-6">
       {/* Tabs — navigation + panels */}
-      <Tabs defaultValue="events">
+      <Tabs defaultValue="events" onValueChange={handleTabChange}>
         <TabsList className="w-full">
           <TabsTrigger value="events" className="flex-1" data-testid="tab-events">事件历史</TabsTrigger>
           <TabsTrigger value="channels" className="flex-1" data-testid="tab-channels">告警通道</TabsTrigger>
@@ -869,25 +1060,55 @@ export function AlertsClient() {
           <TabsTrigger value="silences" className="flex-1" data-testid="tab-silences">静默规则</TabsTrigger>
         </TabsList>
         <TabsContent value="events">
-          <EventsTab events={events} onAcknowledge={handleAcknowledge} />
+          {eventsLoading ? (
+            <EventsSkeleton />
+          ) : eventsError ? (
+            <Alert variant="destructive" data-testid="events-error">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>加载失败</AlertTitle>
+              <AlertDescription>{eventsError}</AlertDescription>
+            </Alert>
+          ) : (
+            <EventsTab events={events} onAcknowledge={handleAcknowledge} />
+          )}
         </TabsContent>
         <TabsContent value="channels">
-          <ChannelsTab
-            channels={channels}
-            onTest={handleTestChannel}
-            onDelete={handleDeleteChannel}
-            onAdd={handleAddChannel}
-          />
+          {channelsLoading ? (
+            <ChannelsSkeleton />
+          ) : channelsError ? (
+            <Alert variant="destructive" data-testid="channels-error">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>加载失败</AlertTitle>
+              <AlertDescription>{channelsError}</AlertDescription>
+            </Alert>
+          ) : (
+            <ChannelsTab
+              channels={channels}
+              onTest={handleTestChannel}
+              onDelete={handleDeleteChannel}
+              onAdd={handleAddChannel}
+            />
+          )}
         </TabsContent>
         <TabsContent value="policies">
-          <PoliciesTab
-            policies={policies}
-            channels={channels}
-            onToggle={handleTogglePolicy}
-            onEdit={handleEditPolicy}
-            onDelete={handleDeletePolicy}
-            onAdd={handleAddPolicy}
-          />
+          {policiesLoading ? (
+            <PoliciesSkeleton />
+          ) : policiesError ? (
+            <Alert variant="destructive" data-testid="policies-error">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>加载失败</AlertTitle>
+              <AlertDescription>{policiesError}</AlertDescription>
+            </Alert>
+          ) : (
+            <PoliciesTab
+              policies={policies}
+              channels={channels}
+              onToggle={handleTogglePolicy}
+              onEdit={handleEditPolicy}
+              onDelete={handleDeletePolicy}
+              onAdd={handleAddPolicy}
+            />
+          )}
         </TabsContent>
         <TabsContent value="silences">
           <SilencesTab

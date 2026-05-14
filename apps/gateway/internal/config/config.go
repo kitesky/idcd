@@ -7,6 +7,32 @@ import (
 	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 )
 
+// Load returns a Config populated from the shared dev.env.yaml, falling back
+// to Default() values for gateway-specific fields not present in the shared config.
+func Load() *Config {
+	cfg := Default()
+	shared, err := sharedconfig.Load(sharedconfig.DefaultPath())
+	if err != nil {
+		// Config file missing or invalid — fall back to defaults (e.g. in tests).
+		return cfg
+	}
+	if shared.Redis.Addr != "" {
+		cfg.RedisAddr = shared.Redis.Addr
+		cfg.RedisPassword = shared.Redis.Password
+		cfg.RedisDB = shared.Redis.DB
+	}
+	if shared.Database.Main.DSN != "" {
+		cfg.PGDSN = shared.Database.Main.DSN
+	}
+	if shared.Server.Env != "" {
+		cfg.Env = shared.Server.Env
+	}
+	if shared.AgentGateway.Addr != "" {
+		cfg.ListenAddr = shared.AgentGateway.Addr
+	}
+	return cfg
+}
+
 // Config holds the Gateway service configuration.
 type Config struct {
 	ListenAddr       string                           `yaml:"listen_addr"`

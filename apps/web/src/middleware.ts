@@ -13,9 +13,8 @@ export function middleware(request: NextRequest) {
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: https:`,
     `font-src 'self' data:`,
-    `connect-src 'self' https://api.idcd.com`,
+    `connect-src 'self' https://api.idcd.com${isDev ? " http://localhost:8080 ws://localhost:3000" : ""}`,
     `frame-ancestors 'none'`,
-    `report-uri /v1/csp-report`,
   ].join("; ")
 
   const response = NextResponse.next({

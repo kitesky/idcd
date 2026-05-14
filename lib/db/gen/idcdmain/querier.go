@@ -11,13 +11,16 @@ import (
 type Querier interface {
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
+	CreateMonitor(ctx context.Context, arg CreateMonitorParams) (Monitor, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (UserSession, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserCredential(ctx context.Context, arg CreateUserCredentialParams) (UserCredential, error)
 	CreateUserOTP(ctx context.Context, arg CreateUserOTPParams) (UserOtp, error)
+	DeleteMonitor(ctx context.Context, id string) error
 	ExpireAPIKey(ctx context.Context) error
 	GetAPIKeyByID(ctx context.Context, id string) (ApiKey, error)
 	GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey, error)
+	GetMonitorByID(ctx context.Context, id string) (Monitor, error)
 	GetSessionByID(ctx context.Context, id string) (UserSession, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (UserSession, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
@@ -27,10 +30,12 @@ type Querier interface {
 	GetUserOTPByIDAndType(ctx context.Context, arg GetUserOTPByIDAndTypeParams) (UserOtp, error)
 	IncrementUserOTPAttempts(ctx context.Context, id string) error
 	ListAPIKeysByOwner(ctx context.Context, arg ListAPIKeysByOwnerParams) ([]ApiKey, error)
+	ListActiveMonitorsDue(ctx context.Context) ([]Monitor, error)
 	ListActiveSessions(ctx context.Context, userID string) ([]UserSession, error)
 	ListAuditLogsByActor(ctx context.Context, arg ListAuditLogsByActorParams) ([]AuditLog, error)
 	ListAuditLogsByOwner(ctx context.Context, arg ListAuditLogsByOwnerParams) ([]AuditLog, error)
 	ListAuditLogsByResource(ctx context.Context, arg ListAuditLogsByResourceParams) ([]AuditLog, error)
+	ListMonitorsByUser(ctx context.Context, arg ListMonitorsByUserParams) ([]Monitor, error)
 	ListUserCredentialsByUser(ctx context.Context, userID string) ([]UserCredential, error)
 	MarkUserOTPUsed(ctx context.Context, id string) error
 	PurgeExpiredSessions(ctx context.Context) error
@@ -39,6 +44,8 @@ type Querier interface {
 	RevokeSession(ctx context.Context, id string) error
 	SoftDeleteUser(ctx context.Context, id string) error
 	UpdateAPIKeyLastUsed(ctx context.Context, arg UpdateAPIKeyLastUsedParams) error
+	UpdateMonitorNextCheck(ctx context.Context, arg UpdateMonitorNextCheckParams) error
+	UpdateMonitorStatus(ctx context.Context, arg UpdateMonitorStatusParams) (Monitor, error)
 	UpdateUserEmailVerified(ctx context.Context, id string) (User, error)
 	UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error

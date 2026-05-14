@@ -24,10 +24,22 @@ func New(pool *pgxpool.Pool, dedupr *dedup.Deduper) *Processor {
 	return &Processor{pool: pool, dedupr: dedupr}
 }
 
+// MonitorCheckStatus maps a probe result to a monitor check status.
+func probeSuccessToCheckStatus(success bool, errMsg string) string {
+	if success {
+		return "up"
+	}
+	if errMsg != "" {
+		return "down"
+	}
+	return "degraded"
+}
+
 // Process handles a single stream message:
 //  1. Dedup by task_id+node_id composite key.
 //  2. Insert into probe_result hypertable.
 //  3. Transition probe_task to "completed" if applicable.
+//  4. If monitor_id is non-empty, write a monitor_checks row and update monitors.next_check_at.
 func (p *Processor) Process(ctx context.Context, msgID string, values map[string]any) error {
 	taskID, _ := values["task_id"].(string)
 	nodeID, _ := values["node_id"].(string)
@@ -57,7 +69,57 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 		return fmt.Errorf("processor: complete probe_task: %w", err)
 	}
 
+	// If this result belongs to a monitor-originated task, write monitor_checks
+	// and advance the monitor's next_check_at schedule.
+	if monitorID, _ := values["monitor_id"].(string); monitorID != "" {
+		if err := p.writeMonitorCheck(ctx, monitorID, nodeID, result); err != nil {
+			// Non-fatal: log and continue — don't fail the whole message.
+			_ = fmt.Errorf("processor: write monitor_check for %s: %w", monitorID, err)
+		}
+		if err := p.advanceMonitorSchedule(ctx, monitorID, taskID); err != nil {
+			_ = fmt.Errorf("processor: advance monitor schedule for %s: %w", monitorID, err)
+		}
+	}
+
 	return nil
+}
+
+// writeMonitorCheck inserts a row into monitor_checks.
+func (p *Processor) writeMonitorCheck(ctx context.Context, monitorID, nodeID string, r probeResultData) error {
+	if p.pool == nil {
+		return nil
+	}
+	status := probeSuccessToCheckStatus(r.success, r.errMsg)
+	latencyMS := int(r.durationMs)
+
+	metadataJSON, _ := json.Marshal(r.summary)
+
+	var errPtr *string
+	if r.errMsg != "" {
+		errPtr = &r.errMsg
+	}
+
+	_, err := p.pool.Exec(ctx, `
+		INSERT INTO monitor_checks (check_at, monitor_id, node_id, status, latency_ms, error, metadata)
+		VALUES (NOW(), $1, $2, $3, $4, $5, $6)
+	`, monitorID, nodeID, status, latencyMS, errPtr, metadataJSON)
+	return err
+}
+
+// advanceMonitorSchedule updates monitors.last_check_at and next_check_at.
+// It reads the interval_s from the monitors table to compute the next schedule.
+func (p *Processor) advanceMonitorSchedule(ctx context.Context, monitorID, taskID string) error {
+	if p.pool == nil {
+		return nil
+	}
+	_, err := p.pool.Exec(ctx, `
+		UPDATE monitors
+		SET last_check_at = NOW(),
+		    next_check_at = NOW() + make_interval(secs => interval_s::float8),
+		    updated_at = NOW()
+		WHERE id = $1 AND status = 'active'
+	`, monitorID)
+	return err
 }
 
 // probeResultData holds parsed values from the stream message.

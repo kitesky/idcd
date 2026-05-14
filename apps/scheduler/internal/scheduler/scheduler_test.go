@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -176,6 +178,154 @@ func TestStaticNodeSelector(t *testing.T) {
 			t.Errorf("SelectNode() with no nodes should return error")
 		}
 	})
+}
+
+// --- Monitor poller tests ---
+
+// mockMonitorStore implements MonitorStore for testing.
+type mockMonitorStore struct {
+	monitors []DueMonitor
+	err      error
+}
+
+func (m *mockMonitorStore) ListActiveMonitorsDue(ctx context.Context) ([]DueMonitor, error) {
+	return m.monitors, m.err
+}
+
+func TestMonitorTypeToProbeType(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"http", "http"},
+		{"https", "http"},
+		{"keyword", "http"},
+		{"ssl_expiry", "http"},
+		{"domain_expiry", "http"},
+		{"icp_change", "http"},
+		{"ping", "ping"},
+		{"tcp", "tcp"},
+		{"dns", "dns"},
+		{"unknown", "http"},
+	}
+	for _, tc := range tests {
+		got := monitorTypeToProbeType(tc.in)
+		if got != tc.want {
+			t.Errorf("monitorTypeToProbeType(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
+func TestPollMonitors_dispatchesTasks(t *testing.T) {
+	_, rdb := setupRedis(t)
+	ctx := context.Background()
+
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+	l := leader.New(rdb, "test:leader2", 10*time.Second, "node1")
+	ok, err := l.Acquire(ctx)
+	if err != nil || !ok {
+		t.Fatalf("l.Acquire: %v ok=%v", err, ok)
+	}
+
+	config := json.RawMessage(`{"timeout_ms": 5000}`)
+	store := &mockMonitorStore{
+		monitors: []DueMonitor{
+			{ID: "mon_001", Type: "http", Target: "example.com", IntervalS: 300, NodeCount: 2, Config: config},
+		},
+	}
+
+	s := New(Config{
+		Leader:       l,
+		Queue:        queue.New(rdb, "test:queue2"),
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+		WorkerCount:  1,
+	})
+
+	s.pollMonitors(ctx)
+
+	// NodeCount=2 → 2 tasks should be pushed
+	length, err := streamClient.Len(ctx, ProbeTasksStream)
+	if err != nil {
+		t.Fatalf("streamClient.Len: %v", err)
+	}
+	if length != 2 {
+		t.Errorf("stream length = %d, want 2 (one per node)", length)
+	}
+
+	// Verify monitor_id field is present
+	entries, err := rdb.XRange(ctx, ProbeTasksStream, "-", "+").Result()
+	if err != nil {
+		t.Fatalf("XRange: %v", err)
+	}
+	if len(entries) < 1 {
+		t.Fatalf("no stream entries")
+	}
+	if entries[0].Values["monitor_id"] != "mon_001" {
+		t.Errorf("monitor_id = %v, want mon_001", entries[0].Values["monitor_id"])
+	}
+	if entries[0].Values["type"] != "http" {
+		t.Errorf("type = %v, want http", entries[0].Values["type"])
+	}
+}
+
+func TestPollMonitors_storeError(t *testing.T) {
+	_, rdb := setupRedis(t)
+	ctx := context.Background()
+
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+	l := leader.New(rdb, "test:leader3", 10*time.Second, "node1")
+	_, _ = l.Acquire(ctx)
+
+	store := &mockMonitorStore{err: errors.New("db error")}
+
+	s := New(Config{
+		Leader:       l,
+		Queue:        queue.New(rdb, "test:queue3"),
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+		WorkerCount:  1,
+	})
+
+	// Should not panic — just log and return.
+	s.pollMonitors(ctx)
+
+	length, _ := streamClient.Len(ctx, ProbeTasksStream)
+	if length != 0 {
+		t.Errorf("expected 0 stream messages after store error, got %d", length)
+	}
+}
+
+func TestPollMonitors_emptyMonitors(t *testing.T) {
+	_, rdb := setupRedis(t)
+	ctx := context.Background()
+
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+	l := leader.New(rdb, "test:leader4", 10*time.Second, "node1")
+	_, _ = l.Acquire(ctx)
+
+	store := &mockMonitorStore{monitors: []DueMonitor{}}
+
+	s := New(Config{
+		Leader:       l,
+		Queue:        queue.New(rdb, "test:queue4"),
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+		WorkerCount:  1,
+	})
+
+	s.pollMonitors(ctx)
+
+	length, _ := streamClient.Len(ctx, ProbeTasksStream)
+	if length != 0 {
+		t.Errorf("expected 0 stream messages for empty monitor list, got %d", length)
+	}
 }
 
 func TestWorkerStopsWhenLostLeadership(t *testing.T) {

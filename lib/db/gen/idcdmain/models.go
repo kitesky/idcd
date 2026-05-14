@@ -10,6 +10,52 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AlertChannel struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	Name      string             `json:"name"`
+	Type      string             `json:"type"`
+	Config    []byte             `json:"config"`
+	Verified  bool               `json:"verified"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AlertEvent struct {
+	ID             string             `json:"id"`
+	MonitorID      string             `json:"monitor_id"`
+	PolicyID       string             `json:"policy_id"`
+	Status         string             `json:"status"`
+	StartedAt      pgtype.Timestamptz `json:"started_at"`
+	ResolvedAt     pgtype.Timestamptz `json:"resolved_at"`
+	AcknowledgedBy *string            `json:"acknowledged_by"`
+	AcknowledgedAt pgtype.Timestamptz `json:"acknowledged_at"`
+	Metadata       []byte             `json:"metadata"`
+}
+
+type AlertNotification struct {
+	ID        string             `json:"id"`
+	EventID   string             `json:"event_id"`
+	ChannelID string             `json:"channel_id"`
+	Status    string             `json:"status"`
+	SentAt    pgtype.Timestamptz `json:"sent_at"`
+	Error     *string            `json:"error"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AlertPolicy struct {
+	ID         string             `json:"id"`
+	UserID     string             `json:"user_id"`
+	MonitorID  string             `json:"monitor_id"`
+	ChannelIds []string           `json:"channel_ids"`
+	Name       string             `json:"name"`
+	DelayS     int32              `json:"delay_s"`
+	RecoveryN  int32              `json:"recovery_n"`
+	MuteStart  pgtype.Time        `json:"mute_start"`
+	MuteEnd    pgtype.Time        `json:"mute_end"`
+	Enabled    bool               `json:"enabled"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type ApiKey struct {
 	ID                string             `json:"id"`
 	OwnerType         string             `json:"owner_type"`
@@ -45,6 +91,49 @@ type AuditLog struct {
 	Result       *string            `json:"result"`
 	ErrorReason  *string            `json:"error_reason"`
 	Metadata     []byte             `json:"metadata"`
+}
+
+type Monitor struct {
+	ID          string             `json:"id"`
+	UserID      string             `json:"user_id"`
+	Name        string             `json:"name"`
+	Type        string             `json:"type"`
+	Target      string             `json:"target"`
+	Config      []byte             `json:"config"`
+	IntervalS   int32              `json:"interval_s"`
+	NodeCount   int32              `json:"node_count"`
+	Status      string             `json:"status"`
+	LastCheckAt pgtype.Timestamptz `json:"last_check_at"`
+	NextCheckAt pgtype.Timestamptz `json:"next_check_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MonitorCheck struct {
+	CheckAt   pgtype.Timestamptz `json:"check_at"`
+	MonitorID string             `json:"monitor_id"`
+	NodeID    string             `json:"node_id"`
+	Status    string             `json:"status"`
+	LatencyMs *int32             `json:"latency_ms"`
+	Error     *string            `json:"error"`
+	Metadata  []byte             `json:"metadata"`
+}
+
+type ProbeTask struct {
+	ID               string             `json:"id"`
+	Type             string             `json:"type"`
+	Target           string             `json:"target"`
+	TargetNormalized string             `json:"target_normalized"`
+	Params           []byte             `json:"params"`
+	InitiatedBy      *string            `json:"initiated_by"`
+	ApiKeyID         *string            `json:"api_key_id"`
+	ClientIp         *netip.Addr        `json:"client_ip"`
+	UserAgent        *string            `json:"user_agent"`
+	NodeSelection    []byte             `json:"node_selection"`
+	Status           string             `json:"status"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	StartedAt        pgtype.Timestamptz `json:"started_at"`
+	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
 }
 
 type User struct {

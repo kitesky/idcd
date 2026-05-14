@@ -3,6 +3,7 @@ package scheduler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -12,13 +13,34 @@ import (
 
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
 	"github.com/kite365/idcd/apps/scheduler/internal/queue"
+	"github.com/kite365/idcd/lib/shared/idgen"
 	"github.com/kite365/idcd/lib/shared/stream"
 )
 
 const (
 	// Stream names
 	ProbeTasksStream = "probe.tasks" // tasks to be executed by agents
+
+	// monitorPollInterval is how often the monitor poller queries for due monitors.
+	monitorPollInterval = 30 * time.Second
 )
+
+// DueMonitor is the minimal projection of a monitors row needed by the poller.
+type DueMonitor struct {
+	ID        string
+	Type      string
+	Target    string
+	IntervalS int32
+	NodeCount int32
+	Config    json.RawMessage
+}
+
+// MonitorStore is the interface for querying due monitors.
+// Implemented by the real DB and by fakes in tests.
+type MonitorStore interface {
+	// ListActiveMonitorsDue returns monitors whose next_check_at <= NOW().
+	ListActiveMonitorsDue(ctx context.Context) ([]DueMonitor, error)
+}
 
 // NodeSelector selects a node to execute a task.
 // S1 implementation: random selection from a static list.
@@ -29,34 +51,37 @@ type NodeSelector interface {
 
 // Scheduler orchestrates task scheduling.
 type Scheduler struct {
-	leader   *leader.Leader
-	queue    *queue.Queue
-	selector NodeSelector
-	stream   *stream.Client
-	pool     *pgxpool.Pool
+	leader       *leader.Leader
+	queue        *queue.Queue
+	selector     NodeSelector
+	stream       *stream.Client
+	pool         *pgxpool.Pool
+	monitorStore MonitorStore
 
 	workerCount int
 }
 
 // Config holds Scheduler configuration.
 type Config struct {
-	Leader      *leader.Leader
-	Queue       *queue.Queue
-	Selector    NodeSelector
-	Stream      *stream.Client
-	Pool        *pgxpool.Pool
-	WorkerCount int
+	Leader       *leader.Leader
+	Queue        *queue.Queue
+	Selector     NodeSelector
+	Stream       *stream.Client
+	Pool         *pgxpool.Pool
+	MonitorStore MonitorStore // optional; set to enable monitor polling
+	WorkerCount  int
 }
 
 // New creates a Scheduler instance.
 func New(cfg Config) *Scheduler {
 	return &Scheduler{
-		leader:      cfg.Leader,
-		queue:       cfg.Queue,
-		selector:    cfg.Selector,
-		stream:      cfg.Stream,
-		pool:        cfg.Pool,
-		workerCount: cfg.WorkerCount,
+		leader:       cfg.Leader,
+		queue:        cfg.Queue,
+		selector:     cfg.Selector,
+		stream:       cfg.Stream,
+		pool:         cfg.Pool,
+		monitorStore: cfg.MonitorStore,
+		workerCount:  cfg.WorkerCount,
 	}
 }
 
@@ -82,6 +107,11 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	renewCtx, cancelRenew := context.WithCancel(ctx)
 	defer cancelRenew()
 	go s.renewLeadership(renewCtx)
+
+	// Start monitor poller goroutine if a MonitorStore was provided.
+	if s.monitorStore != nil {
+		go s.monitorPoller(ctx)
+	}
 
 	// Start worker goroutines
 	for i := 0; i < s.workerCount; i++ {
@@ -189,6 +219,117 @@ func (s *Scheduler) processTask(ctx context.Context, task *queue.ProbeTask) erro
 	}
 
 	return nil
+}
+
+// monitorPoller polls the DB every monitorPollInterval for monitors that are
+// due for their next check. For each due monitor it generates a probe_task
+// and pushes it to the probe.tasks Redis Stream.
+func (s *Scheduler) monitorPoller(ctx context.Context) {
+	log.Println("[scheduler] monitorPoller started")
+	ticker := time.NewTicker(monitorPollInterval)
+	defer ticker.Stop()
+
+	// Run immediately on startup, then on ticker cadence.
+	s.pollMonitors(ctx)
+
+	for {
+		select {
+		case <-ctx.Done():
+			log.Println("[scheduler] monitorPoller stopped")
+			return
+		case <-ticker.C:
+			if !s.leader.IsLeader() {
+				return
+			}
+			s.pollMonitors(ctx)
+		}
+	}
+}
+
+// pollMonitors fetches due monitors and dispatches probe tasks for each.
+func (s *Scheduler) pollMonitors(ctx context.Context) {
+	monitors, err := s.monitorStore.ListActiveMonitorsDue(ctx)
+	if err != nil {
+		log.Printf("[scheduler] monitorPoller: list due monitors error: %v", err)
+		return
+	}
+
+	for _, m := range monitors {
+		if err := s.dispatchMonitorTask(ctx, m); err != nil {
+			log.Printf("[scheduler] monitorPoller: dispatch monitor %s error: %v", m.ID, err)
+		}
+	}
+}
+
+// dispatchMonitorTask creates probe tasks for a due monitor — one per requested node.
+// We push directly to the probe.tasks stream without going through the local queue
+// since monitor tasks should be dispatched immediately.
+func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error {
+	// Determine how many nodes to use (minimum 1).
+	count := int(m.NodeCount)
+	if count < 1 {
+		count = 1
+	}
+
+	// Build base params from monitor config (best-effort JSON object).
+	baseParams := map[string]any{}
+	if len(m.Config) > 0 {
+		_ = json.Unmarshal(m.Config, &baseParams)
+	}
+
+	// Map monitor type to probe type (some types share probe mechanics).
+	probeType := monitorTypeToProbeType(m.Type)
+
+	paramsJSON, _ := json.Marshal(baseParams)
+
+	for i := 0; i < count; i++ {
+		taskID := idgen.ProbeTask()
+
+		// Select a node via the configured NodeSelector.
+		task := &queue.ProbeTask{
+			ID:        taskID,
+			Type:      probeType,
+			Target:    m.Target,
+			Priority:  queue.P2,
+			MonitorID: m.ID,
+		}
+		nodeID, err := s.selector.SelectNode(ctx, task)
+		if err != nil {
+			log.Printf("[scheduler] dispatchMonitorTask: select node for monitor %s: %v", m.ID, err)
+			continue
+		}
+		task.NodeID = nodeID
+
+		vals := map[string]any{
+			"task_id":    taskID,
+			"type":       probeType,
+			"target":     m.Target,
+			"node_id":    nodeID,
+			"priority":   queue.P2,
+			"monitor_id": m.ID,
+			"params":     string(paramsJSON),
+		}
+		if _, err := s.stream.Add(ctx, ProbeTasksStream, vals); err != nil {
+			log.Printf("[scheduler] dispatchMonitorTask: push to stream for monitor %s: %v", m.ID, err)
+		}
+	}
+	return nil
+}
+
+// monitorTypeToProbeType maps a monitor type to the corresponding probe type.
+func monitorTypeToProbeType(monType string) string {
+	switch monType {
+	case "http", "https", "keyword", "ssl_expiry", "domain_expiry", "icp_change":
+		return "http"
+	case "ping":
+		return "ping"
+	case "tcp":
+		return "tcp"
+	case "dns":
+		return "dns"
+	default:
+		return "http"
+	}
 }
 
 // --- S1 Simple Node Selector ---

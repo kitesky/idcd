@@ -23,13 +23,14 @@ const (
 
 // ProbeTask represents a task to be scheduled to a node.
 type ProbeTask struct {
-	ID       string            `json:"id"`        // probe_task.id
-	Type     string            `json:"type"`      // http/tcp/ping/dns/udp
-	Target   string            `json:"target"`    // URL or host
-	NodeID   string            `json:"node_id"`   // assigned node ID
-	Priority int               `json:"priority"`  // P0-P5
-	Params   map[string]string `json:"params"`    // probe-specific parameters
-	EnqueuedAt time.Time       `json:"enqueued_at"`
+	ID         string            `json:"id"`          // probe_task.id
+	Type       string            `json:"type"`        // http/tcp/ping/dns/udp
+	Target     string            `json:"target"`      // URL or host
+	NodeID     string            `json:"node_id"`     // assigned node ID
+	Priority   int               `json:"priority"`    // P0-P5
+	Params     map[string]string `json:"params"`      // probe-specific parameters
+	MonitorID  string            `json:"monitor_id"`  // non-empty for monitor-originated tasks
+	EnqueuedAt time.Time         `json:"enqueued_at"`
 }
 
 // Queue wraps a Redis client for priority queue operations.

@@ -11,6 +11,54 @@ import (
 	"github.com/kite365/idcd/apps/aggregator/internal/dedup"
 )
 
+// --- monitor check helper tests ---
+
+func TestProbeSuccessToCheckStatus(t *testing.T) {
+	tests := []struct {
+		success bool
+		errMsg  string
+		want    string
+	}{
+		{true, "", "up"},
+		{false, "timeout", "down"},
+		{false, "", "degraded"},
+	}
+	for _, tc := range tests {
+		got := probeSuccessToCheckStatus(tc.success, tc.errMsg)
+		if got != tc.want {
+			t.Errorf("probeSuccessToCheckStatus(%v, %q) = %q, want %q", tc.success, tc.errMsg, got, tc.want)
+		}
+	}
+}
+
+func TestProcessor_Process_withMonitorID_nilPool(t *testing.T) {
+	// When pool is nil, writeMonitorCheck and advanceMonitorSchedule should no-op.
+	s := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: s.Addr()})
+	dedupr := dedup.New(rdb)
+
+	p := New(nil, dedupr)
+	ctx := context.Background()
+
+	// With nil pool, insertProbeResult will fail — use a deduped key to skip it.
+	dedupKey := "pt_mon_01:nd_jp_01"
+	if err := dedupr.MarkProcessed(ctx, dedupKey); err != nil {
+		t.Fatalf("pre-mark: %v", err)
+	}
+
+	err := p.Process(ctx, "1-1", map[string]any{
+		"task_id":    "pt_mon_01",
+		"node_id":    "nd_jp_01",
+		"monitor_id": "mon_001",
+		"success":    "true",
+		"duration_ms": "200",
+	})
+	// Should be nil because message is deduped (no DB ops attempted).
+	if err != nil {
+		t.Errorf("expected nil (dedup skip with monitor_id), got %v", err)
+	}
+}
+
 func TestParseResult(t *testing.T) {
 	t.Run("string JSON fields", func(t *testing.T) {
 		raw := map[string]any{"status": 200}

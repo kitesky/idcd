@@ -200,7 +200,7 @@ func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task
 		return apperr.Validation("channel_type 不能为空", "")
 	}
 
-	ch, err := buildChannel(payload.ChannelType, payload.ChannelConfig)
+	ch, err := h.buildChannel(payload.ChannelType, payload.ChannelConfig)
 	if err != nil {
 		return apperr.Validation(fmt.Sprintf("构建通道失败: %v", err), "")
 	}
@@ -225,7 +225,7 @@ func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task
 }
 
 // buildChannel constructs the appropriate Channel adapter from type and raw JSON config.
-func buildChannel(channelType string, cfgJSON []byte) (channel.Channel, error) {
+func (h *Handlers) buildChannel(channelType string, cfgJSON []byte) (channel.Channel, error) {
 	switch channelType {
 	case "webhook":
 		var cfg channel.WebhookConfig
@@ -265,6 +265,16 @@ func buildChannel(channelType string, cfgJSON []byte) (channel.Channel, error) {
 		ch, err := channel.NewFeishu(cfg)
 		if err != nil {
 			return nil, fmt.Errorf("build feishu channel: %w", err)
+		}
+		return ch, nil
+	case "email":
+		var cfg channel.EmailConfig
+		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("unmarshal email config: %w", err)
+		}
+		ch, err := channel.NewEmail(cfg, h.sender)
+		if err != nil {
+			return nil, fmt.Errorf("build email channel: %w", err)
 		}
 		return ch, nil
 	default:

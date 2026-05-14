@@ -455,6 +455,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ---
 
+### M9 — S2 验收补全
+
+- [x] **J2** Email 告警通道 — `apps/notifier/internal/channel/email.go`，EmailChannel 实现 Channel 接口，HTML 告警邮件（FIRING/RESOLVED），`buildChannel` 路由 `type=email`，12 tests ✓，完成 2026-05-14
+
+---
+
 ## 长期推迟（不进入当前冲刺）
 
 ```

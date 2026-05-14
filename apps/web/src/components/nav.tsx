@@ -73,10 +73,10 @@ export function Nav() {
         <div className="hidden md:flex md:items-center md:space-x-4">
           <LangToggle />
           <Button variant="outline">
-            <a href="/login">登录</a>
+            <a href="/auth/login">登录</a>
           </Button>
           <Button>
-            <a href="/register">注册</a>
+            <a href="/auth/register">注册</a>
           </Button>
         </div>
 
@@ -114,12 +114,12 @@ export function Nav() {
             <div className="border-t pt-4">
               <div className="flex flex-col space-y-3 px-3">
                 <Button variant="outline" className="justify-center">
-                  <a href="/login" onClick={() => setMobileMenuOpen(false)}>
+                  <a href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
                     登录
                   </a>
                 </Button>
                 <Button className="justify-center">
-                  <a href="/register" onClick={() => setMobileMenuOpen(false)}>
+                  <a href="/auth/register" onClick={() => setMobileMenuOpen(false)}>
                     注册
                   </a>
                 </Button>

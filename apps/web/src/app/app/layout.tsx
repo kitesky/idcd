@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CreditCard,
   FileText,
+  FileWarning,
   Gift,
   Globe,
   LayoutDashboard,
@@ -47,6 +48,7 @@ const NAV_GROUPS = [
       { icon: Activity, label: "监控列表", href: "/app/monitors" },
       { icon: Bell, label: "告警管理", href: "/app/alerts" },
       { icon: UserCheck, label: "On-Call", href: "/app/oncall" },
+      { icon: FileWarning, label: "故障记录", href: "/app/incidents" },
     ],
   },
   {

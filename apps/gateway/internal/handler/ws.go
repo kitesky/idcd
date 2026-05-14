@@ -407,6 +407,10 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		return apperr.Validation("invalid result payload", err.Error())
 	}
 
+	if h.streamCli == nil {
+		h.logger.Warn("result received but stream client not configured, dropping", "node_id", c.NodeID)
+		return nil
+	}
 	ctx := context.Background()
 	streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, result.Data)
 	if err != nil {

@@ -35,8 +35,15 @@ func (r *mockRow) Scan(dest ...any) error {
 	if r.err != nil {
 		return r.err
 	}
-	if len(dest) > 0 {
-		*(dest[0].(*string)) = r.nodeID
+	if len(dest) == 0 {
+		return nil
+	}
+	switch d := dest[0].(type) {
+	case *string:
+		*d = r.nodeID
+	case *[]byte:
+		// fingerprint column returns nil (no prior record)
+		*d = nil
 	}
 	return nil
 }
@@ -151,5 +158,76 @@ func TestVerifyAPIKey_NotFound(t *testing.T) {
 	_, err := handler.verifyAPIKey(context.Background(), "valid-secret-key-that-is-long-enough")
 	if err == nil {
 		t.Error("expected error when node not found")
+	}
+}
+
+func TestHandleHeartbeat_WithFingerprint(t *testing.T) {
+	log := logger.Discard()
+	h := hub.New(30*time.Second, log)
+
+	// pool returns a null fingerprint (no prior record)
+	pool := &MockNodeAuthPool{nodeID: ""}
+	handler := NewWSHandler(h, nil, pool, nil, log)
+
+	c := &hub.Connection{NodeID: "nd_test123"}
+
+	payload, _ := json.Marshal(heartbeatPayload{
+		NodeID: "nd_test123",
+		Fingerprint: &nodeFingerprint{
+			Hostname: "srv-01",
+			OS:       "linux",
+			Arch:     "amd64",
+			Kernel:   "5.15.0",
+			MAC:      "aa:bb:cc:dd:ee:ff",
+			CPUModel: "Intel Xeon",
+		},
+		Timestamp: 1700000000,
+	})
+
+	// Should not panic or error even when pool Scan returns empty string
+	err := handler.handleHeartbeat(c, payload)
+	if err != nil {
+		t.Errorf("handleHeartbeat returned error: %v", err)
+	}
+}
+
+func TestHandleHeartbeat_MalformedPayload(t *testing.T) {
+	log := logger.Discard()
+	h := hub.New(30*time.Second, log)
+	handler := NewWSHandler(h, nil, nil, nil, log) // no pool — skips DB path
+
+	c := &hub.Connection{NodeID: "nd_test"}
+
+	// Malformed JSON should be tolerated (heartbeat timing is preserved)
+	err := handler.handleHeartbeat(c, []byte(`{invalid json`))
+	if err != nil {
+		t.Errorf("expected nil error for malformed payload, got: %v", err)
+	}
+}
+
+func TestHandleCmdAck_Valid(t *testing.T) {
+	log := logger.Discard()
+	h := hub.New(30*time.Second, log)
+	pool := &MockNodeAuthPool{}
+	handler := NewWSHandler(h, nil, pool, nil, log)
+
+	c := &hub.Connection{NodeID: "nd_test"}
+	payload, _ := json.Marshal(map[string]string{"command": "upgrade", "version": "v1.2.3"})
+
+	err := handler.handleCmdAck(c, payload)
+	if err != nil {
+		t.Errorf("handleCmdAck returned error: %v", err)
+	}
+}
+
+func TestHandleCmdAck_InvalidPayload(t *testing.T) {
+	log := logger.Discard()
+	h := hub.New(30*time.Second, log)
+	handler := NewWSHandler(h, nil, nil, nil, log)
+
+	c := &hub.Connection{NodeID: "nd_test"}
+	err := handler.handleCmdAck(c, []byte(`{bad json`))
+	if err == nil {
+		t.Error("expected error for invalid payload")
 	}
 }

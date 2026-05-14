@@ -469,6 +469,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J12** X-RateLimit 响应头 + /app/usage 真实配额数据 — `APIQuotaMiddleware` 注入 `X-RateLimit-Limit/Remaining/Used/Reset`（test key → -1），`QuotaStatusResponse` 新增 `api_calls.reset_at` 字段，`/app/usage` 前端接真实 `/v1/account/quota` API（useEffect + fetch，Skeleton loading，趋势图保持演示数据），3 Go header tests + 7 前端 tests ✓，完成 2026-05-14
 - [x] **J10** Monitor 检查历史图表（真实数据）— `GET /v1/monitors/{id}/checks`（Bearer token 认证，hours 参数最大 168，resolution=30m，TimescaleDB time_bucket 聚合，ownership 403 校验），`MonitorChecksHandler` + `MonitorChecksPool` 接口，路由注册到 `/monitors/{id}/checks`，前端 `useEffect` + `fetch` 替换 mock 数据，Skeleton loading，真实 bucket 颜色（up/down/degraded/empty），hover tooltip 显示时间/成功失败数/平均延迟，6 Go tests + 4 前端 tests ✓，完成 2026-05-14
 - [x] **J11** 监控批量操作 — `POST /v1/monitors/bulk`（pause/resume/delete，最多 50 条，ownership 校验，不属于当前用户 id 放入 failed），`BulkPool` 接口 + `BulkAction` handler + 路由注册（`/bulk` 在 `/{id}` 之前），前端 Checkbox 列（全选/单选）+ 浮动操作栏（selectedIds.size > 0 时出现）+ AlertDialog 删除确认，7 Go tests + 3 前端 tests ✓，完成 2026-05-14
+- [x] **J13** MCP server 骨架 — `apps/mcp/` 新 Go module（CGO_ENABLED=0），JSON-RPC 2.0 over stdio，8 tools（ping/http/dns/traceroute/ssl/diagnose/ip/whois）stub 实现，`protocol.Server` 读 stdin/写 stdout 循环，Tool 注册表 + Handler 接口，initialize/tools/list/tools/call 方法，7 Go tests ✓，go.work 已更新，完成 2026-05-14
 
 ---
 
@@ -476,7 +477,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ```
 [-] Evidence MVP（KMS + TSA + Verdict）    → S2 中后期，M6 启动准备
-[-] MCP Server（mcp.idcd.com）            → S3，M9+
+[-] MCP Server（mcp.idcd.com）            → S3，M9+（骨架已在 J13 完成）
 [-] API 公开 GA + SDK + CLI               → S3，M8-M9
 [-] 团队 / 多用户 / 角色权限              → S3，M12
 [-] 众包节点                              → S3，M13

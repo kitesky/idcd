@@ -5,6 +5,7 @@ use (
 	./apps/aggregator
 	./apps/api
 	./apps/gateway
+	./apps/mcp
 	./apps/notifier
 	./apps/scheduler
 	./lib/auth

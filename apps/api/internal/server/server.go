@@ -317,6 +317,14 @@ func (s *Server) setupRouter() {
 				r.Get("/verify", statusPageDomainH.VerifyStatusPageDomain)
 			})
 
+			// Status page subscription endpoints
+			statusSubH := handler.NewStatusSubscriptionHandler(s.pgxPool)
+			r.Post("/status-pages/{slug}/subscribe", statusSubH.Subscribe)
+			r.Get("/status-pages/{slug}/verify", statusSubH.Verify)
+			r.Delete("/status-pages/{slug}/unsubscribe", statusSubH.Unsubscribe)
+			r.With(authnMW).Get("/status-pages/{slug}/subscriptions", statusSubH.List)
+			r.With(authnMW).Delete("/status-pages/{slug}/subscriptions/{id}", statusSubH.Delete)
+
 			// Dashboard summary and pins endpoints (authentication required)
 			dashboardH := handler.NewDashboardHandler(s.pgxPool, s.redis)
 			r.Route("/dashboard", func(r chi.Router) {
@@ -326,14 +334,16 @@ func (s *Server) setupRouter() {
 				r.Put("/pins", dashboardH.UpdatePins)
 			})
 
-			// SLA monthly report endpoint (authentication required)
+			// SLA monthly report endpoint + noise report (authentication required)
 			slaH := handler.NewSLAHandler(s.pgxPool)
+			noiseH := handler.NewAlertNoiseHandler(s.pgxPool)
 			r.Route("/reports", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Get("/sla", slaH.GetSLA)
+				r.Get("/alert-noise", noiseH.NoiseReport)
 			})
 
-			// Alert channels, policies, and events (authentication required)
+			// Alert channels, policies, events, silences, groups (authentication required)
 			alertH := handler.NewAlertHandler(s.pgxPool)
 			alertNotifH := handler.NewAlertNotificationHandler(s.pgxPool)
 			r.Route("/alert-channels", func(r chi.Router) {
@@ -358,6 +368,17 @@ func (s *Server) setupRouter() {
 				r.Use(apiQuotaMW)
 				r.Get("/", alertH.ListEvents)
 				r.Post("/{id}/ack", alertH.AcknowledgeEvent)
+			})
+			r.Route("/alert-silences", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/", noiseH.CreateSilence)
+				r.Get("/", noiseH.ListSilences)
+				r.Delete("/{id}", noiseH.DeleteSilence)
+			})
+			r.Route("/alert-groups", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/", noiseH.CreateGroup)
+				r.Get("/", noiseH.ListGroups)
 			})
 
 			// Team / Org endpoints (authentication required)
@@ -426,6 +447,19 @@ func (s *Server) setupRouter() {
 		communityAdminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
 		r.With(communityAdminH.AdminAuthMiddleware).Get("/v1/admin/node-applications", communityH.AdminList)
 		r.With(communityAdminH.AdminAuthMiddleware).Patch("/v1/admin/node-applications/{id}", communityH.AdminUpdate)
+
+		// On-Call rotation endpoints (authentication required)
+		oncallH := handler.NewOncallHandler(s.pgxPool)
+		r.Route("/v1/oncall/schedules", func(r chi.Router) {
+			r.Use(authnMW)
+			r.Post("/", oncallH.CreateSchedule)
+			r.Get("/", oncallH.ListSchedules)
+			r.Get("/{id}", oncallH.GetSchedule)
+			r.Post("/{id}/participants", oncallH.AddParticipant)
+			r.Delete("/{id}/participants/{user_id}", oncallH.RemoveParticipant)
+			r.Post("/{id}/overrides", oncallH.CreateOverride)
+			r.Get("/{id}/current", oncallH.GetCurrentOnCall)
+		})
 
 		// Beta invitation endpoints (user-facing + admin).
 		betaH := handler.NewBetaInvitationHandler(s.pgxPool)

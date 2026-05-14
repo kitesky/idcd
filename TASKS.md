@@ -497,6 +497,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 - [x] **L4** 英文国际化基础 — `next-intl@3.26.5` 依赖，`src/i18n/config.ts`（zh/en locales），`src/i18n/messages/{zh,en}.json`（tools + common + leaderboard 全部 key），`src/i18n/en-tools-meta.ts`（10 个工具英文 SEO meta），`/en/tools/[slug]` SSG 路由（英文 title/description/hreflang/Schema.org），`/en/` 英文落地页，leaderboard 中英双语 toggle（useState，tabs/列头/说明/声明全部双语），Nav 语言切换组件（中/EN 按钮，Globe icon），23 i18n tests + 5 leaderboard 语言切换 tests，543 前端 tests ✓，完成 2026-05-14
 
+- [x] **L2** 状态页订阅推送 — DB migration 00027（`status_page_subscriptions`：id/status_page_id/channel_type/endpoint/verified/verify_token/events），`handler/status_subscription.go`（5 端点：POST subscribe / GET verify / DELETE unsubscribe + 认证 GET list + DELETE），`idgen.StatusSubscription()`（ssub_ 前缀），email 类型 verified=false + crypto/rand 32字节 verify_token，webhook/wecom/dingtalk 直接 verified=true，`processor/subscription_notifier.go`（NotifySubscribers：查 status_page → 查 verified 订阅 → enqueue），alert_trigger.go 接入（firing→incident / resolved→recovery），server.go 路由注册（5条路由），状态页前端订阅区域（Email Input + 订阅按钮 + 发送成功提示 + 4种通道 Badge），7 handler tests + 2 notifier tests 全绿，完成 2026-05-14
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

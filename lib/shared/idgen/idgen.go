@@ -36,9 +36,10 @@ func MonitorCheck() string { return New("mc_") }
 func AlertEvent() string  { return New("ae_") }
 func AlertPolicy() string { return New("ap_") }
 func Channel() string     { return New("ch_") }
-func StatusPage() string  { return New("sp_") }
-func StatusComponent() string { return New("sc_") }
-func StatusIncident() string  { return New("inc_") }
+func StatusPage() string         { return New("sp_") }
+func StatusComponent() string    { return New("sc_") }
+func StatusIncident() string     { return New("inc_") }
+func StatusSubscription() string { return New("ssub_") }
 func ProbeTask() string   { return New("pt_") }
 func Report() string      { return New("r_") }
 func Order() string       { return New("ord_") }
@@ -65,6 +66,10 @@ func MCPToken() string             { return New("mcpt_") }
 func AgentObsMonitor() string      { return New("aom_") }
 func AgentObsEvent() string        { return New("aoe_") }
 func ComplianceSubscription() string { return New("cs_") }
+
+func OncallSchedule() string    { return New("sch_") }
+func OncallParticipant() string { return New("par_") }
+func OncallOverride() string    { return New("ovr_") }
 
 // --- Semantic IDs (not nanoid) ---
 

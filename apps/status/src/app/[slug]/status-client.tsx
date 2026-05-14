@@ -152,6 +152,9 @@ export function StatusClient({ data }: StatusClientProps) {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(
     new Set(data.groups.map((g) => g.id))
   )
+  const [subscribeEmail, setSubscribeEmail] = useState("")
+  const [subscribeStatus, setSubscribeStatus] = useState<"idle" | "loading" | "success" | "error">("idle")
+  const [subscribeError, setSubscribeError] = useState("")
 
   const statusCfg = overallStatusConfig(data.overallStatus)
 
@@ -166,6 +169,32 @@ export function StatusClient({ data }: StatusClientProps) {
       else next.add(id)
       return next
     })
+  }
+
+  async function handleSubscribe(e: React.FormEvent) {
+    e.preventDefault()
+    if (!subscribeEmail.trim()) return
+    setSubscribeStatus("loading")
+    setSubscribeError("")
+    try {
+      const apiBase = process.env.NEXT_PUBLIC_API_URL ?? ""
+      const res = await fetch(`${apiBase}/api/v1/status-pages/${data.slug}/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ channel_type: "email", endpoint: subscribeEmail.trim(), events: ["incident", "recovery"] }),
+      })
+      if (!res.ok) {
+        const json = await res.json().catch(() => ({}))
+        setSubscribeError((json as { error?: { message?: string } })?.error?.message ?? "订阅失败，请重试")
+        setSubscribeStatus("error")
+        return
+      }
+      setSubscribeStatus("success")
+      setSubscribeEmail("")
+    } catch {
+      setSubscribeError("网络错误，请重试")
+      setSubscribeStatus("error")
+    }
   }
 
   return (
@@ -311,6 +340,45 @@ export function StatusClient({ data }: StatusClientProps) {
               ))}
             </div>
           )}
+        </div>
+
+        {/* ── Subscribe to Updates ── */}
+        <div className="mb-10" data-testid="subscribe-section">
+          <h2 className="text-lg font-semibold mb-4">订阅状态更新</h2>
+          <Card className="px-5 py-5">
+            <div className="flex flex-wrap gap-2 mb-4">
+              <Badge variant="secondary">邮件</Badge>
+              <Badge variant="secondary">Webhook</Badge>
+              <Badge variant="secondary">企业微信</Badge>
+              <Badge variant="secondary">钉钉</Badge>
+            </div>
+            {subscribeStatus === "success" ? (
+              <div className="rounded-md border border-green-600/30 bg-green-600/10 px-4 py-3 text-sm text-green-400" role="alert">
+                验证邮件已发送，请查收并点击链接完成订阅。
+              </div>
+            ) : (
+              <form onSubmit={handleSubscribe} className="flex gap-2">
+                <input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={subscribeEmail}
+                  onChange={(e) => setSubscribeEmail(e.target.value)}
+                  required
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                />
+                <button
+                  type="submit"
+                  disabled={subscribeStatus === "loading"}
+                  className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2"
+                >
+                  {subscribeStatus === "loading" ? "发送中…" : "订阅"}
+                </button>
+              </form>
+            )}
+            {subscribeStatus === "error" && (
+              <p className="mt-2 text-xs text-destructive">{subscribeError}</p>
+            )}
+          </Card>
         </div>
 
         {/* ── Footer Branding ── */}

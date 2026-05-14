@@ -135,6 +135,7 @@ func (s *Server) setupRouter() {
 		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret)
 		acctH := handler.NewAccountHandler(q)
 		apiKeyH := handler.NewAPIKeyHandler(q)
+		patH := handler.NewPATHandler(s.pgxPool)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
 		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
@@ -164,6 +165,12 @@ func (s *Server) setupRouter() {
 				r.Get("/api-keys", apiKeyH.ListAPIKeys)
 				r.Post("/api-keys", apiKeyH.CreateAPIKey)
 				r.Delete("/api-keys/{id}", apiKeyH.RevokeAPIKey)
+				// Personal Access Token management
+				r.Route("/tokens", func(r chi.Router) {
+					r.Post("/", patH.Create)
+					r.Get("/", patH.List)
+					r.Delete("/{id}", patH.Delete)
+				})
 			})
 			r.Route("/info", func(r chi.Router) {
 				infoH := handler.NewInfoHandler()
@@ -208,19 +215,22 @@ func (s *Server) setupRouter() {
 			apiQuotaMW := middleware.APIQuotaMiddleware(apiRateLimiter, planLookup)
 
 			// Monitor CRUD endpoints (authentication required)
-			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool)).WithQuotaPool(s.pgxPool)
+			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool)).WithQuotaPool(s.pgxPool).WithBulkPool(s.pgxPool)
 			monitorStreamH := handler.NewMonitorStreamHandler(idcdmain.New(s.pgxPool), s.pgxPool)
+			monitorChecksH := handler.NewMonitorChecksHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			r.Route("/monitors", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Use(apiQuotaMW)
 				r.Post("/", monitorH.Create)
 				r.Get("/", monitorH.List)
+				r.With(authnMW).Post("/bulk", monitorH.BulkAction)
 				r.Get("/{id}", monitorH.Get)
 				r.Patch("/{id}", monitorH.Update)
 				r.Delete("/{id}", monitorH.Delete)
 				r.Post("/{id}/pause", monitorH.Pause)
 				r.Post("/{id}/resume", monitorH.Resume)
 				r.With(authnMW).Get("/{id}/stream", monitorStreamH.Stream)
+				r.With(authnMW).Get("/{id}/checks", monitorChecksH.List)
 			})
 
 			// Admin billing endpoints

@@ -14,6 +14,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -26,7 +27,6 @@ import {
   type Monitor,
   type MonitorStatus,
   TYPE_LABELS,
-  generateMockTrendBlocks,
   generateMockCheckResults,
 } from "../mock-data"
 
@@ -37,6 +37,15 @@ interface LatestCheck {
   latency_ms: number | null
   checked_at: string
   error: string
+}
+
+interface CheckBucket {
+  bucket_start: string
+  total: number
+  success: number
+  failure: number
+  avg_latency_ms: number
+  status: "up" | "down" | "degraded" | "empty"
 }
 
 function checkStatusBadge(status: "up" | "down" | "degraded") {
@@ -87,12 +96,22 @@ interface MonitorDetailClientProps {
   monitor: Monitor
 }
 
+const EMPTY_BUCKETS: CheckBucket[] = Array.from({ length: 48 }, () => ({
+  bucket_start: "",
+  total: 0,
+  success: 0,
+  failure: 0,
+  avg_latency_ms: 0,
+  status: "empty" as const,
+}))
+
 export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
   const [currentMonitor, setCurrentMonitor] = useState<Monitor>(monitor)
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
   const [latestCheck, setLatestCheck] = useState<LatestCheck | null>(null)
+  const [checkBuckets, setCheckBuckets] = useState<CheckBucket[] | null>(null)
+  const [bucketLoading, setBucketLoading] = useState(true)
 
-  const trendBlocks = generateMockTrendBlocks(monitor.id)
   const checkResults = generateMockCheckResults(monitor.id)
 
   useEffect(() => {
@@ -107,6 +126,25 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
     es.addEventListener("error", () => {
     })
     return () => es.close()
+  }, [monitor.id])
+
+  useEffect(() => {
+    setBucketLoading(true)
+    fetch(`/api/v1/monitors/${monitor.id}/checks?hours=24`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        return res.json()
+      })
+      .then((json) => {
+        const buckets: CheckBucket[] = json?.data?.buckets ?? []
+        setCheckBuckets(buckets.length > 0 ? buckets : [])
+      })
+      .catch(() => {
+        setCheckBuckets([])
+      })
+      .finally(() => {
+        setBucketLoading(false)
+      })
   }, [monitor.id])
 
   function togglePause() {
@@ -255,45 +293,66 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
         </Card>
       </div>
 
-      {/* 趋势图：48 块 */}
+      {/* 趋势图：最多 48 块 */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">近 24h 检测趋势</CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            每块代表一次检测（约 30 分钟间隔），绿=正常，红=异常
+            每块代表 30 分钟区间，绿=正常，红=异常，橙=降级，灰=无数据
           </p>
         </CardHeader>
         <CardContent>
-          <div className="flex flex-wrap gap-1" data-testid="trend-blocks">
-            {trendBlocks.map((block) => (
-              <div
-                key={block.index}
-                data-testid={`trend-block-${block.index}`}
-                className={[
-                  "relative h-6 w-6 rounded-sm cursor-default transition-transform hover:scale-125",
-                  block.status === "UP"
-                    ? "bg-success/80 hover:bg-success"
-                    : "bg-destructive/80 hover:bg-destructive",
-                ].join(" ")}
-                onMouseEnter={() => setHoveredBlock(block.index)}
-                onMouseLeave={() => setHoveredBlock(null)}
-              >
-                {hoveredBlock === block.index && (
-                  <div className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-xs shadow-md border z-10">
-                    <div>{formatDateTime(block.checkedAt)}</div>
-                    <div
-                      className={
-                        block.status === "UP" ? "text-success" : "text-destructive"
-                      }
-                    >
-                      {block.status}{" "}
-                      {block.status === "UP" && `${block.latencyMs}ms`}
-                    </div>
+          {bucketLoading ? (
+            <div className="flex flex-wrap gap-1" data-testid="trend-blocks-loading">
+              {Array.from({ length: 48 }).map((_, i) => (
+                <Skeleton key={i} className="h-6 w-6 rounded-sm" />
+              ))}
+            </div>
+          ) : (
+            <div className="flex flex-wrap gap-1" data-testid="trend-blocks">
+              {(checkBuckets && checkBuckets.length > 0 ? checkBuckets : EMPTY_BUCKETS).map(
+                (bucket, i) => (
+                  <div
+                    key={i}
+                    data-testid={`trend-block-${i}`}
+                    className={[
+                      "relative h-6 w-6 rounded-sm border cursor-default transition-transform hover:scale-125",
+                      bucket.status === "up"
+                        ? "bg-success/20 border-success"
+                        : bucket.status === "down"
+                          ? "bg-destructive/20 border-destructive"
+                          : bucket.status === "degraded"
+                            ? "bg-warning/20 border-warning"
+                            : "bg-muted border-muted",
+                    ].join(" ")}
+                    onMouseEnter={() => setHoveredBlock(i)}
+                    onMouseLeave={() => setHoveredBlock(null)}
+                  >
+                    {hoveredBlock === i && (
+                      <div className="absolute bottom-full left-1/2 mb-1 -translate-x-1/2 whitespace-nowrap rounded-md bg-popover px-2 py-1 text-xs shadow-md border z-10">
+                        {bucket.bucket_start ? (
+                          <div className="text-muted-foreground">{formatDateTime(bucket.bucket_start)}</div>
+                        ) : (
+                          <div className="text-muted-foreground">无数据</div>
+                        )}
+                        {bucket.total > 0 && (
+                          <>
+                            <div className="text-success">成功 {bucket.success}</div>
+                            {bucket.failure > 0 && (
+                              <div className="text-destructive">失败 {bucket.failure}</div>
+                            )}
+                            {bucket.avg_latency_ms > 0 && (
+                              <div className="font-mono">{bucket.avg_latency_ms.toFixed(1)}ms</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            ))}
-          </div>
+                )
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
 

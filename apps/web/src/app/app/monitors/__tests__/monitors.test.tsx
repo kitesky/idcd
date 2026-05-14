@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import "@testing-library/jest-dom"
 
 // Mock next/navigation
@@ -17,6 +17,21 @@ vi.mock("next/link", () => ({
     href: string
   }) => <a href={href}>{children}</a>,
 }))
+
+// Default fetch mock: returns empty buckets
+beforeEach(() => {
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: true,
+    json: async () => ({
+      data: {
+        monitor_id: "mon-001",
+        hours: 24,
+        resolution_minutes: 30,
+        buckets: [],
+      },
+    }),
+  } as Response)
+})
 
 import { MonitorsClient } from "../monitors-client"
 import { MOCK_MONITORS } from "../mock-data"
@@ -114,6 +129,30 @@ describe("MonitorsClient — 列表渲染", () => {
     const newBtn = screen.getByRole("link", { name: /新建监控/ })
     expect(newBtn).toHaveAttribute("href", "/app/monitors/new")
   })
+
+  it("渲染 Checkbox 列——每行有 Checkbox", () => {
+    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+    const checkboxes = screen.getAllByRole("checkbox")
+    expect(checkboxes.length).toBeGreaterThanOrEqual(MOCK_MONITORS.length + 1)
+  })
+
+  it("选择一个 monitor 后浮动操作栏出现", () => {
+    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+    const checkboxes = screen.getAllByRole("checkbox")
+    const rowCheckbox = checkboxes[1]
+    fireEvent.click(rowCheckbox)
+    expect(screen.getByText(/已选择 1 个监控/)).toBeInTheDocument()
+  })
+
+  it("点击全选后所有 monitor 被选中", () => {
+    render(<MonitorsClient initialMonitors={MOCK_MONITORS} />)
+    const checkboxes = screen.getAllByRole("checkbox")
+    const selectAllCheckbox = checkboxes[0]
+    fireEvent.click(selectAllCheckbox)
+    expect(
+      screen.getByText(new RegExp(`已选择 ${MOCK_MONITORS.length} 个监控`))
+    ).toBeInTheDocument()
+  })
 })
 
 // ─── MonitorDetailClient tests ───────────────────────────────────────────────
@@ -136,8 +175,48 @@ describe("MonitorDetailClient — 详情页渲染", () => {
     expect(screen.getByText("99.8%")).toBeInTheDocument()
   })
 
-  it("渲染 48 个趋势块", () => {
+  it("渲染 48 个趋势块（空数据时显示 48 个灰色方块）", async () => {
     render(<MonitorDetailClient monitor={upMonitor} />)
+    const blocksContainer = await screen.findByTestId("trend-blocks")
+    expect(blocksContainer.children.length).toBe(48)
+  })
+
+  it("加载中时显示 Skeleton", () => {
+    render(<MonitorDetailClient monitor={upMonitor} />)
+    expect(screen.getByTestId("trend-blocks-loading")).toBeInTheDocument()
+  })
+
+  it("fetch 返回 buckets 时渲染对应数量的方块", async () => {
+    const fakeBuckets = Array.from({ length: 5 }, (_, i) => ({
+      bucket_start: new Date(Date.now() - i * 30 * 60_000).toISOString(),
+      total: 2,
+      success: 2,
+      failure: 0,
+      avg_latency_ms: 120,
+      status: "up",
+    }))
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          monitor_id: "mon-001",
+          hours: 24,
+          resolution_minutes: 30,
+          buckets: fakeBuckets,
+        },
+      }),
+    } as Response)
+    render(<MonitorDetailClient monitor={upMonitor} />)
+    const blocksContainer = await screen.findByTestId("trend-blocks")
+    expect(blocksContainer.children.length).toBe(5)
+  })
+
+  it("fetch 失败时渲染 48 个空方块", async () => {
+    global.fetch = vi.fn().mockRejectedValue(new Error("network error"))
+    render(<MonitorDetailClient monitor={upMonitor} />)
+    await waitFor(() => {
+      expect(screen.queryByTestId("trend-blocks-loading")).not.toBeInTheDocument()
+    })
     const blocksContainer = screen.getByTestId("trend-blocks")
     expect(blocksContainer.children.length).toBe(48)
   })

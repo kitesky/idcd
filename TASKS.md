@@ -466,6 +466,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J7** Admin beta 邀请码管理页面 — `/admin/beta-invitations` 页面（邀请码列表 + 状态过滤 + 审批/撤销操作 + 创建 Dialog），侧边栏导航"Beta 邀请码"，5 前端 tests ✓，完成 2026-05-14
 - [x] **J8** 告警通知交付日志 — `GET /v1/alert-channels/{id}/notifications`（Bearer token 认证，limit/offset，403 跨用户保护），`alert_notification.go` handler + 路由注册，前端通道 Card 折叠"查看交付记录"区域（mock 数据 + Badge 状态 + Table），5 Go tests + 2 前端 tests ✓，完成 2026-05-14
 - [x] **J12** X-RateLimit 响应头 + /app/usage 真实配额数据 — `APIQuotaMiddleware` 注入 `X-RateLimit-Limit/Remaining/Used/Reset`（test key → -1），`QuotaStatusResponse` 新增 `api_calls.reset_at` 字段，`/app/usage` 前端接真实 `/v1/account/quota` API（useEffect + fetch，Skeleton loading，趋势图保持演示数据），3 Go header tests + 7 前端 tests ✓，完成 2026-05-14
+- [x] **J10** Monitor 检查历史图表（真实数据）— `GET /v1/monitors/{id}/checks`（Bearer token 认证，hours 参数最大 168，resolution=30m，TimescaleDB time_bucket 聚合，ownership 403 校验），`MonitorChecksHandler` + `MonitorChecksPool` 接口，路由注册到 `/monitors/{id}/checks`，前端 `useEffect` + `fetch` 替换 mock 数据，Skeleton loading，真实 bucket 颜色（up/down/degraded/empty），hover tooltip 显示时间/成功失败数/平均延迟，6 Go tests + 4 前端 tests ✓，完成 2026-05-14
 
 ---
 

@@ -90,13 +90,13 @@ describe("AlertsClient — 事件历史 Tab", () => {
 describe("AlertsClient — 告警通道 Tab", () => {
   it("切换到通道 Tab 显示通道内容", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     expect(screen.getByTestId("add-channel-btn")).toBeInTheDocument()
   })
 
   it("渲染所有 3 个通道卡片", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     MOCK_ALERT_CHANNELS.forEach((ch) => {
       expect(screen.getByTestId(`channel-card-${ch.id}`)).toBeInTheDocument()
     })
@@ -104,7 +104,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("通道卡片显示通道名称", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     MOCK_ALERT_CHANNELS.forEach((ch) => {
       const card = screen.getByTestId(`channel-card-${ch.id}`)
       expect(within(card).getByText(ch.name)).toBeInTheDocument()
@@ -113,7 +113,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("已验证通道显示已验证 Badge", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     const verifiedChannels = MOCK_ALERT_CHANNELS.filter((c) => c.verified)
     const verifiedBadges = screen.getAllByText("已验证")
     expect(verifiedBadges.length).toBe(verifiedChannels.length)
@@ -121,7 +121,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("未验证通道显示未验证 Badge", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     const unverifiedChannels = MOCK_ALERT_CHANNELS.filter((c) => !c.verified)
     const unverifiedBadges = screen.getAllByText("未验证")
     expect(unverifiedBadges.length).toBe(unverifiedChannels.length)
@@ -129,7 +129,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("每个通道有测试发送按钮", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     MOCK_ALERT_CHANNELS.forEach((ch) => {
       expect(screen.getByTestId(`test-channel-btn-${ch.id}`)).toBeInTheDocument()
     })
@@ -137,7 +137,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("每个通道有删除按钮", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     MOCK_ALERT_CHANNELS.forEach((ch) => {
       expect(screen.getByTestId(`delete-channel-btn-${ch.id}`)).toBeInTheDocument()
     })
@@ -145,7 +145,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("点击添加通道按钮打开侧滑 Sheet", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     fireEvent.click(screen.getByTestId("add-channel-btn"))
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
     expect(screen.getByText("添加告警通道")).toBeInTheDocument()
@@ -153,7 +153,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
 
   it("点击删除通道按钮打开确认对话框", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-channels"))
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     const deleteBtn = screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0].id}`)
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
@@ -164,13 +164,13 @@ describe("AlertsClient — 告警通道 Tab", () => {
 describe("AlertsClient — 告警策略 Tab", () => {
   it("切换到策略 Tab 显示策略内容", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     expect(screen.getByTestId("add-policy-btn")).toBeInTheDocument()
   })
 
   it("渲染所有 2 条策略行", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     MOCK_ALERT_POLICIES.forEach((pol) => {
       expect(screen.getByTestId(`policy-row-${pol.id}`)).toBeInTheDocument()
     })
@@ -178,7 +178,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("策略行显示策略名", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     MOCK_ALERT_POLICIES.forEach((pol) => {
       expect(screen.getByText(pol.name)).toBeInTheDocument()
     })
@@ -186,7 +186,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("每条策略有启用/关闭 Switch", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     MOCK_ALERT_POLICIES.forEach((pol) => {
       expect(screen.getByTestId(`policy-toggle-${pol.id}`)).toBeInTheDocument()
     })
@@ -194,7 +194,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("每条策略有编辑按钮", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     MOCK_ALERT_POLICIES.forEach((pol) => {
       expect(screen.getByTestId(`edit-policy-btn-${pol.id}`)).toBeInTheDocument()
     })
@@ -202,7 +202,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("每条策略有删除按钮", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     MOCK_ALERT_POLICIES.forEach((pol) => {
       expect(screen.getByTestId(`delete-policy-btn-${pol.id}`)).toBeInTheDocument()
     })
@@ -210,7 +210,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("点击 Toggle 切换策略启用状态", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     const firstPol = MOCK_ALERT_POLICIES[0]
     const toggle = screen.getByTestId(`policy-toggle-${firstPol.id}`) as HTMLInputElement
     const initialChecked = toggle.checked
@@ -220,7 +220,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("点击编辑按钮打开侧滑 Sheet（编辑模式）", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     const editBtn = screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)
     fireEvent.click(editBtn)
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
@@ -229,7 +229,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("点击新建策略按钮打开侧滑 Sheet（新建模式）", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     fireEvent.click(screen.getByTestId("add-policy-btn"))
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
     expect(screen.getByText("新建告警策略")).toBeInTheDocument()
@@ -237,7 +237,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
 
   it("点击删除策略按钮打开确认对话框", () => {
     render(<AlertsClient />)
-    fireEvent.click(screen.getByTestId("tab-policies"))
+    fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     const deleteBtn = screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
@@ -261,7 +261,7 @@ describe("AlertsClient — 通用", () => {
   it("Tab 切换正确更新 aria-selected", () => {
     render(<AlertsClient />)
     const channelsTab = screen.getByTestId("tab-channels")
-    fireEvent.click(channelsTab)
+    fireEvent.mouseDown(channelsTab)
     expect(channelsTab).toHaveAttribute("aria-selected", "true")
     expect(screen.getByTestId("tab-events")).toHaveAttribute("aria-selected", "false")
   })

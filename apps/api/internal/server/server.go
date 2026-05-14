@@ -137,6 +137,7 @@ func (s *Server) setupRouter() {
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
 		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis)
+		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").WithAuth(jwtSvc, sessSvc)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
 		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
@@ -157,6 +158,8 @@ func (s *Server) setupRouter() {
 				r.Post("/forgot-password", authH.ForgotPassword)
 				r.Post("/reset-password", authH.ResetPassword)
 				r.Post("/2fa-login", authH.TwoFactorLogin)
+				r.Post("/passkeys/begin", webauthnH.AuthBegin)
+				r.Post("/passkeys/complete", webauthnH.AuthComplete)
 
 				oauthCfg := handler.OAuthConfig{
 					DingTalkAppID:  s.config.OAuth.DingTalk.AppID,
@@ -193,6 +196,13 @@ func (s *Server) setupRouter() {
 					r.Post("/verify", totpH.Verify)
 					r.Post("/disable", totpH.Disable)
 					r.Get("/status", totpH.Status)
+				})
+				// Passkey (WebAuthn) management
+				r.Route("/passkeys", func(r chi.Router) {
+					r.Post("/register/begin", webauthnH.RegisterBegin)
+					r.Post("/register/complete", webauthnH.RegisterComplete)
+					r.Get("/", webauthnH.List)
+					r.Delete("/{id}", webauthnH.Delete)
 				})
 			})
 			r.Route("/info", func(r chi.Router) {
@@ -352,6 +362,8 @@ func (s *Server) setupRouter() {
 
 			// Team / Org endpoints (authentication required)
 			teamH := handler.NewTeamHandler(s.pgxPool)
+			teamKeyH := handler.NewTeamAPIKeyHandler(s.pgxPool)
+			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billing.NewStubProvider())
 			r.Route("/teams", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Post("/", teamH.Create)
@@ -367,6 +379,15 @@ func (s *Server) setupRouter() {
 					r.Get("/invitations", teamH.ListInvitations)
 					r.Post("/invitations", teamH.CreateInvitation)
 					r.Delete("/invitations/{inv_id}", teamH.RevokeInvitation)
+					r.Route("/api-keys", func(r chi.Router) {
+						r.Post("/", teamKeyH.Create)
+						r.Get("/", teamKeyH.List)
+						r.Delete("/{key_id}", teamKeyH.Delete)
+					})
+					r.Route("/billing", func(r chi.Router) {
+						r.Post("/subscribe", teamBillingH.Subscribe)
+						r.Get("/subscription", teamBillingH.GetSubscription)
+					})
 				})
 			})
 
@@ -395,6 +416,16 @@ func (s *Server) setupRouter() {
 			r.Get("/users", adminH.AdminUsers)
 			r.Get("/users/{id}", adminH.AdminUserDetail)
 		})
+
+		// Community node application and points endpoints.
+		communityH := handler.NewCommunityNodeHandler(s.pgxPool)
+		r.With(authnMW).Post("/v1/nodes/apply", communityH.Apply)
+		r.With(authnMW).Get("/v1/nodes/my-applications", communityH.MyApplications)
+		r.With(authnMW).Get("/v1/account/points", communityH.GetPoints)
+		r.With(authnMW).Post("/v1/account/points/redeem", communityH.Redeem)
+		communityAdminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		r.With(communityAdminH.AdminAuthMiddleware).Get("/v1/admin/node-applications", communityH.AdminList)
+		r.With(communityAdminH.AdminAuthMiddleware).Patch("/v1/admin/node-applications/{id}", communityH.AdminUpdate)
 
 		// Beta invitation endpoints (user-facing + admin).
 		betaH := handler.NewBetaInvitationHandler(s.pgxPool)

@@ -52,4 +52,37 @@ describe("TeamClient", () => {
     render(<TeamClient />)
     expect(screen.getByTestId("team-name")).toHaveTextContent("Acme Corp")
   })
+
+  it("renders the team API Keys section", () => {
+    render(<TeamClient />)
+    expect(screen.getByTestId("team-api-keys-card")).toBeInTheDocument()
+    expect(screen.getByTestId("team-keys-table")).toBeInTheDocument()
+    expect(screen.getByTestId("btn-add-team-key")).toBeInTheDocument()
+  })
+
+  it("shows mock API keys in the team keys table", () => {
+    render(<TeamClient />)
+    expect(screen.getByTestId("key-row-key_t001")).toBeInTheDocument()
+    expect(screen.getByTestId("key-row-key_t002")).toBeInTheDocument()
+    expect(screen.getByText("CI/CD Key")).toBeInTheDocument()
+    expect(screen.getByText("Staging Key")).toBeInTheDocument()
+  })
+
+  it("renders the team subscription section", () => {
+    render(<TeamClient />)
+    expect(screen.getByTestId("team-subscription-card")).toBeInTheDocument()
+    expect(screen.getByTestId("team-plan-badge")).toBeInTheDocument()
+  })
+
+  it("shows upgrade button when plan is free", () => {
+    render(<TeamClient />)
+    expect(screen.getByTestId("btn-upgrade-team")).toBeInTheDocument()
+  })
+
+  it("opens add key dialog on button click", () => {
+    render(<TeamClient />)
+    fireEvent.click(screen.getByTestId("btn-add-team-key"))
+    expect(screen.getByTestId("input-key-name")).toBeInTheDocument()
+    expect(screen.getByTestId("select-key-type")).toBeInTheDocument()
+  })
 })

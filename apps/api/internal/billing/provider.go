@@ -12,16 +12,18 @@ import (
 type Plan string
 
 const (
-	PlanFree     Plan = "free"
-	PlanPro      Plan = "pro"
-	PlanTeam     Plan = "team"
-	PlanBusiness Plan = "business"
+	PlanFree      Plan = "free"
+	PlanPro       Plan = "pro"
+	PlanAgentPro  Plan = "agent_pro"
+	PlanTeam      Plan = "team"
+	PlanBusiness  Plan = "business"
 )
 
 // PlanPrice 各档位月费（分，人民币）
 var PlanPrice = map[Plan]int64{
 	PlanFree:     0,
 	PlanPro:      9900,  // ¥99
+	PlanAgentPro: 29900, // ¥299
 	PlanTeam:     29900, // ¥299
 	PlanBusiness: 99900, // ¥999
 }

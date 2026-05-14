@@ -502,6 +502,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 [-] MCP Server（mcp.idcd.com）            → S3，M9+（骨架已在 J13 完成）
 [-] API 公开 GA + SDK + CLI               → S3，M8-M9
 [x] K1 Team/Org 基础（teams + memberships + invitations + /app/settings/team）
+[x] K5 团队级 API Key + Agent Pro 订阅（team-scoped keys + /v1/teams/{id}/billing）
 [-] 团队 / 多用户 / 角色权限（完整 S3）   → S3，M12+
 [-] 众包节点                              → S3，M13
 [-] 管理台完整功能                        → S2 末/S3

@@ -27,7 +27,15 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui"
-import { Plus, UserPlus, Users } from "lucide-react"
+import { Key, Plus, UserPlus, Users } from "lucide-react"
+
+interface TeamAPIKey {
+  id: string
+  name: string
+  prefix: string
+  key_type: "production" | "test"
+  created_at: string
+}
 
 interface TeamMember {
   id: string
@@ -90,6 +98,23 @@ const MOCK_INVITATIONS: PendingInvitation[] = [
     email: "dave@acme.com",
     role: "member",
     expires_at: "2026-05-21",
+  },
+]
+
+const MOCK_TEAM_KEYS: TeamAPIKey[] = [
+  {
+    id: "key_t001",
+    name: "CI/CD Key",
+    prefix: "sk_live_deadbeef...",
+    key_type: "production",
+    created_at: "2026-05-01",
+  },
+  {
+    id: "key_t002",
+    name: "Staging Key",
+    prefix: "sk_test_cafebabe...",
+    key_type: "test",
+    created_at: "2026-05-10",
   },
 ]
 
@@ -170,6 +195,8 @@ export function TeamClient() {
   const [team, setTeam] = useState<Team | null>(MOCK_TEAM)
   const [members] = useState<TeamMember[]>(MOCK_MEMBERS)
   const [invitations] = useState<PendingInvitation[]>(MOCK_INVITATIONS)
+  const [teamKeys, setTeamKeys] = useState<TeamAPIKey[]>(MOCK_TEAM_KEYS)
+  const [teamPlan] = useState<"free" | "agent_pro">("free")
 
   const [showCreateTeamDialog, setShowCreateTeamDialog] = useState(false)
   const [newTeamName, setNewTeamName] = useState("")
@@ -178,6 +205,10 @@ export function TeamClient() {
   const [showInviteDialog, setShowInviteDialog] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState("member")
+
+  const [showAddKeyDialog, setShowAddKeyDialog] = useState(false)
+  const [newKeyName, setNewKeyName] = useState("")
+  const [newKeyType, setNewKeyType] = useState<"production" | "test">("production")
 
   function handleCreateTeam() {
     if (!newTeamName.trim() || !newTeamSlug.trim()) return
@@ -198,6 +229,28 @@ export function TeamClient() {
     setInviteEmail("")
     setInviteRole("member")
     setShowInviteDialog(false)
+  }
+
+  function handleAddKey() {
+    if (!newKeyName.trim()) return
+    const prefix = newKeyType === "production" ? "sk_live_" : "sk_test_"
+    setTeamKeys((prev) => [
+      ...prev,
+      {
+        id: "key_new_" + Date.now(),
+        name: newKeyName,
+        prefix: prefix + "xxxxxxxx...",
+        key_type: newKeyType,
+        created_at: new Date().toISOString().slice(0, 10),
+      },
+    ])
+    setNewKeyName("")
+    setNewKeyType("production")
+    setShowAddKeyDialog(false)
+  }
+
+  function handleRevokeKey(keyID: string) {
+    setTeamKeys((prev) => prev.filter((k) => k.id !== keyID))
   }
 
   if (!team) {
@@ -323,6 +376,134 @@ export function TeamClient() {
           </CardContent>
         </Card>
       )}
+
+      <Card data-testid="team-api-keys-card">
+        <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4">
+          <div>
+            <CardTitle className="text-base">团队 API Keys</CardTitle>
+            <CardDescription className="mt-1">
+              用于 CI/CD 或自动化集成的团队级密钥
+            </CardDescription>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setShowAddKeyDialog(true)}
+            data-testid="btn-add-team-key"
+          >
+            <Key className="h-4 w-4 mr-1" />
+            添加 Key
+          </Button>
+        </CardHeader>
+        <CardContent>
+          <Table data-testid="team-keys-table">
+            <TableHeader>
+              <TableRow>
+                <TableHead>名称</TableHead>
+                <TableHead>前缀</TableHead>
+                <TableHead>类型</TableHead>
+                <TableHead>创建时间</TableHead>
+                <TableHead />
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {teamKeys.map((k) => (
+                <TableRow key={k.id} data-testid={`key-row-${k.id}`}>
+                  <TableCell className="text-sm font-medium">{k.name}</TableCell>
+                  <TableCell className="font-mono text-xs text-muted-foreground">
+                    {k.prefix}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant={k.key_type === "production" ? "default" : "secondary"}
+                      className="text-xs"
+                      data-testid={`key-type-badge-${k.id}`}
+                    >
+                      {k.key_type}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-xs text-muted-foreground">
+                    {k.created_at}
+                  </TableCell>
+                  <TableCell>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-destructive hover:text-destructive text-xs"
+                      onClick={() => handleRevokeKey(k.id)}
+                      data-testid={`btn-revoke-key-${k.id}`}
+                    >
+                      撤销
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              ))}
+              {teamKeys.length === 0 && (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
+                    暂无团队 API Key
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="team-subscription-card">
+        <CardHeader>
+          <CardTitle className="text-base">团队订阅</CardTitle>
+          <CardDescription>管理团队的 Agent Pro 订阅</CardDescription>
+        </CardHeader>
+        <CardContent className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <span className="text-sm">当前套餐</span>
+            <Badge
+              variant={teamPlan === "agent_pro" ? "default" : "secondary"}
+              data-testid="team-plan-badge"
+            >
+              {teamPlan === "agent_pro" ? "Agent Pro" : "Free"}
+            </Badge>
+          </div>
+          {teamPlan !== "agent_pro" && (
+            <Button size="sm" data-testid="btn-upgrade-team">
+              升级到 Agent Pro（¥299/月）
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Dialog open={showAddKeyDialog} onOpenChange={setShowAddKeyDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>添加团队 API Key</DialogTitle>
+            <DialogDescription>创建一个团队共享的 API 密钥</DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-3 mt-2">
+            <Input
+              placeholder="Key 名称（如 CI/CD Key）"
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              data-testid="input-key-name"
+            />
+            <Select
+              value={newKeyType}
+              onValueChange={(v) => setNewKeyType(v as "production" | "test")}
+            >
+              <SelectTrigger data-testid="select-key-type">
+                <SelectValue placeholder="选择类型" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="production">production</SelectItem>
+                <SelectItem value="test">test</SelectItem>
+              </SelectContent>
+            </Select>
+            <Button onClick={handleAddKey} data-testid="btn-confirm-add-key">
+              创建 Key
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent>

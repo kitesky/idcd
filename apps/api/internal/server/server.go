@@ -137,11 +137,11 @@ func (s *Server) setupRouter() {
 		sessSvc := session.NewService(s.redis)
 		q := idcdmain.New(s.pgxPool)
 
-		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).WithReferralPool(s.pgxPool).WithMFA(s.pgxPool, s.redis)
+		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
+		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).WithReferralPool(s.pgxPool).WithMFA(s.pgxPool, s.redis).WithFieldCipher(fieldCipher)
 		acctH := handler.NewAccountHandler(q)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
-		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
 		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis, fieldCipher)
 		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").WithAuth(jwtSvc, sessSvc)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)

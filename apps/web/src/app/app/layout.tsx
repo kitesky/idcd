@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import type { Route } from "next"
 import { usePathname, useRouter } from "next/navigation"
 import {
   Activity,
@@ -106,7 +107,7 @@ function SidebarContent({
                   data-active={active ? "true" : undefined}
                   onClick={onNavClick}
                 >
-                  <Link href={item.href}>
+                  <Link href={item.href as Route}>
                     <item.icon className="h-4 w-4 shrink-0" />
                     {item.label}
                   </Link>

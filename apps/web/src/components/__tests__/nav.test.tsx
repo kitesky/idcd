@@ -2,6 +2,10 @@ import { render, screen } from "@testing-library/react"
 import { describe, it, expect, vi } from "vitest"
 import { Nav } from "../nav"
 
+vi.mock("next/navigation", () => ({
+  usePathname: () => "/",
+}))
+
 describe("Nav", () => {
   it("renders the logo", () => {
     render(<Nav />)

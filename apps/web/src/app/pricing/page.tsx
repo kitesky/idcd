@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import type { Route } from "next"
 import Link from "next/link"
 
 export const metadata: Metadata = {
@@ -15,7 +16,7 @@ export default function PricingPage() {
       </p>
       <div className="mt-8 flex gap-4">
         <Link
-          href="/tools"
+          href={"/tools" as Route}
           className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
         >
           立即使用工具

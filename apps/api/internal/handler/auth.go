@@ -27,6 +27,7 @@ import (
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/db/repository"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/aesenc"
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
@@ -80,6 +81,7 @@ type AuthHandler struct {
 	referralPool ReferralPool
 	mfaPool      MFAPool
 	mfaRedis     *redis.Client
+	fieldCipher  *aesenc.Cipher
 }
 
 // NewAuthHandler creates an AuthHandler wired to the given services.
@@ -98,6 +100,12 @@ func (h *AuthHandler) WithReferralPool(pool ReferralPool) *AuthHandler {
 func (h *AuthHandler) WithMFA(pool MFAPool, rdb *redis.Client) *AuthHandler {
 	h.mfaPool = pool
 	h.mfaRedis = rdb
+	return h
+}
+
+// WithFieldCipher wires the AES-256-GCM cipher used to decrypt stored TOTP secrets.
+func (h *AuthHandler) WithFieldCipher(cipher *aesenc.Cipher) *AuthHandler {
+	h.fieldCipher = cipher
 	return h
 }
 
@@ -574,7 +582,17 @@ func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret := strings.TrimSpace(string(secretBytes))
+	var plainSecret []byte
+	if h.fieldCipher != nil {
+		plainSecret, err = h.fieldCipher.Decrypt(secretBytes)
+		if err != nil {
+			response.Error(w, r, apperr.Internal("failed to decrypt 2FA secret", err))
+			return
+		}
+	} else {
+		plainSecret = secretBytes
+	}
+	secret := strings.TrimSpace(string(plainSecret))
 	ok, err := totp.ValidateCode(secret, req.Code)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to validate code", err))

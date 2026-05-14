@@ -7,7 +7,7 @@ import { Button } from "@/components/ui"
 
 function LangToggle() {
   const pathname = usePathname()
-  const isEn = pathname.startsWith('/en')
+  const isEn = pathname?.startsWith('/en') ?? false
   return (
     <div className="flex items-center gap-0.5 rounded-md border p-0.5">
       <Button

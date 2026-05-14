@@ -931,8 +931,13 @@ export function parseMarkdown(text: string): string {
   html = html.replace(/_(.+?)_/g, '<em>$1</em>')
   // Blockquote
   html = html.replace(/^&gt; (.+)$/gm, '<blockquote>$1</blockquote>')
-  // Links
-  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank">$1</a>')
+  // Links — only allow safe protocols to prevent javascript: injection
+  html = html.replace(/\[([^\]]+)\]\(([^)]+)\)/g, (_full, linkText, href) => {
+    if (/^(https?:|mailto:)/.test(href)) {
+      return `<a href="${href}" target="_blank" rel="noopener noreferrer">${linkText}</a>`
+    }
+    return linkText
+  })
   // Horizontal rule
   html = html.replace(/^---+$/gm, '<hr />')
   // Unordered list

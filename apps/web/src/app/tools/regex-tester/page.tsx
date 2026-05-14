@@ -2,6 +2,7 @@
 
 import { useState, useMemo } from "react"
 import { Card, CardContent, CardHeader, CardTitle, Input, Textarea, Badge } from "@/components/ui"
+import { encodeHTML } from "@/lib/tool-functions"
 
 interface MatchResult {
   match: string
@@ -55,19 +56,18 @@ export default function RegexTesterPage() {
         }
       }
 
-      // Create highlighted text
+      // Build highlighted text by iterating matches in order, escaping each segment.
       if (matches.length > 0) {
-        highlightedText = testText
-
-        // Sort matches by index in descending order to avoid offset issues
-        const sortedMatches = [...matches].sort((a, b) => b.index - a.index)
-
-        sortedMatches.forEach(match => {
-          const before = highlightedText.slice(0, match.index)
-          const highlighted = `<mark class="bg-primary/20 text-primary-foreground rounded px-1">${match.match}</mark>`
-          const after = highlightedText.slice(match.index + match.match.length)
-          highlightedText = before + highlighted + after
+        const sortedMatches = [...matches].sort((a, b) => a.index - b.index)
+        let result = ''
+        let lastIndex = 0
+        sortedMatches.forEach(m => {
+          result += encodeHTML(testText.slice(lastIndex, m.index))
+          result += `<mark class="bg-primary/20 text-primary-foreground rounded px-1">${encodeHTML(m.match)}</mark>`
+          lastIndex = m.index + m.match.length
         })
+        result += encodeHTML(testText.slice(lastIndex))
+        highlightedText = result
       }
 
       setError('')

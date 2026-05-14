@@ -479,6 +479,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J20** 推荐返利系统（referral code + 奖励记录 + /app/referral），DB migration 00017 + handler tests，完成 2026-05-14
 - [x] **K3** MCP tools 真实 API 接入 — `apiclient.Client`（零外部依赖，Bearer token，POST/GET），8 tools 全部接真实 `/v1/probe/*` + `/v1/info/*` API，graceful degradation（无 API key 时提示 IDCD_API_KEY），HTTP+SSE transport（`--transport http --port 8082`，`/sse` + `/messages` 端点），21 Go tests（protocol 9 + integration 4 + apiclient 0 + tools 0）全绿，完成 2026-05-14
 
+- [x] **K4** 钉钉/飞书 OAuth 登录 — `handler/oauth.go`（DingTalkLogin/Callback + FeishuLogin/Callback），CSRF state 存 Redis（5min TTL，crypto/rand 16字节），`findOrCreateOAuthUser` 走 `user_credential` 表，`handler/oauth_state.go`（redisStateStore），config `OAuth{}` 扩展，路由注册 `/v1/auth/dingtalk` + `/v1/auth/feishu` 及 callback，前端登录页第三方按钮 + `oauth-callback/page.tsx`，9 Go tests + 4 前端 tests 全绿，完成 2026-05-14
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

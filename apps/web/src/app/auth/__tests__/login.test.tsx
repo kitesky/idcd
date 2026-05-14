@@ -25,4 +25,14 @@ describe('LoginPage', () => {
     expect(screen.getByText('忘记密码？')).toBeDefined()
     expect(screen.getByText('立即注册')).toBeDefined()
   })
+
+  it('renders DingTalk login button', () => {
+    render(<LoginPage />)
+    expect(screen.getByText('钉钉登录')).toBeDefined()
+  })
+
+  it('renders Feishu login button', () => {
+    render(<LoginPage />)
+    expect(screen.getByText('飞书登录')).toBeDefined()
+  })
 })

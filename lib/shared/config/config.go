@@ -22,6 +22,26 @@ type Config struct {
 	Email         EmailConfig         `yaml:"email"`
 	Observability ObservabilityConfig `yaml:"observability"`
 	AgentGateway  AgentGatewayConfig  `yaml:"agent_gateway"`
+	OAuth         OAuthConfig         `yaml:"oauth"`
+}
+
+// OAuthConfig holds third-party OAuth provider credentials.
+type OAuthConfig struct {
+	CallbackBase string          `yaml:"callback_base"`
+	DingTalk     DingTalkConfig  `yaml:"dingtalk"`
+	Feishu       FeishuConfig    `yaml:"feishu"`
+}
+
+// DingTalkConfig holds DingTalk app credentials.
+type DingTalkConfig struct {
+	AppID     string `yaml:"app_id"`
+	AppSecret string `yaml:"app_secret"`
+}
+
+// FeishuConfig holds Feishu app credentials.
+type FeishuConfig struct {
+	AppID     string `yaml:"app_id"`
+	AppSecret string `yaml:"app_secret"`
 }
 
 type DatabaseConfig struct {

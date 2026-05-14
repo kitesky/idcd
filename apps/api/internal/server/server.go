@@ -132,10 +132,11 @@ func (s *Server) setupRouter() {
 		sessSvc := session.NewService(s.redis)
 		q := idcdmain.New(s.pgxPool)
 
-		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).WithReferralPool(s.pgxPool)
+		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).WithReferralPool(s.pgxPool).WithMFA(s.pgxPool, s.redis)
 		acctH := handler.NewAccountHandler(q)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
+		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
 		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
@@ -155,6 +156,21 @@ func (s *Server) setupRouter() {
 				r.Post("/verify-email", authH.VerifyEmail)
 				r.Post("/forgot-password", authH.ForgotPassword)
 				r.Post("/reset-password", authH.ResetPassword)
+				r.Post("/2fa-login", authH.TwoFactorLogin)
+
+				oauthCfg := handler.OAuthConfig{
+					DingTalkAppID:  s.config.OAuth.DingTalk.AppID,
+					DingTalkSecret: s.config.OAuth.DingTalk.AppSecret,
+					FeishuAppID:    s.config.OAuth.Feishu.AppID,
+					FeishuSecret:   s.config.OAuth.Feishu.AppSecret,
+					CallbackBase:   s.config.OAuth.CallbackBase,
+				}
+				stateStore := handler.NewRedisStateStore(s.redis)
+				oauthH := handler.NewOAuthHandler(oauthCfg, q, jwtSvc, sessSvc, stateStore)
+				r.Get("/dingtalk", oauthH.DingTalkLogin)
+				r.Get("/dingtalk/callback", oauthH.DingTalkCallback)
+				r.Get("/feishu", oauthH.FeishuLogin)
+				r.Get("/feishu/callback", oauthH.FeishuCallback)
 			})
 			r.Route("/account", func(r chi.Router) {
 				r.Use(authnMW)
@@ -170,6 +186,13 @@ func (s *Server) setupRouter() {
 					r.Post("/", patH.Create)
 					r.Get("/", patH.List)
 					r.Delete("/{id}", patH.Delete)
+				})
+				// 2FA / TOTP management
+				r.Route("/2fa", func(r chi.Router) {
+					r.Post("/setup", totpH.Setup)
+					r.Post("/verify", totpH.Verify)
+					r.Post("/disable", totpH.Disable)
+					r.Get("/status", totpH.Status)
 				})
 			})
 			r.Route("/info", func(r chi.Router) {
@@ -325,6 +348,26 @@ func (s *Server) setupRouter() {
 				r.Use(apiQuotaMW)
 				r.Get("/", alertH.ListEvents)
 				r.Post("/{id}/ack", alertH.AcknowledgeEvent)
+			})
+
+			// Team / Org endpoints (authentication required)
+			teamH := handler.NewTeamHandler(s.pgxPool)
+			r.Route("/teams", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/", teamH.Create)
+				r.Get("/", teamH.List)
+				r.Post("/accept-invitation", teamH.AcceptInvitation)
+				r.Route("/{id}", func(r chi.Router) {
+					r.Get("/", teamH.Get)
+					r.Patch("/", teamH.Update)
+					r.Delete("/", teamH.Delete)
+					r.Get("/members", teamH.ListMembers)
+					r.Patch("/members/{user_id}", teamH.UpdateMemberRole)
+					r.Delete("/members/{user_id}", teamH.RemoveMember)
+					r.Get("/invitations", teamH.ListInvitations)
+					r.Post("/invitations", teamH.CreateInvitation)
+					r.Delete("/invitations/{inv_id}", teamH.RevokeInvitation)
+				})
 			})
 
 			// Referral code and reward endpoints (authentication required)

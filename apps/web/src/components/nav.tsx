@@ -1,11 +1,13 @@
 "use client"
 
 import { useState } from "react"
+import { usePathname } from "next/navigation"
 import { Menu, X, Globe } from "lucide-react"
 import { Button } from "@/components/ui"
 
 function LangToggle() {
-  const isEn = typeof window !== 'undefined' && window.location.pathname.startsWith('/en')
+  const pathname = usePathname()
+  const isEn = pathname.startsWith('/en')
   return (
     <div className="flex items-center gap-0.5 rounded-md border p-0.5">
       <Button

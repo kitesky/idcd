@@ -4,8 +4,10 @@ import { ReactNode } from "react"
 const NAV_ITEMS = [
   { href: "/app/settings/profile", label: "个人资料" },
   { href: "/app/settings/account", label: "账号安全" },
+  { href: "/app/settings/security", label: "安全" },
   { href: "/app/settings/api-keys", label: "API Keys" },
   { href: "/app/settings/tokens", label: "访问令牌" },
+  { href: "/app/settings/team", label: "团队" },
 ] as const
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {

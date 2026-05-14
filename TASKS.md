@@ -156,6 +156,18 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 26 个测试全部通过，go build ✓
   - *deps: A6* | *lane: B* | *完成 2026-05-13*
 
+- [x] **K2** `lib/auth/totp/` + `apps/api/` + `apps/web/` — 2FA TOTP（RFC 6238 自实现）
+  - 纯标准库 TOTP（SHA-1 HOTP，6 位，30s 窗口，±1 容差）
+  - `POST /v1/account/2fa/setup` — 生成 secret，暂存 Redis 10min
+  - `POST /v1/account/2fa/verify` — 验证 code，启用 2FA，返回 8 个备用码
+  - `POST /v1/account/2fa/disable` — 验证 code 后删除 user_2fa 行
+  - `GET /v1/account/2fa/status` — 查询是否已启用
+  - Login 流程：2FA 启用时返回 mfa_token（Redis 5min TTL），不返回正式 token
+  - `POST /v1/auth/2fa-login` — mfa_token + code → 正式 token
+  - 前端 3 步 Dialog（扫码 → 验证 → 保存备用码）+ 关闭 2FA Dialog
+  - 850 个后端测试全部通过，10 个前端测试全部通过
+  - *deps: B3* | *lane: B* | *完成 2026-05-14*
+
 ---
 
 ### Lane C — 节点系统
@@ -489,7 +501,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 [-] Evidence MVP（KMS + TSA + Verdict）    → S2 中后期，M6 启动准备
 [-] MCP Server（mcp.idcd.com）            → S3，M9+（骨架已在 J13 完成）
 [-] API 公开 GA + SDK + CLI               → S3，M8-M9
-[-] 团队 / 多用户 / 角色权限              → S3，M12
+[x] K1 Team/Org 基础（teams + memberships + invitations + /app/settings/team）
+[-] 团队 / 多用户 / 角色权限（完整 S3）   → S3，M12+
 [-] 众包节点                              → S3，M13
 [-] 管理台完整功能                        → S2 末/S3
 [-] 企业版 SSO / 私有部署                 → S4

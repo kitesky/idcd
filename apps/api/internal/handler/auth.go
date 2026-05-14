@@ -11,15 +11,19 @@ import (
 	"fmt"
 	"math/big"
 	"net/http"
+	"strings"
 	"time"
 
 	"errors"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/auth/password"
+	"github.com/kite365/idcd/lib/auth/totp"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/db/repository"
 	"github.com/kite365/idcd/lib/shared/apperr"
@@ -62,6 +66,11 @@ type SessionStorer interface {
 	Delete(ctx context.Context, sessionID string) error
 }
 
+// MFAPool is the minimal pgx interface needed for MFA checks.
+type MFAPool interface {
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+}
+
 // AuthHandler implements all auth and account endpoints.
 type AuthHandler struct {
 	q            AuthQuerier
@@ -69,6 +78,8 @@ type AuthHandler struct {
 	sessSvc      SessionStorer
 	otpSecret    []byte // HMAC key for OTP hashing
 	referralPool ReferralPool
+	mfaPool      MFAPool
+	mfaRedis     *redis.Client
 }
 
 // NewAuthHandler creates an AuthHandler wired to the given services.
@@ -80,6 +91,13 @@ func NewAuthHandler(q AuthQuerier, jwtSvc JWTSigner, sessSvc SessionStorer, otpS
 // WithReferralPool wires a DB pool for referral tracking during registration.
 func (h *AuthHandler) WithReferralPool(pool ReferralPool) *AuthHandler {
 	h.referralPool = pool
+	return h
+}
+
+// WithMFA wires a pgx pool and Redis client for MFA support.
+func (h *AuthHandler) WithMFA(pool MFAPool, rdb *redis.Client) *AuthHandler {
+	h.mfaPool = pool
+	h.mfaRedis = rdb
 	return h
 }
 
@@ -223,6 +241,19 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	if user.Status == "suspended" || user.Status == "deleted" {
 		response.Error(w, r, apperr.Forbidden("account is not active"))
+		return
+	}
+
+	if h.mfaPool != nil && h.mfaRedis != nil && h.userHas2FA(r.Context(), user.ID) {
+		mfaToken := idgen.New("mfa")
+		if err := h.mfaRedis.Set(r.Context(), mfaPendingKeyPrefix+mfaToken, user.ID, mfaPendingTTL).Err(); err != nil {
+			response.Error(w, r, apperr.Internal("failed to create mfa session", err))
+			return
+		}
+		response.JSON(w, r, http.StatusOK, map[string]interface{}{
+			"mfa_required": true,
+			"mfa_token":    mfaToken,
+		})
 		return
 	}
 
@@ -495,4 +526,77 @@ func (h *AuthHandler) hashOTP(code string) string {
 	mac := hmac.New(sha256.New, h.otpSecret)
 	mac.Write([]byte(code))
 	return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (h *AuthHandler) userHas2FA(ctx context.Context, userID string) bool {
+	var dummy string
+	err := h.mfaPool.QueryRow(ctx,
+		`SELECT user_id FROM user_2fa WHERE user_id = $1`, userID,
+	).Scan(&dummy)
+	return err == nil
+}
+
+type twoFactorLoginRequest struct {
+	MFAToken string `json:"mfa_token"`
+	Code     string `json:"code"`
+}
+
+func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
+	var req twoFactorLoginRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		return
+	}
+	if req.MFAToken == "" || req.Code == "" {
+		response.Error(w, r, apperr.Validation("mfa_token and code are required", ""))
+		return
+	}
+
+	userID, err := h.mfaRedis.Get(r.Context(), mfaPendingKeyPrefix+req.MFAToken).Result()
+	if err != nil {
+		response.Error(w, r, apperr.Unauthorized("invalid or expired mfa token"))
+		return
+	}
+
+	var secretBytes []byte
+	err = h.mfaPool.QueryRow(r.Context(),
+		`SELECT secret_encrypted FROM user_2fa WHERE user_id = $1`, userID,
+	).Scan(&secretBytes)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to fetch 2FA secret", err))
+		return
+	}
+
+	secret := strings.TrimSpace(string(secretBytes))
+	ok, err := totp.ValidateCode(secret, req.Code)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to validate code", err))
+		return
+	}
+	if !ok {
+		response.Error(w, r, apperr.Unauthorized("invalid TOTP code"))
+		return
+	}
+
+	_ = h.mfaRedis.Del(r.Context(), mfaPendingKeyPrefix+req.MFAToken)
+
+	user, err := h.q.GetUserByID(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to fetch user", err))
+		return
+	}
+
+	token, _, err := h.issueToken(r.Context(), user.ID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to issue token", err))
+		return
+	}
+
+	_ = h.q.UpdateUserLastLogin(r.Context(), idcdmain.UpdateUserLastLoginParams{ID: user.ID})
+
+	setAuthCookie(w, r, token)
+	response.JSON(w, r, http.StatusOK, authResponse{
+		ExpiresIn: int(accessTokenTTL.Seconds()),
+		UserID:    user.ID,
+	})
 }

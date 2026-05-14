@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
+	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
 )
 
@@ -25,10 +28,50 @@ func ipDef() protocol.ToolDefinition {
 	}
 }
 
-func handleIP(_ context.Context, args map[string]any) (string, error) {
-	address, _ := args["address"].(string)
-	if address == "" {
-		return "", errors.New("address is required")
+func handleIPFunc(client *apiclient.Client) protocol.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		address, _ := args["address"].(string)
+		if address == "" {
+			return "", errors.New("address is required")
+		}
+
+		if !client.HasAPIKey() {
+			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+		}
+
+		var result struct {
+			IP      string `json:"ip"`
+			Country string `json:"country"`
+			City    string `json:"city"`
+			ASN     string `json:"asn"`
+			ISP     string `json:"isp"`
+		}
+
+		params := url.Values{}
+		params.Set("q", address)
+		if err := client.Get(ctx, "/v1/info/ip", params, &result); err != nil {
+			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+		}
+
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "IP: %s\n", result.IP)
+		if result.ASN != "" {
+			fmt.Fprintf(&sb, "ASN: %s\n", result.ASN)
+		}
+		location := result.City
+		if result.Country != "" {
+			if location != "" {
+				location = location + ", " + result.Country
+			} else {
+				location = result.Country
+			}
+		}
+		if location != "" {
+			fmt.Fprintf(&sb, "位置: %s\n", location)
+		}
+		if result.ISP != "" {
+			fmt.Fprintf(&sb, "ISP: %s", result.ISP)
+		}
+		return strings.TrimRight(sb.String(), "\n"), nil
 	}
-	return fmt.Sprintf("IP %s → country: US, city: San Jose, ASN: AS15169 (Google LLC), org: Google Cloud", address), nil
 }

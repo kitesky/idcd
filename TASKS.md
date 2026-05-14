@@ -477,6 +477,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J18** CLI 工具 — `apps/cli/`，module `github.com/kite365/idcd/apps/cli`，唯一外部依赖 `github.com/spf13/cobra v1.10.2`，6 命令（ping/http/dns/diagnose/monitor/config），API key 读取链（--api-key flag > IDCD_API_KEY env > ~/.idcd/config.yaml），API 不可用时 stub 优雅降级，`CGO_ENABLED=0` 交叉编译友好，11 Go tests（httptest.NewServer mock，ping/http/dns/config set-key/read/get/permissions）全绿，go.work 已更新，完成 2026-05-14
 - [x] **J19** Agent obs 监控类型（M21/M22/M23 LLM endpoint/Tool API/RAG），DB migration 00016 + 9 handler tests，完成 2026-05-14
 - [x] **J20** 推荐返利系统（referral code + 奖励记录 + /app/referral），DB migration 00017 + handler tests，完成 2026-05-14
+- [x] **K3** MCP tools 真实 API 接入 — `apiclient.Client`（零外部依赖，Bearer token，POST/GET），8 tools 全部接真实 `/v1/probe/*` + `/v1/info/*` API，graceful degradation（无 API key 时提示 IDCD_API_KEY），HTTP+SSE transport（`--transport http --port 8082`，`/sse` + `/messages` 端点），21 Go tests（protocol 9 + integration 4 + apiclient 0 + tools 0）全绿，完成 2026-05-14
 
 ---
 

@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
+	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
 )
 
@@ -31,14 +34,49 @@ func dnsDef() protocol.ToolDefinition {
 	}
 }
 
-func handleDNS(_ context.Context, args map[string]any) (string, error) {
-	domain, _ := args["domain"].(string)
-	if domain == "" {
-		return "", errors.New("domain is required")
+func handleDNSFunc(client *apiclient.Client) protocol.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		domain, _ := args["domain"].(string)
+		if domain == "" {
+			return "", errors.New("domain is required")
+		}
+		recordType := "A"
+		if v, ok := args["type"].(string); ok && v != "" {
+			recordType = v
+		}
+
+		if !client.HasAPIKey() {
+			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+		}
+
+		var result struct {
+			Domain  string `json:"domain"`
+			Type    string `json:"type"`
+			Records []struct {
+				Value string `json:"value"`
+				TTL   uint32 `json:"ttl"`
+			} `json:"records"`
+		}
+
+		params := url.Values{}
+		params.Set("q", domain)
+		params.Set("type", recordType)
+		if err := client.Get(ctx, "/v1/info/dns", params, &result); err != nil {
+			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+		}
+
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "DNS %s (%s):\n", domain, recordType)
+		for _, r := range result.Records {
+			if r.TTL > 0 {
+				fmt.Fprintf(&sb, "%s: %s (TTL: %d)\n", recordType, r.Value, r.TTL)
+			} else {
+				fmt.Fprintf(&sb, "%s: %s\n", recordType, r.Value)
+			}
+		}
+		if len(result.Records) == 0 {
+			fmt.Fprintf(&sb, "无记录")
+		}
+		return strings.TrimRight(sb.String(), "\n"), nil
 	}
-	recordType := "A"
-	if v, ok := args["type"].(string); ok && v != "" {
-		recordType = v
-	}
-	return fmt.Sprintf("DNS %s %s → 93.184.216.34, TTL 3600, resolver latency 12ms", recordType, domain), nil
 }

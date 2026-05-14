@@ -1,16 +1,17 @@
 package tools
 
 import (
+	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
 )
 
-func RegisterAll(srv *protocol.Server) {
-	srv.Register(pingDef(), handlePing)
-	srv.Register(httpDef(), handleHTTP)
-	srv.Register(dnsDef(), handleDNS)
-	srv.Register(tracerouteDef(), handleTraceroute)
-	srv.Register(sslDef(), handleSSL)
-	srv.Register(diagnoseDef(), handleDiagnose)
-	srv.Register(ipDef(), handleIP)
-	srv.Register(whoisDef(), handleWhois)
+func RegisterAll(srv *protocol.Server, client *apiclient.Client) {
+	srv.Register(pingDef(), handlePingFunc(client))
+	srv.Register(httpDef(), handleHTTPFunc(client))
+	srv.Register(dnsDef(), handleDNSFunc(client))
+	srv.Register(tracerouteDef(), handleTracerouteFunc(client))
+	srv.Register(sslDef(), handleSSLFunc(client))
+	srv.Register(diagnoseDef(), handleDiagnoseFunc(client))
+	srv.Register(ipDef(), handleIPFunc(client))
+	srv.Register(whoisDef(), handleWhoisFunc(client))
 }

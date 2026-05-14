@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
+	"strings"
 )
 
 type ToolHandler func(ctx context.Context, args map[string]any) (string, error)
@@ -29,6 +31,10 @@ func (s *Server) Register(def ToolDefinition, handler ToolHandler) {
 
 func (s *Server) RunStdio(ctx context.Context) error {
 	return s.run(ctx, os.Stdin, os.Stdout)
+}
+
+func (s *Server) RunIO(ctx context.Context, r io.Reader, w io.Writer) error {
+	return s.run(ctx, r, w)
 }
 
 func (s *Server) run(ctx context.Context, r io.Reader, w io.Writer) error {
@@ -164,4 +170,51 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 			Content: []ContentItem{{Type: "text", Text: text}},
 		},
 	}
+}
+
+func SSEHandler(s *Server) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.Header().Set("Cache-Control", "no-cache")
+		w.Header().Set("Connection", "keep-alive")
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+
+		fmt.Fprintf(w, "event: endpoint\ndata: /messages\n\n")
+		if f, ok := w.(http.Flusher); ok {
+			f.Flush()
+		}
+
+		<-r.Context().Done()
+	})
+}
+
+func MessagesHandler(s *Server) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+			return
+		}
+
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "read error", http.StatusBadRequest)
+			return
+		}
+
+		line := []byte(strings.TrimSpace(string(body)))
+		resp := s.handle(r.Context(), line)
+
+		w.Header().Set("Content-Type", "application/json")
+		if resp == nil {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		data, err := json.Marshal(resp)
+		if err != nil {
+			http.Error(w, "internal error", http.StatusInternalServerError)
+			return
+		}
+		w.Write(data)
+	})
 }

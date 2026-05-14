@@ -4,7 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
+	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
 )
 
@@ -25,10 +28,42 @@ func whoisDef() protocol.ToolDefinition {
 	}
 }
 
-func handleWhois(_ context.Context, args map[string]any) (string, error) {
-	query, _ := args["query"].(string)
-	if query == "" {
-		return "", errors.New("query is required")
+func handleWhoisFunc(client *apiclient.Client) protocol.ToolHandler {
+	return func(ctx context.Context, args map[string]any) (string, error) {
+		query, _ := args["query"].(string)
+		if query == "" {
+			return "", errors.New("query is required")
+		}
+
+		if !client.HasAPIKey() {
+			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+		}
+
+		var result struct {
+			Domain       string   `json:"domain"`
+			Registrar    string   `json:"registrar"`
+			CreationDate string   `json:"creation_date"`
+			ExpiryDate   string   `json:"expiry_date"`
+			NameServers  []string `json:"name_servers"`
+		}
+
+		params := url.Values{}
+		params.Set("q", query)
+		if err := client.Get(ctx, "/v1/info/whois", params, &result); err != nil {
+			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+		}
+
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "WHOIS: %s\n", query)
+		if result.Registrar != "" {
+			fmt.Fprintf(&sb, "注册商: %s\n", result.Registrar)
+		}
+		if result.CreationDate != "" {
+			fmt.Fprintf(&sb, "注册日期: %s\n", result.CreationDate)
+		}
+		if result.ExpiryDate != "" {
+			fmt.Fprintf(&sb, "到期日期: %s", result.ExpiryDate)
+		}
+		return strings.TrimRight(sb.String(), "\n"), nil
 	}
-	return fmt.Sprintf("WHOIS %s → registrar: GoDaddy, created: 2010-01-01, expires: 2030-01-01, status: active, nameservers: ns1.example.com ns2.example.com", query), nil
 }

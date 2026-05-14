@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -172,5 +174,39 @@ func TestInitializedNotification(t *testing.T) {
 	}
 	if strings.TrimSpace(buf.String()) != "" {
 		t.Errorf("expected no output for notification, got: %s", buf.String())
+	}
+}
+
+func TestHTTPTransportMessages(t *testing.T) {
+	srv := newTestServer()
+	handler := MessagesHandler(srv)
+
+	body := `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"ping","arguments":{"target":"1.2.3.4"}}}`
+	req := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader(body))
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	var resp Response
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("unmarshal: %v (raw: %s)", err, w.Body.String())
+	}
+	if resp.Error != nil {
+		t.Errorf("unexpected error: %v", resp.Error)
+	}
+}
+
+func TestHTTPTransportMethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
+	handler := MessagesHandler(srv)
+
+	req := httptest.NewRequest(http.MethodGet, "/messages", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
 	}
 }

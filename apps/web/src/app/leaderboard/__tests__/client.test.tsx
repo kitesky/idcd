@@ -41,6 +41,43 @@ describe("LeaderboardClient — Tab 触发器渲染", () => {
   })
 })
 
+describe("LeaderboardClient — 语言切换", () => {
+  it("默认显示中文语言切换按钮", () => {
+    render(<LeaderboardClient />)
+    expect(screen.getByRole("button", { name: /切换为中文/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /Switch to English/ })).toBeInTheDocument()
+  })
+
+  it("点击 EN 按钮后 Tab 标签变为英文", () => {
+    render(<LeaderboardClient />)
+    const enButton = screen.getByRole("button", { name: /Switch to English/ })
+    fireEvent.click(enButton)
+    expect(screen.getByRole("tab", { name: /CDN Response Speed/ })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /Global Node Latency/ })).toBeInTheDocument()
+    expect(screen.getByRole("tab", { name: /Availability Stats/ })).toBeInTheDocument()
+  })
+
+  it("切换为英文后列头变为英文", () => {
+    render(<LeaderboardClient />)
+    fireEvent.click(screen.getByRole("button", { name: /Switch to English/ }))
+    expect(screen.getByText("Provider")).toBeInTheDocument()
+    expect(screen.getByText("Global P50")).toBeInTheDocument()
+  })
+
+  it("切换回中文后 Tab 标签恢复中文", () => {
+    render(<LeaderboardClient />)
+    fireEvent.click(screen.getByRole("button", { name: /Switch to English/ }))
+    fireEvent.click(screen.getByRole("button", { name: /切换为中文/ }))
+    expect(screen.getByRole("tab", { name: /CDN 响应速度/ })).toBeInTheDocument()
+  })
+
+  it("英文模式下底部声明标题为 Data Disclosure", () => {
+    render(<LeaderboardClient />)
+    fireEvent.click(screen.getByRole("button", { name: /Switch to English/ }))
+    expect(screen.getByText("Data Disclosure")).toBeInTheDocument()
+  })
+})
+
 describe("LeaderboardClient — CDN Tab 内容", () => {
   it("默认 Tab 显示 Cloudflare CDN 行", () => {
     render(<LeaderboardClient />)

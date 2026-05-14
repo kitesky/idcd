@@ -1,8 +1,35 @@
 "use client"
 
 import { useState } from "react"
-import { Menu, X } from "lucide-react"
+import { Menu, X, Globe } from "lucide-react"
 import { Button } from "@/components/ui"
+
+function LangToggle() {
+  const isEn = typeof window !== 'undefined' && window.location.pathname.startsWith('/en')
+  return (
+    <div className="flex items-center gap-0.5 rounded-md border p-0.5">
+      <Button
+        variant={isEn ? 'ghost' : 'secondary'}
+        size="sm"
+        className="h-7 px-2 text-xs"
+        asChild
+      >
+        <a href="/" aria-label="切换为中文">中</a>
+      </Button>
+      <Button
+        variant={isEn ? 'secondary' : 'ghost'}
+        size="sm"
+        className="h-7 px-2 text-xs"
+        asChild
+      >
+        <a href="/en/" aria-label="Switch to English">
+          <Globe className="h-3 w-3 mr-1" />
+          EN
+        </a>
+      </Button>
+    </div>
+  )
+}
 
 const navigation = [
   { name: "工具", href: "/tools" },
@@ -42,8 +69,9 @@ export function Nav() {
           ))}
         </div>
 
-        {/* Desktop Auth Buttons */}
+        {/* Desktop Right: Lang Toggle + Auth Buttons */}
         <div className="hidden md:flex md:items-center md:space-x-4">
+          <LangToggle />
           <Button variant="outline">
             <a href="/login">登录</a>
           </Button>

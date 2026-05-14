@@ -495,6 +495,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 - [x] **K7** MCP 文档站 — `apps/docs/pages/mcp/` MCP 专区：概述/quickstart/authentication + 8 个 tool 独立文档（ping/http/dns/traceroute/ssl/ip/whois/diagnose，参数与 `apps/mcp/internal/tools/` 实际 inputSchema 对齐）+ 3 个集成示例（Cursor/Claude Code/Python），`_meta.js` 导航注册，`next.config.mjs` 修复 Next.js 16 turbopack/webpack 兼容，`package.json` build 脚本加 `--webpack` 标志，`pnpm -F docs build` 全部 22 页面构建通过，完成 2026-05-14
 
+- [x] **L4** 英文国际化基础 — `next-intl@3.26.5` 依赖，`src/i18n/config.ts`（zh/en locales），`src/i18n/messages/{zh,en}.json`（tools + common + leaderboard 全部 key），`src/i18n/en-tools-meta.ts`（10 个工具英文 SEO meta），`/en/tools/[slug]` SSG 路由（英文 title/description/hreflang/Schema.org），`/en/` 英文落地页，leaderboard 中英双语 toggle（useState，tabs/列头/说明/声明全部双语），Nav 语言切换组件（中/EN 按钮，Globe icon），23 i18n tests + 5 leaderboard 语言切换 tests，543 前端 tests ✓，完成 2026-05-14
+
 ---
 
 ## 长期推迟（不进入当前冲刺）
@@ -540,6 +542,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-14 | F1/F2/F3（监控模块）+ G1/G2/G3（告警模块）+ H1/H6（计费DB+管理台）并行完成，735 Go tests ✓ | F4/G4/H4/H5 待做 |
 | 2026-05-14 | F4（监控UI）+ G4（告警UI）+ H4（状态页app）+ H5（计费UI）并行完成，289+9 前端 tests ✓ | H2/H3 待 Paddle 账号 [👤] |
 | 2026-05-14 | H2（支付stub）+ H3（配额执行）+ App Shell（侧边栏）+ Settings（account+api-keys）并行完成，842 Go + 334 前端 tests ✓ | 聚合支付接入待定 |
+| 2026-05-14 | L4（英文国际化基础）完成：next-intl + /en/tools/[slug] SSG + leaderboard 双语 + Nav 语言切换，543 前端 tests ✓ | — |
 
 ---
 

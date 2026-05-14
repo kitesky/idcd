@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "ping": {
+      "title": "Ping Check",
+      "description": "Global multi-node ICMP ping from 100+ locations — measure latency and packet loss"
+    },
+    "http": {
+      "title": "HTTP Check",
+      "description": "Multi-region HTTP/HTTPS connectivity test — verify uptime and response times worldwide"
+    },
+    "dns": {
+      "title": "DNS Lookup",
+      "description": "Global DNS resolution with DNS pollution detection across multiple resolvers"
+    },
+    "traceroute": {
+      "title": "Traceroute",
+      "description": "Trace the network path and each hop from global nodes to your target"
+    },
+    "ssl": {
+      "title": "SSL Certificate Check",
+      "description": "Inspect SSL/TLS certificate validity, issuer, and security configuration"
+    },
+    "ip": {
+      "title": "IP Geolocation",
+      "description": "Look up IP address geolocation, ASN, and ISP information"
+    },
+    "whois": {
+      "title": "WHOIS Lookup",
+      "description": "Query domain registration details, registrar, and expiry date"
+    },
+    "icp": {
+      "title": "ICP Filing Check",
+      "description": "Check China ICP (Internet Content Provider) filing status for a domain"
+    },
+    "diagnose": {
+      "title": "Network Diagnostics",
+      "description": "One-click comprehensive network diagnostics — automatically detect common issues"
+    },
+    "ipv6-check": {
+      "title": "IPv6 Check",
+      "description": "Validate, expand, and compress IPv6 addresses with format conversion"
+    }
+  },
+  "common": {
+    "run": "Run Check",
+    "result": "Results",
+    "loading": "Checking..."
+  },
+  "leaderboard": {
+    "title": "Global CDN & Network Performance Leaderboard",
+    "subtitle": "real probe nodes, updated monthly",
+    "dataCycle": "Data period",
+    "updateFreq": "Probed every 5 minutes, aggregated monthly",
+    "tabs": {
+      "cdn": "CDN Response Speed",
+      "regions": "Global Node Latency",
+      "availability": "Availability Stats"
+    },
+    "table": {
+      "rank": "Rank",
+      "provider": "Provider",
+      "globalP50": "Global P50",
+      "chinaP50": "China P50",
+      "overseasP50": "Overseas P50",
+      "trend": "24h Trend",
+      "change": "Change",
+      "isp": "ISP / Carrier",
+      "region": "Region",
+      "availability30d": "30-Day Uptime",
+      "sla": "SLA Target",
+      "datacenterCount": "PoPs"
+    },
+    "info": {
+      "cdn": "Data collected across all probes in month {month}, sorted by global P50 ascending. P50 is the median response time — lower is better.",
+      "regions": "Average latency for top 5 countries per continent, sourced from distributed real-node probe data, updated monthly.",
+      "availability": "30-day availability statistics per ISP/carrier, based on health checks running every 5 minutes."
+    },
+    "flat": "Unchanged",
+    "disclaimer": {
+      "title": "Data Disclosure",
+      "methodology": "All latency data is collected from idcd's global real probe nodes using HTTP GET requests to each CDN's standard benchmark endpoint, measuring TCP-handshake-to-first-byte time (TTFB). Each node probes every 5 minutes; monthly figures use P50 (median) to eliminate jitter. Availability is derived from DNS resolution success rate and TCP reachability.",
+      "notice": "This leaderboard reflects network performance measured from idcd probe nodes to CDN points of presence. It does not constitute a commercial recommendation nor imply any partnership with CDN vendors. Actual performance may vary by region and workload."
+    }
+  }
+}

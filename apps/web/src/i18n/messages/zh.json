@@ -1,0 +1,85 @@
+{
+  "tools": {
+    "ping": {
+      "title": "多地 Ping 测试",
+      "description": "全球多节点 ICMP Ping 拨测，检测网络延迟和丢包率"
+    },
+    "http": {
+      "title": "HTTP/HTTPS 拨测",
+      "description": "多地点 HTTP/HTTPS 连通性测试，检测响应时间"
+    },
+    "dns": {
+      "title": "DNS 查询",
+      "description": "全球 DNS 解析 + 污染对比检测"
+    },
+    "traceroute": {
+      "title": "路由追踪",
+      "description": "追踪数据包经过的网络路径和节点"
+    },
+    "ssl": {
+      "title": "SSL 证书检查",
+      "description": "检查域名 SSL/TLS 证书有效期和配置"
+    },
+    "ip": {
+      "title": "IP 地理位置",
+      "description": "查询 IP 地址的地理位置和 ASN 信息"
+    },
+    "whois": {
+      "title": "WHOIS 查询",
+      "description": "查询域名注册信息和持有者"
+    },
+    "icp": {
+      "title": "ICP 备案查询",
+      "description": "查询域名 ICP 备案状态"
+    },
+    "diagnose": {
+      "title": "一键诊断",
+      "description": "综合网络诊断，自动检测常见问题"
+    },
+    "ipv6-check": {
+      "title": "IPv6 检测",
+      "description": "IPv6 地址检测与格式转换"
+    }
+  },
+  "common": {
+    "run": "开始检测",
+    "result": "检测结果",
+    "loading": "检测中..."
+  },
+  "leaderboard": {
+    "title": "全球 CDN & 网络性能排行榜",
+    "subtitle": "个真实探测节点，月度更新",
+    "dataCycle": "数据周期",
+    "updateFreq": "每 5 分钟探测一次，月底汇总",
+    "tabs": {
+      "cdn": "CDN 响应速度",
+      "regions": "全球节点延迟",
+      "availability": "可用性统计"
+    },
+    "table": {
+      "rank": "排名",
+      "provider": "CDN 名称",
+      "globalP50": "全球 P50",
+      "chinaP50": "中国大陆 P50",
+      "overseasP50": "海外 P50",
+      "trend": "24h 趋势",
+      "change": "变化",
+      "isp": "运营商 / ISP",
+      "region": "地区",
+      "availability30d": "30日可用率",
+      "sla": "SLA 承诺",
+      "datacenterCount": "机房数"
+    },
+    "info": {
+      "cdn": "数据采集自 {month} 月全月探测任务，按全球 P50 升序排列。P50 为中位响应时间，越低越好。",
+      "regions": "各大陆 Top 5 国家/地区平均延迟，来自分布式真实节点探测数据，每月更新。",
+      "availability": "近 30 天各 ISP / 运营商可用性统计，基于每 5 分钟一次的健康检测。"
+    },
+    "flat": "持平",
+    "disclaimer": {
+      "title": "数据声明",
+      "methodology": "所有延迟数据均来自 idcd 全球真实探测节点，采用 HTTP GET 方式对各 CDN 标准测速端点发起请求，记录从 TCP 握手到首字节时间（TTFB）。每个节点每 5 分钟探测一次，月度数据取 P50（中位数），以消除网络抖动影响。可用性数据基于各运营商 DNS 解析成功率与 TCP 连通率综合计算。",
+      "notice": "本排行榜数据来自 idcd 真实分布式探测节点，仅代表探测节点到各 CDN 接入点的网络性能，不构成商业推荐，亦不代表与任何 CDN 厂商存在商业合作关系。各厂商在不同地区、不同业务场景下的实际表现可能存在差异。"
+    }
+  }
+}

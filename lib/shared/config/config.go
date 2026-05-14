@@ -23,6 +23,15 @@ type Config struct {
 	Observability ObservabilityConfig `yaml:"observability"`
 	AgentGateway  AgentGatewayConfig  `yaml:"agent_gateway"`
 	OAuth         OAuthConfig         `yaml:"oauth"`
+	Encryption    EncryptionConfig    `yaml:"encryption"`
+}
+
+// EncryptionConfig holds keys for field-level at-rest encryption.
+type EncryptionConfig struct {
+	// FieldKey is a 64-character hex-encoded 32-byte AES-256 key.
+	// Generate with: openssl rand -hex 32
+	// Required in production; if empty a dev-only all-zeros fallback is used.
+	FieldKey string `yaml:"field_key"`
 }
 
 // OAuthConfig holds third-party OAuth provider credentials.

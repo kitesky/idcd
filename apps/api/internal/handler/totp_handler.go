@@ -16,6 +16,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/auth/totp"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/aesenc"
 )
 
 const (
@@ -33,12 +34,13 @@ type TOTPPool interface {
 }
 
 type TOTPHandler struct {
-	pool  TOTPPool
-	redis *redis.Client
+	pool   TOTPPool
+	redis  *redis.Client
+	cipher *aesenc.Cipher
 }
 
-func NewTOTPHandler(pool *pgxpool.Pool, rdb *redis.Client) *TOTPHandler {
-	return &TOTPHandler{pool: pool, redis: rdb}
+func NewTOTPHandler(pool *pgxpool.Pool, rdb *redis.Client, cipher *aesenc.Cipher) *TOTPHandler {
+	return &TOTPHandler{pool: pool, redis: rdb, cipher: cipher}
 }
 
 type totpSetupResponse struct {
@@ -147,6 +149,17 @@ func (h *TOTPHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	encSecret, err := h.cipher.Encrypt([]byte(secret))
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to encrypt secret", err))
+		return
+	}
+	encBackup, err := h.cipher.Encrypt(backupJSON)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to encrypt backup codes", err))
+		return
+	}
+
 	_, err = h.pool.Exec(r.Context(), `
 		INSERT INTO user_2fa (user_id, type, secret_encrypted, backup_codes_encrypted, enabled_at)
 		VALUES ($1, 'totp', $2, $3, now())
@@ -155,7 +168,7 @@ func (h *TOTPHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		      secret_encrypted = EXCLUDED.secret_encrypted,
 		      backup_codes_encrypted = EXCLUDED.backup_codes_encrypted,
 		      enabled_at = now()
-	`, userID, []byte(secret), backupJSON)
+	`, userID, encSecret, encBackup)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to enable 2FA", err))
 		return
@@ -192,7 +205,12 @@ func (h *TOTPHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	secret := strings.TrimSpace(string(secretBytes))
+	decSecret, err := h.cipher.Decrypt(secretBytes)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to decrypt secret", err))
+		return
+	}
+	secret := strings.TrimSpace(string(decSecret))
 
 	// Block replay within the ±1 time-step window.
 	usedKey := totp.UsedCodeKey(userID, req.Code)

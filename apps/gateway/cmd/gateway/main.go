@@ -119,7 +119,7 @@ func main() {
 	}
 
 	// Create and start HTTP server
-	srv := server.New(cfg, h, rdb, streamCli, loggerInst)
+	srv := server.New(cfg, h, rdb, pool, streamCli, loggerInst)
 
 	// Start server in a goroutine
 	go func() {

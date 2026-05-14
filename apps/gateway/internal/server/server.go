@@ -25,16 +25,18 @@ type Server struct {
 	httpServer *http.Server
 	hub        *hub.Hub
 	redis      *redis.Client
+	pgxPool    handler.NodeAuthPool
 	streamCli  *stream.Client
 	logger     *slog.Logger
 }
 
 // New creates a new Gateway server.
-func New(cfg *config.Config, h *hub.Hub, rdb *redis.Client, streamCli *stream.Client, logger *slog.Logger) *Server {
+func New(cfg *config.Config, h *hub.Hub, rdb *redis.Client, pool handler.NodeAuthPool, streamCli *stream.Client, logger *slog.Logger) *Server {
 	s := &Server{
 		config:    cfg,
 		hub:       h,
 		redis:     rdb,
+		pgxPool:   pool,
 		streamCli: streamCli,
 		logger:    logger,
 	}
@@ -65,7 +67,7 @@ func (s *Server) setupRouter() {
 	r.Handle("/metrics", promhttp.Handler())
 
 	// WebSocket endpoint for agent nodes
-	wsHandler := handler.NewWSHandler(s.hub, nil, s.streamCli, s.logger)
+	wsHandler := handler.NewWSHandler(s.hub, nil, s.pgxPool, s.streamCli, s.logger)
 	r.Get("/agent/ws", wsHandler.ServeWS)
 
 	s.router = r

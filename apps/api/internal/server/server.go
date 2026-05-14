@@ -435,6 +435,23 @@ func (s *Server) setupRouter() {
 			r.Get("/by-domain", statusPageInternalH.ByDomain)
 		})
 
+		// Agent enrollment endpoints
+		gatewayWSS := s.config.AgentGateway.PublicWSS
+		if gatewayWSS == "" {
+			gatewayWSS = "wss://gateway.idcd.com" // production default
+		}
+		enrollH := handler.NewNodeEnrollmentHandler(s.pgxPool, gatewayWSS, s.config.Server.AdminToken)
+		r.Post("/v1/agent/enroll", enrollH.Enroll)
+
+		// Agent node management (admin)
+		nodeCmdH := handler.NewNodeCommandHandler(s.pgxPool, s.config.Server.AdminToken)
+		r.Route("/internal/admin/nodes", func(r chi.Router) {
+			r.Post("/enrollment-tokens", enrollH.CreateEnrollmentToken)
+			r.Get("/", nodeCmdH.ListNodes)
+			r.Post("/{node_id}/upgrade", nodeCmdH.QueueUpgrade)
+			r.Post("/{node_id}/reload-config", nodeCmdH.QueueReloadConfig)
+		})
+
 		// Admin management endpoints (token-protected, VPN-only in production).
 		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
 		r.Route("/internal/admin", func(r chi.Router) {

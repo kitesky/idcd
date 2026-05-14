@@ -1,0 +1,205 @@
+#!/usr/bin/env bash
+# idcd-agent-ctl — manage the idcd agent node
+# Install: sudo cp idcd-agent-ctl /usr/local/bin/ && chmod +x /usr/local/bin/idcd-agent-ctl
+
+set -euo pipefail
+
+SERVICE="idcd-agent"
+BINARY="/usr/local/bin/idcd-agent"
+CONFIG="/etc/idcd-agent/config.yaml"
+API_BASE="${IDCD_API_BASE:-https://api.idcd.com}"
+
+GREEN='\033[0;32m'; YELLOW='\033[1;33m'; RED='\033[0;31m'; BLUE='\033[0;34m'; NC='\033[0m'
+ok()   { printf "${GREEN}✓${NC} %s\n" "$*"; }
+info() { printf "${BLUE}»${NC} %s\n" "$*"; }
+warn() { printf "${YELLOW}!${NC} %s\n" "$*"; }
+die()  { printf "${RED}✗${NC} %s\n" "$*" >&2; exit 1; }
+
+need_root() { [[ $EUID -eq 0 ]] || die "Run as root (sudo idcd-agent-ctl $*)"; }
+
+usage() {
+  cat <<EOF
+Usage: idcd-agent-ctl <command> [options]
+
+Service control:
+  start               Start the agent service
+  stop                Stop the agent service
+  restart             Restart the agent service
+  status              Show detailed service status
+
+Diagnostics:
+  logs [-n N]         Show last N log lines (default: 50)
+  health              Query local agent health endpoint
+  version             Show installed binary version
+
+Lifecycle:
+  upgrade [VERSION]   Upgrade to latest or specified version
+  uninstall           Remove agent, config, and service
+
+Config:
+  config              Print config (secret_key redacted)
+  node-id             Print this node's ID
+
+Environment:
+  IDCD_API_BASE       Override API server URL (current: $API_BASE)
+EOF
+}
+
+# ── service control ───────────────────────────────────────────────────────────
+
+cmd_start() {
+  need_root start
+  systemctl start "$SERVICE"
+  ok "Agent started"
+}
+
+cmd_stop() {
+  need_root stop
+  systemctl stop "$SERVICE"
+  ok "Agent stopped"
+}
+
+cmd_restart() {
+  need_root restart
+  systemctl restart "$SERVICE"
+  sleep 1
+  if systemctl is-active --quiet "$SERVICE"; then
+    ok "Agent restarted and running"
+  else
+    die "Agent failed to restart — check: journalctl -u $SERVICE -n 30"
+  fi
+}
+
+cmd_status() {
+  systemctl status "$SERVICE" --no-pager -l
+}
+
+# ── diagnostics ───────────────────────────────────────────────────────────────
+
+cmd_logs() {
+  local n="${2:-50}"
+  journalctl -u "$SERVICE" -n "$n" --no-pager
+}
+
+cmd_health() {
+  # Agent exposes a /health endpoint on a loopback port if configured
+  local port="${AGENT_HEALTH_PORT:-9101}"
+  if curl -fsS "http://127.0.0.1:${port}/health" 2>/dev/null; then
+    echo ""
+  else
+    warn "Health endpoint not reachable on :${port} (agent may not expose it yet)"
+  fi
+}
+
+cmd_version() {
+  if [[ -x "$BINARY" ]]; then
+    "$BINARY" --version 2>/dev/null || echo "version: unknown (binary at $BINARY)"
+  else
+    die "Binary not found: $BINARY"
+  fi
+}
+
+# ── lifecycle ─────────────────────────────────────────────────────────────────
+
+cmd_upgrade() {
+  need_root upgrade
+  local version="${2:-latest}"
+
+  local arch
+  arch=$(uname -m)
+  case "$arch" in
+    x86_64)        arch="amd64" ;;
+    aarch64|arm64) arch="arm64" ;;
+    *)             die "Unsupported architecture: $arch" ;;
+  esac
+
+  if [[ "$version" == "latest" ]]; then
+    local url="${API_BASE}/releases/agent/latest/idcd-agent-linux-${arch}"
+  else
+    local url="${API_BASE}/releases/agent/${version}/idcd-agent-linux-${arch}"
+  fi
+
+  info "Downloading agent ${version} from ${url}..."
+  local tmp; tmp=$(mktemp)
+  trap 'rm -f "$tmp"' EXIT
+
+  if command -v curl &>/dev/null; then
+    curl -fsSL -o "$tmp" "$url" || die "Download failed"
+  else
+    wget -qO "$tmp" "$url" || die "Download failed"
+  fi
+  chmod +x "$tmp"
+
+  # Sanity check: binary must respond to --version
+  local new_ver
+  new_ver=$("$tmp" --version 2>/dev/null | head -1 || true)
+  [[ -z "$new_ver" ]] && warn "New binary did not respond to --version — continuing anyway"
+
+  info "Stopping service..."
+  systemctl stop "$SERVICE" || true
+
+  info "Installing binary..."
+  mv "$tmp" "$BINARY"
+  trap - EXIT
+  chown root:root "$BINARY"
+
+  info "Starting service..."
+  systemctl start "$SERVICE"
+  sleep 2
+
+  if systemctl is-active --quiet "$SERVICE"; then
+    ok "Upgraded to: ${new_ver:-$version}"
+  else
+    die "Service failed to start after upgrade — check: journalctl -u $SERVICE -n 50"
+  fi
+}
+
+cmd_uninstall() {
+  need_root uninstall
+  echo ""
+  warn "This will permanently remove the agent, config, and all local data."
+  read -p "Type 'yes' to confirm: " -r
+  [[ "$REPLY" == "yes" ]] || { info "Aborted."; exit 0; }
+
+  systemctl stop   "$SERVICE" 2>/dev/null || true
+  systemctl disable "$SERVICE" 2>/dev/null || true
+  rm -f /etc/systemd/system/idcd-agent.service
+  systemctl daemon-reload
+
+  rm -f "$BINARY" /usr/local/bin/idcd-agent-ctl
+  rm -rf /etc/idcd-agent /var/lib/idcd-agent /var/log/idcd-agent
+
+  userdel idcd-agent 2>/dev/null || true
+
+  ok "Agent uninstalled."
+}
+
+# ── config ────────────────────────────────────────────────────────────────────
+
+cmd_config() {
+  [[ -f "$CONFIG" ]] || die "Config not found: $CONFIG"
+  sed 's/\(secret_key:\s*\).*/\1[REDACTED]/' "$CONFIG"
+}
+
+cmd_node_id() {
+  [[ -f "$CONFIG" ]] || die "Config not found: $CONFIG"
+  grep '^node_id:' "$CONFIG" | awk '{print $2}' | tr -d '"'
+}
+
+# ── dispatch ──────────────────────────────────────────────────────────────────
+
+case "${1:-}" in
+  start)       cmd_start "$@" ;;
+  stop)        cmd_stop "$@" ;;
+  restart)     cmd_restart "$@" ;;
+  status)      cmd_status "$@" ;;
+  logs)        cmd_logs "$@" ;;
+  health)      cmd_health "$@" ;;
+  version)     cmd_version "$@" ;;
+  upgrade)     cmd_upgrade "$@" ;;
+  uninstall)   cmd_uninstall "$@" ;;
+  config)      cmd_config "$@" ;;
+  node-id)     cmd_node_id "$@" ;;
+  ""|-h|--help|help) usage ;;
+  *) echo "Unknown command: $1"; echo ""; usage; exit 1 ;;
+esac

@@ -3,18 +3,26 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"syscall"
 	"time"
 
 	"github.com/kite365/idcd/apps/agent/internal/buffer"
 	"github.com/kite365/idcd/apps/agent/internal/config"
+	"github.com/kite365/idcd/apps/agent/internal/fingerprint"
+	agentws "github.com/kite365/idcd/apps/agent/internal/ws"
 	"github.com/kite365/idcd/apps/agent/internal/probe"
 	"github.com/kite365/idcd/apps/agent/internal/task"
 	"github.com/kite365/idcd/lib/shared/logger"
@@ -23,27 +31,27 @@ import (
 
 // Agent represents the main agent process.
 type Agent struct {
-	cfg      *config.Config
+	cfg      atomic.Pointer[config.Config]
+	cfgPath  string
 	logger   *slog.Logger
 	executor *task.Executor
 	buffer   *buffer.Buffer
 	client   *http.Client
+	ws       *agentws.Client
 	shutdown chan struct{}
 	wg       sync.WaitGroup
 }
 
 func main() {
-	// Load configuration
-	cfg := config.MustLoad(config.DefaultPath())
+	cfgPath := config.DefaultPath()
+	cfg := config.MustLoad(cfgPath)
 
-	// Initialize logger
-	log := logger.New("production") // Agent runs in production mode by default
-	log.Info("starting idcd agent", "node_id", cfg.NodeID, "version", "1.0")
+	log := logger.New("production")
+	log.Info("starting idcd agent", "node_id", cfg.NodeID, "version", version())
 
-	// Initialize OpenTelemetry
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-agent",
-		ServiceVersion: "v1.0.0",
+		ServiceVersion: version(),
 		OTLPEndpoint:   cfg.Observability.Telemetry.OTLPEndpoint,
 		SamplingRate:   cfg.Observability.Telemetry.SamplingRate,
 		Enabled:        cfg.Observability.Telemetry.Enabled,
@@ -59,73 +67,102 @@ func main() {
 		_ = shutdownTelemetry(ctx)
 	}()
 
-	// Create agent instance
-	agent, err := NewAgent(cfg, log)
+	agent, err := NewAgent(cfg, cfgPath, log)
 	if err != nil {
 		log.Error("failed to create agent", "error", err)
 		os.Exit(1)
 	}
 
-	// Start agent
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
 	go agent.Run(ctx)
 
-	// Wait for interrupt signal
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	<-sigChan
-	log.Info("received shutdown signal, stopping agent")
 
-	// Graceful shutdown
+	log.Info("received shutdown signal, stopping agent")
 	agent.Stop()
-	log.Info("agent stopped successfully")
+	log.Info("agent stopped")
 }
 
-// NewAgent creates a new agent instance.
-func NewAgent(cfg *config.Config, log *slog.Logger) (*Agent, error) {
-	// Create task executor
+// NewAgent creates and wires all agent components.
+func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, error) {
 	executor := task.NewExecutor([]byte(cfg.SecretKey))
 
-	// Create result buffer
 	buf, err := buffer.New(cfg.DataDir)
 	if err != nil {
 		return nil, fmt.Errorf("create buffer: %w", err)
 	}
 
-	// Create HTTP client for gateway communication
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-	}
-
-	return &Agent{
-		cfg:      cfg,
+	a := &Agent{
+		cfgPath:  cfgPath,
 		logger:   log,
 		executor: executor,
 		buffer:   buf,
-		client:   client,
+		client:   &http.Client{Timeout: 30 * time.Second},
 		shutdown: make(chan struct{}),
-	}, nil
+	}
+	a.cfg.Store(cfg)
+
+	// Collect initial fingerprint
+	fp, err := fingerprint.Collect()
+	if err != nil {
+		log.Warn("failed to collect fingerprint", "err", err)
+	}
+
+	wsClient := agentws.New(cfg.GatewayURL, cfg.SecretKey, cfg.NodeID, log)
+	if fp != nil {
+		wsClient.UpdateFingerprint(fp)
+	}
+
+	// Register control message handlers
+	wsClient.Handle("upgrade",       a.handleUpgrade)
+	wsClient.Handle("reload_config", a.handleReloadConfig)
+	wsClient.Handle("task",          a.handleTask)
+	wsClient.Handle("ack",           a.handleAck)
+
+	a.ws = wsClient
+	return a, nil
 }
 
-// Run starts the agent main loop.
+// Run starts all agent goroutines.
 func (a *Agent) Run(ctx context.Context) {
-	defer a.wg.Done()
-	a.wg.Add(1)
+	a.wg.Add(2)
 
-	// Parse poll interval
-	pollInterval, err := time.ParseDuration(a.cfg.PollInterval)
+	// WebSocket connection loop (includes heartbeat)
+	go func() {
+		defer a.wg.Done()
+		a.ws.Run(ctx)
+	}()
+
+	// Periodic result upload + buffer cleanup
+	go func() {
+		defer a.wg.Done()
+		a.runMainLoop(ctx)
+	}()
+}
+
+// Stop gracefully shuts down the agent.
+func (a *Agent) Stop() {
+	close(a.shutdown)
+	a.wg.Wait()
+	if a.buffer != nil {
+		a.buffer.Cleanup(24 * time.Hour)
+		a.buffer.Close()
+	}
+}
+
+func (a *Agent) runMainLoop(ctx context.Context) {
+	cfg := a.cfg.Load()
+	pollInterval, err := time.ParseDuration(cfg.PollInterval)
 	if err != nil {
-		a.logger.Error("invalid poll interval", "interval", a.cfg.PollInterval, "error", err)
 		pollInterval = 30 * time.Second
 	}
 
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
-
-	a.logger.Info("agent started", "poll_interval", pollInterval)
 
 	for {
 		select {
@@ -134,118 +171,211 @@ func (a *Agent) Run(ctx context.Context) {
 		case <-a.shutdown:
 			return
 		case <-ticker.C:
-			a.processCycle()
+			a.uploadPendingResults()
+			// Reset ticker if poll interval was changed via hot-reload
+			newCfg := a.cfg.Load()
+			if newD, _ := time.ParseDuration(newCfg.PollInterval); newD != pollInterval {
+				pollInterval = newD
+				ticker.Reset(pollInterval)
+			}
 		}
 	}
 }
 
-// Stop gracefully stops the agent.
-func (a *Agent) Stop() {
-	close(a.shutdown)
-	a.wg.Wait()
+// ── control message handlers ─────────────────────────────────────────────────
 
-	// Close buffer
-	if a.buffer != nil {
-		a.buffer.Close()
-	}
-
-	// Clean up any pending results older than 24 hours
-	if a.buffer != nil {
-		a.buffer.Cleanup(24 * time.Hour)
-	}
+type upgradeCmd struct {
+	Version     string `json:"version"`
+	DownloadURL string `json:"download_url"`
+	Checksum    string `json:"checksum"` // "sha256:<hex>"
 }
 
-// processCycle executes one cycle of the agent's main loop.
-func (a *Agent) processCycle() {
-	// First, try to send any pending buffered results
-	a.uploadPendingResults()
+func (a *Agent) handleUpgrade(payload json.RawMessage) error {
+	var cmd upgradeCmd
+	if err := json.Unmarshal(payload, &cmd); err != nil {
+		return fmt.Errorf("upgrade: parse payload: %w", err)
+	}
+	if cmd.DownloadURL == "" {
+		return fmt.Errorf("upgrade: download_url is required")
+	}
 
-	// Then, fetch and process new tasks
-	a.fetchAndProcessTasks()
+	a.logger.Info("OTA upgrade initiated", "version", cmd.Version, "url", cmd.DownloadURL)
+
+	// 1. Download to temp file alongside current binary
+	selfPath, err := exec.LookPath(os.Args[0])
+	if err != nil {
+		selfPath = os.Args[0]
+	}
+	selfPath, _ = filepath.Abs(selfPath)
+	tmpPath := selfPath + ".new"
+
+	if err := downloadFile(cmd.DownloadURL, tmpPath); err != nil {
+		return fmt.Errorf("upgrade: download: %w", err)
+	}
+	defer os.Remove(tmpPath) // clean up if we abort
+
+	// 2. Verify SHA-256 checksum if provided
+	if cmd.Checksum != "" {
+		if err := verifySHA256(tmpPath, cmd.Checksum); err != nil {
+			return fmt.Errorf("upgrade: checksum mismatch: %w", err)
+		}
+		a.logger.Info("upgrade: checksum verified")
+	}
+
+	// 3. Make executable
+	if err := os.Chmod(tmpPath, 0755); err != nil {
+		return fmt.Errorf("upgrade: chmod: %w", err)
+	}
+
+	// 4. Atomic rename over current binary
+	if err := os.Rename(tmpPath, selfPath); err != nil {
+		return fmt.Errorf("upgrade: rename: %w", err)
+	}
+
+	a.logger.Info("upgrade: binary replaced, sending ack then restarting",
+		"version", cmd.Version, "path", selfPath)
+
+	// 5. Ack before exit so gateway marks command as acked
+	_ = a.ws.Send("cmd_ack", map[string]string{"command": "upgrade", "version": cmd.Version})
+
+	// Give the ack time to be flushed, then SIGTERM ourselves.
+	// systemd's Restart=always will start the new binary.
+	time.AfterFunc(500*time.Millisecond, func() {
+		p, _ := os.FindProcess(os.Getpid())
+		p.Signal(syscall.SIGTERM)
+	})
+	return nil
 }
 
-// uploadPendingResults attempts to upload any buffered results to the gateway.
+func (a *Agent) handleReloadConfig(payload json.RawMessage) error {
+	a.logger.Info("config hot-reload requested")
+
+	newCfg, err := config.Load(a.cfgPath)
+	if err != nil {
+		return fmt.Errorf("reload_config: load: %w", err)
+	}
+
+	a.cfg.Store(newCfg)
+
+	// Re-collect fingerprint in case hostname/interfaces changed
+	if fp, err := fingerprint.Collect(); err == nil {
+		a.ws.UpdateFingerprint(fp)
+	}
+
+	a.logger.Info("config reloaded",
+		"poll_interval", newCfg.PollInterval,
+		"batch_size", newCfg.BatchSize)
+
+	_ = a.ws.Send("cmd_ack", map[string]string{"command": "reload_config"})
+	return nil
+}
+
+func (a *Agent) handleTask(payload json.RawMessage) error {
+	var t task.Task
+	if err := json.Unmarshal(payload, &t); err != nil {
+		return fmt.Errorf("task: parse: %w", err)
+	}
+	result := a.executor.Execute(t)
+	if result != nil {
+		if err := a.buffer.Store(*result); err != nil {
+			a.logger.Error("task: store result", "task_id", t.ID, "err", err)
+		}
+	}
+	return nil
+}
+
+func (a *Agent) handleAck(payload json.RawMessage) error {
+	a.logger.Debug("gateway ack received", "payload", string(payload))
+	return nil
+}
+
+// ── result upload ─────────────────────────────────────────────────────────────
+
 func (a *Agent) uploadPendingResults() {
 	pending, err := a.buffer.Pending()
 	if err != nil {
-		a.logger.Error("failed to get pending results", "error", err)
+		a.logger.Error("buffer: list pending", "err", err)
 		return
 	}
-
 	if len(pending) == 0 {
 		return
 	}
 
-	a.logger.Debug("uploading pending results", "count", len(pending))
+	cfg := a.cfg.Load()
+	batchSize := cfg.BatchSize
+	if batchSize <= 0 {
+		batchSize = 100
+	}
 
-	// Send in batches
-	for i := 0; i < len(pending); i += a.cfg.BatchSize {
-		end := i + a.cfg.BatchSize
+	for i := 0; i < len(pending); i += batchSize {
+		end := i + batchSize
 		if end > len(pending) {
 			end = len(pending)
 		}
-
 		batch := pending[i:end]
-		if a.uploadResultBatch(batch) {
-			// Mark as sent only if upload was successful
-			for _, result := range batch {
-				a.buffer.MarkSent(result.ID)
-			}
+		var results []probe.Result
+		for _, r := range batch {
+			results = append(results, r.Result)
+		}
+		if err := a.ws.Send("result", results); err != nil {
+			a.logger.Warn("upload: send failed", "err", err)
+			return
+		}
+		for _, r := range batch {
+			a.buffer.MarkSent(r.ID)
 		}
 	}
 }
 
-// uploadResultBatch uploads a batch of results to the gateway.
-func (a *Agent) uploadResultBatch(results []buffer.PendingResult) bool {
-	// Convert to slice of probe.Result
-	var payload []probe.Result
-	for _, r := range results {
-		payload = append(payload, r.Result)
-	}
+// ── helpers ───────────────────────────────────────────────────────────────────
 
-	// Encode as JSON
-	data, err := json.Marshal(payload)
+func downloadFile(url, dest string) error {
+	resp, err := http.Get(url) //nolint:gosec — URL comes from authenticated gateway message
 	if err != nil {
-		a.logger.Error("failed to marshal results", "error", err)
-		return false
+		return err
 	}
-
-	// TODO: Implement actual HTTP upload to gateway
-	// For now, just log that we would upload
-	a.logger.Debug("would upload results to gateway",
-		"count", len(results),
-		"gateway_url", a.cfg.GatewayURL,
-		"size_bytes", len(data))
-
-	// Return true to simulate successful upload for now
-	return true
-}
-
-// fetchAndProcessTasks fetches new tasks from the gateway and executes them.
-func (a *Agent) fetchAndProcessTasks() {
-	// TODO: Implement actual task fetching from gateway
-	// For now, just log that we would fetch tasks
-	a.logger.Debug("would fetch tasks from gateway", "gateway_url", a.cfg.GatewayURL)
-
-	// Simulate processing some tasks for demonstration
-	tasks := a.generateSampleTasks()
-	if len(tasks) > 0 {
-		a.logger.Debug("processing tasks", "count", len(tasks))
-		results := a.executor.ExecuteBatch(tasks)
-
-		// Store results in buffer
-		for _, result := range results {
-			if err := a.buffer.Store(*result); err != nil {
-				a.logger.Error("failed to store result", "task_id", result.TaskID, "error", err)
-			}
-		}
-
-		a.logger.Debug("stored task results", "count", len(results))
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("HTTP %d from %s", resp.StatusCode, url)
 	}
+	f, err := os.Create(dest)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	_, err = io.Copy(f, resp.Body)
+	return err
 }
 
-// generateSampleTasks creates some sample tasks for testing.
-func (a *Agent) generateSampleTasks() []task.Task {
-	// Return empty slice for production - this is just for testing
-	return []task.Task{}
+// verifySHA256 checks that the file at path matches the expected checksum.
+// expected format: "sha256:<hex>" or plain hex.
+func verifySHA256(path, expected string) error {
+	if len(expected) > 7 && expected[:7] == "sha256:" {
+		expected = expected[7:]
+	}
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	h := sha256.New()
+	if _, err := io.Copy(h, f); err != nil {
+		return err
+	}
+	got := hex.EncodeToString(h.Sum(nil))
+	if got != expected {
+		return fmt.Errorf("got %s, want %s", got, expected)
+	}
+	return nil
 }
+
+func version() string {
+	// Replaced at build time via -ldflags "-X main.buildVersion=x.y.z"
+	if buildVersion != "" {
+		return buildVersion
+	}
+	return "dev"
+}
+
+// buildVersion is set via ldflags at build time.
+var buildVersion string

@@ -106,8 +106,9 @@ type TelemetryConfig struct {
 }
 
 type AgentGatewayConfig struct {
-	Addr   string `yaml:"addr"`
-	CACert string `yaml:"ca_cert"`
+	Addr      string `yaml:"addr"`
+	CACert    string `yaml:"ca_cert"`
+	PublicWSS string `yaml:"public_wss"` // returned to enrolled agents, e.g. wss://gateway.idcd.com
 }
 
 // Duration is a time.Duration that unmarshals from YAML strings like "15m", "7d", "24h".

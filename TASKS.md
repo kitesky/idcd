@@ -465,6 +465,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J6** 自定义仪表盘 v1 — `GET /v1/dashboard/summary` 真实 SQL 统计数据（monitors/checks/incidents/alerts/status_pages），`GET|PUT /v1/dashboard/pins` Redis 置顶监控（最多 6 个），前端 Client Component + Skeleton loading + 置顶监控 Sheet 选择器，7 Go tests + 8 前端 tests ✓，完成 2026-05-14
 - [x] **J7** Admin beta 邀请码管理页面 — `/admin/beta-invitations` 页面（邀请码列表 + 状态过滤 + 审批/撤销操作 + 创建 Dialog），侧边栏导航"Beta 邀请码"，5 前端 tests ✓，完成 2026-05-14
 - [x] **J8** 告警通知交付日志 — `GET /v1/alert-channels/{id}/notifications`（Bearer token 认证，limit/offset，403 跨用户保护），`alert_notification.go` handler + 路由注册，前端通道 Card 折叠"查看交付记录"区域（mock 数据 + Badge 状态 + Table），5 Go tests + 2 前端 tests ✓，完成 2026-05-14
+- [x] **J12** X-RateLimit 响应头 + /app/usage 真实配额数据 — `APIQuotaMiddleware` 注入 `X-RateLimit-Limit/Remaining/Used/Reset`（test key → -1），`QuotaStatusResponse` 新增 `api_calls.reset_at` 字段，`/app/usage` 前端接真实 `/v1/account/quota` API（useEffect + fetch，Skeleton loading，趋势图保持演示数据），3 Go header tests + 7 前端 tests ✓，完成 2026-05-14
 
 ---
 

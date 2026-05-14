@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -36,6 +37,10 @@ func APIQuotaMiddleware(rateLimiter APIQuotaRateLimiter, planLookup APIPlanLooku
 			}
 
 			if isTestAPIKey(r) {
+				w.Header().Set("X-RateLimit-Limit", "-1")
+				w.Header().Set("X-RateLimit-Remaining", "-1")
+				w.Header().Set("X-RateLimit-Used", "0")
+				w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(nextMidnightUnix(), 10))
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -45,7 +50,7 @@ func APIQuotaMiddleware(rateLimiter APIQuotaRateLimiter, planLookup APIPlanLooku
 				plan = planLookup(r.Context(), userID)
 			}
 
-			allowed, _, _, err := rateLimiter.Allow(r.Context(), userID, plan)
+			allowed, used, limit, err := rateLimiter.Allow(r.Context(), userID, plan)
 			if err != nil {
 				// On Redis errors, allow the request to proceed (fail open).
 				// This prevents a Redis outage from blocking all API traffic.
@@ -53,12 +58,23 @@ func APIQuotaMiddleware(rateLimiter APIQuotaRateLimiter, planLookup APIPlanLooku
 				return
 			}
 
+			resetUnix := nextMidnightUnix()
+			remaining := limit - used
+			if limit == 0 {
+				remaining = -1
+			} else if remaining < 0 {
+				remaining = 0
+			}
+			w.Header().Set("X-RateLimit-Limit", strconv.Itoa(limit))
+			w.Header().Set("X-RateLimit-Remaining", strconv.Itoa(remaining))
+			w.Header().Set("X-RateLimit-Used", strconv.Itoa(used))
+			w.Header().Set("X-RateLimit-Reset", strconv.FormatInt(resetUnix, 10))
+
 			if !allowed {
 				type body struct {
 					Error   string `json:"error"`
 					ResetAt string `json:"reset_at"`
 				}
-				// reset_at: midnight UTC of the next day
 				now := time.Now().UTC()
 				nextMidnight := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
 
@@ -86,4 +102,11 @@ func isTestAPIKey(r *http.Request) bool {
 		return strings.HasPrefix(cookie.Value, "sk_test_")
 	}
 	return false
+}
+
+// nextMidnightUnix returns the Unix timestamp of midnight UTC on the next calendar day.
+func nextMidnightUnix() int64 {
+	now := time.Now().UTC()
+	next := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC)
+	return next.Unix()
 }

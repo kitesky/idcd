@@ -165,3 +165,82 @@ func TestAPIQuotaMiddleware_TestKeyBypassesQuota(t *testing.T) {
 		t.Errorf("test key should bypass quota and return 200; got %d", rr.Code)
 	}
 }
+
+func TestAPIQuotaMiddleware_RateLimitHeaders_OnAllow(t *testing.T) {
+	rl := &mockAPIRateLimiter{allowed: true, used: 5, limit: 100}
+	mw := APIQuotaMiddleware(rl, nil)
+	h := mw(http.HandlerFunc(testHandler))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+	req = injectUserID(req, "u_headers")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200; got %d", rr.Code)
+	}
+	if got := rr.Header().Get("X-RateLimit-Limit"); got != "100" {
+		t.Errorf("X-RateLimit-Limit: want 100, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Used"); got != "5" {
+		t.Errorf("X-RateLimit-Used: want 5, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Remaining"); got != "95" {
+		t.Errorf("X-RateLimit-Remaining: want 95, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Reset"); got == "" {
+		t.Error("X-RateLimit-Reset must not be empty")
+	}
+}
+
+func TestAPIQuotaMiddleware_RateLimitHeaders_OnDeny(t *testing.T) {
+	rl := &mockAPIRateLimiter{allowed: false, used: 101, limit: 100}
+	mw := APIQuotaMiddleware(rl, nil)
+	h := mw(http.HandlerFunc(testHandler))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+	req = injectUserID(req, "u_over_quota")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429; got %d", rr.Code)
+	}
+	if got := rr.Header().Get("X-RateLimit-Limit"); got != "100" {
+		t.Errorf("X-RateLimit-Limit: want 100, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Used"); got != "101" {
+		t.Errorf("X-RateLimit-Used: want 101, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Remaining"); got != "0" {
+		t.Errorf("X-RateLimit-Remaining: want 0, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Reset"); got == "" {
+		t.Error("X-RateLimit-Reset must not be empty")
+	}
+}
+
+func TestAPIQuotaMiddleware_RateLimitHeaders_TestKey(t *testing.T) {
+	rl := &mockAPIRateLimiter{allowed: false}
+	mw := APIQuotaMiddleware(rl, nil)
+	h := mw(http.HandlerFunc(testHandler))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+	req.Header.Set("Authorization", "Bearer sk_test_unlimited")
+	req = injectUserID(req, "u_test_key")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200 for test key; got %d", rr.Code)
+	}
+	if got := rr.Header().Get("X-RateLimit-Limit"); got != "-1" {
+		t.Errorf("X-RateLimit-Limit for test key: want -1, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Remaining"); got != "-1" {
+		t.Errorf("X-RateLimit-Remaining for test key: want -1, got %q", got)
+	}
+	if got := rr.Header().Get("X-RateLimit-Reset"); got == "" {
+		t.Error("X-RateLimit-Reset must not be empty for test key")
+	}
+}

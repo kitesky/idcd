@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -43,15 +44,22 @@ type QuotaUsageItem struct {
 	Limit int `json:"limit"`
 }
 
+// QuotaAPIUsageItem extends QuotaUsageItem with a reset_at Unix timestamp.
+type QuotaAPIUsageItem struct {
+	Used    int   `json:"used"`
+	Limit   int   `json:"limit"`
+	ResetAt int64 `json:"reset_at"`
+}
+
 // QuotaStatusResponse is the response body for GET /v1/account/quota.
 type QuotaStatusResponse struct {
-	Plan          string         `json:"plan"`
-	Monitors      QuotaUsageItem `json:"monitors"`
-	Channels      QuotaUsageItem `json:"channels"`
-	StatusPages   QuotaUsageItem `json:"status_pages"`
-	APIDaily      QuotaUsageItem `json:"api_daily"`
-	MinIntervalS  int            `json:"min_interval_s"`
-	MaxNodes      int            `json:"max_nodes"`
+	Plan         string            `json:"plan"`
+	Monitors     QuotaUsageItem    `json:"monitors"`
+	Channels     QuotaUsageItem    `json:"channels"`
+	StatusPages  QuotaUsageItem    `json:"status_pages"`
+	APICalls     QuotaAPIUsageItem `json:"api_calls"`
+	MinIntervalS int               `json:"min_interval_s"`
+	MaxNodes     int               `json:"max_nodes"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -86,6 +94,9 @@ func (h *QuotaHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	now := time.Now().UTC()
+	resetAt := time.Date(now.Year(), now.Month(), now.Day()+1, 0, 0, 0, 0, time.UTC).Unix()
+
 	resp := QuotaStatusResponse{
 		Plan: plan,
 		Monitors: QuotaUsageItem{
@@ -100,9 +111,10 @@ func (h *QuotaHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 			Used:  spCount,
 			Limit: limits.MaxStatusPages,
 		},
-		APIDaily: QuotaUsageItem{
-			Used:  apiUsed,
-			Limit: limits.MaxAPIDailyReqs,
+		APICalls: QuotaAPIUsageItem{
+			Used:    apiUsed,
+			Limit:   limits.MaxAPIDailyReqs,
+			ResetAt: resetAt,
 		},
 		MinIntervalS: limits.MinIntervalS,
 		MaxNodes:     limits.MaxNodes,

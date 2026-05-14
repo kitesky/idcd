@@ -1,8 +1,20 @@
-import { describe, it, expect } from "vitest"
-import { render, screen } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { render, screen, waitFor } from "@testing-library/react"
 import { BillingClient } from "../billing/billing-client"
 import { UsageClient } from "../usage/usage-client"
 import { StatusPagesClient } from "../status-pages/status-pages-client"
+
+const mockQuotaData = {
+  data: {
+    plan: "free",
+    monitors: { used: 2, limit: 3 },
+    channels: { used: 1, limit: 1 },
+    status_pages: { used: 0, limit: 0 },
+    api_calls: { used: 47, limit: 100, reset_at: 9999999999 },
+    min_interval_s: 300,
+    max_nodes: 1,
+  },
+}
 
 // ── BillingClient tests ────────────────────────────────────────────────────────
 
@@ -71,42 +83,68 @@ describe("BillingClient", () => {
 // ── UsageClient tests ──────────────────────────────────────────────────────────
 
 describe("UsageClient", () => {
+  beforeEach(() => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue({
+        ok: true,
+        json: () => Promise.resolve(mockQuotaData),
+      })
+    )
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
   it("renders usage page container", () => {
     render(<UsageClient />)
     expect(screen.getByTestId("usage-page")).toBeInTheDocument()
+  })
+
+  it("shows loading skeletons before data arrives", () => {
+    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})))
+    render(<UsageClient />)
+    expect(screen.getByTestId("skeleton-api-calls")).toBeInTheDocument()
+    expect(screen.getByTestId("skeleton-monitors")).toBeInTheDocument()
   })
 
   it("renders 4 usage stat cards", () => {
     render(<UsageClient />)
     expect(screen.getByTestId("usage-card-monitors")).toBeInTheDocument()
     expect(screen.getByTestId("usage-card-api-calls")).toBeInTheDocument()
-    expect(screen.getByTestId("usage-card-retention")).toBeInTheDocument()
+    expect(screen.getByTestId("usage-card-status-pages")).toBeInTheDocument()
     expect(screen.getByTestId("usage-card-alert-channels")).toBeInTheDocument()
   })
 
-  it("monitors card shows 2/3", () => {
+  it("progress bars render after data loads", async () => {
     render(<UsageClient />)
-    const card = screen.getByTestId("usage-card-monitors")
-    expect(card.textContent).toContain("2")
-    expect(card.textContent).toContain("3")
+    await waitFor(() => {
+      expect(screen.getByTestId("progress-monitors")).toBeInTheDocument()
+      expect(screen.getByTestId("progress-api-calls")).toBeInTheDocument()
+    })
   })
 
-  it("progress bars render for capped resources", () => {
+  it("monitors card shows real data", async () => {
     render(<UsageClient />)
-    expect(screen.getByTestId("progress-monitors")).toBeInTheDocument()
-    expect(screen.getByTestId("progress-api-calls")).toBeInTheDocument()
+    await waitFor(() => {
+      const card = screen.getByTestId("usage-card-monitors")
+      expect(card.textContent).toContain("2")
+      expect(card.textContent).toContain("3")
+    })
   })
 
-  it("near-limit badge shown for alert-channels (at 100%)", () => {
+  it("near-limit badge shown for alert-channels (used=1 limit=1)", async () => {
     render(<UsageClient />)
-    expect(screen.getByTestId("near-limit-badge-alert-channels")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("near-limit-badge-alert-channels")).toBeInTheDocument()
+    })
   })
 
   it("API trend chart renders 7 bars", () => {
     render(<UsageClient />)
     const chart = screen.getByTestId("api-trend-chart")
     expect(chart).toBeInTheDocument()
-    // 7 days
     expect(screen.getByTestId("bar-今天")).toBeInTheDocument()
     expect(screen.getByTestId("bar-周一")).toBeInTheDocument()
   })

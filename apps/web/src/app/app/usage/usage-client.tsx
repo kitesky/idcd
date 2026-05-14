@@ -1,5 +1,6 @@
 "use client"
 
+import { useEffect, useState } from "react"
 import {
   Card,
   CardContent,
@@ -9,56 +10,48 @@ import {
 } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
+import { Skeleton } from "@/components/ui/skeleton"
 import { cn } from "@/components/ui/index"
 
-interface UsageStat {
-  id: string
-  label: string
-  current: number
-  max: number | null
-  unit: string
-  description: string
-  warning?: boolean
+interface QuotaUsageItem {
+  used: number
+  limit: number
 }
 
-const USAGE_STATS: UsageStat[] = [
-  {
-    id: "monitors",
-    label: "监控项",
-    current: 2,
-    max: 3,
-    unit: "个",
-    description: "Free 档上限 3 个",
-  },
-  {
-    id: "api-calls",
-    label: "API 调用（今日）",
-    current: 47,
-    max: 100,
-    unit: "次",
-    description: "Free 档每日 100 次",
-  },
-  {
-    id: "retention",
-    label: "数据保留",
-    current: 7,
-    max: 7,
-    unit: "天",
-    description: "Free 档保留 7 天",
-    warning: true,
-  },
-  {
-    id: "alert-channels",
-    label: "告警通道",
-    current: 1,
-    max: 1,
-    unit: "个",
-    description: "Free 档上限 1 个",
-    warning: true,
-  },
-]
+interface QuotaAPIUsageItem {
+  used: number
+  limit: number
+  reset_at: number
+}
 
-// 过去 7 天 API 调用趋势（mock）
+interface QuotaData {
+  plan: string
+  monitors: QuotaUsageItem
+  channels: QuotaUsageItem
+  status_pages: QuotaUsageItem
+  api_calls: QuotaAPIUsageItem
+  min_interval_s: number
+  max_nodes: number
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+
+function formatResetTime(resetAtUnix: number): string {
+  const d = new Date(resetAtUnix * 1000)
+  const hh = String(d.getHours()).padStart(2, "0")
+  const mm = String(d.getMinutes()).padStart(2, "0")
+  return `明天 ${hh}:${mm}`
+}
+
+function progressColor(used: number, limit: number): string {
+  if (limit === 0) return ""
+  const pct = (used / limit) * 100
+  if (pct >= 90) return "bg-destructive"
+  if (pct >= 70) return "bg-warning"
+  return ""
+}
+
+// 过去 7 天 API 调用趋势（演示数据）
 const API_TREND = [
   { day: "周一", count: 32 },
   { day: "周二", count: 58 },
@@ -71,78 +64,245 @@ const API_TREND = [
 
 const MAX_TREND = Math.max(...API_TREND.map((d) => d.count))
 
-function getProgressColor(stat: UsageStat): string {
-  if (stat.max === null) return ""
-  const pct = stat.max > 0 ? (stat.current / stat.max) * 100 : 0
-  if (pct >= 90 || stat.warning) return "bg-destructive"
-  if (pct >= 70) return "bg-warning"
-  return ""
-}
-
 export function UsageClient() {
+  const [data, setData] = useState<QuotaData | null>(null)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    fetch(`${API_BASE}/v1/account/quota`, { credentials: "include" })
+      .then((res) => {
+        if (!res.ok) throw new Error(`quota fetch failed: ${res.status}`)
+        return res.json()
+      })
+      .then((json) => setData(json.data as QuotaData))
+      .catch(() => setData(null))
+      .finally(() => setLoading(false))
+  }, [])
+
   return (
     <div className="space-y-8" data-testid="usage-page">
       {/* ── 用量卡片 ── */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2" data-testid="usage-stats">
-        {USAGE_STATS.map((stat) => {
-          const pct =
-            stat.max !== null && stat.max > 0
-              ? Math.round((stat.current / stat.max) * 100)
-              : 0
-          const progressColor = getProgressColor(stat)
-          const isNearLimit = pct >= 90 || stat.warning
-
-          return (
-            <Card key={stat.id} data-testid={`usage-card-${stat.id}`}>
-              <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-sm font-medium text-muted-foreground">
-                    {stat.label}
-                  </CardTitle>
-                  {isNearLimit && (
-                    <Badge variant="warning" className="text-xs" data-testid={`near-limit-badge-${stat.id}`}>
-                      接近上限
-                    </Badge>
-                  )}
-                </div>
-                <CardDescription className="text-xs">
-                  {stat.description}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-2">
+        {/* API 调用 */}
+        <Card data-testid="usage-card-api-calls">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                API 调用（今日）
+              </CardTitle>
+              {!loading && data && data.api_calls.limit > 0 &&
+                (data.api_calls.used / data.api_calls.limit) >= 0.9 && (
+                  <Badge variant="warning" className="text-xs" data-testid="near-limit-badge-api-calls">
+                    接近上限
+                  </Badge>
+                )}
+            </div>
+            <CardDescription className="text-xs">
+              {loading
+                ? null
+                : data
+                ? `${data.plan === "free" ? "Free" : data.plan} 档每日 ${data.api_calls.limit} 次`
+                : "Free 档每日 100 次"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <Skeleton className="h-8 w-24" data-testid="skeleton-api-calls" />
+                <Skeleton className="h-2 w-full" />
+              </>
+            ) : (
+              <>
                 <div className="flex items-end gap-1">
                   <span className="text-2xl font-bold tabular-nums">
-                    {stat.current}
+                    {data?.api_calls.used ?? 0}
                   </span>
-                  {stat.max !== null && (
-                    <span className="text-sm text-muted-foreground mb-0.5">
-                      / {stat.max} {stat.unit}
-                    </span>
-                  )}
+                  <span className="text-sm text-muted-foreground mb-0.5">
+                    / {data?.api_calls.limit ?? 100} 次
+                  </span>
                 </div>
-                {stat.max !== null && (
-                  <Progress
-                    value={pct}
-                    className={cn(
-                      "h-2",
-                      progressColor
-                        ? `[&>div]:${progressColor}`
+                <Progress
+                  value={
+                    data && data.api_calls.limit > 0
+                      ? Math.round((data.api_calls.used / data.api_calls.limit) * 100)
+                      : 0
+                  }
+                  className={cn(
+                    "h-2",
+                    data
+                      ? progressColor(data.api_calls.used, data.api_calls.limit)
+                        ? `[&>div]:${progressColor(data.api_calls.used, data.api_calls.limit)}`
                         : ""
-                    )}
-                    data-testid={`progress-${stat.id}`}
-                  />
+                      : ""
+                  )}
+                  data-testid="progress-api-calls"
+                />
+                {data && (
+                  <p className="text-xs text-muted-foreground">
+                    重置时间：{formatResetTime(data.api_calls.reset_at)}
+                  </p>
                 )}
-              </CardContent>
-            </Card>
-          )
-        })}
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 监控数量 */}
+        <Card data-testid="usage-card-monitors">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                监控项
+              </CardTitle>
+              {!loading && data && data.monitors.limit > 0 &&
+                (data.monitors.used / data.monitors.limit) >= 0.9 && (
+                  <Badge variant="warning" className="text-xs" data-testid="near-limit-badge-monitors">
+                    接近上限
+                  </Badge>
+                )}
+            </div>
+            <CardDescription className="text-xs">
+              {loading
+                ? null
+                : data
+                ? `${data.plan === "free" ? "Free" : data.plan} 档上限 ${data.monitors.limit} 个`
+                : "Free 档上限 3 个"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <Skeleton className="h-8 w-24" data-testid="skeleton-monitors" />
+                <Skeleton className="h-2 w-full" />
+              </>
+            ) : (
+              <>
+                <div className="flex items-end gap-1">
+                  <span className="text-2xl font-bold tabular-nums">
+                    {data?.monitors.used ?? 0}
+                  </span>
+                  <span className="text-sm text-muted-foreground mb-0.5">
+                    / {data?.monitors.limit ?? 3} 个
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    data && data.monitors.limit > 0
+                      ? Math.round((data.monitors.used / data.monitors.limit) * 100)
+                      : 0
+                  }
+                  className="h-2"
+                  data-testid="progress-monitors"
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 状态页 */}
+        <Card data-testid="usage-card-status-pages">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                状态页
+              </CardTitle>
+            </div>
+            <CardDescription className="text-xs">
+              {loading
+                ? null
+                : data
+                ? `${data.plan === "free" ? "Free" : data.plan} 档上限 ${data.status_pages.limit} 个`
+                : "Free 档上限 1 个"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <Skeleton className="h-8 w-24" data-testid="skeleton-status-pages" />
+                <Skeleton className="h-2 w-full" />
+              </>
+            ) : (
+              <>
+                <div className="flex items-end gap-1">
+                  <span className="text-2xl font-bold tabular-nums">
+                    {data?.status_pages.used ?? 0}
+                  </span>
+                  <span className="text-sm text-muted-foreground mb-0.5">
+                    / {data?.status_pages.limit ?? 1} 个
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    data && data.status_pages.limit > 0
+                      ? Math.round((data.status_pages.used / data.status_pages.limit) * 100)
+                      : 0
+                  }
+                  className="h-2"
+                  data-testid="progress-status-pages"
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* 告警通道 */}
+        <Card data-testid="usage-card-alert-channels">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-sm font-medium text-muted-foreground">
+                告警通道
+              </CardTitle>
+              {!loading && data && data.channels.limit > 0 &&
+                (data.channels.used / data.channels.limit) >= 0.9 && (
+                  <Badge variant="warning" className="text-xs" data-testid="near-limit-badge-alert-channels">
+                    接近上限
+                  </Badge>
+                )}
+            </div>
+            <CardDescription className="text-xs">
+              {loading
+                ? null
+                : data
+                ? `${data.plan === "free" ? "Free" : data.plan} 档上限 ${data.channels.limit} 个`
+                : "Free 档上限 1 个"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {loading ? (
+              <>
+                <Skeleton className="h-8 w-24" data-testid="skeleton-alert-channels" />
+                <Skeleton className="h-2 w-full" />
+              </>
+            ) : (
+              <>
+                <div className="flex items-end gap-1">
+                  <span className="text-2xl font-bold tabular-nums">
+                    {data?.channels.used ?? 0}
+                  </span>
+                  <span className="text-sm text-muted-foreground mb-0.5">
+                    / {data?.channels.limit ?? 1} 个
+                  </span>
+                </div>
+                <Progress
+                  value={
+                    data && data.channels.limit > 0
+                      ? Math.round((data.channels.used / data.channels.limit) * 100)
+                      : 0
+                  }
+                  className="h-2"
+                  data-testid="progress-alert-channels"
+                />
+              </>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
       {/* ── API 调用趋势 ── */}
       <Card data-testid="api-trend-card">
         <CardHeader>
           <CardTitle className="text-base">API 调用趋势（过去 7 天）</CardTitle>
-          <CardDescription>每日 API 请求次数统计</CardDescription>
+          <CardDescription>每日 API 请求次数统计（演示数据）</CardDescription>
         </CardHeader>
         <CardContent>
           <div

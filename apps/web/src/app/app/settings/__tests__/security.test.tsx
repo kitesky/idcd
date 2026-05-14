@@ -95,4 +95,27 @@ describe("SecurityClient", () => {
     fireEvent.click(screen.getByTestId("btn-confirm-disable"))
     expect(screen.getByTestId("2fa-disable-error")).toBeInTheDocument()
   })
+
+  it("renders the Passkey card", () => {
+    render(<SecurityClient />)
+    expect(screen.getByTestId("passkey-card")).toBeInTheDocument()
+  })
+
+  it("renders the 添加 Passkey button", () => {
+    render(<SecurityClient />)
+    expect(screen.getByTestId("btn-add-passkey")).toBeInTheDocument()
+  })
+
+  it("renders mock passkey list items", () => {
+    render(<SecurityClient />)
+    expect(screen.getByTestId("passkey-list")).toBeInTheDocument()
+    expect(screen.getByText("MacBook Pro (Touch ID)")).toBeInTheDocument()
+  })
+
+  it("removes a passkey from list when delete button clicked", () => {
+    render(<SecurityClient />)
+    const deleteBtn = screen.getByTestId("btn-delete-passkey-wc_MockPasskey1")
+    fireEvent.click(deleteBtn)
+    expect(screen.queryByText("MacBook Pro (Touch ID)")).not.toBeInTheDocument()
+  })
 })

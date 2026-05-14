@@ -505,6 +505,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 [-] API 公开 GA + SDK + CLI               → S3，M8-M9
 [x] K1 Team/Org 基础（teams + memberships + invitations + /app/settings/team）
 [x] K5 团队级 API Key + Agent Pro 订阅（team-scoped keys + /v1/teams/{id}/billing）
+[x] K6 WebAuthn / Passkey（FIDO2 注册/认证 + passkey 管理 + 安全设置页扩展，DB migration 00022，lib/auth/webauthn，6 API endpoints，10 Go tests，14 前端 security tests，完成 2026-05-14）
 [-] 团队 / 多用户 / 角色权限（完整 S3）   → S3，M12+
 [x] K8 众包节点申请 + 积分系统（node_applications + node_points + point_redemptions，DB migration 00023，6 API endpoints + 7 Go tests，/nodes/apply 申请页 + PointsBalanceCard + 兑换 Dialog，8 前端 tests，738 Go + 515 前端 tests ✓，完成 2026-05-14）
 [-] 管理台完整功能                        → S2 末/S3

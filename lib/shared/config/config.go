@@ -66,6 +66,7 @@ type ServerConfig struct {
 	Env         string   `yaml:"env"` // development | staging | production
 	CORSOrigins []string `yaml:"cors_origins"`
 	AdminToken  string   `yaml:"admin_token"`
+	RPID        string   `yaml:"rp_id"` // WebAuthn Relying Party ID (default: idcd.com)
 }
 
 type JWTConfig struct {

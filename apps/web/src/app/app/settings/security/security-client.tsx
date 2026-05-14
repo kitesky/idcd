@@ -22,12 +22,28 @@ import {
 
 type Step = "idle" | "scan" | "verify" | "backup"
 
+const MOCK_PASSKEYS = [
+  {
+    id: "wc_MockPasskey1",
+    device_name: "MacBook Pro (Touch ID)",
+    created_at: new Date("2026-04-10T08:00:00Z").toISOString(),
+    last_used_at: new Date("2026-05-14T06:00:00Z").toISOString(),
+  },
+]
+
 const MOCK_SECRET = "JBSWY3DPEHPK3PXP"
 const MOCK_OTPAUTH = `otpauth://totp/idcd:user@example.com?secret=${MOCK_SECRET}&issuer=idcd`
 const MOCK_BACKUP_CODES = [
   "ABCD1234", "EFGH5678", "IJKL9012", "MNOP3456",
   "QRST7890", "UVWX1234", "YZAB5678", "CDEF9012",
 ]
+
+type PasskeyItem = {
+  id: string
+  device_name: string
+  created_at: string
+  last_used_at?: string | null
+}
 
 export function SecurityClient() {
   const [enabled, setEnabled] = useState(false)
@@ -37,6 +53,10 @@ export function SecurityClient() {
   const [disableCode, setDisableCode] = useState("")
   const [disableError, setDisableError] = useState<string | null>(null)
   const [showDisableDialog, setShowDisableDialog] = useState(false)
+
+  const [passkeys, setPasskeys] = useState<PasskeyItem[]>(MOCK_PASSKEYS)
+  const [passkeyAdding, setPasskeyAdding] = useState(false)
+  const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
   function openSetup() {
     setStep("scan")
@@ -68,6 +88,71 @@ export function SecurityClient() {
     setShowDisableDialog(false)
     setDisableCode("")
     setDisableError(null)
+  }
+
+  async function handleAddPasskey() {
+    setPasskeyAdding(true)
+    setPasskeyError(null)
+    try {
+      const beginRes = await fetch("/api/v1/account/passkeys/register/begin", {
+        method: "POST",
+        credentials: "include",
+      })
+      if (!beginRes.ok) throw new Error("无法获取注册选项")
+      const { data } = await beginRes.json()
+
+      if (typeof window === "undefined" || !window.PublicKeyCredential) {
+        throw new Error("此浏览器不支持 Passkey")
+      }
+
+      const credential = await navigator.credentials.create({
+        publicKey: {
+          ...data.options,
+          challenge: Uint8Array.from(atob(data.options.challenge.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)),
+          user: {
+            ...data.options.user,
+            id: Uint8Array.from(atob(data.options.user.id.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)),
+          },
+        },
+      }) as PublicKeyCredential | null
+
+      if (!credential) throw new Error("注册被取消")
+
+      const response = credential.response as AuthenticatorAttestationResponse
+      const completeRes = await fetch("/api/v1/account/passkeys/register/complete", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          challenge: data.challenge_id,
+          response: {
+            id: credential.id,
+            rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+            response: {
+              clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+              attestationObject: btoa(String.fromCharCode(...new Uint8Array(response.attestationObject))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+            },
+          },
+          device_name: "My Passkey",
+        }),
+      })
+      if (!completeRes.ok) throw new Error("注册失败")
+      const { data: result } = await completeRes.json()
+      setPasskeys(prev => [...prev, {
+        id: result.credential_id,
+        device_name: result.device_name,
+        created_at: new Date().toISOString(),
+        last_used_at: null,
+      }])
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : "添加 Passkey 失败")
+    } finally {
+      setPasskeyAdding(false)
+    }
+  }
+
+  function handleDeletePasskey(id: string) {
+    setPasskeys(prev => prev.filter(p => p.id !== id))
   }
 
   const qrURL = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(MOCK_OTPAUTH)}`
@@ -116,6 +201,56 @@ export function SecurityClient() {
             >
               关闭 2FA
             </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card data-testid="passkey-card">
+        <CardHeader>
+          <CardTitle>Passkey</CardTitle>
+          <CardDescription>
+            使用设备生物识别（Touch ID / Face ID）无密码登录
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {passkeyError && (
+            <Alert variant="destructive" data-testid="passkey-error">
+              <AlertDescription>{passkeyError}</AlertDescription>
+            </Alert>
+          )}
+          <Button
+            variant="outline"
+            data-testid="btn-add-passkey"
+            onClick={handleAddPasskey}
+            disabled={passkeyAdding}
+          >
+            {passkeyAdding ? "添加中..." : "添加 Passkey"}
+          </Button>
+          {passkeys.length > 0 && (
+            <div className="space-y-2" data-testid="passkey-list">
+              {passkeys.map((pk) => (
+                <div
+                  key={pk.id}
+                  className="flex items-center justify-between rounded border px-3 py-2"
+                  data-testid={`passkey-item-${pk.id}`}
+                >
+                  <div className="space-y-0.5">
+                    <p className="text-sm font-medium">{pk.device_name}</p>
+                    <p className="text-xs text-muted-foreground">
+                      添加于 {new Date(pk.created_at).toLocaleDateString("zh-CN")}
+                    </p>
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    data-testid={`btn-delete-passkey-${pk.id}`}
+                    onClick={() => handleDeletePasskey(pk.id)}
+                  >
+                    删除
+                  </Button>
+                </div>
+              ))}
+            </div>
           )}
         </CardContent>
       </Card>

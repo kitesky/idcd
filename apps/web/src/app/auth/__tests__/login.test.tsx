@@ -16,7 +16,12 @@ describe('LoginPage', () => {
     expect(screen.getByRole('heading', { name: '登录' })).toBeDefined()
     expect(screen.getByLabelText('邮箱')).toBeDefined()
     expect(screen.getByLabelText('密码')).toBeDefined()
-    expect(screen.getByRole('button', { name: /登录/ })).toBeDefined()
+    expect(screen.getByRole('button', { name: '登录' })).toBeDefined()
+  })
+
+  it('renders Passkey login button', () => {
+    render(<LoginPage />)
+    expect(screen.getByTestId('btn-passkey-login')).toBeDefined()
   })
 
   it('shows links to register and forgot password pages', () => {

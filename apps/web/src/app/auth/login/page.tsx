@@ -20,6 +20,49 @@ import {
 import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
+async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
+  const beginRes = await fetch("/api/v1/auth/passkeys/begin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({}),
+  })
+  if (!beginRes.ok) throw new Error("无法获取认证选项")
+  const { data } = await beginRes.json()
+
+  const credential = await navigator.credentials.get({
+    publicKey: {
+      ...data.options,
+      challenge: Uint8Array.from(atob(data.options.challenge.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)),
+      allowCredentials: (data.options.allowCredentials || []).map((c: { id: string; type: string }) => ({
+        ...c,
+        id: Uint8Array.from(atob(c.id.replace(/-/g, "+").replace(/_/g, "/")), ch => ch.charCodeAt(0)),
+      })),
+    },
+  }) as PublicKeyCredential | null
+
+  if (!credential) throw new Error("认证被取消")
+
+  const response = credential.response as AuthenticatorAssertionResponse
+  const completeRes = await fetch("/api/v1/auth/passkeys/complete", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      challenge: data.challenge_id,
+      response: {
+        id: credential.id,
+        rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+        response: {
+          clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+          authenticatorData: btoa(String.fromCharCode(...new Uint8Array(response.authenticatorData))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+          signature: btoa(String.fromCharCode(...new Uint8Array(response.signature))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+        },
+      },
+    }),
+  })
+  if (!completeRes.ok) throw new Error("Passkey 认证失败")
+  router.push("/app/dashboard" as never)
+}
+
 const loginSchema = z.object({
   email: z.string().email({ message: "请输入有效的邮箱地址" }),
   password: z.string().min(1, { message: "请输入密码" }),
@@ -31,6 +74,7 @@ export default function LoginPage() {
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -130,6 +174,26 @@ export default function LoginPage() {
           </Button>
         </form>
       </Form>
+
+      <Button
+        variant="outline"
+        className="w-full mt-2"
+        data-testid="btn-passkey-login"
+        disabled={passkeyLoading}
+        onClick={async () => {
+          setPasskeyLoading(true)
+          setError(null)
+          try {
+            await loginWithPasskey(router)
+          } catch (err) {
+            setError(err instanceof Error ? err.message : "Passkey 登录失败")
+          } finally {
+            setPasskeyLoading(false)
+          }
+        }}
+      >
+        {passkeyLoading ? "验证中..." : "使用 Passkey 登录"}
+      </Button>
 
       <div className="relative my-4">
         <Separator />

@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
+	"github.com/kite365/idcd/apps/api/internal/quota"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/idgen"
@@ -148,6 +149,19 @@ func (h *AlertHandler) CreateChannel(w http.ResponseWriter, r *http.Request) {
 	if req.Config == nil {
 		req.Config = json.RawMessage("{}")
 	}
+
+	// ── Quota enforcement: channel count ─────────────────────────────────────
+	{
+		plan := alertUserPlan(ctx, h.pool, userID)
+		current := alertChannelCount(ctx, h.pool, userID)
+		if err := quota.CheckChannelCount(plan, current); err != nil {
+			if appErr := apperr.AsError(err); appErr != nil && appErr.Code == quota.CodeQuotaExceeded {
+				quotaError(w, r, appErr.Message)
+				return
+			}
+		}
+	}
+	// ── End quota enforcement ─────────────────────────────────────────────────
 
 	id := idgen.Channel()
 	now := time.Now()
@@ -691,4 +705,31 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(buf)
+}
+
+// alertUserPlan fetches the subscription plan for a user via the pool.
+// Returns "free" when no active subscription exists.
+func alertUserPlan(ctx context.Context, pool AlertPool, userID string) string {
+	var plan string
+	err := pool.QueryRow(ctx,
+		`SELECT plan FROM subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`,
+		userID,
+	).Scan(&plan)
+	if err != nil {
+		return "free"
+	}
+	return plan
+}
+
+// alertChannelCount returns the number of alert channels owned by a user.
+func alertChannelCount(ctx context.Context, pool AlertPool, userID string) int {
+	var count int
+	err := pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM alert_channels WHERE user_id = $1`,
+		userID,
+	).Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
 }

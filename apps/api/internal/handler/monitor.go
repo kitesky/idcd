@@ -8,9 +8,11 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
+	"github.com/kite365/idcd/apps/api/internal/quota"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
@@ -26,14 +28,92 @@ type MonitorQuerier interface {
 	DeleteMonitor(ctx context.Context, id string) error
 }
 
+// QuotaPool is the minimal pgx interface needed to perform quota-related DB
+// lookups (subscription plan + monitor count). *pgxpool.Pool satisfies this.
+type QuotaPool interface {
+	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+}
+
 // MonitorHandler handles monitor CRUD endpoints.
 type MonitorHandler struct {
-	q MonitorQuerier
+	q    MonitorQuerier
+	pool QuotaPool // optional; nil disables DB-backed quota checks
 }
 
 // NewMonitorHandler creates a MonitorHandler wired to the given querier.
+// No quota DB pool is set; quota checks are skipped unless WithQuotaPool is called.
 func NewMonitorHandler(q MonitorQuerier) *MonitorHandler {
 	return &MonitorHandler{q: q}
+}
+
+// WithQuotaPool returns a copy of the handler with the quota pool configured.
+// Call this in server setup to enable per-plan quota enforcement.
+func (h *MonitorHandler) WithQuotaPool(pool QuotaPool) *MonitorHandler {
+	return &MonitorHandler{q: h.q, pool: pool}
+}
+
+// userPlan fetches the subscription plan for a user.
+// Returns "free" when no active subscription exists (free tier by default).
+func (h *MonitorHandler) userPlan(ctx context.Context, userID string) string {
+	if h.pool == nil {
+		return "free"
+	}
+	var plan string
+	err := h.pool.QueryRow(ctx,
+		`SELECT plan FROM subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`,
+		userID,
+	).Scan(&plan)
+	if err != nil {
+		return "free"
+	}
+	return plan
+}
+
+// monitorCount returns the number of non-archived monitors owned by a user.
+func (h *MonitorHandler) monitorCount(ctx context.Context, userID string) int {
+	if h.pool == nil {
+		return 0
+	}
+	var count int
+	err := h.pool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM monitors WHERE user_id = $1 AND status != 'archived'`,
+		userID,
+	).Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+// quotaError writes a 402 Payment Required response for quota exceeded errors.
+// The response body includes an upgrade_url hint for the frontend.
+func quotaError(w http.ResponseWriter, r *http.Request, msg string) {
+	type quotaBody struct {
+		Error      string `json:"error"`
+		Message    string `json:"message"`
+		UpgradeURL string `json:"upgrade_url"`
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusPaymentRequired)
+	_ = json.NewEncoder(w).Encode(quotaBody{
+		Error:      "quota_exceeded",
+		Message:    msg,
+		UpgradeURL: "/app/billing",
+	})
+}
+
+// checkQuotaErr returns true if the error is a quota exceeded error and writes
+// the 402 response. Returns false (no action taken) when err is nil or another
+// error type.
+func checkQuotaErr(w http.ResponseWriter, r *http.Request, err error) bool {
+	if err == nil {
+		return false
+	}
+	if appErr := apperr.AsError(err); appErr != nil && appErr.Code == quota.CodeQuotaExceeded {
+		quotaError(w, r, appErr.Message)
+		return true
+	}
+	return false
 }
 
 // --- Request / Response types ---
@@ -131,9 +211,32 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Default node_count
+	// ── Quota enforcement ────────────────────────────────────────────────────
+	plan := h.userPlan(ctx, userID)
+	current := h.monitorCount(ctx, userID)
+
+	if checkQuotaErr(w, r, quota.CheckMonitorCount(plan, current)) {
+		return
+	}
+	if checkQuotaErr(w, r, quota.CheckMonitorInterval(plan, int(req.IntervalS))) {
+		return
+	}
+	// Only enforce node count quota when the user explicitly requested nodes.
+	if req.NodeCount > 0 {
+		if checkQuotaErr(w, r, quota.CheckNodeCount(plan, int(req.NodeCount))) {
+			return
+		}
+	}
+	// ── End quota enforcement ─────────────────────────────────────────────────
+
+	// Default node_count (applied after quota check so default doesn't trigger quota errors).
 	if req.NodeCount == 0 {
-		req.NodeCount = 3
+		limits := quota.Limits(plan)
+		if limits.MaxNodes > 0 {
+			req.NodeCount = 1 // safe default: minimum valid value
+		} else {
+			req.NodeCount = 3 // unlimited plan: use the original default
+		}
 	}
 
 	// Default config

@@ -8,7 +8,9 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  AlertCircle,
 } from "lucide-react"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -22,6 +24,22 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { type MonitorType, TYPE_LABELS, MONITOR_TYPES } from "../mock-data"
+
+// PLAN_LABELS maps plan identifiers to user-facing display names.
+const PLAN_LABELS: Record<string, string> = {
+  free: "Free",
+  pro: "Pro",
+  team: "Team",
+  business: "Business",
+}
+
+// PLAN_MONITOR_LIMITS maps plan identifiers to their monitor count limits.
+const PLAN_MONITOR_LIMITS: Record<string, number> = {
+  free: 3,
+  pro: 50,
+  team: 200,
+  business: 0, // unlimited
+}
 
 const STEP_LABELS = ["类型选择", "基础配置", "高级配置", "确认创建"]
 
@@ -118,12 +136,20 @@ function StepIndicator({
   )
 }
 
+// QuotaExceededState holds the data needed to render a quota exceeded alert.
+interface QuotaExceededState {
+  currentPlan: string
+  usedCount: number
+  limitCount: number
+}
+
 export function NewMonitorClient() {
   const router = useRouter()
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [quotaExceeded, setQuotaExceeded] = useState<QuotaExceededState | null>(null)
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -135,11 +161,58 @@ export function NewMonitorClient() {
     return true
   }
 
-  function handleCreate() {
-    setSaved(true)
-    setTimeout(() => {
-      router.push("/app/monitors")
-    }, 1500)
+  async function handleCreate() {
+    // Clear any previous quota error.
+    setQuotaExceeded(null)
+
+    try {
+      const res = await fetch("/api/v1/monitors", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: form.name,
+          type: form.type,
+          target: form.target,
+          interval_s: form.intervalSeconds,
+          node_count: form.concurrentNodes,
+        }),
+      })
+
+      if (res.status === 402) {
+        // Quota exceeded — parse the plan information from the response.
+        const data = await res.json().catch(() => ({}))
+        const message: string = data.message ?? ""
+        // Attempt to parse plan/used/limit from the error message.
+        // Fallback: show generic "free" exceeded message.
+        const planMatch = message.match(/您的\s+(\S+)\s+档/)
+        const planKey = planMatch ? planMatch[1].toLowerCase() : "free"
+        const usedMatch = message.match(/(\d+)\s+个监控项/)
+        const usedCount = usedMatch ? parseInt(usedMatch[1], 10) : 0
+        const limitMatch = message.match(/上限\s+(\d+)/)
+        const limitCount = limitMatch
+          ? parseInt(limitMatch[1], 10)
+          : PLAN_MONITOR_LIMITS[planKey] ?? 3
+
+        setQuotaExceeded({
+          currentPlan: planKey,
+          usedCount,
+          limitCount,
+        })
+        return
+      }
+
+      if (!res.ok) {
+        // Non-quota error — handle generically (could be extended).
+        return
+      }
+
+      setSaved(true)
+      setTimeout(() => {
+        router.push("/app/monitors")
+      }, 1500)
+    } catch {
+      // Network error — silent fail in this stub implementation.
+    }
   }
 
   return (
@@ -423,6 +496,39 @@ export function NewMonitorClient() {
               </div>
             </CardContent>
           </Card>
+
+          {/* Quota exceeded alert */}
+          {quotaExceeded && (
+            <Alert variant="destructive" data-testid="quota-exceeded-alert">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>配额已用完</AlertTitle>
+              <AlertDescription className="mt-2 space-y-3">
+                <p>
+                  您的{" "}
+                  <strong>
+                    {PLAN_LABELS[quotaExceeded.currentPlan] ?? quotaExceeded.currentPlan}
+                  </strong>{" "}
+                  档已用完 {quotaExceeded.limitCount} 个监控项。
+                  {(() => {
+                    const nextPlan = quotaExceeded.currentPlan === "free" ? "Pro" : null
+                    const nextLimit =
+                      quotaExceeded.currentPlan === "free" ? PLAN_MONITOR_LIMITS["pro"] : null
+                    if (nextPlan && nextLimit) {
+                      return `升级 ${nextPlan} 可管理 ${nextLimit} 个监控项。`
+                    }
+                    return "请升级套餐以管理更多监控项。"
+                  })()}
+                </p>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => router.push("/app/billing")}
+                >
+                  升级 Pro
+                </Button>
+              </AlertDescription>
+            </Alert>
+          )}
 
           {saved && (
             <div className="flex items-center gap-2 rounded-md bg-success/10 px-4 py-3 text-sm text-success">

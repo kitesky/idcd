@@ -459,6 +459,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 - [x] **J1** Test/Sandbox API Key — `sk_test_` 前缀 + 配额豁免，DB migration 00013 + sqlc 手动更新 + handler 支持 type 字段 + 前端 Badge/Select，628 Go tests + 405 前端 tests ✓，完成 2026-05-14
 - [x] **J2** Email 告警通道 — `apps/notifier/internal/channel/email.go`，EmailChannel 实现 Channel 接口，HTML 告警邮件（FIRING/RESOLVED），`buildChannel` 路由 `type=email`，12 tests ✓，完成 2026-05-14
+- [x] **J3** Alert 事件触发器 — `apps/aggregator/internal/processor/alert_trigger.go`，AlertTrigger 检测连续 N 次失败创建 alert_event(firing)、恢复时 resolved、幂等防重复，asynq enqueue 到 notifier 队列，集成到 Process() 主流程，26 aggregator tests ✓，完成 2026-05-14
 - [x] **J4** SLA 月报基础 — `GET /v1/reports/sla`（Bearer token 认证，months 参数最大 12），TimescaleDB hypertable 聚合查询，`/app/reports` 前端页面（shadcn/ui Card + Table + Badge 颜色编码），侧边栏"月度报告"导航项，9 Go tests + 8 前端 tests ✓，完成 2026-05-14
 
 ---

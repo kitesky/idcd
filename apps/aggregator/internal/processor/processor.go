@@ -15,13 +15,19 @@ import (
 
 // Processor parses stream messages and persists probe results.
 type Processor struct {
-	pool   *pgxpool.Pool
-	dedupr *dedup.Deduper
+	pool    *pgxpool.Pool
+	dedupr  *dedup.Deduper
+	trigger *AlertTrigger
 }
 
 // New creates a Processor. dedupr may be nil to disable dedup (for testing).
 func New(pool *pgxpool.Pool, dedupr *dedup.Deduper) *Processor {
 	return &Processor{pool: pool, dedupr: dedupr}
+}
+
+// NewWithTrigger creates a Processor with alert triggering enabled.
+func NewWithTrigger(pool *pgxpool.Pool, dedupr *dedup.Deduper, trigger *AlertTrigger) *Processor {
+	return &Processor{pool: pool, dedupr: dedupr, trigger: trigger}
 }
 
 // MonitorCheckStatus maps a probe result to a monitor check status.
@@ -78,6 +84,10 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 		}
 		if err := p.advanceMonitorSchedule(ctx, monitorID, taskID); err != nil {
 			_ = fmt.Errorf("processor: advance monitor schedule for %s: %w", monitorID, err)
+		}
+		if p.trigger != nil {
+			checkStatus := probeSuccessToCheckStatus(result.success, result.errMsg)
+			p.trigger.CheckAndTrigger(ctx, monitorID, checkStatus)
 		}
 	}
 

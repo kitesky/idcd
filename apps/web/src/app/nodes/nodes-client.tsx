@@ -228,12 +228,13 @@ export function NodesClient({ nodes }: NodesClientProps) {
               <TableHead>出口 IP</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>国家/地区</TableHead>
+              <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
           <TableBody>
             {filtered.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
                   没有符合条件的节点
                 </TableCell>
               </TableRow>
@@ -255,6 +256,14 @@ export function NodesClient({ nodes }: NodesClientProps) {
                       <Badge variant={variant}>{label}</Badge>
                     </TableCell>
                     <TableCell>{COUNTRY_NAMES[node.country] ?? node.country}</TableCell>
+                    <TableCell>
+                      <a
+                        href={`/nodes/${node.id}`}
+                        className="text-xs text-primary hover:underline whitespace-nowrap"
+                      >
+                        查看诊断
+                      </a>
+                    </TableCell>
                   </TableRow>
                 )
               })

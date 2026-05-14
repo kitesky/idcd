@@ -472,6 +472,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J13** MCP server 骨架 — `apps/mcp/` 新 Go module（CGO_ENABLED=0），JSON-RPC 2.0 over stdio，8 tools（ping/http/dns/traceroute/ssl/diagnose/ip/whois）stub 实现，`protocol.Server` 读 stdin/写 stdout 循环，Tool 注册表 + Handler 接口，initialize/tools/list/tools/call 方法，7 Go tests ✓，go.work 已更新，完成 2026-05-14
 - [x] **J14** IPv6 检测/转换工具页 — `tool-functions.ts` 新增 `checkIPv6`（valid/expanded/compressed/type/isIPv4Mapped）、`ipv4ToIPv6Mapped`、`ipv6ToPTR`（.ip6.arpa PTR 记录），`Ipv6CheckClient` 升级显示完整类型+IPv4映射标识，`ipv6-check.test.ts`（12 tests）+ `ipv6-convert.test.ts`（14 tests），460 前端 tests ✓，完成 2026-05-14
 - [x] **J15** Anchor 锚定基准 + 偏差实时告警 — DB migration 00015（`monitor_baselines` + `anchor_deviations`），`BaselineUpdater`（7天窗口 percentile_cont，rate-limited：6h 或 100-sample boundary），`AnchorChecker`（p95 延迟 2x/3x warning/critical，success_rate 95%阈值，open 去重，resolved 恢复），processor.Process() 接入，`AnchorHandler`（GET `/v1/monitors/{id}/baseline` + `/{id}/deviations`），server.go 路由注册，14 aggregator tests + 7 API tests ✓，完成 2026-05-14
+- [x] **J16** 节点高级诊断 API + 前端 — `GET /v1/nodes/{id}/diagnostics`（公开，无认证，NodeDiagPool 接口，404 节点不存在，nil pool 返回 stub），`NodeDiagnosticsHandler` + 路由注册（server.go），`apps/web/src/app/nodes/[id]/page.tsx` 节点详情页（SSR，延迟分布 CSS 柱状图，24h 健康趋势 sparkline，节点基本信息），`/nodes` 列表增加"查看诊断"链接，修复 monitor_stream_test.go 重复 errRow 类型定义，8 Go tests + 7 前端 tests ✓，完成 2026-05-14
 
 ---
 

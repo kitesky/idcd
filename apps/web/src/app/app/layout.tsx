@@ -4,6 +4,7 @@ import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
+  Activity,
   BarChart3,
   Bell,
   ChevronDown,
@@ -32,9 +33,15 @@ import { cn } from "@/lib/utils"
 
 const NAV_GROUPS = [
   {
+    label: "总览",
+    items: [
+      { icon: LayoutDashboard, label: "仪表盘", href: "/app/dashboard" },
+    ],
+  },
+  {
     label: "监控",
     items: [
-      { icon: LayoutDashboard, label: "监控列表", href: "/app/monitors" },
+      { icon: Activity, label: "监控列表", href: "/app/monitors" },
       { icon: Bell, label: "告警管理", href: "/app/alerts" },
     ],
   },

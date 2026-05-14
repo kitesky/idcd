@@ -450,6 +450,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **I1** `/leaderboard` CDN 月度性能排行榜 — 3 Tab + mock 数据 + SEO，42 tests ✓，完成 2026-05-14
 - [x] **I2** API OpenAPI 文档站 — /v1/openapi.json endpoint + /docs/api 参考页，10+11 tests ✓，完成 2026-05-14
 - [x] **I3** 管理后台扩展 — /admin/metrics 系统概览 + /admin/users 用户管理 + admin API（metrics/users/detail），600 Go tests ✓，完成 2026-05-14
+- [x] **I5** `/app/dashboard` 数据看板基础 — 6 统计卡片 + 快捷入口 + 近期告警表 + 侧边栏仪表盘导航 + GET /v1/dashboard/summary API，2 Go tests + 7 前端 tests ✓，完成 2026-05-14
 
 ---
 

@@ -260,6 +260,13 @@ func (s *Server) setupRouter() {
 				r.Get("/verify", statusPageDomainH.VerifyStatusPageDomain)
 			})
 
+			// Dashboard summary endpoint (authentication required)
+			dashboardH := handler.NewDashboardHandler()
+			r.Route("/dashboard", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Get("/summary", dashboardH.Summary)
+			})
+
 			// Alert channels, policies, and events (authentication required)
 			alertH := handler.NewAlertHandler(s.pgxPool)
 			r.Route("/alert-channels", func(r chi.Router) {
@@ -300,6 +307,21 @@ func (s *Server) setupRouter() {
 			r.Get("/metrics", adminH.AdminMetrics)
 			r.Get("/users", adminH.AdminUsers)
 			r.Get("/users/{id}", adminH.AdminUserDetail)
+		})
+
+		// Beta invitation endpoints (user-facing + admin).
+		betaH := handler.NewBetaInvitationHandler(s.pgxPool)
+		r.Route("/v1/beta", func(r chi.Router) {
+			r.With(authnMW).Post("/request", betaH.RequestBeta)
+			r.With(authnMW).Get("/status", betaH.GetBetaStatus)
+			r.With(authnMW).Post("/redeem", betaH.RedeemBeta)
+		})
+		betaAdminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		r.Route("/v1/admin/beta-invitations", func(r chi.Router) {
+			r.Use(betaAdminH.AdminAuthMiddleware)
+			r.Get("/", betaH.AdminListBetaInvitations)
+			r.Post("/", betaH.AdminCreateBetaInvitation)
+			r.Patch("/{id}", betaH.AdminUpdateBetaInvitation)
 		})
 
 	}

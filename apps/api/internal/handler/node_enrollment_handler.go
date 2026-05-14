@@ -2,11 +2,8 @@ package handler
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
-	"encoding/hex"
+	"crypto/subtle"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -14,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/idgen"
@@ -67,8 +65,7 @@ type enrollResponse struct {
 // CreateEnrollmentToken issues a one-time enrollment token.
 // POST /internal/admin/nodes/enrollment-tokens
 func (h *NodeEnrollmentHandler) CreateEnrollmentToken(w http.ResponseWriter, r *http.Request) {
-	// Simple token-based admin auth (same as other admin endpoints)
-	if r.Header.Get("X-Admin-Token") != h.adminToken {
+	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Admin-Token")), []byte(h.adminToken)) != 1 {
 		response.Error(w, r, apperr.Unauthorized("invalid admin token"))
 		return
 	}
@@ -94,13 +91,13 @@ func (h *NodeEnrollmentHandler) CreateEnrollmentToken(w http.ResponseWriter, r *
 	}
 
 	// Generate token: "ent_" + 32 random hex bytes = 68 chars total
-	rawToken, err := generateSecureToken()
+	rawToken, err := idgen.RawSecret()
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to generate token", err))
 		return
 	}
 	token := "ent_" + rawToken
-	tokenHash := hashToken(token)
+	tokenHash := idgen.SHA256Hex(token)
 	expiresAt := time.Now().Add(expiresIn)
 
 	id := idgen.New("et_")
@@ -132,47 +129,39 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokenHash := hashToken(req.Token)
+	tokenHash := idgen.SHA256Hex(req.Token)
 
-	// Look up token, check validity, mark as used atomically
-	var (
-		tokenID   string
-		expiresAt time.Time
-		usedAt    *time.Time
-	)
+	// Atomically claim the token: SET used_at only if not yet used and not expired.
+	// This is a single UPDATE RETURNING — no separate SELECT needed, no TOCTOU window.
+	var tokenID string
 	err := h.pool.QueryRow(r.Context(), `
-		SELECT id, expires_at, used_at
-		FROM node_enrollment_tokens
+		UPDATE node_enrollment_tokens
+		SET used_at = now()
 		WHERE token_hash = $1
-	`, tokenHash).Scan(&tokenID, &expiresAt, &usedAt)
+		  AND used_at IS NULL
+		  AND expires_at > now()
+		RETURNING id
+	`, tokenHash).Scan(&tokenID)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			response.Error(w, r, apperr.Unauthorized("invalid or expired enrollment token"))
 		} else {
-			response.Error(w, r, apperr.Internal("token lookup failed", err))
+			response.Error(w, r, apperr.Internal("token claim failed", err))
 		}
-		return
-	}
-	if usedAt != nil {
-		response.Error(w, r, apperr.Unauthorized("enrollment token has already been used"))
-		return
-	}
-	if time.Now().After(expiresAt) {
-		response.Error(w, r, apperr.Unauthorized("enrollment token has expired"))
 		return
 	}
 
 	// Generate node credentials
 	nodeID := idgen.New("nd_")
-	secretKey, err := generateSecureToken()
+	secretKey, err := idgen.RawSecret()
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to generate credentials", err))
 		return
 	}
-	secretHash := hashToken(secretKey)
+	secretHash := idgen.SHA256Hex(secretKey)
 
-	// Capture client IP
-	clientIP := extractClientIP(r)
+	// Capture client IP (uses trusted-proxy-aware logic from middleware)
+	clientIP := middleware.ClientIP(r)
 
 	// Insert enrolled node
 	nodeRecordID := idgen.New("en_")
@@ -186,49 +175,14 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark token as used
-	_, err = h.pool.Exec(r.Context(), `
-		UPDATE node_enrollment_tokens
-		SET used_at = now(), used_by = $1
-		WHERE id = $2
+	// Record which node consumed the token (non-fatal — node is already registered).
+	_, _ = h.pool.Exec(r.Context(), `
+		UPDATE node_enrollment_tokens SET used_by = $1 WHERE id = $2
 	`, nodeID, tokenID)
-	if err != nil {
-		// Non-fatal — node is registered; log and continue
-		_ = err
-	}
 
 	response.JSON(w, r, http.StatusCreated, enrollResponse{
 		NodeID:     nodeID,
 		SecretKey:  secretKey,
 		GatewayURL: h.gatewayURL,
 	})
-}
-
-// --- helpers ---
-
-func generateSecureToken() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", fmt.Errorf("rand: %w", err)
-	}
-	return hex.EncodeToString(b), nil
-}
-
-// hashToken returns the lowercase hex SHA-256 of s.
-func hashToken(s string) string {
-	h := sha256.Sum256([]byte(s))
-	return hex.EncodeToString(h[:])
-}
-
-func extractClientIP(r *http.Request) string {
-	if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
-		// Take the first (leftmost) address — closest to the real client
-		for i := 0; i < len(xff); i++ {
-			if xff[i] == ',' {
-				return xff[:i]
-			}
-		}
-		return xff
-	}
-	return r.RemoteAddr
 }

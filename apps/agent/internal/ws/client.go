@@ -72,16 +72,8 @@ func (c *Client) Handle(msgType string, h MessageHandler) {
 }
 
 // Send sends an outbound message to the gateway.
-// It is safe to call from any goroutine.
+// It is safe to call from any goroutine; c.mu serializes all writes.
 func (c *Client) Send(msgType string, payload any) error {
-	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-
-	if conn == nil {
-		return fmt.Errorf("ws: not connected")
-	}
-
 	var raw json.RawMessage
 	if payload != nil {
 		b, err := json.Marshal(payload)
@@ -97,8 +89,13 @@ func (c *Client) Send(msgType string, payload any) error {
 		return fmt.Errorf("ws: marshal message: %w", err)
 	}
 
-	conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	return conn.WriteMessage(websocket.TextMessage, data)
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return fmt.Errorf("ws: not connected")
+	}
+	c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	return c.conn.WriteMessage(websocket.TextMessage, data)
 }
 
 // UpdateFingerprint refreshes the cached fingerprint (e.g. after config reload).
@@ -265,13 +262,12 @@ func (c *Client) sendHeartbeat() {
 
 func (c *Client) writePing() error {
 	c.mu.Lock()
-	conn := c.conn
-	c.mu.Unlock()
-	if conn == nil {
-		return fmt.Errorf("not connected")
+	defer c.mu.Unlock()
+	if c.conn == nil {
+		return fmt.Errorf("ws: not connected")
 	}
-	conn.SetWriteDeadline(time.Now().Add(writeTimeout))
-	return conn.WriteMessage(websocket.PingMessage, nil)
+	c.conn.SetWriteDeadline(time.Now().Add(writeTimeout))
+	return c.conn.WriteMessage(websocket.PingMessage, nil)
 }
 
 func (c *Client) getConn() *websocket.Conn {

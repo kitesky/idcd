@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -218,7 +219,7 @@ func (a *Agent) handleUpgrade(payload json.RawMessage) error {
 	selfPath, _ = filepath.Abs(selfPath)
 	tmpPath := selfPath + ".new"
 
-	if err := downloadFile(cmd.DownloadURL, tmpPath); err != nil {
+	if err := downloadFile(a.client, cmd.DownloadURL, tmpPath); err != nil {
 		return fmt.Errorf("upgrade: download: %w", err)
 	}
 	defer os.Remove(tmpPath) // clean up if we abort
@@ -322,7 +323,7 @@ func (a *Agent) uploadPendingResults() {
 			end = len(pending)
 		}
 		batch := pending[i:end]
-		var results []probe.Result
+		results := make([]probe.Result, 0, len(batch))
 		for _, r := range batch {
 			results = append(results, r.Result)
 		}
@@ -338,8 +339,10 @@ func (a *Agent) uploadPendingResults() {
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
-func downloadFile(url, dest string) error {
-	resp, err := http.Get(url) //nolint:gosec — URL comes from authenticated gateway message
+const maxBinarySize = 100 << 20 // 100 MB — sanity guard against disk exhaustion
+
+func downloadFile(httpClient *http.Client, url, dest string) error {
+	resp, err := httpClient.Get(url) //nolint:gosec — URL comes from authenticated gateway message
 	if err != nil {
 		return err
 	}
@@ -352,16 +355,14 @@ func downloadFile(url, dest string) error {
 		return err
 	}
 	defer f.Close()
-	_, err = io.Copy(f, resp.Body)
+	_, err = io.Copy(f, io.LimitReader(resp.Body, maxBinarySize))
 	return err
 }
 
 // verifySHA256 checks that the file at path matches the expected checksum.
 // expected format: "sha256:<hex>" or plain hex.
 func verifySHA256(path, expected string) error {
-	if len(expected) > 7 && expected[:7] == "sha256:" {
-		expected = expected[7:]
-	}
+	expected, _ = strings.CutPrefix(expected, "sha256:")
 	f, err := os.Open(path)
 	if err != nil {
 		return err

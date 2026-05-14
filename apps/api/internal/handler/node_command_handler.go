@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"net/http"
 
@@ -143,24 +144,20 @@ func (h *NodeCommandHandler) ListNodes(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	// raw is already valid JSON; wrap in our standard envelope
-	resp := append([]byte(`{"data":`), raw...)
-	resp = append(resp, '}')
-	w.Write(resp)
+	response.JSON(w, r, http.StatusOK, json.RawMessage(raw))
 }
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func (h *NodeCommandHandler) isAdmin(r *http.Request) bool {
-	return r.Header.Get("X-Admin-Token") == h.adminToken
+	provided := r.Header.Get("X-Admin-Token")
+	return subtle.ConstantTimeCompare([]byte(provided), []byte(h.adminToken)) == 1
 }
 
 func (h *NodeCommandHandler) nodeExists(ctx context.Context, nodeID string) bool {
-	var dummy string
+	var dummy int
 	err := h.pool.QueryRow(ctx,
-		`SELECT node_id FROM enrolled_nodes WHERE node_id = $1`, nodeID,
+		`SELECT 1 FROM enrolled_nodes WHERE node_id = $1`, nodeID,
 	).Scan(&dummy)
 	return err == nil
 }

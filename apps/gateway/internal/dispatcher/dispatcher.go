@@ -32,6 +32,9 @@ const (
 	batchSize        = 20
 	blockTimeout     = 2 * time.Second
 	claimMinIdle     = 60 * time.Second // reclaim tasks stuck > 60s in PEL
+
+	// redisBusyGroup is the error string Redis returns when the consumer group already exists.
+	redisBusyGroup = "BUSYGROUP Consumer Group name already exists"
 )
 
 // taskMessage is the WebSocket payload sent to the agent.
@@ -46,6 +49,10 @@ type Dispatcher struct {
 	hub          *hub.Hub
 	consumerName string
 	logger       *slog.Logger
+
+	// reclaimCursor tracks progressive XAutoClaim scanning so large PELs drain
+	// across multiple 30s ticks rather than only reading the first batchSize entries.
+	reclaimCursor string
 }
 
 // New creates a Dispatcher. consumerName should be unique per gateway instance
@@ -80,20 +87,13 @@ func (d *Dispatcher) Run(ctx context.Context) {
 	defer reclaimTick.Stop()
 
 	for {
-		select {
-		case <-ctx.Done():
+		// readGroup blocks up to blockTimeout; check for shutdown/reclaim after it returns.
+		msgs, err := d.readGroup(ctx)
+		if ctx.Err() != nil {
 			d.logger.Info("dispatcher stopped")
 			return
-		case <-reclaimTick.C:
-			d.reclaimPending(ctx)
-		default:
 		}
-
-		msgs, err := d.readGroup(ctx)
 		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
 			d.logger.Warn("dispatcher: XREADGROUP error", "err", err)
 			time.Sleep(time.Second)
 			continue
@@ -104,6 +104,16 @@ func (d *Dispatcher) Run(ctx context.Context) {
 				d.ack(ctx, msg.ID)
 			}
 			// If not dispatched (node offline), leave in PEL for reclaimPending.
+		}
+
+		// Non-blocking check: fire reclaim only when the 30s ticker has elapsed.
+		select {
+		case <-reclaimTick.C:
+			d.reclaimPending(ctx)
+		case <-ctx.Done():
+			d.logger.Info("dispatcher stopped")
+			return
+		default:
 		}
 	}
 }
@@ -153,7 +163,7 @@ func (d *Dispatcher) dispatch(_ context.Context, msg redis.XMessage) bool {
 // ensureGroup creates the consumer group (MKSTREAM creates the stream if absent).
 func (d *Dispatcher) ensureGroup(ctx context.Context) error {
 	err := d.rdb.XGroupCreateMkStream(ctx, probeTasksStream, consumerGroup, "0").Err()
-	if err != nil && err.Error() != "BUSYGROUP Consumer Group name already exists" {
+	if err != nil && err.Error() != redisBusyGroup {
 		return fmt.Errorf("XGroupCreateMkStream: %w", err)
 	}
 	return nil
@@ -188,20 +198,34 @@ func (d *Dispatcher) ack(ctx context.Context, msgID string) {
 }
 
 // reclaimPending uses XAUTOCLAIM to retry messages that have been idle > claimMinIdle.
-// This handles tasks assigned to nodes that came online after the message was first read.
+// It advances a cursor across ticks so large PELs drain progressively rather than
+// stalling at the first batchSize entries on every tick.
 func (d *Dispatcher) reclaimPending(ctx context.Context) {
-	msgs, _, err := d.rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
+	start := d.reclaimCursor
+	if start == "" {
+		start = "0-0"
+	}
+
+	msgs, next, err := d.rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 		Stream:   probeTasksStream,
 		Group:    consumerGroup,
 		Consumer: d.consumerName,
 		MinIdle:  claimMinIdle,
-		Start:    "0-0",
+		Start:    start,
 		Count:    batchSize,
 	}).Result()
 	if err != nil {
 		d.logger.Debug("dispatcher: XAutoClaim error (non-fatal)", "err", err)
 		return
 	}
+
+	// Advance cursor; reset to beginning when the scan completes ("0-0" means done).
+	if next == "0-0" {
+		d.reclaimCursor = ""
+	} else {
+		d.reclaimCursor = next
+	}
+
 	for _, msg := range msgs {
 		d.logger.Info("dispatcher: reclaiming pending task", "msg_id", msg.ID, "node_id", msg.Values["node_id"])
 		if dispatched := d.dispatch(ctx, msg); dispatched {

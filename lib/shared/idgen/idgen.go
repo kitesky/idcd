@@ -5,6 +5,7 @@ package idgen
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
 
@@ -91,6 +92,23 @@ func APISecret() (string, error) {
 		return "", fmt.Errorf("idgen.APISecret: %w", err)
 	}
 	return "idc_live_" + hex.EncodeToString(b), nil
+}
+
+// RawSecret returns 32 cryptographically random bytes as a 64-char lowercase hex string.
+// Use when you need a plain random secret without a prefix (e.g. node secret keys).
+func RawSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", fmt.Errorf("idgen.RawSecret: %w", err)
+	}
+	return hex.EncodeToString(b), nil
+}
+
+// SHA256Hex returns the lowercase hex SHA-256 digest of s.
+// Use for hashing secrets before storing them in the database.
+func SHA256Hex(s string) string {
+	h := sha256.Sum256([]byte(s))
+	return hex.EncodeToString(h[:])
 }
 
 // APIKeyPrefix returns the displayable prefix (first 8 hex chars of secret).

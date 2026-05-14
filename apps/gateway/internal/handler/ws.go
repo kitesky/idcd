@@ -3,8 +3,6 @@ package handler
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -54,6 +52,12 @@ const (
 	MsgTypeTask         = "task"
 	MsgTypeUpgrade      = "upgrade"
 	MsgTypeReloadConfig = "reload_config"
+)
+
+const (
+	wsReadDeadline  = 60 * time.Second
+	wsWriteDeadline = 10 * time.Second
+	wsPingInterval  = 54 * time.Second
 )
 
 // Message is the WebSocket wire format.
@@ -138,7 +142,7 @@ func (h *WSHandler) verifyAPIKey(ctx context.Context, key string) (string, error
 	if h.pool == nil {
 		return "", fmt.Errorf("gateway: no DB pool configured")
 	}
-	secretHash := hashAPIKey(key)
+	secretHash := idgen.SHA256Hex(key)
 	var nodeID string
 	err := h.pool.QueryRow(ctx, `
 		SELECT node_id FROM enrolled_nodes
@@ -154,10 +158,6 @@ func (h *WSHandler) verifyAPIKey(ctx context.Context, key string) (string, error
 	return nodeID, nil
 }
 
-func hashAPIKey(key string) string {
-	h := sha256.Sum256([]byte(key))
-	return hex.EncodeToString(h[:])
-}
 
 // ── read / write pumps ────────────────────────────────────────────────────────
 
@@ -172,9 +172,9 @@ func (h *WSHandler) readPump(c *hub.Connection) {
 		}
 	}()
 
-	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+	c.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
 	c.Conn.SetPongHandler(func(string) error {
-		c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
+		c.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
 		return nil
 	})
 
@@ -198,7 +198,7 @@ func (h *WSHandler) readPump(c *hub.Connection) {
 }
 
 func (h *WSHandler) writePump(c *hub.Connection) {
-	ticker := time.NewTicker(54 * time.Second)
+	ticker := time.NewTicker(wsPingInterval)
 	defer func() {
 		ticker.Stop()
 		c.Conn.Close()
@@ -207,7 +207,7 @@ func (h *WSHandler) writePump(c *hub.Connection) {
 	for {
 		select {
 		case msg, ok := <-c.SendCh:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			c.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
 			if !ok {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
@@ -217,7 +217,7 @@ func (h *WSHandler) writePump(c *hub.Connection) {
 				return
 			}
 		case <-ticker.C:
-			c.Conn.SetWriteDeadline(time.Now().Add(10 * time.Second))
+			c.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))
 			if err := c.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
 				return
 			}
@@ -330,14 +330,15 @@ func (h *WSHandler) processFingerprint(ctx context.Context, nodeID string, fp *n
 	`, nodeID, string(fpJSON))
 }
 
+// pendingCmd is a queued command from the node_commands table.
+type pendingCmd struct {
+	ID      string          `json:"id"`
+	Command string          `json:"command"`
+	Payload json.RawMessage `json:"payload"`
+}
+
 // dispatchPendingCommands fetches undelivered commands for this node and sends them.
 func (h *WSHandler) dispatchPendingCommands(ctx context.Context, nodeID string) {
-	type pendingCmd struct {
-		ID      string
-		Command string
-		Payload []byte
-	}
-
 	// Fetch up to 5 pending commands (avoid overwhelming the agent)
 	rows, err := queryPendingCommands(ctx, h.pool, nodeID)
 	if err != nil || len(rows) == 0 {
@@ -347,7 +348,7 @@ func (h *WSHandler) dispatchPendingCommands(ctx context.Context, nodeID string) 
 	for _, cmd := range rows {
 		msg := Message{
 			Type:    cmd.Command,
-			Payload: json.RawMessage(cmd.Payload),
+			Payload: cmd.Payload,
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
@@ -362,12 +363,6 @@ func (h *WSHandler) dispatchPendingCommands(ctx context.Context, nodeID string) 
 			h.logger.Info("command dispatched", "node_id", nodeID, "command", cmd.Command, "cmd_id", cmd.ID)
 		}
 	}
-}
-
-type pendingCmd struct {
-	ID      string
-	Command string
-	Payload json.RawMessage
 }
 
 func queryPendingCommands(ctx context.Context, pool NodeAuthPool, nodeID string) ([]pendingCmd, error) {

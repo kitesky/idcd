@@ -10,6 +10,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v4"
+
+	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
 const enrollTestAdminToken = "test-admin-token"
@@ -97,17 +99,14 @@ func TestEnroll_Success(t *testing.T) {
 	defer mockPool.Close()
 
 	tokenVal := "ent_" + "a" + "b"
-	tokenHash := hashToken(tokenVal)
+	tokenHash := idgen.SHA256Hex(tokenVal)
 
-	expiresAt := time.Now().Add(time.Hour)
-
-	// First QueryRow: token lookup
-	mockPool.ExpectQuery(`SELECT id, expires_at, used_at`).
+	// Atomic UPDATE RETURNING — claims the token in one shot
+	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "expires_at", "used_at"}).
-			AddRow("et_001", expiresAt, nil))
+		WillReturnRows(pgxmock.NewRows([]string{"id"}).AddRow("et_001"))
 
-	// Exec: insert enrolled_nodes
+	// INSERT enrolled node
 	mockPool.ExpectExec(`INSERT INTO enrolled_nodes`).
 		WithArgs(
 			pgxmock.AnyArg(), // id
@@ -122,8 +121,8 @@ func TestEnroll_Success(t *testing.T) {
 		).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
-	// Exec: mark token used
-	mockPool.ExpectExec(`UPDATE node_enrollment_tokens`).
+	// UPDATE used_by (non-fatal, fires after node is registered)
+	mockPool.ExpectExec(`UPDATE node_enrollment_tokens SET used_by`).
 		WithArgs(pgxmock.AnyArg(), "et_001").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
@@ -164,8 +163,9 @@ func TestEnroll_InvalidToken(t *testing.T) {
 	h, mockPool := setupEnrollmentHandler(t)
 	defer mockPool.Close()
 
-	tokenHash := hashToken("ent_badtoken")
-	mockPool.ExpectQuery(`SELECT id, expires_at, used_at`).
+	tokenHash := idgen.SHA256Hex("ent_badtoken")
+	// Atomic UPDATE finds nothing (token not found / expired / already used)
+	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
 		WillReturnError(pgx.ErrNoRows)
 
@@ -184,12 +184,11 @@ func TestEnroll_AlreadyUsedToken(t *testing.T) {
 	h, mockPool := setupEnrollmentHandler(t)
 	defer mockPool.Close()
 
-	tokenHash := hashToken("ent_usedtoken")
-	usedAt := time.Now().Add(-time.Hour)
-	mockPool.ExpectQuery(`SELECT id, expires_at, used_at`).
+	tokenHash := idgen.SHA256Hex("ent_usedtoken")
+	// Token is already used: WHERE used_at IS NULL fails → ErrNoRows
+	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "expires_at", "used_at"}).
-			AddRow("et_001", time.Now().Add(time.Hour), &usedAt))
+		WillReturnError(pgx.ErrNoRows)
 
 	body, _ := json.Marshal(enrollRequest{Token: "ent_usedtoken", Hostname: "h", Arch: "amd64", OS: "linux"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/agent/enroll", bytes.NewReader(body))
@@ -206,11 +205,11 @@ func TestEnroll_ExpiredToken(t *testing.T) {
 	h, mockPool := setupEnrollmentHandler(t)
 	defer mockPool.Close()
 
-	tokenHash := hashToken("ent_expiredtoken")
-	mockPool.ExpectQuery(`SELECT id, expires_at, used_at`).
+	tokenHash := idgen.SHA256Hex("ent_expiredtoken")
+	// Token is expired: WHERE expires_at > now() fails → ErrNoRows
+	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "expires_at", "used_at"}).
-			AddRow("et_001", time.Now().Add(-time.Hour), nil))
+		WillReturnError(pgx.ErrNoRows)
 
 	body, _ := json.Marshal(enrollRequest{Token: "ent_expiredtoken", Hostname: "h", Arch: "amd64", OS: "linux"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/agent/enroll", bytes.NewReader(body))
@@ -223,14 +222,14 @@ func TestEnroll_ExpiredToken(t *testing.T) {
 	}
 }
 
-func TestHashToken_Deterministic(t *testing.T) {
-	h1 := hashToken("test-token")
-	h2 := hashToken("test-token")
+func TestSHA256Hex_Deterministic(t *testing.T) {
+	h1 := idgen.SHA256Hex("test-token")
+	h2 := idgen.SHA256Hex("test-token")
 	if h1 != h2 {
-		t.Error("hashToken must be deterministic")
+		t.Error("SHA256Hex must be deterministic")
 	}
-	if h1 == hashToken("other-token") {
-		t.Error("different tokens must produce different hashes")
+	if h1 == idgen.SHA256Hex("other-token") {
+		t.Error("different inputs must produce different hashes")
 	}
 	if len(h1) != 64 {
 		t.Errorf("expected 64-char hex SHA-256, got %d", len(h1))

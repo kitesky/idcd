@@ -33,9 +33,9 @@ func TestQueueUpgrade_Success(t *testing.T) {
 	defer mock.Close()
 
 	// nodeExists check
-	mock.ExpectQuery(`SELECT node_id FROM enrolled_nodes`).
+	mock.ExpectQuery(`SELECT 1 FROM enrolled_nodes`).
 		WithArgs("nd_test").
-		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_test"))
+		WillReturnRows(pgxmock.NewRows([]string{"?column?"}).AddRow(1))
 
 	// insert command
 	mock.ExpectExec(`INSERT INTO node_commands`).
@@ -65,9 +65,9 @@ func TestQueueUpgrade_MissingDownloadURL(t *testing.T) {
 	h, mock := setupNodeCmdHandler(t)
 	defer mock.Close()
 
-	mock.ExpectQuery(`SELECT node_id FROM enrolled_nodes`).
+	mock.ExpectQuery(`SELECT 1 FROM enrolled_nodes`).
 		WithArgs("nd_test").
-		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_test"))
+		WillReturnRows(pgxmock.NewRows([]string{"?column?"}).AddRow(1))
 
 	body, _ := json.Marshal(upgradeRequest{Version: "v1.0.0"}) // no download_url
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))
@@ -101,9 +101,9 @@ func TestQueueReloadConfig_Success(t *testing.T) {
 	h, mock := setupNodeCmdHandler(t)
 	defer mock.Close()
 
-	mock.ExpectQuery(`SELECT node_id FROM enrolled_nodes`).
+	mock.ExpectQuery(`SELECT 1 FROM enrolled_nodes`).
 		WithArgs("nd_test").
-		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_test"))
+		WillReturnRows(pgxmock.NewRows([]string{"?column?"}).AddRow(1))
 
 	mock.ExpectExec(`INSERT INTO node_commands`).
 		WithArgs(pgxmock.AnyArg(), "nd_test", "reload_config", pgxmock.AnyArg()).

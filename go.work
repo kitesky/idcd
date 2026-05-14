@@ -12,4 +12,5 @@ use (
 	./lib/db
 	./lib/ratelimit
 	./lib/shared
+	./packages/sdk-go
 )

@@ -473,6 +473,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J14** IPv6 检测/转换工具页 — `tool-functions.ts` 新增 `checkIPv6`（valid/expanded/compressed/type/isIPv4Mapped）、`ipv4ToIPv6Mapped`、`ipv6ToPTR`（.ip6.arpa PTR 记录），`Ipv6CheckClient` 升级显示完整类型+IPv4映射标识，`ipv6-check.test.ts`（12 tests）+ `ipv6-convert.test.ts`（14 tests），460 前端 tests ✓，完成 2026-05-14
 - [x] **J15** Anchor 锚定基准 + 偏差实时告警 — DB migration 00015（`monitor_baselines` + `anchor_deviations`），`BaselineUpdater`（7天窗口 percentile_cont，rate-limited：6h 或 100-sample boundary），`AnchorChecker`（p95 延迟 2x/3x warning/critical，success_rate 95%阈值，open 去重，resolved 恢复），processor.Process() 接入，`AnchorHandler`（GET `/v1/monitors/{id}/baseline` + `/{id}/deviations`），server.go 路由注册，14 aggregator tests + 7 API tests ✓，完成 2026-05-14
 - [x] **J16** 节点高级诊断 API + 前端 — `GET /v1/nodes/{id}/diagnostics`（公开，无认证，NodeDiagPool 接口，404 节点不存在，nil pool 返回 stub），`NodeDiagnosticsHandler` + 路由注册（server.go），`apps/web/src/app/nodes/[id]/page.tsx` 节点详情页（SSR，延迟分布 CSS 柱状图，24h 健康趋势 sparkline，节点基本信息），`/nodes` 列表增加"查看诊断"链接，修复 monitor_stream_test.go 重复 errRow 类型定义，8 Go tests + 7 前端 tests ✓，完成 2026-05-14
+- [x] **J17** 官方 Go SDK — `packages/sdk-go/`，module `github.com/kite365/idcd-go`，零外部依赖（仅标准库），全 API 覆盖（probe/info/monitor/alert/billing/dashboard/sla），`client.go`（New/do/Option 模式）+ 7 个方法文件 + `types.go`（50+ 请求/响应类型），`client_test.go`（9 tests：ProbeHTTP success/apiError/ListMonitors/CreateMonitor/GetIPInfo/WithOptions/GetSLAReport/DeleteMonitor/BulkAction），go.work 已更新，`go build ./packages/sdk-go/...` + `go test` 全绿，完成 2026-05-14
 
 ---
 

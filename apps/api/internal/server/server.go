@@ -15,8 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/kite365/idcd/apps/api/internal/billing"
 	"github.com/kite365/idcd/apps/api/internal/handler"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
+	"github.com/kite365/idcd/apps/api/internal/quota"
 	"github.com/kite365/idcd/lib/auth/jwt"
 	"github.com/kite365/idcd/lib/auth/session"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
@@ -128,6 +130,7 @@ func (s *Server) setupRouter() {
 
 		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret)
 		acctH := handler.NewAccountHandler(q)
+		apiKeyH := handler.NewAPIKeyHandler(q)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
 		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
@@ -153,6 +156,10 @@ func (s *Server) setupRouter() {
 				r.Get("/profile", acctH.GetProfile)
 				r.Patch("/profile", acctH.UpdateProfile)
 				r.Delete("/", acctH.DeleteAccount)
+				// API key management
+				r.Get("/api-keys", apiKeyH.ListAPIKeys)
+				r.Post("/api-keys", apiKeyH.CreateAPIKey)
+				r.Delete("/api-keys/{id}", apiKeyH.RevokeAPIKey)
 			})
 			r.Route("/info", func(r chi.Router) {
 				infoH := handler.NewInfoHandler()
@@ -177,10 +184,30 @@ func (s *Server) setupRouter() {
 			nodesH := handler.NewNodesHandler(s.pgxPool)
 			r.Get("/nodes", nodesH.List)
 
+			// API quota rate limiter (per-user daily limit)
+			apiRateLimiter := quota.NewAPIRateLimiter(s.redis)
+
+			// planLookup fetches the user's active subscription plan.
+			planLookup := middleware.APIPlanLookup(func(ctx context.Context, userID string) string {
+				var plan string
+				err := s.pgxPool.QueryRow(ctx,
+					`SELECT plan FROM subscriptions WHERE user_id = $1 AND status = 'active' LIMIT 1`,
+					userID,
+				).Scan(&plan)
+				if err != nil {
+					return "free"
+				}
+				return plan
+			})
+
+			// Quota middleware: applied to authenticated routes after authnMW.
+			apiQuotaMW := middleware.APIQuotaMiddleware(apiRateLimiter, planLookup)
+
 			// Monitor CRUD endpoints (authentication required)
-			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool))
+			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool)).WithQuotaPool(s.pgxPool)
 			r.Route("/monitors", func(r chi.Router) {
 				r.Use(authnMW)
+				r.Use(apiQuotaMW)
 				r.Post("/", monitorH.Create)
 				r.Get("/", monitorH.List)
 				r.Get("/{id}", monitorH.Get)
@@ -199,10 +226,33 @@ func (s *Server) setupRouter() {
 				r.Post("/refund-failed/{id}/retry", adminBillingH.RetryRefund)
 			})
 
+			// Billing endpoints (subscribe, cancel, invoices, webhook, stub-confirm)
+			stubProvider := billing.NewStubProvider()
+			billingH := handler.NewBillingHandler(s.pgxPool, stubProvider)
+			r.Route("/billing", func(r chi.Router) {
+				// Authenticated routes
+				r.With(authnMW).Post("/subscribe", billingH.Subscribe)
+				r.With(authnMW).Post("/cancel", billingH.Cancel)
+				r.With(authnMW).Get("/subscription", billingH.GetSubscription)
+				r.With(authnMW).Get("/invoices", billingH.ListInvoices)
+				// Unauthenticated routes
+				r.Post("/webhook", billingH.Webhook)
+				r.Get("/stub-confirm", billingH.StubConfirm)
+			})
+
+			// Quota status endpoint
+			quotaH := handler.NewQuotaHandler(s.pgxPool, apiRateLimiter)
+			r.Route("/account/quota", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Use(apiQuotaMW)
+				r.Get("/", quotaH.GetQuota)
+			})
+
 			// Alert channels, policies, and events (authentication required)
 			alertH := handler.NewAlertHandler(s.pgxPool)
 			r.Route("/alert-channels", func(r chi.Router) {
 				r.Use(authnMW)
+				r.Use(apiQuotaMW)
 				r.Post("/", alertH.CreateChannel)
 				r.Get("/", alertH.ListChannels)
 				r.Delete("/{id}", alertH.DeleteChannel)
@@ -210,6 +260,7 @@ func (s *Server) setupRouter() {
 			})
 			r.Route("/alert-policies", func(r chi.Router) {
 				r.Use(authnMW)
+				r.Use(apiQuotaMW)
 				r.Post("/", alertH.CreatePolicy)
 				r.Get("/", alertH.ListPolicies)
 				r.Patch("/{id}", alertH.UpdatePolicy)
@@ -217,6 +268,7 @@ func (s *Server) setupRouter() {
 			})
 			r.Route("/alert-events", func(r chi.Router) {
 				r.Use(authnMW)
+				r.Use(apiQuotaMW)
 				r.Get("/", alertH.ListEvents)
 				r.Post("/{id}/ack", alertH.AcknowledgeEvent)
 			})

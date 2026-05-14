@@ -1,0 +1,235 @@
+package billing_test
+
+import (
+	"context"
+	"encoding/json"
+	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/kite365/idcd/apps/api/internal/billing"
+)
+
+// ---- helper ----
+
+func newStub() *billing.StubProvider {
+	return billing.NewStubProvider()
+}
+
+var ctx = context.Background()
+
+// ---- Name ----
+
+func TestStubProvider_Name(t *testing.T) {
+	p := newStub()
+	assert.Equal(t, "stub", p.Name())
+}
+
+// ---- Subscribe ----
+
+func TestStubProvider_Subscribe_Success(t *testing.T) {
+	p := newStub()
+	res, err := p.Subscribe(ctx, billing.SubscribeRequest{
+		UserID: "u_abc",
+		Plan:   billing.PlanPro,
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, res.SubscriptionID)
+	assert.Contains(t, res.ExtSubID, "stub_")
+	assert.Contains(t, res.PayURL, "/billing/stub-confirm?sub_id=")
+	assert.Contains(t, res.PayURL, "plan=pro")
+	assert.False(t, res.ExpiresAt.IsZero())
+}
+
+func TestStubProvider_Subscribe_AllPlans(t *testing.T) {
+	plans := []billing.Plan{billing.PlanFree, billing.PlanPro, billing.PlanTeam, billing.PlanBusiness}
+	p := newStub()
+	for _, plan := range plans {
+		res, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_x", Plan: plan})
+		require.NoError(t, err, "plan=%s", plan)
+		assert.NotEmpty(t, res.SubscriptionID)
+	}
+}
+
+func TestStubProvider_Subscribe_MissingUserID(t *testing.T) {
+	p := newStub()
+	_, err := p.Subscribe(ctx, billing.SubscribeRequest{Plan: billing.PlanPro})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "user_id is required")
+}
+
+func TestStubProvider_Subscribe_UnknownPlan(t *testing.T) {
+	p := newStub()
+	_, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_abc", Plan: "enterprise"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown plan")
+}
+
+func TestStubProvider_Subscribe_StartsAsPending(t *testing.T) {
+	p := newStub()
+	res, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_abc", Plan: billing.PlanTeam})
+	require.NoError(t, err)
+
+	sub, ok := p.GetSubscription(res.SubscriptionID)
+	require.True(t, ok)
+	assert.Equal(t, "pending", sub.Status)
+}
+
+// ---- Cancel ----
+
+func TestStubProvider_Cancel_Success(t *testing.T) {
+	p := newStub()
+	res, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_u1", Plan: billing.PlanPro})
+	require.NoError(t, err)
+
+	err = p.Cancel(ctx, billing.CancelRequest{
+		SubscriptionID: res.SubscriptionID,
+		UserID:         "u_u1",
+		Reason:         "testing",
+	})
+	require.NoError(t, err)
+
+	sub, ok := p.GetSubscription(res.SubscriptionID)
+	require.True(t, ok)
+	assert.Equal(t, "cancelled", sub.Status)
+}
+
+func TestStubProvider_Cancel_MissingSubID(t *testing.T) {
+	p := newStub()
+	err := p.Cancel(ctx, billing.CancelRequest{UserID: "u_u1"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "subscription_id is required")
+}
+
+func TestStubProvider_Cancel_NotFound(t *testing.T) {
+	p := newStub()
+	err := p.Cancel(ctx, billing.CancelRequest{SubscriptionID: "sub_nonexistent"})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+// ---- ParseWebhook ----
+
+func TestStubProvider_ParseWebhook_PaymentSucceeded(t *testing.T) {
+	p := newStub()
+	payload := billing.StubWebhookPayload{
+		EventType:      billing.EventPaymentSucceeded,
+		ExtTxnID:       "stub_txn_001",
+		ExtSubID:       "stub_sub_001",
+		AmountCents:    9900,
+		Currency:       "CNY",
+		UserID:         "u_abc",
+		SubscriptionID: "sub_abc",
+		Metadata:       map[string]string{"order_id": "ord_001"},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	event, err := p.ParseWebhook(ctx, body, nil)
+	require.NoError(t, err)
+	assert.Equal(t, billing.EventPaymentSucceeded, event.EventType)
+	assert.Equal(t, "stub_txn_001", event.ExtTxnID)
+	assert.Equal(t, int64(9900), event.AmountCents)
+	assert.Equal(t, "CNY", event.Currency)
+	assert.Equal(t, "ord_001", event.Metadata["order_id"])
+}
+
+func TestStubProvider_ParseWebhook_EmptyBody(t *testing.T) {
+	p := newStub()
+	_, err := p.ParseWebhook(ctx, []byte{}, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty body")
+}
+
+func TestStubProvider_ParseWebhook_InvalidJSON(t *testing.T) {
+	p := newStub()
+	_, err := p.ParseWebhook(ctx, []byte("not json"), nil)
+	assert.Error(t, err)
+}
+
+func TestStubProvider_ParseWebhook_MissingEventType(t *testing.T) {
+	p := newStub()
+	body, _ := json.Marshal(map[string]string{"foo": "bar"})
+	_, err := p.ParseWebhook(ctx, body, nil)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "event_type is required")
+}
+
+// ---- RefundPayment ----
+
+func TestStubProvider_RefundPayment_Success(t *testing.T) {
+	p := newStub()
+	err := p.RefundPayment(ctx, "stub_txn_001", 9900, "customer_request")
+	require.NoError(t, err)
+}
+
+func TestStubProvider_RefundPayment_MissingTxnID(t *testing.T) {
+	p := newStub()
+	err := p.RefundPayment(ctx, "", 9900, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "ext_txn_id is required")
+}
+
+func TestStubProvider_RefundPayment_ZeroAmount(t *testing.T) {
+	p := newStub()
+	err := p.RefundPayment(ctx, "stub_txn_001", 0, "")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "amount_cents must be positive")
+}
+
+// ---- ConfirmSubscription ----
+
+func TestStubProvider_ConfirmSubscription_Success(t *testing.T) {
+	p := newStub()
+	res, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_abc", Plan: billing.PlanPro})
+	require.NoError(t, err)
+
+	err = p.ConfirmSubscription(res.SubscriptionID)
+	require.NoError(t, err)
+
+	sub, ok := p.GetSubscription(res.SubscriptionID)
+	require.True(t, ok)
+	assert.Equal(t, "active", sub.Status)
+}
+
+func TestStubProvider_ConfirmSubscription_NotFound(t *testing.T) {
+	p := newStub()
+	err := p.ConfirmSubscription("sub_nonexistent")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestStubProvider_ConfirmSubscription_AlreadyCancelled(t *testing.T) {
+	p := newStub()
+	res, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_abc", Plan: billing.PlanPro})
+	require.NoError(t, err)
+
+	require.NoError(t, p.Cancel(ctx, billing.CancelRequest{SubscriptionID: res.SubscriptionID}))
+	err = p.ConfirmSubscription(res.SubscriptionID)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "already cancelled")
+}
+
+// ---- PlanPrice ----
+
+func TestPlanPrice_AllDefined(t *testing.T) {
+	plans := []billing.Plan{billing.PlanFree, billing.PlanPro, billing.PlanTeam, billing.PlanBusiness}
+	for _, plan := range plans {
+		price, ok := billing.PlanPrice[plan]
+		assert.True(t, ok, "missing price for plan %s", plan)
+		assert.GreaterOrEqual(t, price, int64(0))
+	}
+}
+
+func TestPlanPrice_Values(t *testing.T) {
+	assert.Equal(t, int64(0), billing.PlanPrice[billing.PlanFree])
+	assert.Equal(t, int64(9900), billing.PlanPrice[billing.PlanPro])
+	assert.Equal(t, int64(29900), billing.PlanPrice[billing.PlanTeam])
+	assert.Equal(t, int64(99900), billing.PlanPrice[billing.PlanBusiness])
+}
+
+func TestValidPlan(t *testing.T) {
+	assert.True(t, billing.ValidPlan(billing.PlanPro))
+	assert.False(t, billing.ValidPlan("unknown"))
+}

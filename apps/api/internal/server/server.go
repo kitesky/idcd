@@ -176,6 +176,50 @@ func (s *Server) setupRouter() {
 			// Node directory endpoint
 			nodesH := handler.NewNodesHandler(s.pgxPool)
 			r.Get("/nodes", nodesH.List)
+
+			// Monitor CRUD endpoints (authentication required)
+			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool))
+			r.Route("/monitors", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/", monitorH.Create)
+				r.Get("/", monitorH.List)
+				r.Get("/{id}", monitorH.Get)
+				r.Patch("/{id}", monitorH.Update)
+				r.Delete("/{id}", monitorH.Delete)
+				r.Post("/{id}/pause", monitorH.Pause)
+				r.Post("/{id}/resume", monitorH.Resume)
+			})
+
+			// Admin billing endpoints
+			// TODO: Add role=admin middleware once users.is_admin column exists.
+			// Until then these routes should be restricted to VPN/internal network only.
+			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool)
+			r.Route("/admin", func(r chi.Router) {
+				r.Get("/refund-failed", adminBillingH.ListRefundFailed)
+				r.Post("/refund-failed/{id}/retry", adminBillingH.RetryRefund)
+			})
+
+			// Alert channels, policies, and events (authentication required)
+			alertH := handler.NewAlertHandler(s.pgxPool)
+			r.Route("/alert-channels", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/", alertH.CreateChannel)
+				r.Get("/", alertH.ListChannels)
+				r.Delete("/{id}", alertH.DeleteChannel)
+				r.Post("/{id}/test", alertH.TestChannel)
+			})
+			r.Route("/alert-policies", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/", alertH.CreatePolicy)
+				r.Get("/", alertH.ListPolicies)
+				r.Patch("/{id}", alertH.UpdatePolicy)
+				r.Delete("/{id}", alertH.DeletePolicy)
+			})
+			r.Route("/alert-events", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Get("/", alertH.ListEvents)
+				r.Post("/{id}/ack", alertH.AcknowledgeEvent)
+			})
 		})
 	}
 

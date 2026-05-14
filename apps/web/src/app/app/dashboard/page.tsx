@@ -1,4 +1,6 @@
-import type { Metadata } from "next"
+"use client"
+
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import {
   Activity,
@@ -8,12 +10,21 @@ import {
   CheckCircle2,
   Globe,
   LayoutDashboard,
+  Pin,
   Plus,
   TrendingUp,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -23,41 +34,28 @@ import {
   TableRow,
 } from "@/components/ui/table"
 
-export const metadata: Metadata = {
-  title: "总览 - idcd",
-  description: "idcd 控制台总览：监控状态、可用率、告警汇总",
+interface MonitorSummary {
+  total: number
+  up: number
+  down: number
+  paused: number
 }
 
-// ─── Mock data ────────────────────────────────────────────────────────────────
-
-const SUMMARY = {
-  monitors: { total: 5, up: 4, down: 1, paused: 0 },
-  checksToday: 1440,
-  avgUptime7d: 99.7,
-  incidentsOpen: 1,
-  alertsFired7d: 3,
-  statusPages: 2,
+interface DashboardSummary {
+  monitors: MonitorSummary
+  checks_today: number
+  avg_uptime_7d: number
+  incidents_open: number
+  alerts_fired_7d: number
+  status_pages: number
 }
 
-type AlertStatus = "firing" | "resolved"
-
-interface RecentAlert {
+interface MonitorItem {
   id: string
-  time: string
-  monitorName: string
-  status: AlertStatus
-  channel: string
+  name: string
+  status: string
+  last_check_at?: string
 }
-
-const RECENT_ALERTS: RecentAlert[] = [
-  { id: "ae-001", time: "2026-05-14 09:12", monitorName: "API 网关健康检查", status: "firing", channel: "邮件" },
-  { id: "ae-002", time: "2026-05-14 07:45", monitorName: "idcd.com 主站", status: "resolved", channel: "Webhook" },
-  { id: "ae-003", time: "2026-05-13 23:18", monitorName: "香港节点 Ping", status: "resolved", channel: "邮件" },
-  { id: "ae-004", time: "2026-05-13 18:02", monitorName: "API 网关健康检查", status: "resolved", channel: "邮件" },
-  { id: "ae-005", time: "2026-05-13 11:55", monitorName: "DNS 解析检查", status: "resolved", channel: "Webhook" },
-]
-
-// ─── Stat card ────────────────────────────────────────────────────────────────
 
 interface StatCardProps {
   title: string
@@ -65,9 +63,10 @@ interface StatCardProps {
   icon: React.ReactNode
   badge?: React.ReactNode
   testId?: string
+  loading?: boolean
 }
 
-function StatCard({ title, value, icon, badge, testId }: StatCardProps) {
+function StatCard({ title, value, icon, badge, testId, loading }: StatCardProps) {
   return (
     <Card data-testid={testId}>
       <CardHeader className="pb-2">
@@ -77,17 +76,114 @@ function StatCard({ title, value, icon, badge, testId }: StatCardProps) {
         </CardTitle>
       </CardHeader>
       <CardContent className="flex items-center gap-2">
-        <p className="text-3xl font-bold tabular-nums">{value}</p>
-        {badge}
+        {loading ? (
+          <Skeleton className="h-8 w-16" />
+        ) : (
+          <>
+            <p className="text-3xl font-bold tabular-nums">{value}</p>
+            {badge}
+          </>
+        )}
       </CardContent>
     </Card>
   )
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+function monitorStatusBadge(status: string) {
+  switch (status) {
+    case "active":
+      return <Badge variant="success">在线</Badge>
+    case "down":
+      return <Badge variant="destructive">离线</Badge>
+    case "paused":
+      return <Badge variant="secondary">暂停</Badge>
+    default:
+      return <Badge variant="outline">{status}</Badge>
+  }
+}
+
+function formatRelative(iso?: string): string {
+  if (!iso) return "—"
+  const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
+  if (diff < 60) return `${diff}秒前`
+  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
+  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
+  return `${Math.floor(diff / 86400)}天前`
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+
+async function apiFetch<T>(path: string): Promise<T> {
+  const res = await fetch(`${API_BASE}${path}`, { credentials: "include" })
+  if (!res.ok) throw new Error(`fetch ${path} failed: ${res.status}`)
+  const json = await res.json()
+  return json.data as T
+}
 
 export default function DashboardPage() {
-  const { monitors, checksToday, avgUptime7d, incidentsOpen, alertsFired7d, statusPages } = SUMMARY
+  const [summary, setSummary] = useState<DashboardSummary | null>(null)
+  const [summaryLoading, setSummaryLoading] = useState(true)
+
+  const [pinnedIDs, setPinnedIDs] = useState<string[]>([])
+  const [monitors, setMonitors] = useState<MonitorItem[]>([])
+  const [sheetOpen, setSheetOpen] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    apiFetch<DashboardSummary>("/v1/dashboard/summary")
+      .then(setSummary)
+      .catch(() => setSummary(null))
+      .finally(() => setSummaryLoading(false))
+
+    apiFetch<{ monitor_ids: string[] }>("/v1/dashboard/pins")
+      .then((d) => setPinnedIDs(d.monitor_ids ?? []))
+      .catch(() => {})
+
+    apiFetch<{ items: MonitorItem[] }>("/v1/monitors")
+      .then((d) => setMonitors(d.items ?? []))
+      .catch(() => {})
+  }, [])
+
+  const pinnedMonitors = monitors.filter((m) => pinnedIDs.includes(m.id))
+
+  function openPinSheet() {
+    setSelected(new Set(pinnedIDs))
+    setSheetOpen(true)
+  }
+
+  function toggleSelect(id: string) {
+    setSelected((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else if (next.size < 6) {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  async function savePins() {
+    const ids = Array.from(selected)
+    try {
+      const res = await fetch(`${API_BASE}/v1/dashboard/pins`, {
+        method: "PUT",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ monitor_ids: ids }),
+      })
+      if (res.ok) {
+        setPinnedIDs(ids)
+      }
+    } catch {}
+    setSheetOpen(false)
+  }
+
+  const m = summary?.monitors
+  const checksToday = summary?.checks_today ?? 0
+  const avgUptime7d = summary?.avg_uptime_7d ?? 0
+  const incidentsOpen = summary?.incidents_open ?? 0
+  const statusPages = summary?.status_pages ?? 0
 
   return (
     <div className="min-h-screen bg-background">
@@ -100,7 +196,6 @@ export default function DashboardPage() {
         </div>
 
         <div className="space-y-8">
-          {/* ── 第一行：6 个统计卡片 ─────────────────────────────────────────── */}
           <div
             className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6"
             data-testid="stat-cards"
@@ -108,16 +203,18 @@ export default function DashboardPage() {
             <StatCard
               testId="stat-monitors-total"
               title="监控总数"
-              value={monitors.total}
+              value={m?.total ?? 0}
               icon={<Activity className="h-4 w-4" />}
+              loading={summaryLoading}
             />
 
             <StatCard
               testId="stat-monitors-up"
               title="在线 / 总数"
-              value={`${monitors.up} / ${monitors.total}`}
+              value={`${m?.up ?? 0} / ${m?.total ?? 0}`}
               icon={<CheckCircle2 className="h-4 w-4 text-success" />}
               badge={<Badge variant="success">正常</Badge>}
+              loading={summaryLoading}
             />
 
             <StatCard
@@ -125,6 +222,7 @@ export default function DashboardPage() {
               title="今日拨测次数"
               value={checksToday.toLocaleString()}
               icon={<TrendingUp className="h-4 w-4" />}
+              loading={summaryLoading}
             />
 
             <StatCard
@@ -132,6 +230,7 @@ export default function DashboardPage() {
               title="7 日平均可用率"
               value={`${avgUptime7d}%`}
               icon={<Activity className="h-4 w-4 text-success" />}
+              loading={summaryLoading}
             />
 
             <StatCard
@@ -144,6 +243,7 @@ export default function DashboardPage() {
                   <Badge variant="destructive">{incidentsOpen}</Badge>
                 ) : undefined
               }
+              loading={summaryLoading}
             />
 
             <StatCard
@@ -151,10 +251,10 @@ export default function DashboardPage() {
               title="状态页数量"
               value={statusPages}
               icon={<Globe className="h-4 w-4" />}
+              loading={summaryLoading}
             />
           </div>
 
-          {/* ── 第二行：快捷入口 ─────────────────────────────────────────────── */}
           <div>
             <h2 className="mb-4 text-lg font-semibold">快捷入口</h2>
             <div
@@ -217,52 +317,88 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* ── 第三行：近期告警事件 ─────────────────────────────────────────── */}
-          <div>
+          <div data-testid="pinned-monitors-section">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">近期告警事件</h2>
-              <Button asChild variant="ghost" size="sm">
-                <Link href="/app/alerts">
-                  查看全部
-                  <ArrowRight className="ml-2 h-4 w-4" />
-                </Link>
+              <h2 className="text-lg font-semibold">置顶监控</h2>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={openPinSheet}
+                data-testid="open-pin-sheet"
+              >
+                <Plus className="mr-1 h-4 w-4" />
+                添加
               </Button>
             </div>
-            <Card data-testid="recent-alerts-table">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>时间</TableHead>
-                    <TableHead>监控名</TableHead>
-                    <TableHead>状态</TableHead>
-                    <TableHead>通道</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {RECENT_ALERTS.map((alert) => (
-                    <TableRow key={alert.id}>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {alert.time}
-                      </TableCell>
-                      <TableCell className="font-medium">{alert.monitorName}</TableCell>
-                      <TableCell>
-                        {alert.status === "firing" ? (
-                          <Badge variant="destructive">告警中</Badge>
-                        ) : (
-                          <Badge variant="success">已恢复</Badge>
-                        )}
-                      </TableCell>
-                      <TableCell className="text-sm text-muted-foreground">
-                        {alert.channel}
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </Card>
+
+            {pinnedMonitors.length === 0 ? (
+              <Card data-testid="pinned-empty">
+                <CardContent className="flex flex-col items-center justify-center py-10 text-muted-foreground">
+                  <Pin className="mb-2 h-8 w-8 opacity-30" />
+                  <p className="text-sm">暂无置顶监控，点击 + 添加</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3" data-testid="pinned-list">
+                {pinnedMonitors.map((mon) => (
+                  <Card key={mon.id} data-testid={`pinned-card-${mon.id}`}>
+                    <CardHeader className="pb-2">
+                      <CardTitle className="flex items-center justify-between text-sm font-medium">
+                        <span className="truncate">{mon.name}</span>
+                        {monitorStatusBadge(mon.status)}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      <p className="text-xs text-muted-foreground">
+                        最近检测：{formatRelative(mon.last_check_at)}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
+
+      <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
+        <SheetContent data-testid="pin-sheet">
+          <SheetHeader>
+            <SheetTitle>选择置顶监控（最多 6 个）</SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 space-y-2">
+            {monitors.length === 0 ? (
+              <p className="text-sm text-muted-foreground">暂无监控项</p>
+            ) : (
+              monitors.map((mon) => (
+                <div key={mon.id} className="flex items-center gap-3 rounded-md p-2 hover:bg-muted/50">
+                  <Checkbox
+                    id={`pin-${mon.id}`}
+                    checked={selected.has(mon.id)}
+                    onCheckedChange={() => toggleSelect(mon.id)}
+                    disabled={!selected.has(mon.id) && selected.size >= 6}
+                  />
+                  <label
+                    htmlFor={`pin-${mon.id}`}
+                    className="flex flex-1 cursor-pointer items-center justify-between text-sm"
+                  >
+                    <span>{mon.name}</span>
+                    {monitorStatusBadge(mon.status)}
+                  </label>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="mt-6 flex justify-end gap-2">
+            <Button variant="outline" onClick={() => setSheetOpen(false)}>
+              取消
+            </Button>
+            <Button onClick={savePins} data-testid="save-pins">
+              保存
+            </Button>
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

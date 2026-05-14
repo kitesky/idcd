@@ -234,7 +234,7 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
       </div>
 
       {/* 监控列表表格 */}
-      <Card>
+      <Card className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -247,10 +247,10 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
               </TableHead>
               <TableHead>名称</TableHead>
               <TableHead>类型</TableHead>
-              <TableHead>目标</TableHead>
+              <TableHead className="hidden md:table-cell">目标</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>最后检查</TableHead>
-              <TableHead>可用率</TableHead>
+              <TableHead className="hidden md:table-cell">最后检查</TableHead>
+              <TableHead className="hidden md:table-cell">可用率</TableHead>
               <TableHead className="w-24">操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -292,14 +292,14 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
                     </Link>
                   </TableCell>
                   <TableCell>{typeBadge(monitor.type)}</TableCell>
-                  <TableCell className="max-w-[200px] truncate font-mono text-xs text-muted-foreground">
+                  <TableCell className="hidden md:table-cell max-w-[200px] truncate font-mono text-xs text-muted-foreground">
                     {monitor.target}
                   </TableCell>
                   <TableCell>{statusBadge(monitor.status)}</TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
+                  <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {formatRelativeTime(monitor.lastCheckedAt)}
                   </TableCell>
-                  <TableCell className="font-mono text-sm">
+                  <TableCell className="hidden md:table-cell font-mono text-sm">
                     {monitor.uptimePercent.toFixed(1)}%
                   </TableCell>
                   <TableCell>
@@ -357,10 +357,10 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
 
       {/* 批量操作浮动栏 */}
       {selectedIds.size > 0 && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
-          <div className="flex items-center gap-3 rounded-xl border bg-background px-5 py-3 shadow-lg">
-            <span className="text-sm font-medium text-muted-foreground">
-              已选择 {selectedIds.size} 个监控
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100vw-2rem)]">
+          <div className="flex items-center gap-2 rounded-xl border bg-background px-4 py-3 shadow-lg">
+            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+              <span className="hidden sm:inline">已选择 </span>{selectedIds.size}<span className="hidden sm:inline"> 个监控</span>
             </span>
             <div className="h-4 w-px bg-border" />
             <Button
@@ -368,31 +368,32 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
               size="sm"
               onClick={() => requestBulkAction("pause")}
             >
-              <Pause className="mr-1.5 h-3.5 w-3.5" />
-              暂停
+              <Pause className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5">暂停</span>
             </Button>
             <Button
               variant="outline"
               size="sm"
               onClick={() => requestBulkAction("resume")}
             >
-              <Play className="mr-1.5 h-3.5 w-3.5" />
-              恢复
+              <Play className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5">恢复</span>
             </Button>
             <Button
               variant="destructive"
               size="sm"
               onClick={() => requestBulkAction("delete")}
             >
-              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
-              删除
+              <Trash2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline ml-1.5">删除</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSelectedIds(new Set())}
             >
-              取消
+              <span className="hidden sm:inline">取消</span>
+              <span className="sm:hidden">✕</span>
             </Button>
           </div>
         </div>

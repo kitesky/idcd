@@ -376,14 +376,14 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
         </Alert>
       )}
 
-      <Card>
+      <Card className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>监控名</TableHead>
               <TableHead>状态</TableHead>
-              <TableHead>开始时间</TableHead>
-              <TableHead>持续时长</TableHead>
+              <TableHead className="hidden md:table-cell">开始时间</TableHead>
+              <TableHead className="hidden md:table-cell">持续时长</TableHead>
               <TableHead>操作</TableHead>
             </TableRow>
           </TableHeader>
@@ -392,7 +392,7 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
               <TableRow key={evt.id} data-testid={`event-row-${evt.id}`}>
                 <TableCell className="font-medium">{evt.monitorName}</TableCell>
                 <TableCell>{statusBadge(evt.status)}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                   {new Date(evt.startedAt).toLocaleString("zh-CN", {
                     month: "numeric",
                     day: "numeric",
@@ -400,7 +400,7 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
                     minute: "2-digit",
                   })}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground tabular-nums">
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground tabular-nums">
                   {formatDuration(
                     evt.startedAt,
                     evt.resolvedAt ?? evt.acknowledgedAt
@@ -586,15 +586,15 @@ function PoliciesTab({
         </Button>
       </div>
 
-      <Card>
+      <Card className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
               <TableHead>策略名</TableHead>
-              <TableHead>绑定监控</TableHead>
-              <TableHead>通道</TableHead>
-              <TableHead>延迟</TableHead>
-              <TableHead>静音时段</TableHead>
+              <TableHead className="hidden md:table-cell">绑定监控</TableHead>
+              <TableHead className="hidden md:table-cell">通道</TableHead>
+              <TableHead className="hidden md:table-cell">延迟</TableHead>
+              <TableHead className="hidden md:table-cell">静音时段</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>操作</TableHead>
             </TableRow>
@@ -603,10 +603,10 @@ function PoliciesTab({
             {policies.map((pol) => (
               <TableRow key={pol.id} data-testid={`policy-row-${pol.id}`}>
                 <TableCell className="font-medium">{pol.name}</TableCell>
-                <TableCell className="text-sm text-muted-foreground">
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                   {pol.monitorName}
                 </TableCell>
-                <TableCell>
+                <TableCell className="hidden md:table-cell">
                   <div className="flex flex-wrap gap-1">
                     {pol.channelIds.map((cid) => (
                       <Badge key={cid} variant="outline" className="text-xs">
@@ -618,10 +618,10 @@ function PoliciesTab({
                     )}
                   </div>
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground tabular-nums">
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground tabular-nums">
                   {pol.delayMinutes === 0 ? "立即" : `${pol.delayMinutes} 分钟`}
                 </TableCell>
-                <TableCell className="text-sm text-muted-foreground tabular-nums">
+                <TableCell className="hidden md:table-cell text-sm text-muted-foreground tabular-nums">
                   {pol.muteFrom && pol.muteTo
                     ? `${pol.muteFrom}–${pol.muteTo}`
                     : "—"}
@@ -701,42 +701,44 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
       {silences.length === 0 ? (
         <p className="text-center text-muted-foreground py-8 text-sm">暂无静默规则</p>
       ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>监控</TableHead>
-              <TableHead>原因</TableHead>
-              <TableHead>开始时间</TableHead>
-              <TableHead>结束时间</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="w-16" />
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {silences.map((sil) => (
-              <TableRow key={sil.id} data-testid={`silence-row-${sil.id}`}>
-                <TableCell>{sil.monitorName ?? "全局"}</TableCell>
-                <TableCell>{sil.reason}</TableCell>
-                <TableCell>{new Date(sil.startsAt).toLocaleString("zh-CN")}</TableCell>
-                <TableCell>{new Date(sil.endsAt).toLocaleString("zh-CN")}</TableCell>
-                <TableCell>{silenceStatusBadge(sil.status)}</TableCell>
-                <TableCell>
-                  {sil.status !== "expired" && (
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => onDelete(sil.id)}
-                      aria-label={`提前结束静默 ${sil.id}`}
-                      data-testid={`delete-silence-btn-${sil.id}`}
-                    >
-                      <Trash2 className="h-4 w-4 text-muted-foreground" />
-                    </Button>
-                  )}
-                </TableCell>
+        <div className="overflow-x-auto rounded-md border">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>监控</TableHead>
+                <TableHead className="hidden md:table-cell">原因</TableHead>
+                <TableHead className="hidden md:table-cell">开始时间</TableHead>
+                <TableHead className="hidden md:table-cell">结束时间</TableHead>
+                <TableHead>状态</TableHead>
+                <TableHead className="w-16" />
               </TableRow>
-            ))}
-          </TableBody>
-        </Table>
+            </TableHeader>
+            <TableBody>
+              {silences.map((sil) => (
+                <TableRow key={sil.id} data-testid={`silence-row-${sil.id}`}>
+                  <TableCell>{sil.monitorName ?? "全局"}</TableCell>
+                  <TableCell className="hidden md:table-cell">{sil.reason}</TableCell>
+                  <TableCell className="hidden md:table-cell">{new Date(sil.startsAt).toLocaleString("zh-CN")}</TableCell>
+                  <TableCell className="hidden md:table-cell">{new Date(sil.endsAt).toLocaleString("zh-CN")}</TableCell>
+                  <TableCell>{silenceStatusBadge(sil.status)}</TableCell>
+                  <TableCell>
+                    {sil.status !== "expired" && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => onDelete(sil.id)}
+                        aria-label={`提前结束静默 ${sil.id}`}
+                        data-testid={`delete-silence-btn-${sil.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 text-muted-foreground" />
+                      </Button>
+                    )}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </div>
       )}
     </div>
   )

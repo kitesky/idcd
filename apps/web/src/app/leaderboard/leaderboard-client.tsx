@@ -158,16 +158,16 @@ function CdnTable({ data, lang }: { data: CdnEntry[]; lang: Lang }) {
   const t = T[lang]
 
   return (
-    <div className="rounded-md border">
+    <div className="overflow-x-auto rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-12 text-center">{t.table.rank}</TableHead>
             <TableHead>{t.table.provider}</TableHead>
             <TableHead className="text-center">{t.table.globalP50}</TableHead>
-            <TableHead className="text-center">{t.table.chinaP50}</TableHead>
-            <TableHead className="text-center">{t.table.overseasP50}</TableHead>
-            <TableHead className="text-center w-20">{t.table.trend}</TableHead>
+            <TableHead className="hidden md:table-cell text-center">{t.table.chinaP50}</TableHead>
+            <TableHead className="hidden md:table-cell text-center">{t.table.overseasP50}</TableHead>
+            <TableHead className="hidden md:table-cell text-center w-20">{t.table.trend}</TableHead>
             <TableHead className="text-center">{t.table.change}</TableHead>
           </TableRow>
         </TableHeader>
@@ -181,14 +181,16 @@ function CdnTable({ data, lang }: { data: CdnEntry[]; lang: Lang }) {
               <TableCell className="text-center">
                 <LatencyBadge ms={cdn.globalP50} />
               </TableCell>
-              <TableCell className="text-center">
+              <TableCell className="hidden md:table-cell text-center">
                 <LatencyBadge ms={cdn.chinaP50} />
               </TableCell>
-              <TableCell className="text-center">
+              <TableCell className="hidden md:table-cell text-center">
                 <LatencyBadge ms={cdn.overseasP50} />
               </TableCell>
-              <TableCell className="flex justify-center items-center py-3">
-                <Sparkline values={cdn.trend} />
+              <TableCell className="hidden md:table-cell">
+                <div className="flex justify-center items-center py-3">
+                  <Sparkline values={cdn.trend} />
+                </div>
               </TableCell>
               <TableCell className="text-center">
                 <ChangeIndicator change={cdn.change} flat={t.flat} />
@@ -246,16 +248,16 @@ function RegionLatencyCards({ lang }: { lang: Lang }) {
 function IspAvailabilityTable({ lang }: { lang: Lang }) {
   const t = T[lang]
   return (
-    <div className="rounded-md border">
+    <div className="overflow-x-auto rounded-md border">
       <Table>
         <TableHeader>
           <TableRow>
             <TableHead className="w-12 text-center">{t.table.rank}</TableHead>
             <TableHead>{t.table.isp}</TableHead>
-            <TableHead>{t.table.region}</TableHead>
+            <TableHead className="hidden md:table-cell">{t.table.region}</TableHead>
             <TableHead className="text-center">{t.table.availability30d}</TableHead>
-            <TableHead className="text-center">{t.table.sla}</TableHead>
-            <TableHead className="text-center">{t.table.datacenterCount}</TableHead>
+            <TableHead className="hidden md:table-cell text-center">{t.table.sla}</TableHead>
+            <TableHead className="hidden md:table-cell text-center">{t.table.datacenterCount}</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -265,7 +267,7 @@ function IspAvailabilityTable({ lang }: { lang: Lang }) {
                 #{isp.rank}
               </TableCell>
               <TableCell className="font-medium">{isp.isp}</TableCell>
-              <TableCell className="text-muted-foreground">{isp.region}</TableCell>
+              <TableCell className="hidden md:table-cell text-muted-foreground">{isp.region}</TableCell>
               <TableCell className="text-center">
                 <Badge
                   variant={
@@ -279,10 +281,10 @@ function IspAvailabilityTable({ lang }: { lang: Lang }) {
                   {isp.availability30d.toFixed(2)}%
                 </Badge>
               </TableCell>
-              <TableCell className="text-center text-sm text-muted-foreground">
+              <TableCell className="hidden md:table-cell text-center text-sm text-muted-foreground">
                 {isp.sla.toFixed(1)}%
               </TableCell>
-              <TableCell className="text-center text-sm">
+              <TableCell className="hidden md:table-cell text-center text-sm">
                 {isp.datacenterCount}
               </TableCell>
             </TableRow>

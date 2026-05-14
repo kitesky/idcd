@@ -131,4 +131,31 @@ describe("APIKeysClient", () => {
     render(<APIKeysClient />)
     expect(screen.getByTestId("api-keys-security-note")).toBeInTheDocument()
   })
+
+  // ── key_type badge tests ───────────────────────────────────────────────
+
+  it("renders production badge for mock production keys", () => {
+    render(<APIKeysClient />)
+    const badges = screen.getAllByTestId("badge-production")
+    expect(badges.length).toBeGreaterThanOrEqual(2)
+  })
+
+  it("shows type select in create dialog with production default", () => {
+    render(<APIKeysClient />)
+    fireEvent.click(screen.getByTestId("btn-create-key"))
+    expect(screen.getByTestId("select-key-type")).toBeInTheDocument()
+  })
+
+  it("new key with production type has sk_live_ prefix after creation", async () => {
+    render(<APIKeysClient />)
+    fireEvent.click(screen.getByTestId("btn-create-key"))
+    const input = screen.getByTestId("input-key-name")
+    fireEvent.change(input, { target: { value: "Prod Key" } })
+    fireEvent.click(screen.getByTestId("btn-submit-create"))
+    await waitFor(() => {
+      expect(screen.getByTestId("new-key-value")).toBeInTheDocument()
+    })
+    const keyValue = screen.getByTestId("new-key-value").textContent ?? ""
+    expect(keyValue).toMatch(/^sk_live_/)
+  })
 })

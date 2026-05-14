@@ -11,9 +11,9 @@ import (
 )
 
 const createAPIKey = `-- name: CreateAPIKey :one
-INSERT INTO api_key (id, owner_type, owner_id, name, prefix, secret_hash, scopes, created_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-RETURNING id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at
+INSERT INTO api_key (id, owner_type, owner_id, name, prefix, secret_hash, scopes, created_by, key_type)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+RETURNING id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at, key_type
 `
 
 type CreateAPIKeyParams struct {
@@ -25,6 +25,7 @@ type CreateAPIKeyParams struct {
 	SecretHash string   `json:"secret_hash"`
 	Scopes     []string `json:"scopes"`
 	CreatedBy  string   `json:"created_by"`
+	KeyType    string   `json:"key_type"`
 }
 
 func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error) {
@@ -37,6 +38,7 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		arg.SecretHash,
 		arg.Scopes,
 		arg.CreatedBy,
+		arg.KeyType,
 	)
 	var i ApiKey
 	err := row.Scan(
@@ -58,6 +60,7 @@ func (q *Queries) CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (Api
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.KeyType,
 	)
 	return i, err
 }
@@ -74,7 +77,7 @@ func (q *Queries) ExpireAPIKey(ctx context.Context) error {
 }
 
 const getAPIKeyByID = `-- name: GetAPIKeyByID :one
-SELECT id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at FROM api_key WHERE id = $1 AND status = 'active'
+SELECT id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at, key_type FROM api_key WHERE id = $1 AND status = 'active'
 `
 
 func (q *Queries) GetAPIKeyByID(ctx context.Context, id string) (ApiKey, error) {
@@ -99,12 +102,13 @@ func (q *Queries) GetAPIKeyByID(ctx context.Context, id string) (ApiKey, error) 
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.KeyType,
 	)
 	return i, err
 }
 
 const getAPIKeyByPrefix = `-- name: GetAPIKeyByPrefix :one
-SELECT id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at FROM api_key WHERE prefix = $1 AND status = 'active'
+SELECT id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at, key_type FROM api_key WHERE prefix = $1 AND status = 'active'
 `
 
 func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey, error) {
@@ -129,12 +133,13 @@ func (q *Queries) GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey,
 		&i.CreatedBy,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.KeyType,
 	)
 	return i, err
 }
 
 const listAPIKeysByOwner = `-- name: ListAPIKeysByOwner :many
-SELECT id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at FROM api_key
+SELECT id, owner_type, owner_id, name, prefix, secret_hash, scopes, rate_limit_override, allowed_ips, allowed_origins, expires_at, last_used_at, last_used_ip, usage_total, status, created_by, created_at, revoked_at, key_type FROM api_key
 WHERE owner_type = $1 AND owner_id = $2 AND status = 'active'
 ORDER BY created_at DESC
 `
@@ -172,6 +177,7 @@ func (q *Queries) ListAPIKeysByOwner(ctx context.Context, arg ListAPIKeysByOwner
 			&i.CreatedBy,
 			&i.CreatedAt,
 			&i.RevokedAt,
+			&i.KeyType,
 		); err != nil {
 			return nil, err
 		}

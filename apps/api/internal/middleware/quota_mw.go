@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,7 @@ type APIPlanLookup func(ctx context.Context, userID string) string
 // APIQuotaMiddleware enforces per-user daily API call quota.
 // It is applied only to authenticated routes (requests where UserIDFromContext
 // returns a non-empty value). Unauthenticated requests are passed through.
+// Test keys (Bearer token starting with sk_test_) bypass quota deduction.
 //
 // On quota exceeded the middleware responds with HTTP 429 and a JSON body
 // containing the error code and reset_at timestamp.
@@ -29,6 +31,11 @@ func APIQuotaMiddleware(rateLimiter APIQuotaRateLimiter, planLookup APIPlanLooku
 			userID := UserIDFromContext(r.Context())
 			if userID == "" {
 				// Unauthenticated request — do not deduct quota.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			if isTestAPIKey(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
@@ -67,4 +74,16 @@ func APIQuotaMiddleware(rateLimiter APIQuotaRateLimiter, planLookup APIPlanLooku
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isTestAPIKey returns true when the request carries a sk_test_ API key Bearer token.
+func isTestAPIKey(r *http.Request) bool {
+	auth := r.Header.Get("Authorization")
+	if strings.HasPrefix(auth, "Bearer sk_test_") {
+		return true
+	}
+	if cookie, err := r.Cookie("access_token"); err == nil {
+		return strings.HasPrefix(cookie.Value, "sk_test_")
+	}
+	return false
 }

@@ -75,6 +75,7 @@ type ApiKey struct {
 	CreatedBy         string             `json:"created_by"`
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
+	KeyType           string             `json:"key_type"`
 }
 
 type AuditLog struct {

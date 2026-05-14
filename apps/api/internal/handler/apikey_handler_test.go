@@ -38,17 +38,22 @@ func (m *mockAPIKeyQuerier) CreateAPIKey(_ context.Context, arg idcdmain.CreateA
 	}
 	now := pgtype.Timestamptz{}
 	_ = now.Scan(time.Now())
+	ktype := arg.KeyType
+	if ktype == "" {
+		ktype = "production"
+	}
 	k := idcdmain.ApiKey{
-		ID:        arg.ID,
-		OwnerType: arg.OwnerType,
-		OwnerID:   arg.OwnerID,
-		Name:      arg.Name,
-		Prefix:    arg.Prefix,
+		ID:         arg.ID,
+		OwnerType:  arg.OwnerType,
+		OwnerID:    arg.OwnerID,
+		Name:       arg.Name,
+		Prefix:     arg.Prefix,
 		SecretHash: arg.SecretHash,
-		Scopes:    arg.Scopes,
-		Status:    "active",
-		CreatedBy: arg.CreatedBy,
-		CreatedAt: now,
+		Scopes:     arg.Scopes,
+		Status:     "active",
+		CreatedBy:  arg.CreatedBy,
+		CreatedAt:  now,
+		KeyType:    ktype,
 	}
 	m.keys[arg.ID] = k
 	return k, nil
@@ -99,16 +104,17 @@ func (m *mockAPIKeyQuerier) seedKey(userID, keyID, name string) {
 	now := pgtype.Timestamptz{}
 	_ = now.Scan(time.Now())
 	m.keys[keyID] = idcdmain.ApiKey{
-		ID:        keyID,
-		OwnerType: "user",
-		OwnerID:   userID,
-		Name:      name,
-		Prefix:    "abcd1234",
+		ID:         keyID,
+		OwnerType:  "user",
+		OwnerID:    userID,
+		Name:       name,
+		Prefix:     "abcd1234",
 		SecretHash: "fakehash",
-		Scopes:    []string{"read", "write"},
-		Status:    "active",
-		CreatedBy: userID,
-		CreatedAt: now,
+		Scopes:     []string{"read", "write"},
+		Status:     "active",
+		CreatedBy:  userID,
+		CreatedAt:  now,
+		KeyType:    "production",
 	}
 }
 
@@ -141,11 +147,44 @@ func TestCreateAPIKey_success(t *testing.T) {
 	if wrapped.Data.Name != "test key" {
 		t.Errorf("expected name %q, got %q", "test key", wrapped.Data.Name)
 	}
-	if !strings.HasPrefix(wrapped.Data.Key, apiKeyPrefix) {
-		t.Errorf("key should start with %q, got %q", apiKeyPrefix, wrapped.Data.Key)
+	if !strings.HasPrefix(wrapped.Data.Key, apiKeyLivePrefix) {
+		t.Errorf("key should start with %q, got %q", apiKeyLivePrefix, wrapped.Data.Key)
 	}
 	if wrapped.Data.ID == "" {
 		t.Error("expected non-empty key ID")
+	}
+	if wrapped.Data.KeyType != keyTypeProduction {
+		t.Errorf("expected key_type %q, got %q", keyTypeProduction, wrapped.Data.KeyType)
+	}
+}
+
+func TestCreateAPIKey_testType(t *testing.T) {
+	q := newMockAPIKeyQuerier()
+	h := NewAPIKeyHandler(q)
+
+	body := `{"name":"sandbox key","type":"test"}`
+	req := httptest.NewRequest(http.MethodPost, "/v1/account/api-keys", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = withUserIDForAPIKey(req, "usr_001")
+	rr := httptest.NewRecorder()
+
+	h.CreateAPIKey(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var wrapped struct {
+		Data apiKeyCreateResponse `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &wrapped); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if !strings.HasPrefix(wrapped.Data.Key, apiKeyTestPrefix) {
+		t.Errorf("test key should start with %q, got %q", apiKeyTestPrefix, wrapped.Data.Key)
+	}
+	if wrapped.Data.KeyType != keyTypeTest {
+		t.Errorf("expected key_type %q, got %q", keyTypeTest, wrapped.Data.KeyType)
 	}
 }
 
@@ -222,6 +261,11 @@ func TestListAPIKeys_success(t *testing.T) {
 	}
 	if len(wrapped.Data) != 2 {
 		t.Errorf("expected 2 keys, got %d", len(wrapped.Data))
+	}
+	for _, k := range wrapped.Data {
+		if k.KeyType == "" {
+			t.Errorf("expected key_type to be non-empty for key %s", k.ID)
+		}
 	}
 }
 
@@ -348,12 +392,12 @@ func TestRevokeAPIKey_wrongOwner(t *testing.T) {
 // ─────────────────────────────────────────────
 
 func TestGenerateAPIKey_format(t *testing.T) {
-	fullKey, prefix, hash, err := generateAPIKey()
+	fullKey, prefix, hash, err := generateAPIKey(keyTypeProduction)
 	if err != nil {
 		t.Fatalf("generateAPIKey error: %v", err)
 	}
-	if !strings.HasPrefix(fullKey, apiKeyPrefix) {
-		t.Errorf("fullKey should start with %q, got %q", apiKeyPrefix, fullKey)
+	if !strings.HasPrefix(fullKey, apiKeyLivePrefix) {
+		t.Errorf("fullKey should start with %q, got %q", apiKeyLivePrefix, fullKey)
 	}
 	if len(prefix) != apiKeyPrefixLen {
 		t.Errorf("prefix length should be %d, got %d", apiKeyPrefixLen, len(prefix))
@@ -361,15 +405,33 @@ func TestGenerateAPIKey_format(t *testing.T) {
 	if hash == "" {
 		t.Error("hash should not be empty")
 	}
-	// Full key should contain the prefix after sk_live_.
-	if !strings.HasPrefix(fullKey[len(apiKeyPrefix):], prefix) {
-		t.Errorf("fullKey[%d:] should start with prefix %q", len(apiKeyPrefix), prefix)
+	if !strings.HasPrefix(fullKey[len(apiKeyLivePrefix):], prefix) {
+		t.Errorf("fullKey[%d:] should start with prefix %q", len(apiKeyLivePrefix), prefix)
+	}
+}
+
+func TestGenerateAPIKey_testType(t *testing.T) {
+	fullKey, prefix, hash, err := generateAPIKey(keyTypeTest)
+	if err != nil {
+		t.Fatalf("generateAPIKey error: %v", err)
+	}
+	if !strings.HasPrefix(fullKey, apiKeyTestPrefix) {
+		t.Errorf("test fullKey should start with %q, got %q", apiKeyTestPrefix, fullKey)
+	}
+	if len(prefix) != apiKeyPrefixLen {
+		t.Errorf("prefix length should be %d, got %d", apiKeyPrefixLen, len(prefix))
+	}
+	if hash == "" {
+		t.Error("hash should not be empty")
+	}
+	if !strings.HasPrefix(fullKey[len(apiKeyTestPrefix):], prefix) {
+		t.Errorf("test fullKey[%d:] should start with prefix %q", len(apiKeyTestPrefix), prefix)
 	}
 }
 
 func TestGenerateAPIKey_uniqueness(t *testing.T) {
-	key1, _, _, _ := generateAPIKey()
-	key2, _, _, _ := generateAPIKey()
+	key1, _, _, _ := generateAPIKey(keyTypeProduction)
+	key2, _, _, _ := generateAPIKey(keyTypeProduction)
 	if key1 == key2 {
 		t.Error("two generated keys should not be equal")
 	}

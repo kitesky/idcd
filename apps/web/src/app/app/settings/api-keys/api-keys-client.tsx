@@ -23,6 +23,11 @@ import {
   DialogHeader,
   DialogTitle,
   DialogDescription,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui"
 import { Copy, CheckCircle2, Plus, Trash2 } from "lucide-react"
 
@@ -32,6 +37,7 @@ interface APIKey {
   id: string
   name: string
   prefix: string
+  key_type: string
   created_at: string
   last_used_at: string | null
 }
@@ -43,6 +49,7 @@ const MOCK_KEYS: APIKey[] = [
     id: "key_001",
     name: "生产环境",
     prefix: "sk_live_abc...xyz",
+    key_type: "production",
     created_at: "2025-03-01",
     last_used_at: "2025-05-13",
   },
@@ -50,10 +57,36 @@ const MOCK_KEYS: APIKey[] = [
     id: "key_002",
     name: "CI/CD 流水线",
     prefix: "sk_live_def...uvw",
+    key_type: "production",
     created_at: "2025-04-15",
     last_used_at: null,
   },
 ]
+
+// ── KeyTypeBadge ──────────────────────────────────────────────────────────
+
+function KeyTypeBadge({ keyType }: { keyType: string }) {
+  if (keyType === "test") {
+    return (
+      <Badge
+        variant="outline"
+        className="text-xs border-orange-400 text-orange-500"
+        data-testid="badge-test"
+      >
+        测试
+      </Badge>
+    )
+  }
+  return (
+    <Badge
+      variant="outline"
+      className="text-xs border-blue-400 text-blue-500"
+      data-testid="badge-production"
+    >
+      生产
+    </Badge>
+  )
+}
 
 // ── APIKeysClient ─────────────────────────────────────────────────────────
 
@@ -63,6 +96,7 @@ export function APIKeysClient() {
   // ── Create dialog state ──────────────────────────────────────────────────
   const [showCreateDialog, setShowCreateDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState("")
+  const [newKeyType, setNewKeyType] = useState<string>("production")
   const [creating, setCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
   const [createdKey, setCreatedKey] = useState<string | null>(null)
@@ -84,11 +118,13 @@ export function APIKeysClient() {
     try {
       // Mock: real impl calls POST /v1/account/api-keys
       await new Promise((r) => setTimeout(r, 300))
-      const mockFullKey = `sk_live_${Math.random().toString(36).slice(2, 10)}...${Math.random().toString(36).slice(2, 6)}`
+      const pfx = newKeyType === "test" ? "sk_test_" : "sk_live_"
+      const mockFullKey = `${pfx}${Math.random().toString(36).slice(2, 10)}...${Math.random().toString(36).slice(2, 6)}`
       const newKey: APIKey = {
         id: `key_${Date.now()}`,
         name: newKeyName.trim(),
         prefix: mockFullKey.slice(0, 18) + "...",
+        key_type: newKeyType,
         created_at: new Date().toISOString().slice(0, 10),
         last_used_at: null,
       }
@@ -104,6 +140,7 @@ export function APIKeysClient() {
   function handleCloseCreateDialog() {
     setShowCreateDialog(false)
     setNewKeyName("")
+    setNewKeyType("production")
     setCreateError(null)
     setCreatedKey(null)
     setCopied(false)
@@ -167,6 +204,7 @@ export function APIKeysClient() {
               <TableHeader>
                 <TableRow>
                   <TableHead>名称</TableHead>
+                  <TableHead>类型</TableHead>
                   <TableHead>前缀</TableHead>
                   <TableHead>创建时间</TableHead>
                   <TableHead>最后使用</TableHead>
@@ -177,6 +215,9 @@ export function APIKeysClient() {
                 {keys.map((key) => (
                   <TableRow key={key.id} data-testid={`key-row-${key.id}`}>
                     <TableCell className="font-medium">{key.name}</TableCell>
+                    <TableCell>
+                      <KeyTypeBadge keyType={key.key_type} />
+                    </TableCell>
                     <TableCell>
                       <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
                         {key.prefix}
@@ -244,7 +285,7 @@ export function APIKeysClient() {
           <DialogHeader>
             <DialogTitle>创建 API Key</DialogTitle>
             {!createdKey && (
-              <DialogDescription>为新 API Key 设置一个易于识别的名称</DialogDescription>
+              <DialogDescription>为新 API Key 设置名称和类型</DialogDescription>
             )}
           </DialogHeader>
 
@@ -269,6 +310,23 @@ export function APIKeysClient() {
                   data-testid="input-key-name"
                   autoFocus
                 />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">类型</label>
+                <Select
+                  value={newKeyType}
+                  onValueChange={setNewKeyType}
+                  disabled={creating}
+                >
+                  <SelectTrigger data-testid="select-key-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="production" data-testid="select-item-production">生产（Production）</SelectItem>
+                    <SelectItem value="test" data-testid="select-item-test">测试（Test）</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="flex gap-3 justify-end">

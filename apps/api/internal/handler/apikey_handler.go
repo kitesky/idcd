@@ -21,10 +21,15 @@ import (
 )
 
 const (
-	apiKeyPrefix    = "sk_live_"
-	apiKeyRawBytes  = 32
-	apiKeyPrefixLen = 8 // characters from raw key used as prefix (after sk_live_)
-	apiKeyOwnerType = "user"
+	apiKeyLivePrefix = "sk_live_"
+	apiKeyTestPrefix = "sk_test_"
+	apiKeyPrefix     = apiKeyLivePrefix
+	apiKeyRawBytes   = 32
+	apiKeyPrefixLen  = 8 // characters from raw key used as prefix (after sk_live_ / sk_test_)
+	apiKeyOwnerType  = "user"
+
+	keyTypeProduction = "production"
+	keyTypeTest       = "test"
 )
 
 // APIKeyQuerier is the subset of sqlc Queries used by APIKeyHandler.
@@ -52,13 +57,14 @@ func NewAPIKeyHandler(q APIKeyQuerier) *APIKeyHandler {
 // apiKeyResponse is the public representation of an API key.
 // The secret_hash is never returned; prefix is masked as sk_live_xxx...xxx.
 type apiKeyResponse struct {
-	ID         string  `json:"id"`
-	Name       string  `json:"name"`
-	Prefix     string  `json:"prefix"`
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	Prefix     string   `json:"prefix"`
 	Scopes     []string `json:"scopes"`
-	Status     string  `json:"status"`
-	CreatedAt  string  `json:"created_at"`
-	LastUsedAt *string `json:"last_used_at"`
+	Status     string   `json:"status"`
+	KeyType    string   `json:"key_type"`
+	CreatedAt  string   `json:"created_at"`
+	LastUsedAt *string  `json:"last_used_at"`
 }
 
 // apiKeyCreateResponse extends apiKeyResponse with the one-time full key.
@@ -73,12 +79,21 @@ func toAPIKeyResponse(k idcdmain.ApiKey) apiKeyResponse {
 		s := k.LastUsedAt.Time.UTC().Format(time.RFC3339)
 		lastUsed = &s
 	}
+	ktype := k.KeyType
+	if ktype == "" {
+		ktype = keyTypeProduction
+	}
+	pfx := apiKeyLivePrefix
+	if ktype == keyTypeTest {
+		pfx = apiKeyTestPrefix
+	}
 	return apiKeyResponse{
 		ID:         k.ID,
 		Name:       k.Name,
-		Prefix:     apiKeyPrefix + k.Prefix + "...",
+		Prefix:     pfx + k.Prefix + "...",
 		Scopes:     k.Scopes,
 		Status:     k.Status,
+		KeyType:    ktype,
 		CreatedAt:  k.CreatedAt.Time.UTC().Format(time.RFC3339),
 		LastUsedAt: lastUsed,
 	}
@@ -91,6 +106,7 @@ func toAPIKeyResponse(k idcdmain.ApiKey) apiKeyResponse {
 // createAPIKeyRequest is the body for POST /v1/account/api-keys.
 type createAPIKeyRequest struct {
 	Name string `json:"name"`
+	Type string `json:"type"`
 }
 
 // CreateAPIKey handles POST /v1/account/api-keys.
@@ -112,7 +128,12 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rawKey, prefix, hash, err := generateAPIKey()
+	ktype := keyTypeProduction
+	if req.Type == keyTypeTest {
+		ktype = keyTypeTest
+	}
+
+	rawKey, prefix, hash, err := generateAPIKey(ktype)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to generate key", err))
 		return
@@ -130,10 +151,16 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		SecretHash: hash,
 		Scopes:     []string{"read", "write"},
 		CreatedBy:  userID,
+		KeyType:    ktype,
 	})
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to create api key", err))
 		return
+	}
+
+	pfx := apiKeyLivePrefix
+	if ktype == keyTypeTest {
+		pfx = apiKeyTestPrefix
 	}
 
 	resp := apiKeyCreateResponse{
@@ -141,7 +168,7 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		Key:            rawKey,
 	}
 	// Override the masked prefix to show full key in create response.
-	resp.Prefix = apiKeyPrefix + prefix + "..."
+	resp.Prefix = pfx + prefix + "..."
 
 	_ = expiresAt // reserved for future expiry support
 
@@ -211,15 +238,19 @@ func (h *APIKeyHandler) RevokeAPIKey(w http.ResponseWriter, r *http.Request) {
 // ─────────────────────────────────────────────
 
 // generateAPIKey creates a cryptographically random API key.
-// Returns the full key (sk_live_<hex>), a prefix for lookup, and a SHA-256 hash.
-func generateAPIKey() (fullKey, prefix, hash string, err error) {
+// Returns the full key (sk_live_<hex> or sk_test_<hex>), a prefix for lookup, and a SHA-256 hash.
+func generateAPIKey(ktype string) (fullKey, prefix, hash string, err error) {
 	b := make([]byte, apiKeyRawBytes)
 	if _, err = rand.Read(b); err != nil {
 		return "", "", "", fmt.Errorf("rand.Read: %w", err)
 	}
 	rawHex := hex.EncodeToString(b)
 	prefix = rawHex[:apiKeyPrefixLen]
-	fullKey = apiKeyPrefix + rawHex
+	pfx := apiKeyLivePrefix
+	if ktype == keyTypeTest {
+		pfx = apiKeyTestPrefix
+	}
+	fullKey = pfx + rawHex
 	sum := sha256.Sum256([]byte(fullKey))
 	hash = hex.EncodeToString(sum[:])
 	return fullKey, prefix, hash, nil

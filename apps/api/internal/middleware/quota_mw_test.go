@@ -149,3 +149,19 @@ func TestAPIQuotaMiddleware_ContentTypeOnDenial(t *testing.T) {
 		t.Errorf("Content-Type should be application/json on denial; got %q", ct)
 	}
 }
+
+func TestAPIQuotaMiddleware_TestKeyBypassesQuota(t *testing.T) {
+	rl := &mockAPIRateLimiter{allowed: false}
+	mw := APIQuotaMiddleware(rl, nil)
+	h := mw(http.HandlerFunc(testHandler))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/test", nil)
+	req.Header.Set("Authorization", "Bearer sk_test_abc123def456")
+	req = injectUserID(req, "u_test_user")
+	rr := httptest.NewRecorder()
+	h.ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("test key should bypass quota and return 200; got %d", rr.Code)
+	}
+}

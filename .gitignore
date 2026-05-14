@@ -72,3 +72,4 @@ dist-agent/
 .vercel
 
 .devfleet-worktrees/
+.gstack/

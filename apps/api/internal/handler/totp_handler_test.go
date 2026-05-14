@@ -16,7 +16,17 @@ import (
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/lib/auth/totp"
+	"github.com/kite365/idcd/lib/shared/aesenc"
 )
+
+// testCipher uses an all-zeros key — deterministic and safe for unit tests only.
+var testCipher = func() *aesenc.Cipher {
+	c, err := aesenc.New(make([]byte, 32))
+	if err != nil {
+		panic(err)
+	}
+	return c
+}()
 
 func setupTOTPHandler(t *testing.T) (*TOTPHandler, pgxmock.PgxPoolIface, *miniredis.Miniredis) {
 	t.Helper()
@@ -30,7 +40,7 @@ func setupTOTPHandler(t *testing.T) (*TOTPHandler, pgxmock.PgxPoolIface, *minire
 	}
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 
-	h := &TOTPHandler{pool: mockPool, redis: rdb}
+	h := &TOTPHandler{pool: mockPool, redis: rdb, cipher: testCipher}
 	return h, mockPool, mr
 }
 
@@ -110,8 +120,9 @@ func TestTOTPVerify_CorrectCode_Returns200WithBackupCodes(t *testing.T) {
 
 	mr.Set(totpSetupKeyPrefix+"u1", secret)
 
+	// Both secret and backup codes are AES-256-GCM encrypted — match any bytes.
 	mockPool.ExpectExec(`INSERT INTO user_2fa`).
-		WithArgs("u1", []byte(secret), pgxmock.AnyArg()).
+		WithArgs("u1", pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	body, _ := json.Marshal(totpVerifyRequest{Code: code})
@@ -169,9 +180,14 @@ func TestTOTPDisable_CorrectCode_Returns200(t *testing.T) {
 	secret, _ := totp.GenerateSecret()
 	code, _ := totp.GenerateCode(secret, time.Now())
 
+	// Return a properly encrypted secret so the handler can decrypt it.
+	encSecret, err := testCipher.Encrypt([]byte(secret))
+	if err != nil {
+		t.Fatalf("encrypt secret: %v", err)
+	}
 	mockPool.ExpectQuery(`SELECT secret_encrypted FROM user_2fa`).
 		WithArgs("u1").
-		WillReturnRows(pgxmock.NewRows([]string{"secret_encrypted"}).AddRow([]byte(secret)))
+		WillReturnRows(pgxmock.NewRows([]string{"secret_encrypted"}).AddRow(encSecret))
 
 	mockPool.ExpectExec(`DELETE FROM user_2fa`).
 		WithArgs("u1").

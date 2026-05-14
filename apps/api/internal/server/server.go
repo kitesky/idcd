@@ -23,6 +23,7 @@ import (
 	"github.com/kite365/idcd/lib/auth/session"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/ratelimit"
+	"github.com/kite365/idcd/lib/shared/aesenc"
 	"github.com/kite365/idcd/lib/shared/config"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
@@ -140,7 +141,8 @@ func (s *Server) setupRouter() {
 		acctH := handler.NewAccountHandler(q)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
-		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis)
+		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
+		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis, fieldCipher)
 		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").WithAuth(jwtSvc, sessSvc)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
@@ -569,4 +571,20 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // Router returns the configured router (useful for testing).
 func (s *Server) Router() chi.Router {
 	return s.router
+}
+
+// newFieldCipher creates the AES-256-GCM cipher used for field-level at-rest
+// encryption.  If fieldKey is empty a dev-only all-zeros key is used with a
+// warning; production should always supply a real key.
+func newFieldCipher(fieldKey string, log *slog.Logger) *aesenc.Cipher {
+	if fieldKey == "" {
+		log.Warn("encryption.field_key not set — using dev fallback key, NOT safe for production")
+		c, _ := aesenc.New(make([]byte, 32))
+		return c
+	}
+	c, err := aesenc.NewFromHex(fieldKey)
+	if err != nil {
+		panic("encryption.field_key invalid: " + err.Error())
+	}
+	return c
 }

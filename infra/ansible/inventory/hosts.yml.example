@@ -1,0 +1,77 @@
+# idcd Ansible Inventory — Example
+# Copy this file to inventory/hosts.yml and fill in real IPs/hostnames.
+# NEVER commit hosts.yml — it is listed in .gitignore.
+#
+# Node-level required vars:
+#   node_id         — unique node identifier (e.g. nod_xxxxxxxxxxxx)
+#   ansible_host    — IP address or hostname
+#   ansible_user    — SSH user (e.g. root or ubuntu)
+#   ssh_port        — SSH port (default: 22, override per-host if changed)
+#   node_region     — human-readable region label (e.g. "CN-Beijing-BGP")
+#   node_isp        — ISP label (e.g. "ChinaTelecom" / "HetznerAS24940")
+
+all:
+  vars:
+    # Global defaults — can be overridden at group or host level.
+    ansible_python_interpreter: /usr/bin/python3
+    ansible_ssh_common_args: "-o StrictHostKeyChecking=no -o ConnectTimeout=10"
+
+  children:
+    # ---------------------------------------------------------------
+    # Tier-1 CN: BGP / mainland-optimized transit nodes
+    # Typical providers: DMIT, RackNerd CN2-GIA, BWG CN2-GIA
+    # ---------------------------------------------------------------
+    tier1_cn:
+      vars:
+        node_tier: "tier1_cn"
+      hosts:
+        # Example — replace with real data:
+        # cn-beijing-01:
+        #   ansible_host: 1.2.3.4
+        #   ansible_user: root
+        #   ssh_port: 22
+        #   node_id: "nod_REPLACE_ME"
+        #   node_region: "CN-Beijing-BGP"
+        #   node_isp: "DMIT-CN2-GIA"
+
+    # ---------------------------------------------------------------
+    # Tier-1 Overseas: low-latency international presence
+    # Typical providers: Hetzner, Vultr, AWS Lightsail, GCP
+    # ---------------------------------------------------------------
+    tier1_overseas:
+      vars:
+        node_tier: "tier1_overseas"
+      hosts:
+        # Example:
+        # de-frankfurt-01:
+        #   ansible_host: 5.6.7.8
+        #   ansible_user: root
+        #   ssh_port: 22
+        #   node_id: "nod_REPLACE_ME"
+        #   node_region: "DE-Frankfurt"
+        #   node_isp: "HetznerAS24940"
+        #
+        # us-lax-01:
+        #   ansible_host: 9.10.11.12
+        #   ansible_user: root
+        #   ssh_port: 22
+        #   node_id: "nod_REPLACE_ME"
+        #   node_region: "US-LosAngeles"
+        #   node_isp: "VultrAS20473"
+
+    # ---------------------------------------------------------------
+    # Tier-2: general-availability nodes (cheaper / more diverse)
+    # Typical providers: RackNerd (US), BandwagonHost (US/EU)
+    # ---------------------------------------------------------------
+    tier2:
+      vars:
+        node_tier: "tier2"
+      hosts:
+        # Example:
+        # us-chicago-01:
+        #   ansible_host: 13.14.15.16
+        #   ansible_user: root
+        #   ssh_port: 22
+        #   node_id: "nod_REPLACE_ME"
+        #   node_region: "US-Chicago"
+        #   node_isp: "RackNerd"

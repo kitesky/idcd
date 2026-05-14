@@ -1,0 +1,213 @@
+---
+# tasks/update-agent.yml
+# Reusable update task list — included by each serial batch in agent-update.yml.
+# Variables expected from caller:
+#   update_batch_label  — "L1" / "L2" / "L3" (used in debug messages only)
+
+# ---------------------------------------------------------------------------
+# Step 1 — Download new binary to /tmp
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Download new agent binary"
+  ansible.builtin.get_url:
+    url: "{{ agent_binary_url }}"
+    dest: "/tmp/{{ agent_binary_name }}-{{ agent_version }}"
+    mode: "0755"
+    timeout: 120
+  tags: [update, download]
+
+- name: "[{{ update_batch_label }}] Download new agent checksum"
+  ansible.builtin.get_url:
+    url: "{{ agent_checksum_url }}"
+    dest: "/tmp/{{ agent_binary_name }}-{{ agent_version }}.sha256"
+    mode: "0644"
+    timeout: 30
+  tags: [update, download]
+
+# ---------------------------------------------------------------------------
+# Step 2 — Verify checksum
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Read expected checksum"
+  ansible.builtin.slurp:
+    src: "/tmp/{{ agent_binary_name }}-{{ agent_version }}.sha256"
+  register: _new_checksum_b64
+  tags: [update, verify]
+
+- name: "[{{ update_batch_label }}] Extract checksum value"
+  ansible.builtin.set_fact:
+    _new_expected_checksum: "{{ (_new_checksum_b64.content | b64decode).split()[0] }}"
+  tags: [update, verify]
+
+- name: "[{{ update_batch_label }}] Stat downloaded binary"
+  ansible.builtin.stat:
+    path: "/tmp/{{ agent_binary_name }}-{{ agent_version }}"
+    checksum_algorithm: sha256
+    get_checksum: true
+  register: _new_binary_stat
+  tags: [update, verify]
+
+- name: "[{{ update_batch_label }}] Fail on checksum mismatch"
+  ansible.builtin.fail:
+    msg: >
+      Checksum mismatch for new binary!
+      Expected: {{ _new_expected_checksum }}
+      Got:      {{ _new_binary_stat.stat.checksum }}
+  when: _new_binary_stat.stat.checksum != _new_expected_checksum
+  tags: [update, verify]
+
+# ---------------------------------------------------------------------------
+# Step 3 — Capture current version for rollback reference
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Record current binary mtime (rollback marker)"
+  ansible.builtin.stat:
+    path: "{{ agent_bin_path }}"
+    get_checksum: true
+  register: _current_binary_stat
+  failed_when: false
+  tags: [update, rollback]
+
+- name: "[{{ update_batch_label }}] Derive backup path"
+  ansible.builtin.set_fact:
+    _backup_path: "{{ agent_bin_path }}.bak-{{ ansible_date_time.iso8601_basic_short }}"
+  tags: [update, rollback]
+
+# ---------------------------------------------------------------------------
+# Step 4 — Stop service
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Stop idcd-agent"
+  ansible.builtin.systemd:
+    name: "{{ agent_service_name }}"
+    state: stopped
+  tags: [update, service]
+
+# ---------------------------------------------------------------------------
+# Step 5 — Backup old binary
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Backup old binary"
+  ansible.builtin.copy:
+    src: "{{ agent_bin_path }}"
+    dest: "{{ _backup_path }}"
+    remote_src: true
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0755"
+  when: _current_binary_stat.stat.exists
+  tags: [update, rollback]
+
+# ---------------------------------------------------------------------------
+# Step 6 — Swap in new binary
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Install new binary"
+  ansible.builtin.copy:
+    src: "/tmp/{{ agent_binary_name }}-{{ agent_version }}"
+    dest: "{{ agent_bin_path }}"
+    remote_src: true
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0755"
+  tags: [update, install]
+
+# ---------------------------------------------------------------------------
+# Step 7 — Start service
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Start idcd-agent"
+  ansible.builtin.systemd:
+    name: "{{ agent_service_name }}"
+    state: started
+  tags: [update, service]
+
+# ---------------------------------------------------------------------------
+# Step 8 — Wait and verify systemd state
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Wait 30 seconds for agent to stabilise"
+  ansible.builtin.pause:
+    seconds: 30
+  tags: [update, verify]
+
+- name: "[{{ update_batch_label }}] Check systemctl is-active"
+  ansible.builtin.command: systemctl is-active {{ agent_service_name }}
+  register: _service_active
+  changed_when: false
+  failed_when: false
+  tags: [update, verify]
+
+# ---------------------------------------------------------------------------
+# Step 9 — Health check + automatic rollback on failure
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Check agent health endpoint"
+  ansible.builtin.uri:
+    url: "http://localhost:{{ agent_health_port }}/health"
+    method: GET
+    status_code: 200
+    timeout: 10
+  register: _health_check
+  failed_when: false
+  tags: [update, health]
+
+- name: "[{{ update_batch_label }}] Determine if rollback is needed"
+  ansible.builtin.set_fact:
+    _needs_rollback: >-
+      {{
+        _service_active.stdout != 'active'
+        or _health_check.status is not defined
+        or _health_check.status != 200
+      }}
+  tags: [update, health]
+
+# --- Rollback block (runs only when _needs_rollback == true) ---
+- name: "[{{ update_batch_label }}] ROLLBACK — stop failed agent"
+  ansible.builtin.systemd:
+    name: "{{ agent_service_name }}"
+    state: stopped
+  when: _needs_rollback | bool
+  tags: [update, rollback]
+
+- name: "[{{ update_batch_label }}] ROLLBACK — restore old binary"
+  ansible.builtin.copy:
+    src: "{{ _backup_path }}"
+    dest: "{{ agent_bin_path }}"
+    remote_src: true
+    owner: "{{ agent_user }}"
+    group: "{{ agent_group }}"
+    mode: "0755"
+  when:
+    - _needs_rollback | bool
+    - _current_binary_stat.stat.exists
+  tags: [update, rollback]
+
+- name: "[{{ update_batch_label }}] ROLLBACK — restart with old binary"
+  ansible.builtin.systemd:
+    name: "{{ agent_service_name }}"
+    state: started
+  when:
+    - _needs_rollback | bool
+    - _current_binary_stat.stat.exists
+  tags: [update, rollback]
+
+- name: "[{{ update_batch_label }}] FAIL — rollback triggered"
+  ansible.builtin.fail:
+    msg: >
+      Health check failed on {{ inventory_hostname }} after update to {{ agent_version }}.
+      Service active: {{ _service_active.stdout | default('unknown') }},
+      HTTP status: {{ _health_check.status | default('unreachable') }}.
+      Rolled back to previous binary at {{ _backup_path }}.
+  when: _needs_rollback | bool
+  tags: [update, rollback]
+
+# ---------------------------------------------------------------------------
+# Step 10 — Clean up temporary files
+# ---------------------------------------------------------------------------
+- name: "[{{ update_batch_label }}] Remove temporary download files"
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/{{ agent_binary_name }}-{{ agent_version }}"
+    - "/tmp/{{ agent_binary_name }}-{{ agent_version }}.sha256"
+  tags: [update, cleanup]
+
+- name: "[{{ update_batch_label }}] Report success"
+  ansible.builtin.debug:
+    msg: >
+      [{{ update_batch_label }}] idcd-agent {{ agent_version }} live on
+      {{ inventory_hostname }} ({{ ansible_host }}).
+  tags: [update, summary]

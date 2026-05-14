@@ -248,6 +248,14 @@ func (s *Server) setupRouter() {
 				r.Get("/", quotaH.GetQuota)
 			})
 
+			// Status page custom domain endpoints (authentication required)
+			statusPageDomainH := handler.NewStatusPageDomainHandler(idcdmain.New(s.pgxPool), s.logger)
+			r.Route("/status-pages/{id}/domain", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Patch("/", statusPageDomainH.SetStatusPageDomain)
+				r.Get("/verify", statusPageDomainH.VerifyStatusPageDomain)
+			})
+
 			// Alert channels, policies, and events (authentication required)
 			alertH := handler.NewAlertHandler(s.pgxPool)
 			r.Route("/alert-channels", func(r chi.Router) {
@@ -272,6 +280,13 @@ func (s *Server) setupRouter() {
 				r.Get("/", alertH.ListEvents)
 				r.Post("/{id}/ack", alertH.AcknowledgeEvent)
 			})
+		})
+
+		// Internal endpoints — consumed by the status Next.js app.
+		// TODO: Restrict to VPN/internal network via network policy before production.
+		statusPageInternalH := handler.NewStatusPageInternalHandler(idcdmain.New(s.pgxPool))
+		r.Route("/internal/status-pages", func(r chi.Router) {
+			r.Get("/by-domain", statusPageInternalH.ByDomain)
 		})
 	}
 

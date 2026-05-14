@@ -24,6 +24,8 @@ type Querier interface {
 	GetAPIKeyByID(ctx context.Context, id string) (ApiKey, error)
 	GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey, error)
 	GetMonitorByID(ctx context.Context, id string) (Monitor, error)
+	GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (StatusPage, error)
+	GetStatusPageByID(ctx context.Context, id string) (StatusPage, error)
 	GetSessionByID(ctx context.Context, id string) (UserSession, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (UserSession, error)
 	// billing.sql — sqlc queries for billing tables (post-00010 migration)
@@ -44,11 +46,13 @@ type Querier interface {
 	ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]ListInvoicesByUserRow, error)
 	ListMonitorsByUser(ctx context.Context, arg ListMonitorsByUserParams) ([]Monitor, error)
 	ListUserCredentialsByUser(ctx context.Context, userID string) ([]UserCredential, error)
+	MarkCustomDomainVerified(ctx context.Context, id string) error
 	MarkUserOTPUsed(ctx context.Context, id string) error
 	PurgeExpiredSessions(ctx context.Context) error
 	RevokeAPIKey(ctx context.Context, id string) error
 	RevokeAllUserSessions(ctx context.Context, userID string) error
 	RevokeSession(ctx context.Context, id string) error
+	SetStatusPageCustomDomain(ctx context.Context, arg SetStatusPageCustomDomainParams) (StatusPage, error)
 	SoftDeleteUser(ctx context.Context, id string) error
 	UpdateAPIKeyLastUsed(ctx context.Context, arg UpdateAPIKeyLastUsedParams) error
 	UpdateMonitorFields(ctx context.Context, arg UpdateMonitorFieldsParams) (Monitor, error)
@@ -60,6 +64,7 @@ type Querier interface {
 	UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
+	UpdateCertExpiry(ctx context.Context, arg UpdateCertExpiryParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) (User, error)
 }
 

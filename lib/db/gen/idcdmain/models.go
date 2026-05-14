@@ -175,14 +175,17 @@ type ProbeTask struct {
 }
 
 type StatusPage struct {
-	ID           string             `json:"id"`
-	UserID       string             `json:"user_id"`
-	Slug         string             `json:"slug"`
-	Name         string             `json:"name"`
-	Description  *string            `json:"description"`
-	CustomDomain *string            `json:"custom_domain"`
-	Branding     bool               `json:"branding"`
-	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	ID                       string             `json:"id"`
+	UserID                   string             `json:"user_id"`
+	Slug                     string             `json:"slug"`
+	Name                     string             `json:"name"`
+	Description              *string            `json:"description"`
+	CustomDomain             *string            `json:"custom_domain"`
+	CustomDomainVerifiedAt   pgtype.Timestamptz `json:"custom_domain_verified_at"`
+	CustomDomainCertExpiresAt pgtype.Timestamptz `json:"custom_domain_cert_expires_at"`
+	Branding                 bool               `json:"branding"`
+	CreatedAt                pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Subscription struct {

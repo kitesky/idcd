@@ -9,14 +9,46 @@ export const revalidate = 60
 
 interface Props {
   params: Promise<{ slug: string }>
+  searchParams: Promise<{ customDomain?: string }>
 }
 
 export async function generateStaticParams() {
   return Object.keys(MOCK_STATUS_PAGES).map((slug) => ({ slug }))
 }
 
-export async function generateMetadata({ params }: Props): Promise<Metadata> {
-  const { slug } = await params
+/**
+ * Resolve the status page slug from a custom domain by calling the internal
+ * API endpoint. Returns the slug on success, or null when not found / not
+ * yet verified.
+ */
+async function resolveSlugFromCustomDomain(
+  customDomain: string,
+): Promise<string | null> {
+  const apiBase =
+    process.env.INTERNAL_API_URL ?? "http://localhost:8080"
+  try {
+    const res = await fetch(
+      `${apiBase}/internal/status-pages/by-domain?domain=${encodeURIComponent(customDomain)}`,
+      { cache: "no-store" },
+    )
+    if (!res.ok) return null
+    const json = (await res.json()) as { data?: { slug?: string } }
+    return json.data?.slug ?? null
+  } catch {
+    return null
+  }
+}
+
+export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
+  const { slug: rawSlug } = await params
+  const { customDomain } = await searchParams
+
+  let slug = rawSlug
+  if (customDomain) {
+    const resolved = await resolveSlugFromCustomDomain(customDomain)
+    if (resolved) slug = resolved
+  }
+
   const data = MOCK_STATUS_PAGES[slug]
   if (!data) return { title: "状态页未找到" }
   return {
@@ -35,10 +67,24 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
 }
 
-export default async function StatusPage({ params }: Props) {
-  const { slug } = await params
-  const data = MOCK_STATUS_PAGES[slug]
+export default async function StatusPage({ params, searchParams }: Props) {
+  const { slug: rawSlug } = await params
+  const { customDomain } = await searchParams
 
+  let slug = rawSlug
+
+  // When the request comes from a custom domain, resolve the actual slug.
+  if (customDomain) {
+    const resolved = await resolveSlugFromCustomDomain(customDomain)
+    if (resolved) {
+      slug = resolved
+    } else {
+      // Custom domain exists in URL params but couldn't be resolved → 404.
+      notFound()
+    }
+  }
+
+  const data = MOCK_STATUS_PAGES[slug]
   if (!data) {
     notFound()
   }

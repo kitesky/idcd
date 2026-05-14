@@ -67,7 +67,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - lint 规则：`scripts/lint-cross-schema-fk.sh`（D1）+ `scripts/lint-attestation-words.sh`（D-Concern1）
   - *deps: A2* | *lane: A*
 
-- [ ] **A5** Cloudflare 配置
+- [-] **A5** Cloudflare 配置
   - DNS：`idcd.com` / `api.idcd.com` / `docs.idcd.com` / `status.idcd.com` / `admin.idcd.com` / `agent-wss.idcd.com`
   - WAF 规则基础 + Bot Score + Turnstile Site Key 申请
   - Full Strict TLS 模式
@@ -176,19 +176,23 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 单实例承载 5000-10000 Agent 连接
   - *deps: A6, A7* | *lane: C*
 
-- [ ] **C3** `infra/terraform/` — 节点 IaC
+- [-] **C3** `infra/terraform/` — 节点 IaC
   - Hetzner / Vultr / RackNerd / DMIT / BWG 节点模板
   - 变量：厂商 / 地区 / 规格 / tag（tier1_cn / tier1_overseas）
   - `terraform apply` 一键创建 VPS
   - 输出：IP 列表 → 自动写入 Ansible inventory
   - *deps: 无* | *lane: C* | *[👤] 需要各 VPS 厂商 API Key*
 
-- [ ] **C4** `infra/ansible/` — 节点部署 playbook
-  - `site.yml`：系统初始化（SSH 加固 + UFW + fail2ban）
-  - `agent.yml`：Agent 二进制部署 + systemd 启动 + 证书 enrollment
-  - `agent-update.yml`：OTA 更新（L1 1% → L2 10% → L3 100%，K-架构）
-  - 目标：`ansible-playbook agent.yml` 30 分钟内完成 100 节点部署
-  - *deps: C1, C3* | *lane: C*
+- [x] **C4** `infra/ansible/` — 节点部署 playbook
+  - `site.yml`：系统初始化（SSH 加固 + UFW + fail2ban + 系统用户）
+  - `agent.yml`：Agent 二进制下载验证（SHA256）+ systemd 启动 + 健康检查
+  - `agent-update.yml`：OTA 金丝雀更新（L1 1% → L2 10% → L3 100%，K-架构，自动回滚）
+  - `group_vars/all.yml`：全局变量（版本 / URL / 用户 / 心跳 / SSH 加固参数）
+  - `inventory/hosts.yml.example`：tier1_cn / tier1_overseas / tier2 分组模板
+  - `templates/`：agent-config.yaml.j2 + idcd-agent.service.j2
+  - 6 个 YAML 文件语法全部通过 python3 yaml.safe_load 验证
+  - 目标：`ansible-playbook agent.yml` 30 分钟内完成 100 节点部署（forks=20）
+  - *deps: C1, C3* | *lane: C* | *完成 2026-05-14*
 
 - [x] **C5** 节点目录 API
   - `GET /v1/nodes` — 公开节点列表（ASN / 运营商 / 地理 / 出口 IP）
@@ -311,14 +315,14 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### S1 验收清单（M4 末）
 
-- [ ] 100+ 节点稳定运行（成功率 > 95%）
-- [ ] 50+ 工具页 SSG 上线，页面可访问
-- [ ] 一键诊断可生成可分享报告
-- [ ] 反滥用底盘上线（黑名单 + 限速 + Turnstile）
-- [ ] 邮箱注册 / 登录可用
-- [ ] ICP 备案号显示在页面底部（已有，挂上即可）
-- [ ] Prometheus / Grafana 监控就位
-- [ ] [👤] 公开发布（去除 beta 标签，发公关稿）
+- [-] 100+ 节点稳定运行（成功率 > 95%）
+- [-] 50+ 工具页 SSG 上线，页面可访问
+- [-] 一键诊断可生成可分享报告
+- [-] 反滥用底盘上线（黑名单 + 限速 + Turnstile）
+- [-] 邮箱注册 / 登录可用
+- [x] ICP 备案号显示在页面底部（蜀ICP备19009987号-2 + 川公网安备51010702001950号）
+- [-] Prometheus / Grafana 监控就位
+- [-] [👤] 公开发布（去除 beta 标签，发公关稿）
 - 目标指标：日 UV 1000+ / 注册用户 500+
 
 ---
@@ -431,12 +435,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### S2 验收清单（M7 末）
 
-- [ ] 监控类型 M01-M08 可创建并正常拨测
-- [ ] 至少 5 个告警通道可用（邮件+企微+钉钉+飞书+Webhook）
-- [ ] 状态页可创建 + 自定义域 + ACME 自动证书
-- [ ] Paddle 支付可完成订阅（测试环境验证）
-- [ ] refund_failed 看板可查
-- [ ] [👤] 海外公司主体注册完成（Paddle 收款主体）
+- [-] 监控类型 M01-M08 可创建并正常拨测
+- [-] 至少 5 个告警通道可用（邮件+企微+钉钉+飞书+Webhook）
+- [x] 状态页可创建 + 自定义域 + ACME 自动证书
+- [-] Paddle 支付可完成订阅（测试环境验证）
+- [-] refund_failed 看板可查
+- [-] [👤] 海外公司主体注册完成（Paddle 收款主体）
 - 目标指标：首笔商业订单 / MRR ¥10k+ / 付费用户 200+
 
 ---

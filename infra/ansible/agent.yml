@@ -1,0 +1,208 @@
+---
+# idcd — agent.yml
+# Deploy (or re-deploy) the idcd-agent binary on all nodes.
+# Prerequisite: site.yml must have been applied first.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml agent.yml
+#   ansible-playbook -i inventory/hosts.yml agent.yml -e agent_version=0.2.0
+#   ansible-playbook -i inventory/hosts.yml agent.yml --limit tier1_cn
+#   ansible-playbook -i inventory/hosts.yml agent.yml --tags config
+
+- name: Deploy idcd-agent
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # 1. Download binary and verify checksum
+    # -------------------------------------------------------------------------
+    - name: Download agent binary to temporary path
+      ansible.builtin.get_url:
+        url: "{{ agent_binary_url }}"
+        dest: "/tmp/{{ agent_binary_name }}"
+        mode: "0755"
+        timeout: 120
+      register: agent_binary_download
+      tags: [binary, download]
+
+    - name: Download agent checksum file
+      ansible.builtin.get_url:
+        url: "{{ agent_checksum_url }}"
+        dest: "/tmp/{{ agent_binary_name }}.sha256"
+        mode: "0644"
+        timeout: 30
+      tags: [binary, download]
+
+    - name: Read expected checksum
+      ansible.builtin.slurp:
+        src: "/tmp/{{ agent_binary_name }}.sha256"
+      register: expected_checksum_b64
+      tags: [binary, download]
+
+    - name: Extract checksum value (first token on first line)
+      ansible.builtin.set_fact:
+        expected_checksum: "{{ (expected_checksum_b64.content | b64decode).split()[0] }}"
+      tags: [binary, download]
+
+    - name: Verify binary SHA256 checksum
+      ansible.builtin.stat:
+        path: "/tmp/{{ agent_binary_name }}"
+        checksum_algorithm: sha256
+        get_checksum: true
+      register: binary_stat
+      tags: [binary, download]
+
+    - name: Fail if checksum mismatch
+      ansible.builtin.fail:
+        msg: >
+          Checksum mismatch for {{ agent_binary_name }}!
+          Expected: {{ expected_checksum }}
+          Got:      {{ binary_stat.stat.checksum }}
+      when: binary_stat.stat.checksum != expected_checksum
+      tags: [binary, download]
+
+    # -------------------------------------------------------------------------
+    # 2. Install binary
+    # -------------------------------------------------------------------------
+    - name: Ensure agent bin directory exists
+      ansible.builtin.file:
+        path: "{{ agent_home }}/bin"
+        state: directory
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0750"
+      tags: [binary, install]
+
+    - name: Stop agent service before replacing binary (if running)
+      ansible.builtin.systemd:
+        name: "{{ agent_service_name }}"
+        state: stopped
+      failed_when: false
+      tags: [binary, install]
+
+    - name: Install agent binary
+      ansible.builtin.copy:
+        src: "/tmp/{{ agent_binary_name }}"
+        dest: "{{ agent_bin_path }}"
+        remote_src: true
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0755"
+      tags: [binary, install]
+
+    - name: Clean up temporary download files
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "/tmp/{{ agent_binary_name }}"
+        - "/tmp/{{ agent_binary_name }}.sha256"
+      tags: [binary, install]
+
+    # -------------------------------------------------------------------------
+    # 3. Write configuration
+    # -------------------------------------------------------------------------
+    - name: Ensure agent config directory exists
+      ansible.builtin.file:
+        path: "{{ agent_config_dir }}"
+        state: directory
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0750"
+      tags: [config]
+
+    - name: Write agent config from template
+      ansible.builtin.template:
+        src: templates/agent-config.yaml.j2
+        dest: "{{ agent_config_path }}"
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0640"
+      notify: Restart agent
+      tags: [config]
+
+    - name: Ensure agent data directory exists with correct ownership
+      ansible.builtin.file:
+        path: "{{ agent_data_dir }}"
+        state: directory
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0750"
+      tags: [config]
+
+    # -------------------------------------------------------------------------
+    # 4. systemd service
+    # -------------------------------------------------------------------------
+    - name: Write systemd service unit from template
+      ansible.builtin.template:
+        src: templates/idcd-agent.service.j2
+        dest: "/etc/systemd/system/{{ agent_service_name }}.service"
+        owner: root
+        group: root
+        mode: "0644"
+      notify:
+        - Reload systemd
+        - Restart agent
+      tags: [service, systemd]
+
+    - name: Ensure log directory exists
+      ansible.builtin.file:
+        path: /var/log/idcd-agent
+        state: directory
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0750"
+      tags: [service]
+
+    - name: Reload systemd daemon
+      ansible.builtin.systemd:
+        daemon_reload: true
+      tags: [service, systemd]
+
+    - name: Enable and start idcd-agent
+      ansible.builtin.systemd:
+        name: "{{ agent_service_name }}"
+        state: started
+        enabled: true
+      tags: [service, systemd]
+
+    # -------------------------------------------------------------------------
+    # 5. Post-deploy health verification
+    # -------------------------------------------------------------------------
+    - name: Wait for agent health endpoint to become ready
+      ansible.builtin.uri:
+        url: "http://localhost:{{ agent_health_port }}/health"
+        method: GET
+        status_code: 200
+        timeout: 10
+      retries: 6
+      delay: 5
+      register: health_check
+      tags: [verify, health]
+
+    - name: Assert agent service is active
+      ansible.builtin.command: systemctl is-active {{ agent_service_name }}
+      register: service_active
+      changed_when: false
+      failed_when: service_active.stdout != "active"
+      tags: [verify, health]
+
+    - name: Report deployed version
+      ansible.builtin.debug:
+        msg: "idcd-agent {{ agent_version }} deployed and healthy on {{ inventory_hostname }} ({{ ansible_host }})"
+      tags: [verify]
+
+  # ---------------------------------------------------------------------------
+  # Handlers
+  # ---------------------------------------------------------------------------
+  handlers:
+    - name: Reload systemd
+      ansible.builtin.systemd:
+        daemon_reload: true
+
+    - name: Restart agent
+      ansible.builtin.systemd:
+        name: "{{ agent_service_name }}"
+        state: restarted

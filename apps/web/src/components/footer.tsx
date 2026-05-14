@@ -82,6 +82,24 @@ export function Footer() {
           <p className="text-sm text-muted-foreground">
             © 2026 idcd.com. 保留所有权利。
           </p>
+          <div className="flex flex-col items-center gap-1 sm:items-end">
+            <a
+              href="https://beian.miit.gov.cn/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              蜀ICP备19009987号-2
+            </a>
+            <a
+              href="https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=51010702001950"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              川公网安备 51010702001950号
+            </a>
+          </div>
         </div>
       </div>
     </footer>

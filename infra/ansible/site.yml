@@ -1,0 +1,217 @@
+---
+# idcd — site.yml
+# System initialisation playbook.
+# Hardens SSH, configures UFW, installs fail2ban, and creates the idcd-agent
+# system user.  Run this once after provisioning a fresh VPS.
+#
+# Usage:
+#   ansible-playbook -i inventory/hosts.yml site.yml
+#   ansible-playbook -i inventory/hosts.yml site.yml --tags ssh
+#   ansible-playbook -i inventory/hosts.yml site.yml -e ssh_port=2222
+
+- name: System initialisation
+  hosts: all
+  become: true
+  gather_facts: true
+
+  tasks:
+    # -------------------------------------------------------------------------
+    # 1. System update & base packages
+    # -------------------------------------------------------------------------
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+        cache_valid_time: 3600
+      tags: [system, packages]
+
+    - name: Upgrade all packages
+      ansible.builtin.apt:
+        upgrade: dist
+        autoremove: true
+        autoclean: true
+      tags: [system, packages]
+
+    - name: Install base packages
+      ansible.builtin.apt:
+        name: "{{ base_packages }}"
+        state: present
+      tags: [system, packages]
+
+    # -------------------------------------------------------------------------
+    # 2. Disable unnecessary services
+    # -------------------------------------------------------------------------
+    - name: Disable and stop unnecessary services
+      ansible.builtin.systemd:
+        name: "{{ item }}"
+        state: stopped
+        enabled: false
+        masked: true
+      loop: "{{ disabled_services }}"
+      failed_when: false   # service may not exist on all distros
+      tags: [system, services]
+
+    # -------------------------------------------------------------------------
+    # 3. Create idcd-agent system user
+    # -------------------------------------------------------------------------
+    - name: Create idcd-agent group
+      ansible.builtin.group:
+        name: "{{ agent_group }}"
+        system: true
+        state: present
+      tags: [agent_user]
+
+    - name: Create idcd-agent system user
+      ansible.builtin.user:
+        name: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        system: true
+        shell: /usr/sbin/nologin
+        home: "{{ agent_home }}"
+        create_home: false
+        comment: "idcd Agent service account"
+        state: present
+      tags: [agent_user]
+
+    - name: Create agent home and data directories
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: "{{ agent_user }}"
+        group: "{{ agent_group }}"
+        mode: "0750"
+      loop:
+        - "{{ agent_home }}"
+        - "{{ agent_home }}/bin"
+        - "{{ agent_data_dir }}"
+        - "{{ agent_config_dir }}"
+      tags: [agent_user]
+
+    # -------------------------------------------------------------------------
+    # 4. SSH hardening
+    # -------------------------------------------------------------------------
+    - name: Harden SSH configuration
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: "{{ item.regexp }}"
+        line: "{{ item.line }}"
+        state: present
+        validate: "sshd -t -f %s"
+      loop:
+        - regexp: '^#?Port\s'
+          line: "Port {{ ssh_port }}"
+        - regexp: '^#?PermitRootLogin\s'
+          line: "PermitRootLogin {{ ssh_permit_root_login }}"
+        - regexp: '^#?PasswordAuthentication\s'
+          line: "PasswordAuthentication {{ ssh_password_authentication }}"
+        - regexp: '^#?MaxAuthTries\s'
+          line: "MaxAuthTries {{ ssh_max_auth_tries }}"
+        - regexp: '^#?ClientAliveInterval\s'
+          line: "ClientAliveInterval {{ ssh_client_alive_interval }}"
+        - regexp: '^#?ClientAliveCountMax\s'
+          line: "ClientAliveCountMax {{ ssh_client_alive_count_max }}"
+        - regexp: '^#?X11Forwarding\s'
+          line: "X11Forwarding no"
+        - regexp: '^#?AllowAgentForwarding\s'
+          line: "AllowAgentForwarding no"
+        - regexp: '^#?AllowTcpForwarding\s'
+          line: "AllowTcpForwarding no"
+        - regexp: '^#?PrintMotd\s'
+          line: "PrintMotd no"
+        - regexp: '^#?UseDNS\s'
+          line: "UseDNS no"
+      notify: Restart sshd
+      tags: [ssh]
+
+    - name: Ensure sshd is running and enabled
+      ansible.builtin.systemd:
+        name: sshd
+        state: started
+        enabled: true
+      tags: [ssh]
+
+    # -------------------------------------------------------------------------
+    # 5. UFW firewall
+    # -------------------------------------------------------------------------
+    - name: Set UFW default incoming policy to deny
+      community.general.ufw:
+        direction: incoming
+        policy: "{{ ufw_default_incoming }}"
+      tags: [firewall, ufw]
+
+    - name: Set UFW default outgoing policy to allow
+      community.general.ufw:
+        direction: outgoing
+        policy: "{{ ufw_default_outgoing }}"
+      tags: [firewall, ufw]
+
+    - name: Allow SSH port through UFW
+      community.general.ufw:
+        rule: allow
+        port: "{{ ssh_port | string }}"
+        proto: tcp
+        comment: "SSH access"
+      tags: [firewall, ufw, ssh]
+
+    - name: Rate-limit SSH through UFW (brute-force mitigation)
+      community.general.ufw:
+        rule: limit
+        port: "{{ ssh_port | string }}"
+        proto: tcp
+        comment: "SSH rate-limit"
+      tags: [firewall, ufw, ssh]
+
+    - name: Enable UFW
+      community.general.ufw:
+        state: enabled
+      tags: [firewall, ufw]
+
+    # -------------------------------------------------------------------------
+    # 6. fail2ban
+    # -------------------------------------------------------------------------
+    - name: Ensure fail2ban is installed
+      ansible.builtin.apt:
+        name: fail2ban
+        state: present
+      tags: [fail2ban]
+
+    - name: Write fail2ban local jail configuration
+      ansible.builtin.copy:
+        dest: /etc/fail2ban/jail.local
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [DEFAULT]
+          bantime  = 3600
+          findtime = 600
+          maxretry = 5
+          backend  = systemd
+
+          [sshd]
+          enabled  = true
+          port     = {{ ssh_port }}
+          maxretry = 3
+          bantime  = 86400
+      notify: Restart fail2ban
+      tags: [fail2ban]
+
+    - name: Ensure fail2ban is running and enabled
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: started
+        enabled: true
+      tags: [fail2ban]
+
+  # ---------------------------------------------------------------------------
+  # Handlers
+  # ---------------------------------------------------------------------------
+  handlers:
+    - name: Restart sshd
+      ansible.builtin.systemd:
+        name: sshd
+        state: restarted
+
+    - name: Restart fail2ban
+      ansible.builtin.systemd:
+        name: fail2ban
+        state: restarted

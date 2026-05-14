@@ -1,0 +1,102 @@
+---
+# idcd — agent-update.yml
+# OTA canary update playbook (K-architecture: L1 → L2 → L3).
+#
+# Strategy:
+#   L1  serial: "1%"  — update 1 node (or 1% of fleet, whichever is larger)
+#   L2  serial: "10%" — update next 10%
+#   L3  serial: "100%" — remaining nodes
+#
+# Each batch: download → verify → stop → backup → swap → start → health-check.
+# On health-check failure: automatic rollback to previous binary.
+#
+# Usage:
+#   # Dry-run (check mode):
+#   ansible-playbook -i inventory/hosts.yml agent-update.yml --check -e agent_version=0.2.0
+#
+#   # Full canary update to 0.2.0:
+#   ansible-playbook -i inventory/hosts.yml agent-update.yml -e agent_version=0.2.0
+#
+#   # Skip L1/L2 pauses (CI/staging):
+#   ansible-playbook -i inventory/hosts.yml agent-update.yml -e agent_version=0.2.0 -e skip_pause=true
+#
+#   # Update only a specific group:
+#   ansible-playbook -i inventory/hosts.yml agent-update.yml --limit tier1_cn -e agent_version=0.2.0
+
+# ---------------------------------------------------------------------------
+# L1 — 1% of nodes (canary)
+# ---------------------------------------------------------------------------
+- name: "[L1] OTA canary update — 1% of fleet"
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: "1%"
+  max_fail_percentage: 0   # abort L1 immediately on any failure
+
+  tasks:
+    - name: "[L1] Include update tasks"
+      ansible.builtin.include_tasks: tasks/update-agent.yml
+      vars:
+        update_batch_label: "L1"
+
+  post_tasks:
+    - name: "[L1] Pause 5 minutes to observe canary health"
+      ansible.builtin.pause:
+        minutes: 5
+        prompt: >
+          L1 canary complete. Review dashboards/logs then press Enter to continue
+          to L2, or Ctrl+C → A to abort.
+      run_once: true
+      when: not (skip_pause | default(false) | bool)
+      tags: [pause]
+
+# ---------------------------------------------------------------------------
+# L2 — next 10% of nodes
+# ---------------------------------------------------------------------------
+- name: "[L2] OTA update — 10% of fleet"
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: "10%"
+  max_fail_percentage: 10
+
+  tasks:
+    - name: "[L2] Include update tasks"
+      ansible.builtin.include_tasks: tasks/update-agent.yml
+      vars:
+        update_batch_label: "L2"
+
+  post_tasks:
+    - name: "[L2] Pause 5 minutes before full rollout"
+      ansible.builtin.pause:
+        minutes: 5
+        prompt: >
+          L2 (10%) complete. Review dashboards/logs then press Enter for full
+          rollout (L3), or Ctrl+C → A to abort.
+      run_once: true
+      when: not (skip_pause | default(false) | bool)
+      tags: [pause]
+
+# ---------------------------------------------------------------------------
+# L3 — full fleet
+# ---------------------------------------------------------------------------
+- name: "[L3] OTA update — full fleet (100%)"
+  hosts: all
+  become: true
+  gather_facts: true
+  serial: "100%"
+  max_fail_percentage: 5
+
+  tasks:
+    - name: "[L3] Include update tasks"
+      ansible.builtin.include_tasks: tasks/update-agent.yml
+      vars:
+        update_batch_label: "L3"
+
+  post_tasks:
+    - name: "[L3] Report update summary"
+      ansible.builtin.debug:
+        msg: >
+          Full fleet update to idcd-agent {{ agent_version }} complete.
+          Batch: L3 (100%), host: {{ inventory_hostname }}
+      tags: [summary]

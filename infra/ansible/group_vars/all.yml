@@ -1,0 +1,81 @@
+# idcd Ansible — Global Variables
+# All playbooks inherit these defaults.
+# Override at group_vars/<group>.yml or host_vars/<host>.yml as needed.
+
+# ---------------------------------------------------------------------------
+# Agent version — keep in sync with /VERSION file at repo root.
+# Set on the CLI with: -e agent_version=0.2.0
+# ---------------------------------------------------------------------------
+agent_version: "0.1.0-dev"
+
+# GitHub Releases download base URL.
+# Expects assets named: idcd-agent-linux-amd64, idcd-agent-linux-arm64
+# and corresponding .sha256 sidecar files.
+agent_binary_base_url: "https://github.com/kite365/idcd/releases/download/v{{ agent_version }}"
+
+# Derived per-host — auto-selects amd64 or arm64 based on Ansible facts.
+agent_binary_name: "idcd-agent-linux-{{ 'arm64' if ansible_architecture == 'aarch64' else 'amd64' }}"
+agent_binary_url: "{{ agent_binary_base_url }}/{{ agent_binary_name }}"
+agent_checksum_url: "{{ agent_binary_base_url }}/{{ agent_binary_name }}.sha256"
+
+# ---------------------------------------------------------------------------
+# Agent runtime identity
+# ---------------------------------------------------------------------------
+agent_user: "idcd-agent"
+agent_group: "idcd-agent"
+agent_home: "/opt/idcd-agent"
+agent_config_dir: "/etc/idcd-agent"
+agent_data_dir: "{{ agent_home }}/data"
+agent_bin_path: "{{ agent_home }}/bin/idcd-agent"
+agent_config_path: "{{ agent_config_dir }}/config.yaml"
+agent_service_name: "idcd-agent"
+agent_health_port: 8080
+
+# ---------------------------------------------------------------------------
+# Gateway / control-plane connectivity
+# ---------------------------------------------------------------------------
+gateway_wss_url: "wss://agent-wss.idcd.com"
+
+# ---------------------------------------------------------------------------
+# Probe / heartbeat configuration
+# ---------------------------------------------------------------------------
+node_heartbeat_interval: 30    # seconds
+agent_log_level: "info"
+agent_max_cache_mb: 500
+agent_sqlite_path: "{{ agent_data_dir }}/local.db"
+
+# ---------------------------------------------------------------------------
+# SSH hardening
+# ---------------------------------------------------------------------------
+ssh_port: 22
+ssh_permit_root_login: "without-password"   # key-only root; set "no" to disable root entirely
+ssh_password_authentication: "no"
+ssh_max_auth_tries: 3
+ssh_client_alive_interval: 300
+ssh_client_alive_count_max: 2
+
+# ---------------------------------------------------------------------------
+# UFW / firewall
+# ---------------------------------------------------------------------------
+ufw_default_incoming: "deny"
+ufw_default_outgoing: "allow"
+
+# ---------------------------------------------------------------------------
+# System packages (always installed on every node)
+# ---------------------------------------------------------------------------
+base_packages:
+  - curl
+  - wget
+  - ca-certificates
+  - gnupg
+  - unzip
+  - ufw
+  - fail2ban
+  - logrotate
+  - htop
+
+# Packages to disable (if present)
+disabled_services:
+  - bluetooth
+  - cups
+  - cups-browsed

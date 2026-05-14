@@ -194,6 +194,9 @@ func (s *Server) setupRouter() {
 			// Node directory endpoint
 			nodesH := handler.NewNodesHandler(s.pgxPool)
 			r.Get("/nodes", nodesH.List)
+			// Node diagnostics endpoint (public, no auth)
+			nodeDiagH := handler.NewNodeDiagnosticsHandler(s.pgxPool)
+			r.Get("/nodes/{id}/diagnostics", nodeDiagH.Diagnostics)
 
 			// API quota rate limiter (per-user daily limit)
 			apiRateLimiter := quota.NewAPIRateLimiter(s.redis)
@@ -218,6 +221,7 @@ func (s *Server) setupRouter() {
 			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool)).WithQuotaPool(s.pgxPool).WithBulkPool(s.pgxPool)
 			monitorStreamH := handler.NewMonitorStreamHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			monitorChecksH := handler.NewMonitorChecksHandler(idcdmain.New(s.pgxPool), s.pgxPool)
+			anchorH := handler.NewAnchorHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			r.Route("/monitors", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Use(apiQuotaMW)
@@ -231,6 +235,8 @@ func (s *Server) setupRouter() {
 				r.Post("/{id}/resume", monitorH.Resume)
 				r.With(authnMW).Get("/{id}/stream", monitorStreamH.Stream)
 				r.With(authnMW).Get("/{id}/checks", monitorChecksH.List)
+				r.With(authnMW).Get("/{id}/baseline", anchorH.GetBaseline)
+				r.With(authnMW).Get("/{id}/deviations", anchorH.ListDeviations)
 			})
 
 			// Admin billing endpoints

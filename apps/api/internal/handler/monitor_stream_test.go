@@ -23,11 +23,6 @@ func (m *mockStreamPool) QueryRow(_ context.Context, _ string, _ ...interface{})
 	return m.row
 }
 
-// errRow is a pgx.Row that always returns an error on Scan.
-type errRow struct{ err error }
-
-func (e *errRow) Scan(_ ...interface{}) error { return e.err }
-
 func newStreamHandler(mq MonitorQuerier, pool MonitorStreamPool) http.Handler {
 	h := NewMonitorStreamHandler(mq, pool)
 	r := chi.NewRouter()

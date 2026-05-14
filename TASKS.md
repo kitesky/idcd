@@ -471,6 +471,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J11** 监控批量操作 — `POST /v1/monitors/bulk`（pause/resume/delete，最多 50 条，ownership 校验，不属于当前用户 id 放入 failed），`BulkPool` 接口 + `BulkAction` handler + 路由注册（`/bulk` 在 `/{id}` 之前），前端 Checkbox 列（全选/单选）+ 浮动操作栏（selectedIds.size > 0 时出现）+ AlertDialog 删除确认，7 Go tests + 3 前端 tests ✓，完成 2026-05-14
 - [x] **J13** MCP server 骨架 — `apps/mcp/` 新 Go module（CGO_ENABLED=0），JSON-RPC 2.0 over stdio，8 tools（ping/http/dns/traceroute/ssl/diagnose/ip/whois）stub 实现，`protocol.Server` 读 stdin/写 stdout 循环，Tool 注册表 + Handler 接口，initialize/tools/list/tools/call 方法，7 Go tests ✓，go.work 已更新，完成 2026-05-14
 - [x] **J14** IPv6 检测/转换工具页 — `tool-functions.ts` 新增 `checkIPv6`（valid/expanded/compressed/type/isIPv4Mapped）、`ipv4ToIPv6Mapped`、`ipv6ToPTR`（.ip6.arpa PTR 记录），`Ipv6CheckClient` 升级显示完整类型+IPv4映射标识，`ipv6-check.test.ts`（12 tests）+ `ipv6-convert.test.ts`（14 tests），460 前端 tests ✓，完成 2026-05-14
+- [x] **J15** Anchor 锚定基准 + 偏差实时告警 — DB migration 00015（`monitor_baselines` + `anchor_deviations`），`BaselineUpdater`（7天窗口 percentile_cont，rate-limited：6h 或 100-sample boundary），`AnchorChecker`（p95 延迟 2x/3x warning/critical，success_rate 95%阈值，open 去重，resolved 恢复），processor.Process() 接入，`AnchorHandler`（GET `/v1/monitors/{id}/baseline` + `/{id}/deviations`），server.go 路由注册，14 aggregator tests + 7 API tests ✓，完成 2026-05-14
 
 ---
 

@@ -15,19 +15,32 @@ import (
 
 // Processor parses stream messages and persists probe results.
 type Processor struct {
-	pool    *pgxpool.Pool
-	dedupr  *dedup.Deduper
-	trigger *AlertTrigger
+	pool     *pgxpool.Pool
+	dedupr   *dedup.Deduper
+	trigger  *AlertTrigger
+	baseline *BaselineUpdater
+	anchor   *AnchorChecker
 }
 
 // New creates a Processor. dedupr may be nil to disable dedup (for testing).
 func New(pool *pgxpool.Pool, dedupr *dedup.Deduper) *Processor {
-	return &Processor{pool: pool, dedupr: dedupr}
+	return &Processor{
+		pool:     pool,
+		dedupr:   dedupr,
+		baseline: newBaselineUpdater(pool),
+		anchor:   newAnchorChecker(pool),
+	}
 }
 
 // NewWithTrigger creates a Processor with alert triggering enabled.
 func NewWithTrigger(pool *pgxpool.Pool, dedupr *dedup.Deduper, trigger *AlertTrigger) *Processor {
-	return &Processor{pool: pool, dedupr: dedupr, trigger: trigger}
+	return &Processor{
+		pool:     pool,
+		dedupr:   dedupr,
+		trigger:  trigger,
+		baseline: newBaselineUpdater(pool),
+		anchor:   newAnchorChecker(pool),
+	}
 }
 
 // MonitorCheckStatus maps a probe result to a monitor check status.
@@ -88,6 +101,12 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 		if p.trigger != nil {
 			checkStatus := probeSuccessToCheckStatus(result.success, result.errMsg)
 			p.trigger.CheckAndTrigger(ctx, monitorID, checkStatus)
+		}
+		if p.baseline != nil {
+			_ = p.baseline.UpdateBaseline(ctx, monitorID)
+		}
+		if p.anchor != nil {
+			_ = p.anchor.CheckDeviation(ctx, monitorID, float64(result.durationMs), result.success)
 		}
 	}
 

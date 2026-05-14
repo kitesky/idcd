@@ -4,6 +4,7 @@ use (
 	./apps/agent
 	./apps/aggregator
 	./apps/api
+	./apps/cli
 	./apps/gateway
 	./apps/mcp
 	./apps/notifier

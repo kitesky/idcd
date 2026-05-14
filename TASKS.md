@@ -522,6 +522,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 [x] K8 众包节点申请 + 积分系统（node_applications + node_points + point_redemptions，DB migration 00023，6 API endpoints + 7 Go tests，/nodes/apply 申请页 + PointsBalanceCard + 兑换 Dialog，8 前端 tests，738 Go + 515 前端 tests ✓，完成 2026-05-14）
 [-] 管理台完整功能                        → S2 末/S3
 [-] 企业版 SSO / 私有部署                 → S4
+[-] L8 SSO SAML/OIDC 基础（M15 企业功能：sso_configurations DB + 配置 API + 管理后台入口）→ S4，现阶段用不到，待需要时再开发
 ```
 
 ---

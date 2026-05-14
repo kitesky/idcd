@@ -359,7 +359,7 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
       {selectedIds.size > 0 && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 w-max max-w-[calc(100vw-2rem)]">
           <div className="flex items-center gap-2 rounded-xl border bg-background px-4 py-3 shadow-lg">
-            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap">
+            <span className="text-sm font-medium text-muted-foreground whitespace-nowrap" data-testid="bulk-selection-count">
               <span className="hidden sm:inline">已选择 </span>{selectedIds.size}<span className="hidden sm:inline"> 个监控</span>
             </span>
             <div className="h-4 w-px bg-border" />

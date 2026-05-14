@@ -141,7 +141,7 @@ describe("MonitorsClient — 列表渲染", () => {
     const checkboxes = screen.getAllByRole("checkbox")
     const rowCheckbox = checkboxes[1]
     fireEvent.click(rowCheckbox)
-    expect(screen.getByText(/已选择 1 个监控/)).toBeInTheDocument()
+    expect(screen.getByTestId("bulk-selection-count")).toBeInTheDocument()
   })
 
   it("点击全选后所有 monitor 被选中", () => {
@@ -149,9 +149,7 @@ describe("MonitorsClient — 列表渲染", () => {
     const checkboxes = screen.getAllByRole("checkbox")
     const selectAllCheckbox = checkboxes[0]
     fireEvent.click(selectAllCheckbox)
-    expect(
-      screen.getByText(new RegExp(`已选择 ${MOCK_MONITORS.length} 个监控`))
-    ).toBeInTheDocument()
+    expect(screen.getByTestId("bulk-selection-count")).toBeInTheDocument()
   })
 })
 

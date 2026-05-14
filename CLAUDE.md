@@ -35,7 +35,21 @@
 - 业务语义色扩展:success / warning / info(详 DESIGN.md §3.2)
 - idcd 特定组件 通过 composition,不重写 shadcn 已有组件
 
-在 QA 阶段 flag 任何不符合 DESIGN.md 的代码。
+### 组件使用强制规则
+
+**必须使用 shadcn/ui 组件，禁止手写 div + className 拼接 UI。**
+
+| 场景 | 做法 |
+|---|---|
+| 按钮 | `<Button>` 而非 `<div onClick>` 或裸 `<button>` |
+| 卡片/面板 | `<Card>` + `<CardContent>` 而非 `<div className="rounded border">` |
+| 表单字段 | `<Form>` + `<FormField>` + `<Input>` / `<Select>` 而非裸 input |
+| 提示/状态 | `<Alert>` / `<Badge>` 而非自写色块 |
+| 间距/布局 | Tailwind spacing utilities + shadcn 布局，不造容器组件 |
+
+**允许裸 div 的唯一情形**：纯布局容器（flex/grid wrapper）且无视觉样式（无 border/bg/shadow/rounded）。
+
+在 code review 和 QA 阶段 flag 任何绕过 shadcn 组件手写 UI 的代码。
 
 ---
 

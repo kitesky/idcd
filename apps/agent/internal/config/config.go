@@ -5,18 +5,20 @@ import (
 	"fmt"
 	"os"
 
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds agent-specific configuration.
 type Config struct {
-	NodeID        string `yaml:"node_id"`        // unique node identifier
-	GatewayURL    string `yaml:"gateway_url"`    // URL to report results to
-	CertPath      string `yaml:"cert_path"`      // client cert for mTLS
-	DataDir       string `yaml:"data_dir"`       // directory for SQLite and logs
-	SecretKey     string `yaml:"secret_key"`     // HMAC secret for watermark signing
-	PollInterval  string `yaml:"poll_interval"`  // e.g. "30s"
-	BatchSize     int    `yaml:"batch_size"`     // max results per upload batch
+	NodeID        string                         `yaml:"node_id"`
+	GatewayURL    string                         `yaml:"gateway_url"`
+	CertPath      string                         `yaml:"cert_path"`
+	Observability sharedconfig.ObservabilityConfig `yaml:"observability"`
+	DataDir       string                           `yaml:"data_dir"`
+	SecretKey     string                           `yaml:"secret_key"`
+	PollInterval  string                           `yaml:"poll_interval"`
+	BatchSize     int                              `yaml:"batch_size"`
 }
 
 // Load reads and parses the agent config file at path.

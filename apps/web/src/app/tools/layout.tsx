@@ -14,8 +14,9 @@ import {
   cn
 } from "@/components/ui"
 import { Menu, X } from "lucide-react"
+import { ALL_TOOLS } from "@/app/tools/tools-config"
 
-const tools = [
+const STATIC_TOOLS = [
   { slug: 'diagnose', name: '一键诊断' },
   { slug: 'http', name: 'HTTP/HTTPS 拨测' },
   { slug: 'ping', name: '多地 Ping' },
@@ -34,6 +35,34 @@ const tools = [
   { slug: 'ipv6-converter', name: 'IPv6 检测 / 转换' },
 ]
 
+const NEW_TOOL_GROUPS = [
+  {
+    label: '拨测工具（新）',
+    slugs: ['ssl','whois','icp','ip','tcp','mtr','smtp','rdns','asn','mx','spf','dmarc','ntp','dkim','bgp'],
+  },
+  {
+    label: '文本工具',
+    slugs: ['word-counter','line-sort','duplicate-remover','text-case','html-encode','escape-html','text-stats','diff','markdown'],
+  },
+  {
+    label: '转换工具',
+    slugs: ['url-encode','unicode','jwt-decode','number-convert','json-to-yaml','yaml-formatter','xml-formatter','url-parser','user-agent','number-format'],
+  },
+  {
+    label: '生成工具',
+    slugs: ['password-gen','uuid-gen','lorem','chmod-calc','sort-json','color-picker','image-base64'],
+  },
+  {
+    label: '查询工具',
+    slugs: ['regex','cron-viz','cidr-calc','ipv6-check','http-status','mime-type','timezone','date-calc','csv-formatter'],
+  },
+]
+
+const ALL_SELECT_TOOLS = [
+  ...STATIC_TOOLS,
+  ...ALL_TOOLS.map(t => ({ slug: t.slug, name: t.name })),
+]
+
 interface ToolsLayoutProps {
   children: React.ReactNode
 }
@@ -41,8 +70,9 @@ interface ToolsLayoutProps {
 export default function ToolsLayout({ children }: ToolsLayoutProps) {
   const pathname = usePathname()
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [showNew, setShowNew] = useState(false)
 
-  const currentTool = tools.find(tool => pathname.includes(tool.slug))
+  const currentSlug = pathname.split('/tools/')[1]?.split('/')[0] ?? ''
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -59,16 +89,15 @@ export default function ToolsLayout({ children }: ToolsLayoutProps) {
             </button>
           </div>
 
-          {/* Mobile tool selector */}
           {!sidebarOpen && (
-            <Select value={currentTool?.slug} onValueChange={(value) => {
+            <Select value={currentSlug} onValueChange={(value) => {
               window.location.href = `/tools/${value}`
             }}>
               <SelectTrigger className="w-full">
                 <SelectValue placeholder="选择工具" />
               </SelectTrigger>
               <SelectContent>
-                {tools.map((tool) => (
+                {ALL_SELECT_TOOLS.map((tool) => (
                   <SelectItem key={tool.slug} value={tool.slug}>
                     {tool.name}
                   </SelectItem>
@@ -85,17 +114,19 @@ export default function ToolsLayout({ children }: ToolsLayoutProps) {
           sidebarOpen ? "block" : "hidden lg:block"
         )}>
           <Card>
-            <CardContent className="p-6">
-              <h2 className="font-semibold text-lg mb-4 hidden lg:block">开发工具</h2>
-              <nav className="space-y-2">
-                {tools.map((tool) => {
-                  const isActive = pathname.includes(tool.slug)
+            <CardContent className="p-4">
+              <h2 className="font-semibold text-lg mb-3 hidden lg:block">开发工具</h2>
+
+              {/* 原有工具 */}
+              <nav className="space-y-0.5">
+                {STATIC_TOOLS.map((tool) => {
+                  const isActive = currentSlug === tool.slug
                   return (
                     <Link
                       key={tool.slug}
                       href={`/tools/${tool.slug}` as any}
                       className={cn(
-                        "block px-3 py-2 rounded-md text-sm transition-colors",
+                        "block px-2 py-1.5 rounded text-sm transition-colors",
                         isActive
                           ? "bg-primary text-primary-foreground"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted"
@@ -107,6 +138,42 @@ export default function ToolsLayout({ children }: ToolsLayoutProps) {
                   )
                 })}
               </nav>
+
+              {/* 折叠新工具 */}
+              <button
+                onClick={() => setShowNew(prev => !prev)}
+                className="mt-3 w-full text-xs text-muted-foreground hover:text-foreground transition-colors px-2 py-1 text-left border rounded"
+              >
+                {showNew ? '▾ 收起 50 个新工具' : '▸ 展开 50 个新工具'}
+              </button>
+
+              {showNew && NEW_TOOL_GROUPS.map(group => (
+                <div key={group.label} className="mt-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wide mb-1 px-1">{group.label}</p>
+                  <nav className="space-y-0.5">
+                    {group.slugs.map(slug => {
+                      const tool = ALL_TOOLS.find(t => t.slug === slug)
+                      if (!tool) return null
+                      const isActive = currentSlug === slug
+                      return (
+                        <Link
+                          key={slug}
+                          href={`/tools/${slug}` as any}
+                          className={cn(
+                            "block px-2 py-1.5 rounded text-sm transition-colors",
+                            isActive
+                              ? "bg-primary text-primary-foreground"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted"
+                          )}
+                          onClick={() => setSidebarOpen(false)}
+                        >
+                          {tool.name}
+                        </Link>
+                      )
+                    })}
+                  </nav>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </div>

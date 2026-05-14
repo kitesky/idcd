@@ -4,7 +4,7 @@ package config
 import (
 	"os"
 
-	"github.com/kite365/idcd/packages/shared/config"
+	"github.com/kite365/idcd/lib/shared/config"
 )
 
 // Config holds the complete configuration for the notifier service.

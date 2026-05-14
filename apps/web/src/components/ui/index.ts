@@ -19,4 +19,10 @@ export {
   useFormField,
 } from './form'
 export { Skeleton } from './skeleton'
+export { Progress } from './progress'
+export type { ProgressProps } from './progress'
+export {
+  Table, TableHeader, TableBody, TableFooter,
+  TableHead, TableRow, TableCell, TableCaption,
+} from './table'
 export { cn } from '@/lib/utils'

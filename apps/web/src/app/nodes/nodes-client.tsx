@@ -1,301 +1,267 @@
 "use client"
 
 import { useState, useMemo } from "react"
-import dynamic from "next/dynamic"
-import { Node } from "@/lib/api"
-import { countryFlag, countryCoords, getCountryName } from "@/lib/country"
-import { Search } from "lucide-react"
+import { Search, Globe, Wifi, WifiOff, Server } from "lucide-react"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Badge } from "@/components/ui/badge"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  type NodeEntry,
+  mapStatus,
+  formatIP,
+  aggregateStats,
+  filterNodes,
+} from "@/lib/nodes-utils"
 
-const ReactECharts = dynamic(() => import("echarts-for-react"), { ssr: false })
+const COUNTRY_NAMES: Record<string, string> = {
+  CN: "中国大陆",
+  HK: "香港",
+  TW: "台湾",
+  JP: "日本",
+  SG: "新加坡",
+  KR: "韩国",
+  US: "美国",
+  DE: "德国",
+  GB: "英国",
+  AU: "澳大利亚",
+}
+
+const STATUS_OPTIONS = [
+  { value: "all", label: "所有状态" },
+  { value: "online", label: "在线" },
+  { value: "degraded", label: "降级" },
+  { value: "offline", label: "离线" },
+]
 
 interface NodesClientProps {
-  initialNodes: Node[]
+  nodes: NodeEntry[]
 }
 
-const TIER_LABELS: Record<string, string> = {
-  tier1_cn: "国内一级节点",
-  tier1_overseas: "海外一级节点",
-  community: "社区节点",
-}
+export function NodesClient({ nodes }: NodesClientProps) {
+  const [countryFilter, setCountryFilter] = useState("all")
+  const [carrierFilter, setCarrierFilter] = useState("all")
+  const [statusFilter, setStatusFilter] = useState("all")
+  const [search, setSearch] = useState("")
 
-const TIER_COLORS: Record<string, string> = {
-  tier1_cn: "hsl(var(--primary))",
-  tier1_overseas: "hsl(var(--blue))",
-  community: "hsl(var(--success))",
-}
+  const stats = useMemo(() => aggregateStats(nodes), [nodes])
 
-export function NodesClient({ initialNodes }: NodesClientProps) {
-  const [selectedCountry, setSelectedCountry] = useState<string>("all")
-  const [selectedTier, setSelectedTier] = useState<string>("all")
-  const [searchQuery, setSearchQuery] = useState<string>("")
-  const [currentPage, setCurrentPage] = useState(1)
-  const itemsPerPage = 20
+  const countries = useMemo(
+    () => Array.from(new Set(nodes.map((n) => n.country))).sort(),
+    [nodes]
+  )
 
-  // 提取唯一的国家列表
-  const countries = useMemo(() => {
-    const uniqueCountries = Array.from(
-      new Set(initialNodes.map((n) => n.country_code))
-    ).sort()
-    return uniqueCountries
-  }, [initialNodes])
+  const carriers = useMemo(
+    () => Array.from(new Set(nodes.map((n) => n.carrier))).sort(),
+    [nodes]
+  )
 
-  // 过滤节点
-  const filteredNodes = useMemo(() => {
-    return initialNodes.filter((node) => {
-      const matchesCountry =
-        selectedCountry === "all" || node.country_code === selectedCountry
-      const matchesTier = selectedTier === "all" || node.tier === selectedTier
-      const matchesSearch =
-        searchQuery === "" ||
-        node.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        node.isp?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        node.city.toLowerCase().includes(searchQuery.toLowerCase())
-
-      return matchesCountry && matchesTier && matchesSearch
-    })
-  }, [initialNodes, selectedCountry, selectedTier, searchQuery])
-
-  // 分页
-  const totalPages = Math.ceil(filteredNodes.length / itemsPerPage)
-  const paginatedNodes = useMemo(() => {
-    const startIndex = (currentPage - 1) * itemsPerPage
-    return filteredNodes.slice(startIndex, startIndex + itemsPerPage)
-  }, [filteredNodes, currentPage])
-
-  // 重置分页当过滤条件变化
-  useMemo(() => {
-    setCurrentPage(1)
-  }, [selectedCountry, selectedTier, searchQuery])
-
-  // 地图数据
-  const mapOption = useMemo(() => {
-    const scatterData = filteredNodes
-      .map((node) => {
-        const coords = countryCoords[node.country_code]
-        if (!coords) return null
-        return {
-          name: node.name,
-          value: [...coords, 1],
-          node,
-        }
-      })
-      .filter(Boolean)
-
-    return {
-      tooltip: {
-        trigger: "item",
-        formatter: (params: any) => {
-          if (!params.data?.node) return ""
-          const node = params.data.node as Node
-          return `
-            <div style="text-align: left;">
-              <strong>${countryFlag(node.country_code)} ${node.name}</strong><br/>
-              <span style="color: #999;">位置：</span>${node.city}, ${node.region}<br/>
-              <span style="color: #999;">ISP：</span>${node.isp}<br/>
-              <span style="color: #999;">ASN：</span>${node.asn}<br/>
-              <span style="color: #999;">类型：</span>${TIER_LABELS[node.tier]}<br/>
-              <span style="color: #999;">状态：</span>${node.status === "active" ? "在线" : "离线"}
-            </div>
-          `
-        },
-      },
-      geo: {
-        map: "world",
-        roam: true,
-        itemStyle: {
-          areaColor: "hsl(var(--muted))",
-          borderColor: "hsl(var(--border))",
-        },
-        emphasis: {
-          itemStyle: {
-            areaColor: "hsl(var(--accent))",
-          },
-        },
-      },
-      series: [
-        {
-          name: "节点",
-          type: "scatter",
-          coordinateSystem: "geo",
-          data: scatterData,
-          symbolSize: 10,
-          itemStyle: {
-            color: (params: any) => {
-              const node = params.data?.node as Node
-              return TIER_COLORS[node?.tier] || "hsl(var(--foreground))"
-            },
-          },
-          emphasis: {
-            itemStyle: {
-              borderColor: "hsl(var(--ring))",
-              borderWidth: 2,
-            },
-          },
-        },
-      ],
-    }
-  }, [filteredNodes])
+  const filtered = useMemo(
+    () =>
+      filterNodes(nodes, {
+        country: countryFilter,
+        carrier: carrierFilter,
+        status: statusFilter,
+        search,
+      }),
+    [nodes, countryFilter, carrierFilter, statusFilter, search]
+  )
 
   return (
-    <>
-      {/* 筛选栏 */}
-      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="flex flex-col gap-4 md:flex-row md:items-center md:gap-4">
-          {/* 国家筛选 */}
-          <select
-            value={selectedCountry}
-            onChange={(e) => setSelectedCountry(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">所有国家/地区</option>
-            {countries.map((code) => (
-              <option key={code} value={code}>
-                {countryFlag(code)} {getCountryName(code)}
-              </option>
-            ))}
-          </select>
+    <div className="space-y-6">
+      {/* 统计卡片 */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Server className="h-4 w-4" />
+              总节点数
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold tabular-nums">{stats.total}</p>
+          </CardContent>
+        </Card>
 
-          {/* Tier 筛选 */}
-          <select
-            value={selectedTier}
-            onChange={(e) => setSelectedTier(e.target.value)}
-            className="rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-          >
-            <option value="all">所有节点类型</option>
-            {Object.entries(TIER_LABELS).map(([key, label]) => (
-              <option key={key} value={key}>
-                {label}
-              </option>
-            ))}
-          </select>
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Wifi className="h-4 w-4 text-success" />
+              在线节点
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold tabular-nums text-success">
+              {stats.online}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <Globe className="h-4 w-4" />
+              覆盖国家/地区
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold tabular-nums">{stats.countries}</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <WifiOff className="h-4 w-4" />
+              运营商数量
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-bold tabular-nums">{stats.carriers}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 地图占位区域 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">节点分布地图</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="flex h-48 items-center justify-center rounded-md border border-dashed bg-muted/30 sm:h-64">
+            <div className="text-center text-muted-foreground">
+              <Globe className="mx-auto mb-2 h-10 w-10 opacity-30" />
+              <p className="text-sm">交互地图即将上线</p>
+              <p className="mt-1 text-xs">将在后续迭代中集成全球节点可视化地图</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* 筛选栏 */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
+        <div className="flex flex-1 flex-col gap-3 sm:flex-row sm:gap-3">
+          <Select value={countryFilter} onValueChange={setCountryFilter}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue placeholder="选择国家/地区" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">所有国家/地区</SelectItem>
+              {countries.map((code) => (
+                <SelectItem key={code} value={code}>
+                  {COUNTRY_NAMES[code] ?? code}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={carrierFilter} onValueChange={setCarrierFilter}>
+            <SelectTrigger className="w-full sm:w-44">
+              <SelectValue placeholder="选择运营商" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">所有运营商</SelectItem>
+              {carriers.map((c) => (
+                <SelectItem key={c} value={c}>
+                  {c}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
+          <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <SelectTrigger className="w-full sm:w-36">
+              <SelectValue placeholder="选择状态" />
+            </SelectTrigger>
+            <SelectContent>
+              {STATUS_OPTIONS.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  {opt.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
 
-        {/* 搜索框 */}
-        <div className="relative">
+        <div className="relative sm:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="text"
-            placeholder="搜索节点名称、城市或 ISP..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full rounded-md border border-input bg-background py-2 pl-10 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-ring md:w-80"
+          <Input
+            placeholder="搜索节点、ASN、IP..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="pl-9"
           />
         </div>
       </div>
 
-      {/* 地图可视化 */}
-      <div className="mb-8 rounded-lg border bg-card p-4">
-        <h2 className="mb-4 text-xl font-semibold">节点分布地图</h2>
-        <div className="h-[500px]">
-          <ReactECharts option={mapOption} style={{ height: "100%", width: "100%" }} />
-        </div>
-      </div>
+      {/* 结果数量提示 */}
+      <p className="text-sm text-muted-foreground">
+        显示 <span className="font-medium text-foreground">{filtered.length}</span> 个节点
+        {filtered.length !== nodes.length && (
+          <span>（共 {nodes.length} 个）</span>
+        )}
+      </p>
 
-      {/* 统计信息 */}
-      <div className="mb-6 rounded-lg border bg-card p-4">
-        <div className="flex items-center justify-between">
-          <div>
-            <p className="text-sm text-muted-foreground">
-              共 <span className="font-semibold text-foreground">{filteredNodes.length}</span> 个节点
-              {(selectedCountry !== "all" || selectedTier !== "all" || searchQuery) && (
-                <span className="ml-2">
-                  （已过滤，总计 {initialNodes.length} 个）
-                </span>
-              )}
-            </p>
-          </div>
-          <div className="flex items-center gap-4 text-sm">
-            {Object.entries(TIER_LABELS).map(([key, label]) => (
-              <div key={key} className="flex items-center gap-2">
-                <span
-                  className="h-3 w-3 rounded-full"
-                  style={{ backgroundColor: TIER_COLORS[key] }}
-                />
-                <span className="text-muted-foreground">{label}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* 节点卡片列表 */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-        {paginatedNodes.map((node) => (
-          <div
-            key={node.id}
-            className="rounded-lg border bg-card p-4 transition-colors hover:bg-accent"
-          >
-            <div className="mb-2 flex items-start justify-between">
-              <div className="flex items-center gap-2">
-                <span className="text-2xl">{countryFlag(node.country_code)}</span>
-                <div>
-                  <h3 className="font-semibold">{node.name}</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {node.city}, {node.region}
-                  </p>
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-1">
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                    node.status === "active"
-                      ? "bg-success/10 text-success"
-                      : "bg-muted text-muted-foreground"
-                  }`}
-                >
-                  {node.status === "active" ? "在线" : "离线"}
-                </span>
-              </div>
-            </div>
-
-            <div className="space-y-1 text-sm">
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ISP</span>
-                <span className="font-mono">{node.isp}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">ASN</span>
-                <span className="font-mono">{node.asn}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">类型</span>
-                <span
-                  className="rounded px-2 py-0.5 text-xs font-medium"
-                  style={{
-                    backgroundColor: `${TIER_COLORS[node.tier]}20`,
-                    color: TIER_COLORS[node.tier],
-                  }}
-                >
-                  {TIER_LABELS[node.tier]}
-                </span>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* 分页 */}
-      {totalPages > 1 && (
-        <div className="mt-8 flex items-center justify-center gap-2">
-          <button
-            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-            disabled={currentPage === 1}
-            className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            上一页
-          </button>
-          <span className="text-sm text-muted-foreground">
-            第 {currentPage} 页，共 {totalPages} 页
-          </span>
-          <button
-            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-            disabled={currentPage === totalPages}
-            className="rounded-md border border-input bg-background px-4 py-2 text-sm font-medium transition-colors hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            下一页
-          </button>
-        </div>
-      )}
-    </>
+      {/* 节点表格 */}
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>节点 ID</TableHead>
+              <TableHead>ASN</TableHead>
+              <TableHead>运营商</TableHead>
+              <TableHead>地区</TableHead>
+              <TableHead>出口 IP</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead>国家/地区</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {filtered.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
+                  没有符合条件的节点
+                </TableCell>
+              </TableRow>
+            ) : (
+              filtered.map((node) => {
+                const { label, variant } = mapStatus(node.status)
+                return (
+                  <TableRow key={node.id}>
+                    <TableCell className="font-mono text-xs">{node.id}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {node.asn}
+                    </TableCell>
+                    <TableCell>{node.carrier}</TableCell>
+                    <TableCell>{node.region}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {formatIP(node.exitIp)}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={variant}>{label}</Badge>
+                    </TableCell>
+                    <TableCell>{COUNTRY_NAMES[node.country] ?? node.country}</TableCell>
+                  </TableRow>
+                )
+              })
+            )}
+          </TableBody>
+        </Table>
+      </Card>
+    </div>
   )
 }

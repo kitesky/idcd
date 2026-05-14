@@ -6,7 +6,7 @@ import (
 	_ "embed"
 	"html/template"
 
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
 //go:embed verify_email.html

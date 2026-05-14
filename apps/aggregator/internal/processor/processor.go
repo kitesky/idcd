@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kite365/idcd/apps/aggregator/internal/dedup"
-	"github.com/kite365/idcd/packages/shared/idgen"
+	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
 // Processor parses stream messages and persists probe results.

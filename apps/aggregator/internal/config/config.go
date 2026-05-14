@@ -6,7 +6,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/kite365/idcd/packages/shared/config"
+	"github.com/kite365/idcd/lib/shared/config"
 	"gopkg.in/yaml.v3"
 )
 

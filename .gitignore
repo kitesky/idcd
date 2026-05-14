@@ -59,6 +59,12 @@ infra/terraform/*.tfvars
 # Binary artifacts
 bin/
 dist-agent/
+/agent
+/aggregator
+/scheduler
+/gateway
+/notifier
+/api
 
 # Misc
 .turbo

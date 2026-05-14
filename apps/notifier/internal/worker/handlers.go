@@ -9,7 +9,7 @@ import (
 
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
-	"github.com/kite365/idcd/packages/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/apperr"
 	"log/slog"
 )
 

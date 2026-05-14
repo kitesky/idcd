@@ -6,15 +6,17 @@ import (
 	"os"
 	"time"
 
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 	"gopkg.in/yaml.v3"
 )
 
 // Config holds the scheduler service configuration.
 type Config struct {
-	Redis    RedisConfig    `yaml:"redis"`
-	Database DatabaseConfig `yaml:"database"`
-	Leader   LeaderConfig   `yaml:"leader"`
-	Worker   WorkerConfig   `yaml:"worker"`
+	Redis         RedisConfig                      `yaml:"redis"`
+	Database      DatabaseConfig                   `yaml:"database"`
+	Leader        LeaderConfig                     `yaml:"leader"`
+	Worker        WorkerConfig                     `yaml:"worker"`
+	Observability sharedconfig.ObservabilityConfig `yaml:"observability"`
 }
 
 // RedisConfig holds Redis connection settings.

@@ -10,7 +10,7 @@ import (
 
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
 	"github.com/kite365/idcd/apps/scheduler/internal/queue"
-	"github.com/kite365/idcd/packages/shared/stream"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
 
 func setupRedis(t *testing.T) (*miniredis.Miniredis, redis.Cmdable) {

@@ -1,4 +1,4 @@
-import type { Metadata } from "next"
+import type { Metadata, Viewport } from "next"
 import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/providers"
 import { Nav } from "@/components/nav"
@@ -17,6 +17,12 @@ const geistMono = Geist_Mono({
   variable: "--font-mono",
   display: "swap"
 })
+
+export const viewport: Viewport = {
+  themeColor: "#2563EB",
+  width: "device-width",
+  initialScale: 1,
+}
 
 export const metadata: Metadata = {
   title: "idcd — 网络诊断工具",

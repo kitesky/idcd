@@ -1,96 +1,40 @@
-import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { describe, it, expect, vi } from "vitest"
+import { render, screen } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import NodesPage from "../page"
-import * as api from "@/lib/api"
 
-// Mock getNodes API
-vi.mock("@/lib/api", () => ({
-  getNodes: vi.fn(),
-}))
-
-// Mock NodesClient component (避免 ECharts SSR 问题)
+// NodesClient uses ECharts which can't render in jsdom — mock it
 vi.mock("../nodes-client", () => ({
-  NodesClient: ({ initialNodes }: { initialNodes: any[] }) => (
+  NodesClient: ({ nodes }: { nodes: { id: string }[] }) => (
     <div data-testid="nodes-client">
-      <div>节点数量: {initialNodes.length}</div>
+      <div>节点数量: {nodes.length}</div>
     </div>
   ),
 }))
 
 describe("NodesPage", () => {
-  beforeEach(() => {
-    vi.clearAllMocks()
-  })
-
-  it("应该渲染页面标题和描述", async () => {
-    vi.mocked(api.getNodes).mockResolvedValue({ data: [] })
-
-    render(await NodesPage())
-
+  it("应该渲染页面标题和描述", () => {
+    render(<NodesPage />)
     expect(screen.getByText("全球监控节点")).toBeInTheDocument()
-    expect(
-      screen.getByText(/idcd 在全球部署了多个监控节点/)
-    ).toBeInTheDocument()
+    expect(screen.getByText(/idcd 在全球部署了多个监控节点/)).toBeInTheDocument()
   })
 
-  it("应该成功加载节点数据", async () => {
-    const mockNodes = [
-      {
-        id: "node-1",
-        name: "北京节点",
-        country_code: "CN",
-        region: "北京",
-        city: "北京",
-        asn: "AS4134",
-        isp: "中国电信",
-        tier: "tier1_cn",
-        status: "active",
-        is_active: true,
-      },
-      {
-        id: "node-2",
-        name: "东京节点",
-        country_code: "JP",
-        region: "东京",
-        city: "东京",
-        asn: "AS2516",
-        isp: "KDDI",
-        tier: "tier1_overseas",
-        status: "active",
-        is_active: true,
-      },
-    ]
-
-    vi.mocked(api.getNodes).mockResolvedValue({ data: mockNodes })
-
-    render(await NodesPage())
-
-    await waitFor(() => {
-      expect(screen.getByTestId("nodes-client")).toBeInTheDocument()
-      expect(screen.getByText("节点数量: 2")).toBeInTheDocument()
-    })
+  it("应该渲染节点客户端组件", () => {
+    render(<NodesPage />)
+    expect(screen.getByTestId("nodes-client")).toBeInTheDocument()
   })
 
-  it("应该处理 API 错误", async () => {
-    vi.mocked(api.getNodes).mockRejectedValue(new Error("网络错误"))
-
-    render(await NodesPage())
-
-    await waitFor(() => {
-      expect(screen.getByText("网络错误")).toBeInTheDocument()
-      expect(screen.queryByTestId("nodes-client")).not.toBeInTheDocument()
-    })
+  it("应该渲染 mock 节点数据", () => {
+    render(<NodesPage />)
+    // MOCK_NODES has nodes — should show a count > 0
+    const countText = screen.getByText(/节点数量: \d+/)
+    expect(countText).toBeInTheDocument()
+    const match = countText.textContent?.match(/\d+/)
+    expect(Number(match?.[0])).toBeGreaterThan(0)
   })
 
-  it("应该处理空节点列表", async () => {
-    vi.mocked(api.getNodes).mockResolvedValue({ data: [] })
-
-    render(await NodesPage())
-
-    await waitFor(() => {
-      expect(screen.getByTestId("nodes-client")).toBeInTheDocument()
-      expect(screen.getByText("节点数量: 0")).toBeInTheDocument()
-    })
+  it("应该渲染完整页面结构", () => {
+    const { container } = render(<NodesPage />)
+    expect(container.firstChild).toBeTruthy()
   })
 })

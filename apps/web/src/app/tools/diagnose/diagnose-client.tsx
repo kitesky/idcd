@@ -1,239 +1,108 @@
 "use client"
 
-import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui"
-import { Loader2, CheckCircle2, XCircle, Circle, Clock } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { useRouter } from "next/navigation"
 import {
-  probeDns,
-  probeHttp,
-  probePing,
-  probeTraceroute,
-  getSSLInfo,
-  getWhoisInfo,
-  type ProbeResult,
-  type SSLInfo,
-  type WhoisInfo
-} from "@/lib/api"
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Badge,
+  Button,
+  Input,
+  Label,
+  Progress,
+} from "@/components/ui"
+import { Loader2, CheckCircle2, XCircle, Circle, Clock } from "lucide-react"
 
 type CheckStatus = "pending" | "running" | "done" | "error"
 
 interface CheckItem {
-  name: string
+  key: string
+  label: string
+  description: string
   status: CheckStatus
-  result?: any
+  summary?: string
   error?: string
 }
 
+const INITIAL_CHECKS: CheckItem[] = [
+  { key: "dns", label: "DNS 解析", description: "A 记录查询", status: "pending" },
+  { key: "http", label: "HTTP 可达性", description: "HTTPS 状态检测", status: "pending" },
+  { key: "ping", label: "Ping 延迟", description: "ICMP 往返时延", status: "pending" },
+  { key: "traceroute", label: "路由追踪", description: "Traceroute 路径", status: "pending" },
+  { key: "ssl", label: "SSL 证书", description: "证书有效性", status: "pending" },
+  { key: "icp", label: "ICP 备案", description: "工信部备案查询", status: "pending" },
+  { key: "whois", label: "WHOIS", description: "域名注册信息", status: "pending" },
+]
+
 export default function DiagnoseClient() {
+  const router = useRouter()
   const [domain, setDomain] = useState("")
   const [running, setRunning] = useState(false)
-  const [checks, setChecks] = useState<CheckItem[]>([
-    { name: "DNS 解析", status: "pending" },
-    { name: "HTTPS 可达性", status: "pending" },
-    { name: "Ping 延迟", status: "pending" },
-    { name: "Traceroute", status: "pending" },
-    { name: "SSL 证书", status: "pending" },
-    { name: "WHOIS 信息", status: "pending" }
-  ])
+  const [checks, setChecks] = useState<CheckItem[]>(INITIAL_CHECKS)
+  const esRef = useRef<EventSource | null>(null)
 
-  const updateCheckStatus = (index: number, updates: Partial<CheckItem>) => {
-    setChecks(prev => prev.map((check, i) =>
-      i === index ? { ...check, ...updates } : check
-    ))
+  useEffect(() => {
+    return () => {
+      esRef.current?.close()
+    }
+  }, [])
+
+  const updateCheck = (key: string, updates: Partial<CheckItem>) => {
+    setChecks(prev => prev.map(c => (c.key === key ? { ...c, ...updates } : c)))
   }
 
-  const handleDiagnose = async () => {
-    if (!domain.trim()) return
+  const handleDiagnose = () => {
+    const trimmed = domain.trim()
+    if (!trimmed || running) return
 
+    const cleanDomain = trimmed.replace(/^https?:\/\//, "").replace(/\/$/, "")
+
+    setChecks(INITIAL_CHECKS)
     setRunning(true)
 
-    // 重置所有检查项为 running
-    setChecks([
-      { name: "DNS 解析", status: "running" },
-      { name: "HTTPS 可达性", status: "running" },
-      { name: "Ping 延迟", status: "running" },
-      { name: "Traceroute", status: "running" },
-      { name: "SSL 证书", status: "running" },
-      { name: "WHOIS 信息", status: "running" }
-    ])
+    esRef.current?.close()
+    const es = new EventSource(`/api/diagnose/stream?domain=${encodeURIComponent(cleanDomain)}`)
+    esRef.current = es
 
-    const cleanDomain = domain.trim().replace(/^https?:\/\//, '').replace(/\/$/, '')
-
-    // 并发执行所有检查
-    const checkFunctions = [
-      // DNS 解析
-      async () => {
-        try {
-          const result = await probeDns({ target: cleanDomain, type: "A" })
-          updateCheckStatus(0, { status: "done", result })
-        } catch (err) {
-          updateCheckStatus(0, {
-            status: "error",
-            error: err instanceof Error ? err.message : "检测失败"
-          })
+    es.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data as string)
+        if (data.type === "check_start") {
+          updateCheck(data.key as string, { status: "running" })
+        } else if (data.type === "check_done") {
+          updateCheck(data.key as string, { status: "done", summary: data.summary as string })
+        } else if (data.type === "check_error") {
+          updateCheck(data.key as string, { status: "error", error: data.error as string })
+        } else if (data.type === "complete") {
+          es.close()
+          setRunning(false)
+          router.push(`/report/${data.reportId as string}`)
         }
-      },
-      // HTTPS 可达性
-      async () => {
-        try {
-          const result = await probeHttp({ target: `https://${cleanDomain}` })
-          updateCheckStatus(1, { status: "done", result })
-        } catch (err) {
-          updateCheckStatus(1, {
-            status: "error",
-            error: err instanceof Error ? err.message : "检测失败"
-          })
-        }
-      },
-      // Ping 延迟
-      async () => {
-        try {
-          const result = await probePing({ target: cleanDomain })
-          updateCheckStatus(2, { status: "done", result })
-        } catch (err) {
-          updateCheckStatus(2, {
-            status: "error",
-            error: err instanceof Error ? err.message : "检测失败"
-          })
-        }
-      },
-      // Traceroute
-      async () => {
-        try {
-          const result = await probeTraceroute({ target: cleanDomain })
-          updateCheckStatus(3, { status: "done", result })
-        } catch (err) {
-          updateCheckStatus(3, {
-            status: "error",
-            error: err instanceof Error ? err.message : "检测失败"
-          })
-        }
-      },
-      // SSL 证书
-      async () => {
-        try {
-          const result = await getSSLInfo(cleanDomain)
-          updateCheckStatus(4, { status: "done", result })
-        } catch (err) {
-          updateCheckStatus(4, {
-            status: "error",
-            error: err instanceof Error ? err.message : "检测失败"
-          })
-        }
-      },
-      // WHOIS 信息
-      async () => {
-        try {
-          const result = await getWhoisInfo(cleanDomain)
-          updateCheckStatus(5, { status: "done", result })
-        } catch (err) {
-          updateCheckStatus(5, {
-            status: "error",
-            error: err instanceof Error ? err.message : "检测失败"
-          })
-        }
+      } catch {
+        // ignore parse errors
       }
-    ]
+    }
 
-    await Promise.allSettled(checkFunctions.map(fn => fn()))
-    setRunning(false)
-  }
-
-  const getStatusIcon = (status: CheckStatus) => {
-    switch (status) {
-      case "pending":
-        return <Circle className="h-5 w-5 text-muted-foreground" />
-      case "running":
-        return <Loader2 className="h-5 w-5 animate-spin text-blue-500" />
-      case "done":
-        return <CheckCircle2 className="h-5 w-5 text-green-500" />
-      case "error":
-        return <XCircle className="h-5 w-5 text-red-500" />
+    es.onerror = () => {
+      es.close()
+      setRunning(false)
     }
   }
 
-  const renderCheckSummary = (check: CheckItem) => {
-    if (check.status !== "done" || !check.result) return null
-
-    switch (check.name) {
-      case "DNS 解析": {
-        const result = check.result as ProbeResult
-        const ips = result.results
-          ?.filter(r => r.success && r.details?.answers)
-          ?.flatMap(r => r.details.answers.map((a: any) => a.data))
-          ?.filter((v, i, a) => a.indexOf(v) === i) // 去重
-        return ips && ips.length > 0 ? (
-          <div className="text-sm text-muted-foreground ml-10 mt-1">
-            解析到: {ips.join(", ")}
-          </div>
-        ) : null
-      }
-      case "HTTPS 可达性": {
-        const result = check.result as ProbeResult
-        const avgLatency = result.results
-          ?.filter(r => r.success && r.latency_ms)
-          ?.reduce((sum, r) => sum + (r.latency_ms || 0), 0)
-        const count = result.results?.filter(r => r.success).length || 0
-        const statusCode = result.results?.[0]?.details?.status_code
-        return (
-          <div className="text-sm text-muted-foreground ml-10 mt-1">
-            {statusCode && `状态码: ${statusCode}`}
-            {count > 0 && ` | 平均响应时间: ${(avgLatency! / count).toFixed(0)}ms`}
-          </div>
-        )
-      }
-      case "Ping 延迟": {
-        const result = check.result as ProbeResult
-        const avgLatency = result.results
-          ?.filter(r => r.success && r.latency_ms)
-          ?.reduce((sum, r) => sum + (r.latency_ms || 0), 0)
-        const count = result.results?.filter(r => r.success).length || 0
-        const lossRate = result.results
-          ? ((result.results.length - count) / result.results.length * 100).toFixed(1)
-          : 0
-        return count > 0 ? (
-          <div className="text-sm text-muted-foreground ml-10 mt-1">
-            平均 RTT: {(avgLatency! / count).toFixed(0)}ms | 丢包率: {lossRate}%
-          </div>
-        ) : null
-      }
-      case "SSL 证书": {
-        const result = check.result as SSLInfo
-        return (
-          <div className="text-sm text-muted-foreground ml-10 mt-1">
-            颁发机构: {result.issuer} | 剩余 {result.days_remaining} 天到期
-          </div>
-        )
-      }
-      case "WHOIS 信息": {
-        const result = check.result as WhoisInfo
-        return (
-          <div className="text-sm text-muted-foreground ml-10 mt-1">
-            注册商: {result.registrar}
-            {result.expiration_date && ` | 到期日: ${new Date(result.expiration_date).toLocaleDateString()}`}
-          </div>
-        )
-      }
-      case "Traceroute": {
-        const result = check.result as ProbeResult
-        const hops = result.results?.[0]?.details?.hops?.length
-        return hops ? (
-          <div className="text-sm text-muted-foreground ml-10 mt-1">
-            跳数: {hops}
-          </div>
-        ) : null
-      }
-      default:
-        return null
-    }
-  }
+  const completedCount = checks.filter(
+    c => c.status === "done" || c.status === "error"
+  ).length
+  const progressValue = (completedCount / INITIAL_CHECKS.length) * 100
+  const hasStarted = checks.some(c => c.status !== "pending")
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">一键网络诊断</h1>
         <p className="text-muted-foreground mt-2">
-          输入域名，自动进行 DNS、HTTPS、Ping、Traceroute、SSL、WHOIS 六项全面检测
+          输入域名，通过 SSE 实时推送 DNS、HTTP、Ping、Traceroute、SSL、ICP 备案、WHOIS 七项检测进度
         </p>
       </div>
 
@@ -275,65 +144,67 @@ export default function DiagnoseClient() {
         </CardContent>
       </Card>
 
-      {checks.some(c => c.status !== "pending") && (
+      {hasStarted && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
               <Clock className="h-5 w-5" />
               诊断进度
+              <span className="ml-auto text-sm font-normal text-muted-foreground">
+                {completedCount} / {INITIAL_CHECKS.length}
+              </span>
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            {checks.map((check, index) => (
-              <div key={index} className="space-y-1">
-                <div className="flex items-center gap-3">
-                  {getStatusIcon(check.status)}
-                  <span className={
-                    check.status === "error"
-                      ? "text-red-500"
-                      : check.status === "done"
-                      ? "text-foreground"
-                      : "text-muted-foreground"
-                  }>
-                    {check.name}
-                  </span>
-                </div>
-                {check.status === "error" && check.error && (
-                  <div className="text-sm text-red-500 ml-10">
-                    错误: {check.error}
-                  </div>
-                )}
-                {renderCheckSummary(check)}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
+            <Progress value={progressValue} />
 
-      {checks.every(c => c.status === "done" || c.status === "error") &&
-       checks.some(c => c.status !== "pending") && (
-        <Card>
-          <CardHeader>
-            <CardTitle>诊断完成</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-muted-foreground mb-4">
-              所有检测项已完成。{checks.filter(c => c.status === "done").length} 项成功，
-              {checks.filter(c => c.status === "error").length} 项失败。
-            </p>
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => {
-                setChecks([
-                  { name: "DNS 解析", status: "pending" },
-                  { name: "HTTPS 可达性", status: "pending" },
-                  { name: "Ping 延迟", status: "pending" },
-                  { name: "Traceroute", status: "pending" },
-                  { name: "SSL 证书", status: "pending" },
-                  { name: "WHOIS 信息", status: "pending" }
-                ])
-              }}>
-                重新诊断
-              </Button>
+            <div className="space-y-3">
+              {checks.map((check) => (
+                <div key={check.key} className="flex items-start gap-3">
+                  <div className="mt-0.5 shrink-0">
+                    {check.status === "pending" && (
+                      <Circle className="h-4 w-4 text-muted-foreground" />
+                    )}
+                    {check.status === "running" && (
+                      <Loader2 className="h-4 w-4 animate-spin text-blue-500" />
+                    )}
+                    {check.status === "done" && (
+                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                    )}
+                    {check.status === "error" && (
+                      <XCircle className="h-4 w-4 text-red-500" />
+                    )}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-medium text-sm">{check.label}</span>
+                      <span className="text-xs text-muted-foreground">{check.description}</span>
+                      <div className="ml-auto">
+                        {check.status === "pending" && (
+                          <Badge variant="outline" className="text-muted-foreground text-xs">
+                            等待中
+                          </Badge>
+                        )}
+                        {check.status === "running" && (
+                          <Badge variant="info" className="text-xs">检测中</Badge>
+                        )}
+                        {check.status === "done" && (
+                          <Badge variant="success" className="text-xs">完成</Badge>
+                        )}
+                        {check.status === "error" && (
+                          <Badge variant="destructive" className="text-xs">失败</Badge>
+                        )}
+                      </div>
+                    </div>
+                    {check.summary && (
+                      <p className="text-xs text-muted-foreground mt-0.5">{check.summary}</p>
+                    )}
+                    {check.error && (
+                      <p className="text-xs text-red-500 mt-0.5">{check.error}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -344,14 +215,14 @@ export default function DiagnoseClient() {
           <CardTitle>使用说明</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
-          <p>• <strong>一键诊断</strong>：自动从全球多个节点并发执行 6 项检测</p>
-          <p>• <strong>实时反馈</strong>：每项检测完成后立即显示结果摘要</p>
+          <p>• <strong>实时推送</strong>：通过 Server-Sent Events (SSE) 逐项实时推送检测进度</p>
           <p>• <strong>DNS 解析</strong>：检查域名的 A 记录解析结果</p>
-          <p>• <strong>HTTPS 可达性</strong>：测试网站的 HTTPS 访问状态和响应时间</p>
+          <p>• <strong>HTTP 可达性</strong>：测试网站 HTTPS 访问状态和响应时间</p>
           <p>• <strong>Ping 延迟</strong>：测量网络延迟和丢包率</p>
-          <p>• <strong>Traceroute</strong>：追踪到目标服务器的路由路径</p>
-          <p>• <strong>SSL 证书</strong>：检查 HTTPS 证书的有效性和到期时间</p>
-          <p>• <strong>WHOIS 信息</strong>：查询域名注册信息和到期日期</p>
+          <p>• <strong>路由追踪</strong>：追踪到目标服务器的路由路径</p>
+          <p>• <strong>SSL 证书</strong>：检查 HTTPS 证书有效性和到期时间</p>
+          <p>• <strong>ICP 备案</strong>：查询工信部 ICP 备案信息</p>
+          <p>• <strong>WHOIS</strong>：查询域名注册信息和到期日期</p>
         </CardContent>
       </Card>
     </div>

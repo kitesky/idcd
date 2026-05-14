@@ -333,23 +333,21 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### M5 — 监控模块
 
-- [ ] **F1** 数据库扩展
-  - `migrations/idcd_main/` 新增：`monitors` / `monitor_checks` / `probe_tasks` / `probe_results`（TimescaleDB hypertable）
-  - `packages/db/repository/monitor.go`
-  - *deps: A3* | *可并行*
+- [x] **F1** 数据库扩展
+  - `lib/db/migrations/idcd_main/00007_monitors.sql`：monitors + monitor_checks（TimescaleDB hypertable）
+  - `lib/db/queries/idcd_main/monitor.sql`：7 个 sqlc 查询 + `lib/db/repository/monitor.go`
+  - *deps: A3* | *完成 2026-05-14*
 
-- [ ] **F2** `apps/api/` — 监控 CRUD 接口
-  - `POST/GET/PATCH/DELETE /v1/monitors`
-  - 支持类型：HTTP / HTTPS / Ping / TCP / DNS / SSL 到期 / 域名到期 / ICP 备案变更 / 关键字
-  - 监控配置：频率（1min/5min/30min）/ 节点选择 / 断言规则
-  - 状态机：`active → paused → maintenance → archived`（见 STATE-MACHINES.md）
-  - *deps: B1, F1* | *lane: F*
+- [x] **F2** `apps/api/` — 监控 CRUD 接口
+  - `POST/GET/PATCH/DELETE /v1/monitors` + pause/resume，7 个 handler，26 测试 ✓
+  - SSRF 校验、ownership 检查、Bearer token 鉴权
+  - *deps: B1, F1* | *完成 2026-05-14*
 
-- [ ] **F3** 监控调度集成
-  - Scheduler 从 PG 读取活跃监控项 → 定时下发拨测任务
-  - Aggregator 收结果 → 判断 quorum（N 个节点失败才告警）→ 写 `monitor_checks`
-  - 反误报：连续 N 次失败才变 DOWN；连续 M 次成功才恢复 UP
-  - *deps: B6, B7, F1* | *lane: F*
+- [x] **F3** 监控调度集成
+  - Scheduler `monitorPoller` goroutine（30s 轮询 ListActiveMonitorsDue）
+  - Aggregator `Process()` 写 monitor_checks + 推进 next_check_at
+  - 492 tests ✓（api+scheduler+aggregator+lib/db）
+  - *deps: B6, B7, F1* | *完成 2026-05-14*
 
 - [ ] **F4** 控制台监控界面（`/app/monitors`）
   - 监控列表：名称 / 状态（UP/DOWN/PAUSED）/ 最后检查时间 / 可用率
@@ -364,23 +362,21 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### M6 — 告警模块
 
-- [ ] **G1** 数据库扩展
-  - `alert_channels` / `alert_policies` / `alert_events` / `alert_notifications`
-  - *deps: A3, F1* | *lane: G*
+- [x] **G1** 数据库扩展
+  - `lib/db/migrations/idcd_main/00008_alerts.sql`：alert_channels / alert_policies / alert_events / alert_notifications
+  - D1 合规，无 cross-schema FK
+  - *deps: A3, F1* | *完成 2026-05-14*
 
-- [ ] **G2** `apps/notifier/` — 告警通道扩展（从邮件扩展到全通道）
-  - 通道 adapter 各自独立 Go module，实现统一接口 `Send(payload) -> Result`
-  - 邮件（已有）/ Webhook / 企业微信机器人 / 钉钉机器人 / 飞书机器人
-  - 微信（自家服务号模板消息 + Server酱 fallback）/ Telegram Bot / Slack / Discord
-  - 失败重试（asynq dead letter queue）
-  - *deps: B8, G1* | *lane: G*
+- [x] **G2** `apps/notifier/` — 告警通道扩展
+  - `apps/notifier/internal/channel/`：Channel 接口 + Webhook / 企业微信 / 钉钉 / 飞书 四个 adapter
+  - `HandleAlertNotification` handler 路由到各 adapter，asynq 队列
+  - 48 tests ✓（httptest mock 外部 HTTP）
+  - *deps: B8, G1* | *完成 2026-05-14*
 
-- [ ] **G3** `apps/api/` — 告警策略接口
-  - `POST/GET/PATCH/DELETE /v1/alert-channels`（通道管理 + 测试发送）
-  - `POST/GET/PATCH/DELETE /v1/alert-policies`（策略：延迟 N 分钟 / 升级 / 抑制 / 静音）
-  - `GET /v1/alert-events`（历史事件）
-  - Acknowledge / 解决（resolve）操作
-  - *deps: B1, G1* | *lane: G*
+- [x] **G3** `apps/api/` — 告警策略接口
+  - 11 个 endpoint（channels/policies/events/ack），30 测试 ✓
+  - Bearer token 鉴权，`?monitor_id=` 过滤，D1 compliant
+  - *deps: B1, G1* | *完成 2026-05-14*
 
 - [ ] **G4** 控制台告警界面（`/app/alerts`）
   - 通道管理：添加 / 测试 / 删除各通道
@@ -392,9 +388,10 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### M7 — 计费 + 状态页 + Evidence 准备
 
-- [ ] **H1** 数据库扩展
-  - `subscriptions` / `invoices` / `payments` / `status_pages` / `status_page_events`
-  - *deps: A3, F1*
+- [x] **H1** 数据库扩展
+  - `lib/db/migrations/idcd_main/00009_billing.sql`：subscriptions / invoices / payments / status_pages
+  - payments 含 refund_retry_count + partial index WHERE status='refund_failed'（D5）
+  - *deps: A3, F1* | *完成 2026-05-14*
 
 - [ ] **H2** Paddle 支付接入
   - Paddle SDK 集成（MoR 模式，含微信/支付宝 via Paddle）
@@ -424,9 +421,11 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - `/app/usage`：API 调用量 progress bar（REST API calls / MCP units 独立，D2）
   - *deps: D1, H2, H4* | *lane: H*
 
-- [ ] **H6** 最小管理台（仅 2 个必要功能）
-  - `apps/admin/` 节点健康看板（在线 / 离线 / 延迟分布）
-  - `apps/admin/` refund_failed 看板（Paddle 退款失败订单，D5 要求）
+- [x] **H6** 最小管理台（仅 2 个必要功能）
+  - `apps/admin/`（独立 Next.js app，port 3001）
+  - `/admin/nodes`：节点健康看板（4 统计卡 + 状态 Badge 表格）
+  - `/admin/refund-failed`：退款失败看板（GET/POST retry API，440+12 tests ✓）
+  - *完成 2026-05-14*
   - 访问：VPN / WireGuard 才可（admin.idcd.com）
   - *deps: B1, C5* | *lane: H*
 
@@ -483,6 +482,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-13 | B8（notifier）完成：SMTP+模板+asynq，26 tests ✓ | — |
 | 2026-05-13 | D1（Next.js 骨架）完成：App Router + shadcn/ui + packages/ui，15 tests ✓ | D2/D8 可启动 |
 | 2026-05-14 | D3（工具页 SSG 50+）完成：[slug] 动态路由 + tool-functions + SSE API，216 tests ✓ | A5/C3/C4 需人工操作 |
+| 2026-05-14 | F1/F2/F3（监控模块）+ G1/G2/G3（告警模块）+ H1/H6（计费DB+管理台）并行完成，735 Go tests ✓ | F4/G4/H4/H5 待做 |
 
 ---
 

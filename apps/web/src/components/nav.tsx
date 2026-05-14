@@ -37,6 +37,7 @@ const navigation = [
   { name: "工具", href: "/tools" },
   { name: "节点", href: "/nodes" },
   { name: "成为节点", href: "/nodes/apply" },
+  { name: "定价", href: "/pricing" },
   { name: "文档", href: "/docs/api" },
 ]
 

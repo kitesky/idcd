@@ -4,6 +4,7 @@ import { Separator } from "@/components/ui"
 const productLinks = [
   { name: "工具", href: "/tools" },
   { name: "节点", href: "/nodes" },
+  { name: "定价", href: "/pricing" },
 ]
 
 const resourceLinks = [

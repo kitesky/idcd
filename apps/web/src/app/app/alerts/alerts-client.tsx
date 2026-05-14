@@ -58,11 +58,13 @@ import {
   type AlertChannel,
   type AlertPolicy,
   type AlertNotification,
+  type AlertSilence,
   type ChannelType,
   MOCK_ALERT_EVENTS,
   MOCK_ALERT_CHANNELS,
   MOCK_ALERT_POLICIES,
   MOCK_NOTIFICATIONS,
+  MOCK_ALERT_SILENCES,
   MOCK_MONITOR_NAMES,
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPES,
@@ -672,12 +674,81 @@ function PoliciesTab({
   )
 }
 
+// ─── Silences Tab ────────────────────────────────────────────────────────────
+
+interface SilencesTabProps {
+  silences: AlertSilence[]
+  onDelete: (id: string) => void
+  onAdd: () => void
+}
+
+function silenceStatusBadge(status: AlertSilence["status"]) {
+  if (status === "active") return <Badge variant="destructive">生效中</Badge>
+  if (status === "upcoming") return <Badge variant="secondary">即将生效</Badge>
+  return <Badge variant="outline">已过期</Badge>
+}
+
+function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-muted-foreground">共 {silences.length} 条静默规则</p>
+        <Button size="sm" onClick={onAdd} data-testid="add-silence-btn">
+          <Plus className="h-4 w-4 mr-1" />
+          添加静默
+        </Button>
+      </div>
+      {silences.length === 0 ? (
+        <p className="text-center text-muted-foreground py-8 text-sm">暂无静默规则</p>
+      ) : (
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>监控</TableHead>
+              <TableHead>原因</TableHead>
+              <TableHead>开始时间</TableHead>
+              <TableHead>结束时间</TableHead>
+              <TableHead>状态</TableHead>
+              <TableHead className="w-16" />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {silences.map((sil) => (
+              <TableRow key={sil.id} data-testid={`silence-row-${sil.id}`}>
+                <TableCell>{sil.monitorName ?? "全局"}</TableCell>
+                <TableCell>{sil.reason}</TableCell>
+                <TableCell>{new Date(sil.startsAt).toLocaleString("zh-CN")}</TableCell>
+                <TableCell>{new Date(sil.endsAt).toLocaleString("zh-CN")}</TableCell>
+                <TableCell>{silenceStatusBadge(sil.status)}</TableCell>
+                <TableCell>
+                  {sil.status !== "expired" && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => onDelete(sil.id)}
+                      aria-label={`提前结束静默 ${sil.id}`}
+                      data-testid={`delete-silence-btn-${sil.id}`}
+                    >
+                      <Trash2 className="h-4 w-4 text-muted-foreground" />
+                    </Button>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </div>
+  )
+}
+
 // ─── Main AlertsClient ────────────────────────────────────────────────────────
 
 export function AlertsClient() {
   const [events, setEvents] = useState<AlertEvent[]>(MOCK_ALERT_EVENTS)
   const [channels, setChannels] = useState<AlertChannel[]>(MOCK_ALERT_CHANNELS)
   const [policies, setPolicies] = useState<AlertPolicy[]>(MOCK_ALERT_POLICIES)
+  const [silences, setSilences] = useState<AlertSilence[]>(MOCK_ALERT_SILENCES)
 
   // Toast
   const { toasts, toast } = useToast()
@@ -793,6 +864,7 @@ export function AlertsClient() {
           <TabsTrigger value="events" className="flex-1" data-testid="tab-events">事件历史</TabsTrigger>
           <TabsTrigger value="channels" className="flex-1" data-testid="tab-channels">告警通道</TabsTrigger>
           <TabsTrigger value="policies" className="flex-1" data-testid="tab-policies">告警策略</TabsTrigger>
+          <TabsTrigger value="silences" className="flex-1" data-testid="tab-silences">静默规则</TabsTrigger>
         </TabsList>
         <TabsContent value="events">
           <EventsTab events={events} onAcknowledge={handleAcknowledge} />
@@ -813,6 +885,16 @@ export function AlertsClient() {
             onEdit={handleEditPolicy}
             onDelete={handleDeletePolicy}
             onAdd={handleAddPolicy}
+          />
+        </TabsContent>
+        <TabsContent value="silences">
+          <SilencesTab
+            silences={silences}
+            onDelete={(id) => {
+              setSilences((prev) => prev.filter((s) => s.id !== id))
+              toast("静默规则已提前结束")
+            }}
+            onAdd={() => toast("添加静默功能即将上线")}
           />
         </TabsContent>
       </Tabs>

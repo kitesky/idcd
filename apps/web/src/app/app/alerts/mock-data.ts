@@ -176,3 +176,36 @@ export function truncateConfig(config: string, maxLen = 32): string {
   if (config.length <= maxLen) return config
   return config.slice(0, maxLen) + "…"
 }
+
+export type SilenceStatus = "active" | "upcoming" | "expired"
+
+export interface AlertSilence {
+  id: string
+  monitorId?: string
+  monitorName?: string
+  reason: string
+  startsAt: string
+  endsAt: string
+  status: SilenceStatus
+}
+
+const NOW = Date.now()
+
+export const MOCK_ALERT_SILENCES: AlertSilence[] = [
+  {
+    id: "sil-001",
+    monitorId: "mon-001",
+    monitorName: "API 网关健康检查",
+    reason: "计划维护窗口",
+    startsAt: new Date(NOW - 10 * 60_000).toISOString(),
+    endsAt: new Date(NOW + 50 * 60_000).toISOString(),
+    status: "active",
+  },
+  {
+    id: "sil-002",
+    reason: "全局升级维护",
+    startsAt: new Date(NOW + 2 * 3600_000).toISOString(),
+    endsAt: new Date(NOW + 4 * 3600_000).toISOString(),
+    status: "upcoming",
+  },
+]

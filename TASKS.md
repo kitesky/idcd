@@ -388,19 +388,23 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - payments 含 refund_retry_count + partial index WHERE status='refund_failed'（D5）
   - *deps: A3, F1* | *完成 2026-05-14*
 
-- [ ] **H2** Paddle 支付接入
-  - Paddle SDK 集成（MoR 模式，含微信/支付宝 via Paddle）
-  - `POST /v1/billing/subscribe`（订阅 Pro/Team/Business）
-  - `POST /v1/billing/cancel` / `POST /v1/billing/upgrade`
-  - Webhook 处理：`subscription.activated` / `subscription.cancelled` / `payment.succeeded` / `payment.failed`
-  - 发票：Paddle 自动出具，`GET /v1/billing/invoices`
-  - *deps: B1, H1* | *[👤] 需 Paddle 账号 + 海外主体注册*
+- [x] **H2** 支付接口层（provider-agnostic stub，待接聚合支付）
+  - `apps/api/internal/billing/`：`Provider` 接口 + `StubProvider`（内存模拟）
+  - `migration 00010`：paddle_* 字段迁移为通用 ext_* + payment_providers 配置表
+  - billing API：POST /v1/billing/subscribe|cancel + GET subscription|invoices + webhook + stub-confirm
+  - 22 provider tests + 25 handler tests（534 total ✓）
+  - 接聚合支付只需实现 Provider 接口（Subscribe/Cancel/ParseWebhook/RefundPayment）
+  - *deps: B1, H1* | *完成 2026-05-14*
 
-- [ ] **H3** 配额执行
-  - 订阅档位限制：监控数量 / 频率 / 节点数 / API 调用量
-  - 超额提醒（邮件 + 控制台 banner）
-  - 自动降级（超额后限制高频功能）
-  - *deps: B1, H2* | *lane: H*
+- [x] **H3** 配额执行
+  - `apps/api/internal/quota/`：`PlanLimits` + `Limits()` + 5 个 Check 函数
+  - `APIRateLimiter`：Redis INCR 日限，fail-open，clock 可 mock
+  - monitor/alert handler 注入配额检查，超额返回 HTTP 402 + upgrade_url
+  - `GET /v1/account/quota`：返回当前用量 JSON
+  - `APIQuotaMiddleware`：对认证路由扣 API 调用量，超额 429
+  - new-monitor-client 捕获 402 → Alert + 升级按钮
+  - 46 quota tests + miniredis tests（842 Go total ✓）
+  - *deps: B1, H2* | *完成 2026-05-14*
 
 - [x] **H4** `apps/status/` — 状态页（Next.js 独立 app）
   - `apps/status/` 独立 Next.js 16 app，支持 `<slug>.status.idcd.com`
@@ -478,6 +482,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-14 | D3（工具页 SSG 50+）完成：[slug] 动态路由 + tool-functions + SSE API，216 tests ✓ | A5/C3/C4 需人工操作 |
 | 2026-05-14 | F1/F2/F3（监控模块）+ G1/G2/G3（告警模块）+ H1/H6（计费DB+管理台）并行完成，735 Go tests ✓ | F4/G4/H4/H5 待做 |
 | 2026-05-14 | F4（监控UI）+ G4（告警UI）+ H4（状态页app）+ H5（计费UI）并行完成，289+9 前端 tests ✓ | H2/H3 待 Paddle 账号 [👤] |
+| 2026-05-14 | H2（支付stub）+ H3（配额执行）+ App Shell（侧边栏）+ Settings（account+api-keys）并行完成，842 Go + 334 前端 tests ✓ | 聚合支付接入待定 |
 
 ---
 

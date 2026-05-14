@@ -5,14 +5,16 @@ import type { ThemeProviderProps } from "next-themes"
 
 interface CustomThemeProviderProps extends ThemeProviderProps {
   children: React.ReactNode
+  nonce?: string
 }
 
-export function ThemeProvider({ children, ...props }: CustomThemeProviderProps) {
+export function ThemeProvider({ children, nonce, ...props }: CustomThemeProviderProps) {
   return (
     <NextThemesProvider
       attribute="class"
       defaultTheme="dark"
       enableSystem={false}
+      nonce={nonce}
       {...props}
     >
       {children}

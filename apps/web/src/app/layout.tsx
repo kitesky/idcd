@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next"
+import { headers } from "next/headers"
 import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/providers"
 import { Nav } from "@/components/nav"
@@ -43,11 +44,12 @@ export const metadata: Metadata = {
   },
 }
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
+  const nonce = (await headers()).get("x-nonce") ?? undefined
   return (
     <html
       lang="zh-CN"
@@ -55,7 +57,7 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
-        <ThemeProvider>
+        <ThemeProvider nonce={nonce}>
           <Nav />
           {children}
           <Footer />

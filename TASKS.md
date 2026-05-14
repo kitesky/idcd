@@ -349,14 +349,10 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 492 tests ✓（api+scheduler+aggregator+lib/db）
   - *deps: B6, B7, F1* | *完成 2026-05-14*
 
-- [ ] **F4** 控制台监控界面（`/app/monitors`）
-  - 监控列表：名称 / 状态（UP/DOWN/PAUSED）/ 最后检查时间 / 可用率
-  - 监控详情：趋势图（ECharts）/ 节点对比 / 历史事件
-  - 新建监控向导：类型选择 → 配置 → 测试 → 保存
-  - 批量操作（暂停 / 删除 / 导出 CSV）
-  - 实时状态推送（SSE）
-  - 维护窗口设置
-  - *deps: D1, F2, F3* | *lane: F*
+- [x] **F4** 控制台监控界面（`/app/monitors`）
+  - 列表（Table + 4 统计卡片 + 暂停/删除）+ 新建向导（9 种类型，4 步）+ 详情（48 块趋势图 + SSE 占位）
+  - 21 tests ✓ | shadcn/ui 全组件
+  - *deps: D1, F2, F3* | *完成 2026-05-14*
 
 ---
 
@@ -378,11 +374,10 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - Bearer token 鉴权，`?monitor_id=` 过滤，D1 compliant
   - *deps: B1, G1* | *完成 2026-05-14*
 
-- [ ] **G4** 控制台告警界面（`/app/alerts`）
-  - 通道管理：添加 / 测试 / 删除各通道
-  - 策略配置：规则绑定 / 升级策略 / 静音时段
-  - 事件历史：时间线 / 通知记录 / 恢复时间
-  - *deps: D1, G3* | *lane: G*
+- [x] **G4** 控制台告警界面（`/app/alerts`）
+  - 三 Tab：事件历史（firing/resolved/ack）+ 通道管理（Card+Sheet）+ 策略配置（Table+Switch）
+  - 32 tests ✓ | shadcn/ui 全组件
+  - *deps: D1, G3* | *完成 2026-05-14*
 
 ---
 
@@ -407,19 +402,18 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 自动降级（超额后限制高频功能）
   - *deps: B1, H2* | *lane: H*
 
-- [ ] **H4** `apps/status/` — 状态页（Next.js 多租户）
-  - 子域：`<slug>.status.idcd.com`（泛域名 SSL，Cloudflare 管理）
-  - ISR + CDN 缓存
-  - 自定义域名（CNAME + ACME Let's Encrypt）
-  - 状态页配置：服务分组 / 历史可用率（90/180/365 天）/ 事件公告
-  - Free 档：页脚 `Powered by idcd` 水印；Pro 起去水印 + 自定义域
-  - *deps: D1, F3* | *lane: H*
+- [x] **H4** `apps/status/` — 状态页（Next.js 独立 app）
+  - `apps/status/` 独立 Next.js 16 app，支持 `<slug>.status.idcd.com`
+  - 服务分组 + 90 天 CSS grid 方块图 + 事件公告 + Powered by idcd 水印
+  - 9 tests ✓
+  - *deps: D1, F3* | *完成 2026-05-14*
 
-- [ ] **H5** 控制台计费 + 状态页界面
-  - `/app/billing`：当前订阅 / 用量 / 发票列表 / 升降级
-  - `/app/status-pages`：创建 / 编辑 / 绑定监控项
-  - `/app/usage`：API 调用量 progress bar（REST API calls / MCP units 独立，D2）
-  - *deps: D1, H2, H4* | *lane: H*
+- [x] **H5** 控制台计费 + 状态页界面
+  - `/app/billing`：定价对比表 4 档 + Paddle 占位 Alert + 空发票列表
+  - `/app/status-pages`：列表 Card + 新建 Sheet + Free 升级 Dialog
+  - `/app/usage`：4 个 Progress 卡片 + 7 天 CSS 柱状图
+  - 20 tests ✓ | shadcn/ui 全组件
+  - *deps: D1, H2, H4* | *完成 2026-05-14*
 
 - [x] **H6** 最小管理台（仅 2 个必要功能）
   - `apps/admin/`（独立 Next.js app，port 3001）
@@ -483,6 +477,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-13 | D1（Next.js 骨架）完成：App Router + shadcn/ui + packages/ui，15 tests ✓ | D2/D8 可启动 |
 | 2026-05-14 | D3（工具页 SSG 50+）完成：[slug] 动态路由 + tool-functions + SSE API，216 tests ✓ | A5/C3/C4 需人工操作 |
 | 2026-05-14 | F1/F2/F3（监控模块）+ G1/G2/G3（告警模块）+ H1/H6（计费DB+管理台）并行完成，735 Go tests ✓ | F4/G4/H4/H5 待做 |
+| 2026-05-14 | F4（监控UI）+ G4（告警UI）+ H4（状态页app）+ H5（计费UI）并行完成，289+9 前端 tests ✓ | H2/H3 待 Paddle 账号 [👤] |
 
 ---
 

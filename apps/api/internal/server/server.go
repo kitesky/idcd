@@ -267,6 +267,13 @@ func (s *Server) setupRouter() {
 				r.Get("/summary", dashboardH.Summary)
 			})
 
+			// SLA monthly report endpoint (authentication required)
+			slaH := handler.NewSLAHandler(s.pgxPool)
+			r.Route("/reports", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Get("/sla", slaH.GetSLA)
+			})
+
 			// Alert channels, policies, and events (authentication required)
 			alertH := handler.NewAlertHandler(s.pgxPool)
 			r.Route("/alert-channels", func(r chi.Router) {

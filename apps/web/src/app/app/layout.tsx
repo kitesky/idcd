@@ -9,6 +9,7 @@ import {
   Bell,
   ChevronDown,
   CreditCard,
+  FileText,
   Globe,
   LayoutDashboard,
   LogOut,
@@ -49,6 +50,12 @@ const NAV_GROUPS = [
     label: "发布",
     items: [
       { icon: Globe, label: "状态页", href: "/app/status-pages" },
+    ],
+  },
+  {
+    label: "报告",
+    items: [
+      { icon: FileText, label: "月度报告", href: "/app/reports" },
     ],
   },
   {

@@ -1,17 +1,33 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
+/** Read the non-HttpOnly csrf_token cookie set by the server on GET requests. */
+function getCsrfToken(): string {
+  if (typeof document === "undefined") return ""
+  const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
+  return match ? decodeURIComponent(match[1]) : ""
+}
+
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"])
+
 export async function apiRequest<T = any>(path: string, options?: RequestInit): Promise<T> {
+  const method = (options?.method ?? "GET").toUpperCase()
+
   // Do not set a default Content-Type when the body is FormData — the browser
   // needs to set it automatically (including the multipart boundary parameter).
   const defaultHeaders: HeadersInit =
     options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }
 
+  // Double-submit CSRF pattern: include the cookie value in the X-CSRF-Token header
+  // for all mutating requests. /v1/auth/* is exempt server-side, but sending the
+  // header there is harmless.
+  const csrfHeaders: HeadersInit =
+    MUTATING.has(method) ? { "X-CSRF-Token": getCsrfToken() } : {}
+
   const res = await fetch(API_BASE + path, {
     ...options,
     // credentials: "include" sends the HttpOnly access_token cookie automatically.
-    // Tokens are no longer stored in localStorage.
     credentials: "include",
-    headers: { ...defaultHeaders, ...options?.headers },
+    headers: { ...defaultHeaders, ...csrfHeaders, ...options?.headers },
   })
 
   if (!res.ok) {

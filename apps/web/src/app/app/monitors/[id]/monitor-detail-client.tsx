@@ -23,12 +23,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  type Monitor,
-  type MonitorStatus,
-  TYPE_LABELS,
-  generateMockCheckResults,
-} from "../mock-data"
+import { type Monitor, type MonitorStatus, TYPE_LABELS } from "../mock-data"
+import { apiRequest, API_BASE } from "@/lib/api"
 
 interface LatestCheck {
   monitor_id: string
@@ -112,14 +108,14 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
   const [checkBuckets, setCheckBuckets] = useState<CheckBucket[] | null>(null)
   const [bucketLoading, setBucketLoading] = useState(true)
 
-  const checkResults = generateMockCheckResults(monitor.id)
-
   useEffect(() => {
-    const es = new EventSource(`/api/v1/monitors/${monitor.id}/stream`)
+    const url = `${API_BASE}/v1/monitors/${monitor.id}/stream`
+    const es = new EventSource(url, { withCredentials: true })
     es.addEventListener("check", (e: MessageEvent) => {
       try {
-        const check = JSON.parse(e.data) as LatestCheck
-        setLatestCheck(check)
+        const data = JSON.parse(e.data)
+        if (data?.type === "ping") return
+        setLatestCheck(data as LatestCheck)
       } catch {
       }
     })
@@ -130,11 +126,9 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
 
   useEffect(() => {
     setBucketLoading(true)
-    fetch(`/api/v1/monitors/${monitor.id}/checks?hours=24`)
-      .then((res) => {
-        if (!res.ok) throw new Error(`HTTP ${res.status}`)
-        return res.json()
-      })
+    apiRequest<{ data: { buckets: CheckBucket[] } }>(
+      `/v1/monitors/${monitor.id}/checks?hours=24`
+    )
       .then((json) => {
         const buckets: CheckBucket[] = json?.data?.buckets ?? []
         setCheckBuckets(buckets.length > 0 ? buckets : [])
@@ -356,7 +350,7 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
         </CardContent>
       </Card>
 
-      {/* 最近 10 次检测结果 */}
+      {/* 最近 10 次检测结果（取最新的 10 个非 empty bucket） */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base">最近检测记录</CardTitle>
@@ -365,34 +359,59 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
           <TableHeader>
             <TableRow>
               <TableHead>时间</TableHead>
-              <TableHead>节点</TableHead>
               <TableHead>状态</TableHead>
               <TableHead>延迟</TableHead>
-              <TableHead>错误信息</TableHead>
+              <TableHead>成功/失败</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
-            {checkResults.map((result, i) => (
-              <TableRow key={i}>
-                <TableCell className="font-mono text-xs text-muted-foreground">
-                  {formatDateTime(result.checkedAt)}
-                </TableCell>
-                <TableCell className="text-sm">{result.nodeRegion}</TableCell>
-                <TableCell>
-                  {result.status === "UP" ? (
-                    <Badge variant="success">UP</Badge>
-                  ) : (
-                    <Badge variant="destructive">DOWN</Badge>
-                  )}
-                </TableCell>
-                <TableCell className="font-mono text-xs">
-                  {result.status === "UP" ? `${result.latencyMs}ms` : "-"}
-                </TableCell>
-                <TableCell className="text-xs text-muted-foreground">
-                  {result.error ?? "-"}
+            {bucketLoading ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                  加载中…
                 </TableCell>
               </TableRow>
-            ))}
+            ) : (checkBuckets && checkBuckets.length > 0
+                ? [...checkBuckets].reverse().filter((b) => b.status !== "empty").slice(0, 10)
+                : []
+              ).length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                  暂无检测记录
+                </TableCell>
+              </TableRow>
+            ) : (
+              [...(checkBuckets ?? [])]
+                .reverse()
+                .filter((b) => b.status !== "empty")
+                .slice(0, 10)
+                .map((bucket, i) => (
+                  <TableRow key={i}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {bucket.bucket_start ? formatDateTime(bucket.bucket_start) : "-"}
+                    </TableCell>
+                    <TableCell>
+                      {bucket.status === "up" ? (
+                        <Badge variant="success">UP</Badge>
+                      ) : bucket.status === "down" ? (
+                        <Badge variant="destructive">DOWN</Badge>
+                      ) : (
+                        <Badge variant="warning">降级</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell className="font-mono text-xs">
+                      {bucket.avg_latency_ms > 0 ? `${bucket.avg_latency_ms.toFixed(1)}ms` : "-"}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      <span className="text-success">{bucket.success}</span>
+                      {" / "}
+                      <span className={bucket.failure > 0 ? "text-destructive" : "text-muted-foreground"}>
+                        {bucket.failure}
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                ))
+            )}
           </TableBody>
         </Table>
       </Card>

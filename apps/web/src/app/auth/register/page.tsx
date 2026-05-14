@@ -54,7 +54,8 @@ export default function RegisterPage() {
     setError(null)
 
     try {
-      const response = await apiRequest<{ otp_id: string }>("/v1/auth/register", {
+      // Server sets an HttpOnly cookie on success — no token handling needed client-side.
+      await apiRequest("/v1/auth/register", {
         method: "POST",
         body: JSON.stringify({
           email: values.email,
@@ -62,7 +63,7 @@ export default function RegisterPage() {
         }),
       })
 
-      router.push(`/auth/verify-email?email=${encodeURIComponent(values.email)}&otp_id=${response.otp_id}` as any)
+      router.push("/app/dashboard" as any)
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败，请稍后重试")
     } finally {

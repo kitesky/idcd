@@ -1,5 +1,5 @@
 import { MetadataRoute } from "next"
-import { ALL_TOOLS } from "@/app/tools/tools-config"
+import { ALL_TOOLS } from "@/app/(public)/tools/tools-config"
 
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://idcd.com"

@@ -5,7 +5,7 @@ import {
   Card, CardContent, CardHeader, CardTitle,
   Input, Button, Badge, Label, Separator,
 } from '@/components/ui'
-import { getToolBySlug } from '@/app/tools/tools-config'
+import { getToolBySlug } from '@/app/(public)/tools/tools-config'
 
 const PROBE_INPUTS: Record<string, { label: string; placeholder: string; extra?: string }> = {
   ssl:   { label: '域名', placeholder: 'example.com' },

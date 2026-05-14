@@ -1,29 +1,25 @@
 "use client"
 
-import { useState } from "react"
 import { usePathname } from "next/navigation"
-import { Menu, X, Globe } from "lucide-react"
-import { Button } from "@/components/ui"
+import { Menu, Globe } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet"
 
 function LangToggle() {
   const pathname = usePathname()
-  const isEn = pathname?.startsWith('/en') ?? false
+  const isEn = pathname?.startsWith("/en") ?? false
   return (
     <div className="flex items-center gap-0.5 rounded-md border p-0.5">
-      <Button
-        variant={isEn ? 'ghost' : 'secondary'}
-        size="sm"
-        className="h-7 px-2 text-xs"
-        asChild
-      >
+      <Button variant={isEn ? "ghost" : "secondary"} size="sm" className="h-7 px-2 text-xs" asChild>
         <a href="/" aria-label="切换为中文">中</a>
       </Button>
-      <Button
-        variant={isEn ? 'secondary' : 'ghost'}
-        size="sm"
-        className="h-7 px-2 text-xs"
-        asChild
-      >
+      <Button variant={isEn ? "secondary" : "ghost"} size="sm" className="h-7 px-2 text-xs" asChild>
         <a href="/en/" aria-label="Switch to English">
           <Globe className="h-3 w-3 mr-1" />
           EN
@@ -42,24 +38,16 @@ const navigation = [
 ]
 
 export function Nav() {
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-
   return (
     <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
       <nav className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3 sm:px-6 lg:px-8">
         {/* Logo */}
-        <a
-          href="/"
-          className="flex items-center"
-          onClick={() => setMobileMenuOpen(false)}
-        >
-          <span className="font-mono font-bold text-primary text-xl">
-            idcd
-          </span>
+        <a href="/" className="flex items-center">
+          <span className="font-mono font-bold text-primary text-xl">idcd</span>
         </a>
 
         {/* Desktop Navigation */}
-        <div className="hidden md:flex md:items-center md:space-x-8">
+        <div className="hidden md:flex md:items-center md:gap-8">
           {navigation.map((item) => (
             <a
               key={item.name}
@@ -71,65 +59,51 @@ export function Nav() {
           ))}
         </div>
 
-        {/* Desktop Right: Lang Toggle + Auth Buttons */}
-        <div className="hidden md:flex md:items-center md:space-x-4">
+        {/* Desktop Right */}
+        <div className="hidden md:flex md:items-center md:gap-3">
           <LangToggle />
-          <Button variant="outline">
+          <Button variant="outline" asChild>
             <a href="/auth/login">登录</a>
           </Button>
-          <Button>
+          <Button asChild>
             <a href="/auth/register">注册</a>
           </Button>
         </div>
 
-        {/* Mobile menu button */}
-        <div className="flex md:hidden">
-          <button
-            type="button"
-            className="inline-flex items-center justify-center rounded-md p-2 text-foreground hover:bg-accent hover:text-accent-foreground focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2"
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-          >
-            <span className="sr-only">打开主菜单</span>
-            {mobileMenuOpen ? (
-              <X className="h-6 w-6" aria-hidden="true" />
-            ) : (
-              <Menu className="h-6 w-6" aria-hidden="true" />
-            )}
-          </button>
-        </div>
-      </nav>
-
-      {/* Mobile menu */}
-      {mobileMenuOpen && (
-        <div className="md:hidden">
-          <div className="space-y-1 px-4 pb-3 pt-2 border-t">
-            {navigation.map((item) => (
-              <a
-                key={item.name}
-                href={item.href}
-                className="block px-3 py-2 text-sm font-medium text-foreground hover:bg-accent hover:text-accent-foreground rounded-md"
-                onClick={() => setMobileMenuOpen(false)}
-              >
-                {item.name}
-              </a>
-            ))}
-            <div className="border-t pt-4">
-              <div className="flex flex-col space-y-3 px-3">
-                <Button variant="outline" className="justify-center">
-                  <a href="/auth/login" onClick={() => setMobileMenuOpen(false)}>
-                    登录
-                  </a>
+        {/* Mobile menu — Sheet 组件 */}
+        <Sheet>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" className="md:hidden" aria-label="打开菜单">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="left" className="w-72 p-0">
+            <SheetHeader className="border-b px-4 py-3">
+              <SheetTitle asChild>
+                <a href="/" className="font-mono font-bold text-primary text-xl">
+                  idcd
+                </a>
+              </SheetTitle>
+            </SheetHeader>
+            <div className="flex flex-col gap-1 p-4">
+              {navigation.map((item) => (
+                <Button key={item.name} variant="ghost" className="justify-start" asChild>
+                  <a href={item.href}>{item.name}</a>
                 </Button>
-                <Button className="justify-center">
-                  <a href="/auth/register" onClick={() => setMobileMenuOpen(false)}>
-                    注册
-                  </a>
-                </Button>
-              </div>
+              ))}
             </div>
-          </div>
-        </div>
-      )}
+            <div className="border-t p-4 flex flex-col gap-2">
+              <LangToggle />
+              <Button variant="outline" className="w-full" asChild>
+                <a href="/auth/login">登录</a>
+              </Button>
+              <Button className="w-full" asChild>
+                <a href="/auth/register">注册</a>
+              </Button>
+            </div>
+          </SheetContent>
+        </Sheet>
+      </nav>
     </header>
   )
 }

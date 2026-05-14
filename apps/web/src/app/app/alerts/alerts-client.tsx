@@ -61,8 +61,6 @@ import {
   type AlertNotification,
   type AlertSilence,
   type ChannelType,
-  MOCK_NOTIFICATIONS,
-  MOCK_MONITOR_NAMES,
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPES,
   formatDuration,
@@ -214,14 +212,44 @@ interface PolicyFormProps {
   onCancel: () => void
 }
 
+interface MonitorOption {
+  id: string
+  name: string
+}
+
 function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
   const [name, setName] = useState(initial?.name ?? "")
-  const [monitorName, setMonitorName] = useState(initial?.monitorName ?? MOCK_MONITOR_NAMES[0])
+  const [monitorName, setMonitorName] = useState(initial?.monitorName ?? "")
   const [selectedChannels, setSelectedChannels] = useState<string[]>(initial?.channelIds ?? [])
   const [delay, setDelay] = useState(initial?.delayMinutes ?? 5)
   const [muteFrom, setMuteFrom] = useState(initial?.muteFrom ?? "")
   const [muteTo, setMuteTo] = useState(initial?.muteTo ?? "")
   const [enabled, setEnabled] = useState(initial?.enabled ?? true)
+  const [monitors, setMonitors] = useState<MonitorOption[]>([])
+  const [monitorsLoading, setMonitorsLoading] = useState(true)
+
+  useEffect(() => {
+    let cancelled = false
+    setMonitorsLoading(true)
+    apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
+      .then((res) => {
+        if (cancelled) return
+        const list = res.data.monitors
+        setMonitors(list)
+        // If no initial monitor name is set, default to the first option
+        if (!initial?.monitorName && list.length > 0) {
+          setMonitorName(list[0].name)
+        }
+      })
+      .catch(() => {
+        // On error leave monitors empty; select will just show nothing
+      })
+      .finally(() => {
+        if (!cancelled) setMonitorsLoading(false)
+      })
+    return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const toggleChannel = (id: string) => {
     setSelectedChannels((prev) =>
@@ -258,16 +286,22 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
 
       <div className="space-y-2">
         <Label htmlFor="policy-monitor">绑定监控</Label>
-        <Select value={monitorName} onValueChange={setMonitorName}>
-          <SelectTrigger id="policy-monitor">
-            <SelectValue />
+        <Select value={monitorName} onValueChange={setMonitorName} disabled={monitorsLoading}>
+          <SelectTrigger id="policy-monitor" data-testid="policy-monitor-select">
+            <SelectValue placeholder={monitorsLoading ? "加载中..." : "请选择监控"} />
           </SelectTrigger>
           <SelectContent>
-            {MOCK_MONITOR_NAMES.map((n) => (
-              <SelectItem key={n} value={n}>
-                {n}
-              </SelectItem>
-            ))}
+            {monitorsLoading ? (
+              <SelectItem value="__loading__" disabled>加载中...</SelectItem>
+            ) : monitors.length === 0 ? (
+              <SelectItem value="__empty__" disabled>暂无监控</SelectItem>
+            ) : (
+              monitors.map((m) => (
+                <SelectItem key={m.id} value={m.name}>
+                  {m.name}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -435,9 +469,34 @@ interface ChannelsTabProps {
   onAdd: () => void
 }
 
+interface NotificationsResponse {
+  data: { notifications: AlertNotification[] }
+}
+
 function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
   const [open, setOpen] = useState(false)
-  const notifications = MOCK_NOTIFICATIONS[channelId] ?? []
+  const [notifications, setNotifications] = useState<AlertNotification[]>([])
+  const [notifLoading, setNotifLoading] = useState(false)
+  const fetchedRef = useRef(false)
+
+  const handleToggle = useCallback(async () => {
+    const willOpen = !open
+    setOpen(willOpen)
+    if (willOpen && !fetchedRef.current) {
+      fetchedRef.current = true
+      setNotifLoading(true)
+      try {
+        const res = await apiRequest<NotificationsResponse>(
+          `/v1/alert-channels/${channelId}/notifications?limit=20`
+        )
+        setNotifications(res.data.notifications)
+      } catch {
+        // On error keep empty list; already set above
+      } finally {
+        setNotifLoading(false)
+      }
+    }
+  }, [open, channelId])
 
   return (
     <div className="border-t">
@@ -445,7 +504,7 @@ function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
         variant="ghost"
         size="sm"
         className="w-full justify-between rounded-none px-4 py-2 text-xs text-muted-foreground"
-        onClick={() => setOpen((v) => !v)}
+        onClick={handleToggle}
         data-testid={`delivery-history-toggle-${channelId}`}
       >
         查看交付记录（{notifications.length} 条）
@@ -453,7 +512,9 @@ function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
       </Button>
       {open && (
         <div data-testid={`delivery-history-content-${channelId}`} className="px-4 pb-3">
-          {notifications.length === 0 ? (
+          {notifLoading ? (
+            <p className="py-2 text-center text-xs text-muted-foreground">加载中...</p>
+          ) : notifications.length === 0 ? (
             <p className="py-2 text-center text-xs text-muted-foreground">暂无交付记录</p>
           ) : (
             <Table>

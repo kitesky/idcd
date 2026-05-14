@@ -11,7 +11,7 @@
 | 产品全景 / scope | `docs/prd/OVERVIEW.md` |
 | 所有锁定决策 | `docs/prd/DECISIONS.md`(A0-A8 / B / K / M) |
 | 品牌(idcd 锁定) | `docs/prd/01-branding.md` |
-| 设计系统(shadcn/ui + blue) | `docs/DESIGN.md` |
+| 设计系统(shadcn/ui + zinc + OKLCH) | `docs/DESIGN.md` |
 | 技术架构(PRD 级) | `docs/prd/14-tech-architecture.md` |
 | 项目实施架构 | `docs/ARCHITECTURE.md` |
 | API 规范 | `docs/prd/16-api-spec.yaml`(OpenAPI 3.1) |
@@ -27,13 +27,15 @@
 
 **始终先读 `docs/DESIGN.md` 再做任何视觉 / UI 决策。**
 
-- 完整采用 shadcn/ui 默认体系(不自定义间距 / 圆角 / 字体)
-- 配色 = shadcn/ui 官方 `blue` theme
-- 字体 = Geist Sans + Geist Mono(Next.js / shadcn 默认)
+- 完整采用 shadcn/ui 官方体系（new-york style，不自定义间距/圆角/字体）
+- **主题唯一入口 = `apps/web/src/styles/theme.css`**（OKLCH 色彩空间，改这里换全局主题）
+- Base Color = **Zinc**（深色偏蓝灰），shadcn/ui 官方预设
+- 字体 = Geist Sans + Geist Mono（Next.js / shadcn 默认）
 - 中文字体 fallback = PingFang SC / Microsoft YaHei
-- 默认深色模式
-- 业务语义色扩展:success / warning / info(详 DESIGN.md §3.2)
-- idcd 特定组件 通过 composition,不重写 shadcn 已有组件
+- 默认深色模式（`next-themes` 动态控制，不硬编码 `className="dark"`）
+- 业务语义色扩展：success / warning / info（在 theme.css 定义）
+- `/app/*` 后台使用 shadcn `Sidebar` 组件（`SidebarProvider` + `AppSidebar` + `SidebarInset`）
+- idcd 特定组件通过 composition，不重写 shadcn 已有组件
 
 ### 组件使用强制规则
 
@@ -45,6 +47,10 @@
 | 卡片/面板 | `<Card>` + `<CardContent>` 而非 `<div className="rounded border">` |
 | 表单字段 | `<Form>` + `<FormField>` + `<Input>` / `<Select>` 而非裸 input |
 | 提示/状态 | `<Alert>` / `<Badge>` 而非自写色块 |
+| 移动端菜单/抽屉 | `<Sheet>` 而非自写 fixed panel |
+| 后台侧边栏 | `<Sidebar>` + `<SidebarProvider>` 而非自写 aside |
+| 面包屑 | `<Breadcrumb>` 系列组件 |
+| Toast 通知 | `<Toaster>`（Sonner）而非自写 |
 | 间距/布局 | Tailwind spacing utilities + shadcn 布局，不造容器组件 |
 
 **允许裸 div 的唯一情形**：纯布局容器（flex/grid wrapper）且无视觉样式（无 border/bg/shadow/rounded）。

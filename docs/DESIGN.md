@@ -1,387 +1,257 @@
 # Design System — idcd
 
-> 状态:**已锁定(2026-05-13)**
-> 关联:`01-branding.md`(品牌)/ `14-tech-architecture.md`(技术栈)
-> Preview:`/tmp/idcd-design-preview.html`(本次会话生成,可重新生成)
+> 状态: **已更新(2026-05-15)**  
+> 关联: `01-branding.md`(品牌) / `14-tech-architecture.md`(技术栈)
 
 ---
 
 ## 1. 核心原则
 
-> **采用 shadcn/ui 官方设计体系完整版,仅配色用官方 `blue` theme。**
+> **完整采用 shadcn/ui 官方组件体系 + Tailwind v4 OKLCH 主题系统。**
 
-idcd 不自定义间距、字体、圆角、组件 token。所有这些**直接采用 shadcn/ui 默认值**。设计系统的唯一自由度是**配色 = shadcn/ui blue theme**。
+idcd 不自定义间距、字体、圆角、组件 token。所有这些**直接采用 shadcn/ui 默认值**。  
+设计系统的唯一自由度是：修改 `src/styles/theme.css` 里的 OKLCH 值即可改变整体风格。
 
-理由:
-- 极简维护成本(shadcn 官方维护 token,我们不重复)
-- 组件 plug-and-play(`pnpm dlx shadcn add button` 即可,无需 patch)
-- 升级路径清晰(shadcn 更新时,直接 pull 官方)
+理由：
+- 极简维护成本（shadcn 官方维护 token，我们不重复）
+- 组件 plug-and-play（`pnpm dlx shadcn add button` 即可，无需 patch）
+- 升级路径清晰（shadcn 更新时，直接 pull 官方）
 - 与 Next.js 16 + Tailwind v4 生态默认绑定
 
 ---
 
-## 2. 技术栈(已锁定,DECISIONS §B)
+## 2. 技术栈
 
-| 维度 | 选型 | 来源 |
-|---|---|---|
-| 框架 | Next.js 16 (App Router) | 14 §3.2(2026-05 锁定 latest) |
-| UI 库 | shadcn/ui (latest) | 14 §3.2 |
-| 底层 | Radix UI primitives | shadcn 依赖 |
-| CSS | Tailwind CSS v4 | 14 §3.2 |
-| 字体 | Geist Sans + Geist Mono | Next.js 16 默认,shadcn 推荐 |
-| 包管理 | pnpm | 14 §3.2 |
-| 图表 | ECharts + Recharts(备选) | 14 §3.2 |
-
----
-
-## 3. 配色 — shadcn/ui blue theme(官方默认)
-
-### 3.1 完整 token 集
-
-用 shadcn/ui CLI 初始化时选择 `blue`:
-
-```bash
-pnpm dlx shadcn@latest init
-# Style: New York(推荐)
-# Base color: Blue          ← 关键决策
-# CSS variables: Yes
-# RSC: Yes(Next.js App Router)
-```
-
-生成的 `app/globals.css`:
-
-```css
-@layer base {
-  :root {
-    --background: 0 0% 100%;
-    --foreground: 222.2 84% 4.9%;
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
-    --primary: 221.2 83.2% 53.3%;             /* blue-500 #3B82F6 */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221.2 83.2% 53.3%;
-    --chart-1: 12 76% 61%;
-    --chart-2: 173 58% 39%;
-    --chart-3: 197 37% 24%;
-    --chart-4: 43 74% 66%;
-    --chart-5: 27 87% 67%;
-    --radius: 0.5rem;
-  }
-
-  .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217.2 91.2% 59.8%;             /* blue-400 #60A5FA */
-    --primary-foreground: 222.2 47.4% 11.2%;
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-    --chart-1: 220 70% 50%;
-    --chart-2: 160 60% 45%;
-    --chart-3: 30 80% 55%;
-    --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
-  }
-}
-```
-
-### 3.2 idcd 业务语义色扩展
-
-shadcn 官方只提供 `destructive`(错误)。idcd 需要 `success` / `warning` / `info` 三个额外语义色,从 Tailwind 调色板取:
-
-```css
-@layer base {
-  :root {
-    /* 业务语义色扩展(非 shadcn 官方,但 Tailwind 调色板取) */
-    --success: 142.1 76.2% 36.3%;       /* green-600 #16A34A */
-    --success-foreground: 355.7 100% 97.3%;
-    --warning: 32.1 94.6% 43.7%;        /* orange-600 #DC8500 */
-    --warning-foreground: 0 0% 100%;
-    --info: 221.2 83.2% 53.3%;          /* 同 primary blue-500 */
-    --info-foreground: 210 40% 98%;
-  }
-  .dark {
-    --success: 142.1 70.6% 45.3%;       /* green-500 */
-    --warning: 47.9 95.8% 53.1%;        /* yellow-500 */
-    --warning-foreground: 26 83.3% 14.1%;
-  }
-}
-```
-
-### 3.3 业务场景使用
-
-| 场景 | Token | 颜色 |
-|---|---|---|
-| 监控 UP 状态 | `success` | green-600 / green-500 |
-| 监控 DEGRADED | `warning` | orange-600 / yellow-500 |
-| 监控 DOWN | `destructive` | red-500 / red-700 |
-| Verdict verified badge | `success` | green-600 |
-| Verdict refund_failed | `destructive` | red-500 |
-| CTA / 链接 / 数据强调 | `primary` | blue-500 / blue-400 |
-| MCP token type badge | `info`(同 primary) | blue-500 |
-| 节点 ASN 标签 | `muted-foreground` | gray-500 |
-
----
-
-## 4. 字体(shadcn / Next.js 默认)
-
-直接采用 Next.js 16 + shadcn/ui 默认推荐:
-
-```ts
-// app/layout.tsx
-import { Geist, Geist_Mono } from "next/font/google";
-
-const geistSans = Geist({
-  subsets: ["latin", "latin-ext"],
-  variable: "--font-sans",
-});
-
-const geistMono = Geist_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono",
-});
-
-// tailwind.config 已通过 shadcn init 自动配 fontFamily.sans / fontFamily.mono
-```
-
-### 中文字体 fallback
-
-Geist 主要支持拉丁字符,中文走系统字体 fallback:
-
-```css
-body {
-  font-family:
-    var(--font-sans),
-    -apple-system, BlinkMacSystemFont,
-    "PingFang SC", "Microsoft YaHei",  /* 中文优先 */
-    "Hiragino Sans GB", sans-serif;
-}
-```
-
-### 字体使用规则
-
-- **Display + Body**:`font-sans`(Geist)
-- **数据 / 代码 / 数字**:`font-mono`(Geist Mono),必加 `tabular-nums`(数字等宽)
-- **不引入第三方字体** — 减少 FOUT、降低 LCP
-
----
-
-## 5. 间距 / 圆角 / 阴影(shadcn 默认)
-
-**全部直接用 Tailwind 默认值 + shadcn `--radius: 0.5rem`(8px)**。
-
-无需在 DESIGN.md 列出 — 使用时直接调:
-
-```tsx
-// 间距:Tailwind 默认(gap-2 = 8px / p-4 = 16px / space-y-6 = 24px ...)
-<div className="space-y-4 p-6 rounded-lg border">...</div>
-
-// 圆角:shadcn 自动从 --radius 计算
-//   rounded-sm = calc(var(--radius) - 4px) = 4px
-//   rounded-md = calc(var(--radius) - 2px) = 6px
-//   rounded-lg = var(--radius)             = 8px
-//   rounded    = 0.25rem(Tailwind 默认 4px)
-
-// 阴影:Tailwind 默认 shadow-sm / shadow / shadow-md / shadow-lg
-```
-
----
-
-## 6. 组件(shadcn/ui 全套)
-
-### 6.1 推荐安装清单
-
-按 idcd 控制台需要的组件:
-
-```bash
-# 基础
-pnpm dlx shadcn@latest add button card badge alert input label
-pnpm dlx shadcn@latest add tabs select dropdown-menu
-
-# 数据
-pnpm dlx shadcn@latest add table pagination
-
-# 反馈
-pnpm dlx shadcn@latest add toast dialog sheet popover tooltip
-pnpm dlx shadcn@latest add progress skeleton
-
-# 表单
-pnpm dlx shadcn@latest add form switch checkbox radio-group textarea
-pnpm dlx shadcn@latest add command(搜索 / palette)
-
-# 导航
-pnpm dlx shadcn@latest add breadcrumb navigation-menu
-
-# 高级
-pnpm dlx shadcn@latest add chart  # 内置 Recharts wrapper
-pnpm dlx shadcn@latest add data-table  # TanStack Table wrapper
-pnpm dlx shadcn@latest add resizable  # 双窗格布局
-```
-
-### 6.2 idcd 特定组件(基于 shadcn 扩展,不重写)
-
-| 组件 | 用途 | 实施方式 |
-|---|---|---|
-| `StatusDot` | 监控 UP/DOWN/PARTIAL 指示 | 基于 `Badge` + Tailwind |
-| `MonitorTable` | 监控列表 | 基于 `data-table` + sparkline SVG |
-| `VerdictSignatureBadge` | Verdict 报告签名标识 | 基于 `Badge variant=success` |
-| `UsageProgressBar` | 双 progress(API + MCP units D2) | 基于 `Progress` × 2 |
-| `AnchorDeviationIndicator` | Anchor 偏差告警 | 基于 `Alert variant=warning/destructive` |
-
-**禁止**:不自己实现 shadcn 已有的组件。需要扩展时通过 composition,不通过重写。
-
----
-
-## 7. 主题切换(深色 / 浅色)
-
-```bash
-pnpm add next-themes
-pnpm dlx shadcn@latest add mode-toggle  # 自带 sun/moon icon 按钮
-```
-
-```tsx
-// app/layout.tsx
-import { ThemeProvider } from "next-themes";
-
-<html lang="zh-CN" suppressHydrationWarning>
-  <body className={`${geistSans.variable} ${geistMono.variable}`}>
-    <ThemeProvider attribute="class" defaultTheme="dark" enableSystem>
-      {children}
-    </ThemeProvider>
-  </body>
-</html>
-```
-
-**默认深色模式**(技术品牌 + 开发者偏好 + dashboard 长时间观看)。
-
----
-
-## 8. 数据可视化
-
-### 8.1 图表库
-
-- **主**:shadcn `Chart`(Recharts wrapper,与 shadcn 主题集成)
-- **复杂时序 / 节点地图**:ECharts(直接用,但读 shadcn CSS 变量做配色)
-
-### 8.2 图表配色
-
-直接用 shadcn 内置 `--chart-1` 至 `--chart-5`:
-
-```tsx
-<LineChart>
-  <Line stroke="hsl(var(--chart-1))" />
-  <Line stroke="hsl(var(--chart-2))" />
-</LineChart>
-```
-
-数据高亮(选中点 / 强调线)用 `--primary`:
-
-```tsx
-<Line stroke="hsl(var(--primary))" strokeWidth={2} />
-```
-
----
-
-## 9. idcd 关键页面 UI 规范
-
-详 OVERVIEW §5.1 IA。每个关键页面对应 shadcn 组件组合:
-
-| 页面 | shadcn 组件组合 |
+| 维度 | 选型 |
 |---|---|
-| 首页 | `Button`(CTA)+ 自定义 hero 布局 |
-| `/tools/*` 工具页 | `Card` + `Input` + `Button` + `Table` |
-| `/verdict/<id>` 报告分享 | `Card` + `Badge variant=success` + `Alert variant=muted`(免责) |
-| `/verify` 公开验签 | `Card` + 自定义 dropzone + `Badge` |
-| `/leaderboard` | `data-table` + `Tabs` + `Chart` |
-| `/transparency` | `Card` + `Chart` + `data-table` |
-| `/app/monitors` | `data-table` + `Input` + `Button` + StatusDot + sparkline |
-| `/app/verdict` | `data-table` + `Badge` + `Dialog`(下单) |
-| `/app/compliance` | `Card` + `Form` + `Switch` |
-| `/app/mcp` | `data-table` + `Dialog`(签发 token)+ `Tabs`(三态) |
-| `/app/usage` | 双 `Progress` + `Chart` + `data-table` |
-| `/admin/refund-failed`(D5) | `data-table` + `Alert variant=destructive` |
+| 框架 | Next.js 16 (App Router) |
+| UI 库 | shadcn/ui (new-york style) |
+| 底层 | Radix UI primitives |
+| CSS | Tailwind CSS v4 |
+| 色彩空间 | **OKLCH**（Tailwind v4 标准，非 HSL） |
+| 字体 | Geist Sans + Geist Mono |
+| 包管理 | pnpm |
+| 图表 | Recharts（shadcn Chart wrapper） |
+
+---
+
+## 3. 主题系统（唯一入口：`src/styles/theme.css`）
+
+### 3.1 文件结构
+
+```
+apps/web/src/
+├── app/
+│   └── globals.css          ← CSS 入口（@import theme.css，@layer base 等）
+└── styles/
+    └── theme.css            ← 唯一主题配置文件（改这里换主题）
+```
+
+### 3.2 `theme.css` 结构
+
+```css
+/* 亮色模式变量（OKLCH 格式） */
+:root {
+  --radius: 0.5rem;
+  --primary: oklch(0.21 0.006 285.885);   /* ← 改这里换主色 */
+  --background: oklch(1 0 0);
+  /* ... 其他 token ... */
+}
+
+/* 暗色模式覆盖 */
+.dark {
+  --background: oklch(0.141 0.005 285.823);
+  --primary: oklch(0.92 0.004 286.32);
+  /* ... */
+}
+
+/* Tailwind v4 token 映射（使 bg-primary、text-foreground 等 class 生效） */
+@theme inline {
+  --color-primary: var(--primary);
+  --color-background: var(--background);
+  /* ... */
+}
+```
+
+### 3.3 当前默认主题
+
+| 参数 | 值 |
+|---|---|
+| Style | new-york |
+| Base Color | **Zinc**（偏蓝灰，深色模式效果最佳） |
+| 色彩空间 | OKLCH |
+| 默认模式 | 暗色（`defaultTheme="dark"`） |
+
+### 3.4 修改主题的方法
+
+**只需修改 `src/styles/theme.css`**：
+1. 改 `:root` 里的 OKLCH 值 → 改亮色主题
+2. 改 `.dark` 里的 OKLCH 值 → 改暗色主题
+3. 改 `--radius` → 改全局圆角
+4. 刷新浏览器即可看到效果，无需重启
+
+**从官方获取预设主题**：访问 https://ui.shadcn.com/create 选择配色后「Get Code」复制 CSS 变量。
+
+---
+
+## 4. 颜色 Token 系统
+
+### 4.1 标准 token 对（背景/前景配对）
+
+| Token | 用途 |
+|---|---|
+| `background` / `foreground` | 页面底色和正文 |
+| `card` / `card-foreground` | 卡片、面板 |
+| `popover` / `popover-foreground` | 弹层、下拉菜单 |
+| `primary` / `primary-foreground` | 主色、品牌色、CTA 按钮 |
+| `secondary` / `secondary-foreground` | 次色、辅助按钮 |
+| `muted` / `muted-foreground` | 弱化文字、描述、占位符 |
+| `accent` / `accent-foreground` | 悬停/激活高亮 |
+| `destructive` | 危险操作、删除、错误 |
+| `border` | 默认边框 |
+| `input` | 表单控件边框 |
+| `ring` | 焦点环 |
+
+### 4.2 Sidebar 专属 token
+
+| Token | 用途 |
+|---|---|
+| `sidebar` / `sidebar-foreground` | 侧边栏背景和文字 |
+| `sidebar-primary` / `sidebar-primary-foreground` | 侧边栏主色 |
+| `sidebar-accent` / `sidebar-accent-foreground` | 侧边栏悬停高亮 |
+| `sidebar-border` / `sidebar-ring` | 侧边栏边框 |
+
+### 4.3 idcd 业务语义色扩展
+
+在 `theme.css` 的 `:root`/`.dark` 和 `@theme inline` 中定义：
+
+| Token | 亮色 OKLCH | 暗色 OKLCH | 用途 |
+|---|---|---|---|
+| `success` | `oklch(0.527 0.154 150)` | `oklch(0.627 0.194 146)` | 监控 UP / verified |
+| `warning` | `oklch(0.769 0.188 70)` | `oklch(0.828 0.189 84)` | 监控 DEGRADED |
+| `info` | `oklch(0.623 0.214 260)` | `oklch(0.623 0.214 260)` | MCP token / 信息提示 |
+
+### 4.4 图表调色盘
+
+使用 `--chart-1` 至 `--chart-5`，在 `theme.css` 统一定义：
+
+```tsx
+// 在 Recharts 组件中引用
+<Line stroke="var(--chart-1)" />
+<Bar fill="var(--chart-2)" />
+```
+
+---
+
+## 5. 字体
+
+- **Display + Body**: Geist Sans（`--font-sans`）
+- **代码 / 数字 / 等宽**: Geist Mono（`--font-mono`），配合 `tabular-nums`
+- **中文 fallback**: PingFang SC → Microsoft YaHei → Hiragino Sans GB
+
+---
+
+## 6. 组件使用规则
+
+### 已安装组件（33 个）
+
+**基础**: Button, Input, Label, Textarea, Badge, Separator, Skeleton, Progress, Slider  
+**卡片**: Card (+ Header/Footer/Title/Description/Content), Avatar  
+**表单**: Form, Checkbox, Select, Switch, RadioGroup, InputOTP  
+**导航**: Breadcrumb, Tabs, Sidebar (+ 所有子组件)  
+**反馈**: Alert, AlertDialog, Dialog, Sheet, Sonner (Toast), Tooltip, Popover  
+**数据**: Table, ScrollArea, Command  
+**折叠**: Collapsible, DropdownMenu  
+
+### 使用强制规则
+
+| 场景 | 正确做法 | 禁止 |
+|---|---|---|
+| 按钮 | `<Button>` | `<div onClick>` 或裸 `<button>` |
+| 卡片面板 | `<Card>` | `<div className="rounded border">` |
+| 表单字段 | `<Form>` + `<FormField>` + `<Input>` | 裸 `<input>` |
+| 弹窗 | `<Dialog>` / `<AlertDialog>` | 自写 overlay |
+| 抽屉/移动菜单 | `<Sheet>` | 自写 fixed panel |
+| 后台侧边栏 | `<Sidebar>` + `<SidebarProvider>` | 自写 aside + state |
+| 面包屑 | `<Breadcrumb>` | 自写 span 链接 |
+| Toast 通知 | `<Sonner>` / `<Toaster>` | 自写 toast |
+
+**允许裸 div 的唯一情形**：纯布局容器（flex/grid wrapper），无视觉样式（无 border/bg/shadow/rounded）。
+
+---
+
+## 7. 后台布局（`/app/*`）
+
+使用 shadcn 官方 `Sidebar` 组件：
+
+```tsx
+// apps/web/src/app/app/layout.tsx
+<SidebarProvider>
+  <AppSidebar email={email} plan={plan} />
+  <SidebarInset>
+    <header>  {/* SidebarTrigger + Breadcrumb */}
+    <main>{children}</main>
+  </SidebarInset>
+</SidebarProvider>
+```
+
+关键组件文件：
+- `src/components/layout/app-sidebar.tsx` — 侧边栏入口
+- `src/components/layout/nav-group.tsx` — 导航分组（支持折叠子菜单）
+- `src/components/layout/nav-user.tsx` — 底部用户菜单
+- `src/components/layout/sidebar-data.ts` — 导航配置（改这里加减菜单项）
+
+---
+
+## 8. 主题切换
+
+由 `next-themes` 控制，支持亮色/暗色切换：
+
+```tsx
+// 在任意 Client Component 中
+import { useTheme } from "next-themes"
+const { theme, setTheme } = useTheme()
+setTheme("dark")   // 切换暗色
+setTheme("light")  // 切换亮色
+setTheme("system") // 跟随系统
+```
+
+---
+
+## 9. 数据可视化
+
+- 主：shadcn `Chart`（Recharts wrapper，与 shadcn 主题集成）
+- 复杂时序/地图：ECharts（读 CSS 变量配色）
+
+图表颜色引用：
+```tsx
+// 不要硬编码颜色，要引用 CSS 变量
+stroke="var(--chart-1)"    // ✅
+stroke="#3B82F6"            // ❌
+```
 
 ---
 
 ## 10. 反 AI slop 清单
 
-设计实施时避免:
-
-- ❌ 紫色 / violet 渐变(idcd 是 blue,不要混用)
-- ❌ 3-column SaaS icon grid(典型 AI slop)
-- ❌ 居中一切(用左对齐 + grid)
-- ❌ 圆形 CTA 按钮(用 `rounded-md` / `rounded-lg`)
-- ❌ 渐变填充按钮(用 `bg-primary` 纯色)
-- ❌ 全 system-ui 字体(用 Geist)
-- ❌ 营销大词(`Develop. Preview. Ship.` 风格 → 用 idcd `Probe. Verdict. Observe.`)
-- ❌ 装饰性 blob / 模糊光斑
+- ❌ 紫色/violet 渐变（idcd 是 zinc 中性色）
+- ❌ 3-column SaaS icon grid
+- ❌ 居中一切（用左对齐 + grid）
+- ❌ 圆形 CTA 按钮（用 `rounded-md`）
+- ❌ 渐变填充按钮（用 `bg-primary` 纯色）
+- ❌ 硬编码颜色值（用 CSS 变量）
 
 ---
 
-## 11. Logo(待 Phase 5 设计)
-
-详 `01-branding.md` §3。基于本设计系统(blue + Geist + minimal)实施:
-
-- **风格**:Geist Mono 字形 "idcd" + 单色 + 一个简单几何元素(可能是 dot 或 underline)
-- **颜色**:深色背景上 white,浅色背景上 black;hover / accent 状态用 `--primary`
-- **变体**:wordmark 主用,小尺寸 icon 备用
-
-待 AI 生成 5 个草图 → 用户选定 → SVG 矢量化。
-
----
-
-## 12. 决策日志
+## 11. 决策日志
 
 | 日期 | 决策 | 理由 |
 |---|---|---|
-| 2026-05-13 | 完整采用 shadcn/ui 默认体系 | 极简维护成本 + 组件 plug-and-play + 升级路径清晰 |
-| 2026-05-13 | 配色用 shadcn/ui blue theme | 用户决策 |
-| 2026-05-13 | 字体 Geist Sans + Geist Mono | Next.js 16 默认,shadcn 推荐,与生态绑定 |
-| 2026-05-13 | 业务语义色扩展 success/warning/info | shadcn 官方只有 destructive,idcd 监控业务需 success/warning |
+| 2026-05-13 | 完整采用 shadcn/ui 官方体系 | 极简维护 + plug-and-play + 升级路径清晰 |
 | 2026-05-13 | 默认深色模式 | 技术品牌 + 开发者偏好 + dashboard 长时间观看 |
-| 2026-05-13 | idcd 特定组件通过 composition,不重写 | 保持 shadcn 升级兼容 |
-
----
-
-## 13. 实施 checklist(M1 起步)
-
-- [ ] `pnpm dlx shadcn@latest init`(Style: New York, Base: Blue, CSS Variables: Yes)
-- [ ] 在 `globals.css` 增加业务语义色扩展(success / warning / info)
-- [ ] `pnpm add next-themes`
-- [ ] `pnpm dlx shadcn@latest add mode-toggle button card badge alert input table dialog`(基础包)
-- [ ] `app/layout.tsx` 配 Geist + Geist_Mono + ThemeProvider(默认 dark)
-- [ ] 中文字体 fallback(PingFang SC / Microsoft YaHei)写入 globals.css
-- [ ] 实施 `StatusDot` / `VerdictSignatureBadge` 等 idcd 特定组件(基于 shadcn composition)
-- [ ] Storybook(可选,S2 上线后)— 内部组件库 review
-
----
-
-## 14. 维护与更新
-
-- 任何配色 / 字体改动 → 更新本文件 + commit
-- shadcn/ui 版本升级 → 跑 `pnpm dlx shadcn@latest add <component>` 更新各组件
-- 业务语义色冲突时 → 优先保留 shadcn 官方 token,自定义放命名空间(如 `--idcd-*`)
+| 2026-05-13 | idcd 特定组件通过 composition，不重写 | 保持 shadcn 升级兼容 |
+| 2026-05-15 | 迁移到 OKLCH 色彩空间 | Tailwind v4 标准，感知均匀，支持透明度 |
+| 2026-05-15 | Base Color 改为 Zinc（原 Blue） | 深色模式偏蓝灰更自然，shadcn-admin 同款 |
+| 2026-05-15 | 主题配置集中到 theme.css | 单一入口，改一处换全局 |
+| 2026-05-15 | /app/* 后台使用 shadcn Sidebar 组件 | 替代手写 div 侧边栏，collapsible + icon mode |
+| 2026-05-15 | 删除 tailwind.config.ts | Tailwind v4 用 @theme inline，不需要 config 文件 |

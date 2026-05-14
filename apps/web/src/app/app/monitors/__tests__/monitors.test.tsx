@@ -310,9 +310,51 @@ describe("MonitorDetailClient — 详情页渲染", () => {
     render(<MonitorDetailClient monitor={upMonitor} />)
     expect(screen.getByText("最近检测记录")).toBeInTheDocument()
     expect(screen.getByText("时间")).toBeInTheDocument()
-    expect(screen.getByText("节点")).toBeInTheDocument()
     expect(screen.getByText("延迟")).toBeInTheDocument()
-    expect(screen.getByText("错误信息")).toBeInTheDocument()
+    expect(screen.getByText("成功/失败")).toBeInTheDocument()
+  })
+
+  it("fetch 返回 buckets 时最近检测记录表展示最新非 empty 条目", async () => {
+    const fakeBuckets = Array.from({ length: 3 }, (_, i) => ({
+      bucket_start: new Date(Date.now() - i * 30 * 60_000).toISOString(),
+      total: 2,
+      success: 2,
+      failure: 0,
+      avg_latency_ms: 100,
+      status: "up",
+    }))
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: {
+          monitor_id: "mon-001",
+          hours: 24,
+          resolution_minutes: 30,
+          buckets: fakeBuckets,
+        },
+      }),
+    } as Response)
+    render(<MonitorDetailClient monitor={upMonitor} />)
+    // Wait for loading to finish and UP badges to appear in the table
+    await waitFor(() => {
+      expect(screen.queryByText("加载中…")).not.toBeInTheDocument()
+    })
+    const upBadges = screen.getAllByText("UP")
+    // At least 1 UP badge from table rows (plus status badges from top)
+    expect(upBadges.length).toBeGreaterThan(0)
+  })
+
+  it("fetch 返回空 buckets 时最近检测记录显示暂无检测记录", async () => {
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        data: { monitor_id: "mon-001", hours: 24, resolution_minutes: 30, buckets: [] },
+      }),
+    } as Response)
+    render(<MonitorDetailClient monitor={upMonitor} />)
+    await waitFor(() => {
+      expect(screen.getByText("暂无检测记录")).toBeInTheDocument()
+    })
   })
 
   it("渲染 SSE 实时更新区域", () => {

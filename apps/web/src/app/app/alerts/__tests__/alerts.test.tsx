@@ -6,7 +6,6 @@ import {
   MOCK_ALERT_EVENTS,
   MOCK_ALERT_CHANNELS,
   MOCK_ALERT_POLICIES,
-  MOCK_NOTIFICATIONS,
 } from "../mock-data"
 
 // Mock the API module so tests don't hit a real server
@@ -17,6 +16,26 @@ vi.mock("@/lib/api", () => ({
 
 import { apiRequest } from "@/lib/api"
 const mockApiRequest = vi.mocked(apiRequest)
+
+// Notifications per channel returned by the mock API
+const MOCK_API_NOTIFICATIONS: Record<string, { id: string; alert_event_id: string; status: "sent" | "failed" | "pending"; sent_at: string | null; error: string | null }[]> = {
+  "ch-001": [
+    { id: "n-001", alert_event_id: "ae-001", status: "sent", sent_at: new Date(Date.now() - 15 * 60_000).toISOString(), error: null },
+    { id: "n-002", alert_event_id: "ae-002", status: "failed", sent_at: new Date(Date.now() - 3 * 3600_000).toISOString(), error: "connection timeout" },
+    { id: "n-003", alert_event_id: "ae-003", status: "sent", sent_at: new Date(Date.now() - 5 * 3600_000).toISOString(), error: null },
+  ],
+  "ch-002": [
+    { id: "n-004", alert_event_id: "ae-001", status: "sent", sent_at: new Date(Date.now() - 15 * 60_000).toISOString(), error: null },
+    { id: "n-005", alert_event_id: "ae-002", status: "pending", sent_at: null, error: null },
+  ],
+  "ch-003": [],
+}
+
+const MOCK_MONITORS = [
+  { id: "mon-001", name: "idcd.com 主站" },
+  { id: "mon-002", name: "API 网关健康检查" },
+  { id: "mon-003", name: "香港节点 Ping" },
+]
 
 function setupDefaultMocks() {
   mockApiRequest.mockImplementation(async (path: string, options?: RequestInit) => {
@@ -45,8 +64,17 @@ function setupDefaultMocks() {
       }
       return { data: { channel: newCh } }
     }
+    if (path.startsWith("/v1/alert-channels/") && path.includes("/notifications") && method === "GET") {
+      const channelId = path.split("/")[3]
+      return { data: { notifications: MOCK_API_NOTIFICATIONS[channelId] ?? [] } }
+    }
     if (path.startsWith("/v1/alert-channels/") && method === "DELETE") {
       return {}
+    }
+
+    // Monitors (for PolicyForm)
+    if (path === "/v1/monitors" && method === "GET") {
+      return { data: { monitors: MOCK_MONITORS } }
     }
 
     // Policies
@@ -283,13 +311,15 @@ describe("AlertsClient — 告警通道 Tab", () => {
       expect(screen.getByTestId(`delivery-history-toggle-${firstCh.id}`)).toBeInTheDocument()
     )
     const toggle = screen.getByTestId(`delivery-history-toggle-${firstCh.id}`)
-    fireEvent.mouseDown(toggle)
     fireEvent.click(toggle)
-    const content = screen.getByTestId(`delivery-history-content-${firstCh.id}`)
-    expect(content).toBeInTheDocument()
-    const notifications = MOCK_NOTIFICATIONS[firstCh.id] ?? []
-    notifications.slice(0, 10).forEach((n) => {
-      expect(within(content).getByTestId(`notif-row-${n.id}`)).toBeInTheDocument()
+    // Wait for content to appear and API response to load
+    const notifications = MOCK_API_NOTIFICATIONS[firstCh.id] ?? []
+    await waitFor(() => {
+      const content = screen.getByTestId(`delivery-history-content-${firstCh.id}`)
+      expect(content).toBeInTheDocument()
+      notifications.slice(0, 10).forEach((n) => {
+        expect(within(content).getByTestId(`notif-row-${n.id}`)).toBeInTheDocument()
+      })
     })
   })
 })

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 import { notFound } from 'next/navigation'
 import { EN_TOOLS_META, getEnToolMeta } from '@/i18n/en-tools-meta'
-import ToolRenderer from '@/app/tools/[slug]/tool-renderer'
+import ToolRenderer from '@/app/(public)/tools/[slug]/tool-renderer'
 
 type Props = {
   params: Promise<{ slug: string }>

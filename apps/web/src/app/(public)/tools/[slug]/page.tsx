@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { ALL_TOOLS, getToolBySlug } from '@/app/tools/tools-config'
+import { ALL_TOOLS, getToolBySlug } from '@/app/(public)/tools/tools-config'
 import ToolRenderer from './tool-renderer'
 
 type Props = {

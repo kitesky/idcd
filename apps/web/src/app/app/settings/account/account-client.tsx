@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
 import { useForm } from "react-hook-form"
@@ -43,13 +43,23 @@ const passwordSchema = z
 
 type PasswordFormValues = z.infer<typeof passwordSchema>
 
-// ── Mock email (replace with real session data in production) ─────────────
-const MOCK_USER_EMAIL = "user@example.com"
-
 // ── AccountClient ─────────────────────────────────────────────────────────
 
 export function AccountClient() {
   const router = useRouter()
+
+  // ── Profile / email state ────────────────────────────────────────────────
+  const [userEmail, setUserEmail] = useState<string | null>(null)
+  const [profileLoading, setProfileLoading] = useState(true)
+
+  useEffect(() => {
+    apiRequest<{ data: { email: string } }>("/v1/account/profile")
+      .then((res) => setUserEmail(res.data.email))
+      .catch(() => {
+        // Keep null; delete confirm will remain hidden until loaded
+      })
+      .finally(() => setProfileLoading(false))
+  }, [])
 
   // ── Password card state ──────────────────────────────────────────────────
   const [pwdSuccess, setPwdSuccess] = useState(false)
@@ -94,16 +104,14 @@ export function AccountClient() {
   const [deleteError, setDeleteError] = useState<string | null>(null)
 
   async function handleDeleteConfirm() {
-    if (deleteEmailInput !== MOCK_USER_EMAIL) {
+    if (deleteEmailInput !== userEmail) {
       setDeleteError("邮箱地址不匹配，请重新输入")
       return
     }
     setDeleteLoading(true)
     setDeleteError(null)
     try {
-      // Mock: real impl calls DELETE /v1/account
-      await new Promise((r) => setTimeout(r, 300))
-      // Show toast-like message then redirect
+      await apiRequest("/v1/account", { method: "DELETE" })
       router.push("/auth/logout")
     } catch {
       setDeleteError("提交失败，请稍后重试")
@@ -241,7 +249,9 @@ export function AccountClient() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          {!showDeleteConfirm ? (
+          {profileLoading ? (
+            <div className="h-9 w-32 rounded-md bg-muted animate-pulse" data-testid="delete-btn-skeleton" />
+          ) : !showDeleteConfirm ? (
             <Button
               variant="destructive"
               data-testid="btn-delete-account"
@@ -256,7 +266,7 @@ export function AccountClient() {
             >
               <p className="text-sm font-medium">
                 请输入您的邮箱地址
-                <span className="font-semibold"> {MOCK_USER_EMAIL} </span>
+                <span className="font-semibold"> {userEmail} </span>
                 以确认注销
               </p>
 

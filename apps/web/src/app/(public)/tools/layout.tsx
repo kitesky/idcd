@@ -14,7 +14,7 @@ import {
   cn
 } from "@/components/ui"
 import { Menu, X } from "lucide-react"
-import { ALL_TOOLS } from "@/app/tools/tools-config"
+import { ALL_TOOLS } from "@/app/(public)/tools/tools-config"
 
 const STATIC_TOOLS = [
   { slug: 'diagnose', name: '一键诊断' },

@@ -1,7 +1,7 @@
 "use client"
 
 import { Card, CardContent } from '@/components/ui'
-import { PROBE_TOOLS } from '@/app/tools/tools-config'
+import { PROBE_TOOLS } from '@/app/(public)/tools/tools-config'
 import ProbeToolClient from './probe-client'
 
 // Text tools

@@ -2,8 +2,7 @@ import type { Metadata, Viewport } from "next"
 import { headers } from "next/headers"
 import { Geist, Geist_Mono } from "next/font/google"
 import { ThemeProvider } from "@/components/providers"
-import { Nav } from "@/components/nav"
-import { Footer } from "@/components/footer"
+import { TooltipProvider } from "@/components/ui/tooltip"
 import { CookieBanner } from "@/components/cookie-banner"
 import "./globals.css"
 
@@ -51,17 +50,13 @@ export default async function RootLayout({
 }) {
   const nonce = (await headers()).get("x-nonce") ?? undefined
   return (
-    <html
-      lang="zh-CN"
-      className="dark"
-      suppressHydrationWarning
-    >
+    <html lang="zh-CN" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
         <ThemeProvider nonce={nonce}>
-          <Nav />
-          {children}
-          <Footer />
-          <CookieBanner />
+          <TooltipProvider delayDuration={200}>
+            {children}
+            <CookieBanner />
+          </TooltipProvider>
         </ThemeProvider>
       </body>
     </html>

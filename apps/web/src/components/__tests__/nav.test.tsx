@@ -34,6 +34,6 @@ describe("Nav", () => {
   it("renders mobile menu toggle", () => {
     render(<Nav />)
 
-    expect(screen.getByText("打开主菜单")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /打开菜单/ })).toBeInTheDocument()
   })
 })

@@ -1,6 +1,15 @@
+"use client"
+
+import { useEffect, useState, useCallback } from "react"
+import { useParams } from "next/navigation"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
+import { apiRequest } from "@/lib/api"
+
+// ─── Types ────────────────────────────────────────────────────────────────────
 
 interface TimelineEntry {
   time: string
@@ -15,40 +24,21 @@ interface ActionItem {
 
 interface PostmortemDetail {
   id: string
-  alertEventId: string
-  monitorId: string
+  alert_event_id: string
+  monitor_id: string
   title: string
   status: string
   severity: string
   impact: string
   timeline: TimelineEntry[]
-  rootCause: string
+  root_cause: string
   resolution: string
-  actionItems: ActionItem[]
-  createdAt: string
+  action_items: ActionItem[]
+  created_at: string
+  updated_at: string
 }
 
-const MOCK_DETAIL: PostmortemDetail = {
-  id: "pm_mock001",
-  alertEventId: "ev_001",
-  monitorId: "mon_api",
-  title: "[high] API Gateway 服务中断（47 分钟）",
-  status: "draft",
-  severity: "high",
-  impact: "API Gateway（http）检测到异常，影响持续约 47 分钟",
-  timeline: [
-    { time: "2026-05-13T14:23:00Z", event: "故障开始" },
-    { time: "2026-05-13T15:10:00Z", event: "故障结束" },
-  ],
-  rootCause: "[待补充] 初步判断为基础设施异常，具体根因需进一步分析",
-  resolution: "故障于 2026-05-13T15:10:00Z 恢复，共持续 47 分钟",
-  actionItems: [
-    { item: "检查服务器负载", owner: "待指定", due_date: "2026-05-21" },
-    { item: "增加健康检查超时重试", owner: "待指定", due_date: "2026-05-21" },
-    { item: "验证回滚计划", owner: "待指定", due_date: "2026-05-21" },
-  ],
-  createdAt: "2026-05-13T15:12:00Z",
-}
+// ─── Severity variant map ─────────────────────────────────────────────────────
 
 const severityVariant: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
   critical: "destructive",
@@ -57,8 +47,112 @@ const severityVariant: Record<string, "destructive" | "secondary" | "outline" | 
   low: "outline",
 }
 
-export default function PostmortemDetailPage({ params: _params }: { params: { id: string } }) {
-  const pm = MOCK_DETAIL
+// ─── Skeleton loader ──────────────────────────────────────────────────────────
+
+function PostmortemSkeleton() {
+  return (
+    <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
+      <div className="container mx-auto max-w-3xl px-4 py-8">
+        <div className="mb-6 space-y-2">
+          <Skeleton className="h-5 w-16" />
+          <Skeleton className="h-8 w-3/4" />
+          <Skeleton className="h-4 w-1/2" />
+        </div>
+        <div className="space-y-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-4 w-24" />
+              </CardHeader>
+              <CardContent>
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Page ─────────────────────────────────────────────────────────────────────
+
+export default function PostmortemDetailPage() {
+  const params = useParams<{ id: string }>()
+  const id = params?.id
+
+  const [pm, setPm] = useState<PostmortemDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const fetchPostmortem = useCallback(async () => {
+    if (!id) return
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiRequest<{ data: PostmortemDetail }>(
+        `/v1/incidents/${id}/postmortem`
+      )
+      setPm(res.data)
+    } catch (err: unknown) {
+      if (err instanceof Error) {
+        // Treat "not found" / 404-like messages as a distinct state
+        if (
+          err.message.toLowerCase().includes("not found") ||
+          err.message.includes("404")
+        ) {
+          setError("NOT_FOUND")
+        } else {
+          setError(err.message || "加载失败，请稍后重试")
+        }
+      } else {
+        setError("加载失败，请稍后重试")
+      }
+    } finally {
+      setLoading(false)
+    }
+  }, [id])
+
+  useEffect(() => {
+    fetchPostmortem()
+  }, [fetchPostmortem])
+
+  // ── Loading ──
+  if (loading) {
+    return <PostmortemSkeleton />
+  }
+
+  // ── 404 ──
+  if (error === "NOT_FOUND") {
+    return (
+      <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
+        <div className="container mx-auto max-w-3xl px-4 py-8">
+          <Alert variant="destructive" data-testid="postmortem-not-found">
+            <AlertTitle>未找到复盘记录</AlertTitle>
+            <AlertDescription>
+              该故障的复盘记录不存在或尚未生成，请返回故障列表。
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    )
+  }
+
+  // ── Generic error ──
+  if (error) {
+    return (
+      <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
+        <div className="container mx-auto max-w-3xl px-4 py-8">
+          <Alert variant="destructive" data-testid="postmortem-error">
+            <AlertTitle>加载失败</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    )
+  }
+
+  if (!pm) return null
 
   return (
     <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
@@ -71,7 +165,7 @@ export default function PostmortemDetailPage({ params: _params }: { params: { id
             {pm.title}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            复盘状态：{pm.status} · 生成时间：{pm.createdAt}
+            复盘状态：{pm.status} · 生成时间：{pm.created_at}
           </p>
         </div>
 
@@ -106,7 +200,7 @@ export default function PostmortemDetailPage({ params: _params }: { params: { id
               <CardTitle className="text-base">根因分析</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm">{pm.rootCause}</p>
+              <p className="text-sm">{pm.root_cause}</p>
             </CardContent>
           </Card>
 
@@ -125,11 +219,13 @@ export default function PostmortemDetailPage({ params: _params }: { params: { id
             </CardHeader>
             <CardContent>
               <ul className="space-y-2 text-sm">
-                {pm.actionItems.map((a, i) => (
+                {pm.action_items.map((a, i) => (
                   <li key={i}>
                     <Separator className="mb-2" />
                     <p className="font-medium">{a.item}</p>
-                    <p className="text-muted-foreground">负责人：{a.owner} · 截止：{a.due_date}</p>
+                    <p className="text-muted-foreground">
+                      负责人：{a.owner} · 截止：{a.due_date}
+                    </p>
                   </li>
                 ))}
               </ul>

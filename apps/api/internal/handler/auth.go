@@ -64,10 +64,11 @@ type SessionStorer interface {
 
 // AuthHandler implements all auth and account endpoints.
 type AuthHandler struct {
-	q         AuthQuerier
-	jwtSvc    JWTSigner
-	sessSvc   SessionStorer
-	otpSecret []byte // HMAC key for OTP hashing
+	q            AuthQuerier
+	jwtSvc       JWTSigner
+	sessSvc      SessionStorer
+	otpSecret    []byte // HMAC key for OTP hashing
+	referralPool ReferralPool
 }
 
 // NewAuthHandler creates an AuthHandler wired to the given services.
@@ -76,12 +77,19 @@ func NewAuthHandler(q AuthQuerier, jwtSvc JWTSigner, sessSvc SessionStorer, otpS
 	return &AuthHandler{q: q, jwtSvc: jwtSvc, sessSvc: sessSvc, otpSecret: []byte(otpSecret)}
 }
 
+// WithReferralPool wires a DB pool for referral tracking during registration.
+func (h *AuthHandler) WithReferralPool(pool ReferralPool) *AuthHandler {
+	h.referralPool = pool
+	return h
+}
+
 // --- Register ---
 
 type registerRequest struct {
-	Email       string `json:"email"`
-	Password    string `json:"password"`
-	DisplayName string `json:"display_name"`
+	Email        string `json:"email"`
+	Password     string `json:"password"`
+	DisplayName  string `json:"display_name"`
+	ReferralCode string `json:"referral_code"`
 }
 
 type authResponse struct {
@@ -137,6 +145,10 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.ReferralCode != "" && h.referralPool != nil {
+		h.recordReferral(r.Context(), req.ReferralCode, user.ID)
+	}
+
 	token, _, err := h.issueToken(r.Context(), user.ID)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
@@ -148,6 +160,30 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		ExpiresIn: int(accessTokenTTL.Seconds()),
 		UserID:    user.ID,
 	})
+}
+
+func (h *AuthHandler) recordReferral(ctx context.Context, code, referredID string) {
+	var referrerID string
+	var codeID string
+	err := h.referralPool.QueryRow(ctx,
+		`SELECT id, user_id FROM referral_codes WHERE code = $1`,
+		code,
+	).Scan(&codeID, &referrerID)
+	if err != nil {
+		return
+	}
+	_ = codeID
+
+	rewardID := idgen.New("rwd_")
+	_, _ = h.referralPool.Exec(ctx, `
+		INSERT INTO referral_rewards (id, referrer_id, referred_id, code, status, reward_amount)
+		VALUES ($1, $2, $3, $4, 'pending', 10.00)
+	`, rewardID, referrerID, referredID, code)
+
+	_, _ = h.referralPool.Exec(ctx,
+		`UPDATE referral_codes SET uses_count = uses_count + 1 WHERE code = $1`,
+		code,
+	)
 }
 
 // --- Login ---

@@ -10,6 +10,7 @@ import {
   ChevronDown,
   CreditCard,
   FileText,
+  Gift,
   Globe,
   LayoutDashboard,
   LogOut,
@@ -63,6 +64,7 @@ const NAV_GROUPS = [
     items: [
       { icon: CreditCard, label: "订阅与计费", href: "/app/billing" },
       { icon: BarChart3, label: "用量统计", href: "/app/usage" },
+      { icon: Gift, label: "推荐计划", href: "/app/referral" },
       { icon: Settings, label: "个人设置", href: "/app/settings/profile" },
     ],
   },

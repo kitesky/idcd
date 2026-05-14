@@ -8,6 +8,9 @@ export type MonitorType =
   | "domain_expiry"
   | "icp_change"
   | "keyword"
+  | "llm_endpoint"
+  | "tool_api"
+  | "rag"
 
 export type MonitorStatus = "UP" | "DOWN" | "PAUSED" | "degraded"
 
@@ -182,6 +185,9 @@ export const TYPE_LABELS: Record<MonitorType, string> = {
   domain_expiry: "域名到期",
   icp_change: "ICP变更",
   keyword: "关键字",
+  llm_endpoint: "LLM Endpoint",
+  tool_api: "Tool API",
+  rag: "RAG",
 }
 
 export const MONITOR_TYPES: MonitorType[] = [
@@ -194,4 +200,10 @@ export const MONITOR_TYPES: MonitorType[] = [
   "domain_expiry",
   "icp_change",
   "keyword",
+]
+
+export const AGENT_OBS_TYPES: MonitorType[] = [
+  "llm_endpoint",
+  "tool_api",
+  "rag",
 ]

@@ -132,7 +132,7 @@ func (s *Server) setupRouter() {
 		sessSvc := session.NewService(s.redis)
 		q := idcdmain.New(s.pgxPool)
 
-		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret)
+		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).WithReferralPool(s.pgxPool)
 		acctH := handler.NewAccountHandler(q)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
@@ -222,6 +222,7 @@ func (s *Server) setupRouter() {
 			monitorStreamH := handler.NewMonitorStreamHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			monitorChecksH := handler.NewMonitorChecksHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			anchorH := handler.NewAnchorHandler(idcdmain.New(s.pgxPool), s.pgxPool)
+			agentObsH := handler.NewAgentObsHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			r.Route("/monitors", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Use(apiQuotaMW)
@@ -237,6 +238,11 @@ func (s *Server) setupRouter() {
 				r.With(authnMW).Get("/{id}/checks", monitorChecksH.List)
 				r.With(authnMW).Get("/{id}/baseline", anchorH.GetBaseline)
 				r.With(authnMW).Get("/{id}/deviations", anchorH.ListDeviations)
+				r.With(authnMW).Post("/{id}/agent-obs", agentObsH.CreateConfig)
+				r.With(authnMW).Get("/{id}/agent-obs", agentObsH.GetConfig)
+				r.With(authnMW).Patch("/{id}/agent-obs", agentObsH.UpdateConfig)
+				r.With(authnMW).Delete("/{id}/agent-obs", agentObsH.DeleteConfig)
+				r.With(authnMW).Get("/{id}/agent-obs/checks", agentObsH.ListChecks)
 			})
 
 			// Admin billing endpoints
@@ -319,6 +325,15 @@ func (s *Server) setupRouter() {
 				r.Use(apiQuotaMW)
 				r.Get("/", alertH.ListEvents)
 				r.Post("/{id}/ack", alertH.AcknowledgeEvent)
+			})
+
+			// Referral code and reward endpoints (authentication required)
+			referralH := handler.NewReferralHandler(s.pgxPool)
+			r.Route("/referral", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/code", referralH.GetOrCreateCode)
+				r.Get("/code", referralH.GetCode)
+				r.Get("/rewards", referralH.ListRewards)
 			})
 		})
 

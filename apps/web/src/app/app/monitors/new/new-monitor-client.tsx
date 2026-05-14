@@ -9,6 +9,9 @@ import {
   ChevronDown,
   ChevronRight,
   AlertCircle,
+  Cpu,
+  Wrench,
+  Database,
 } from "lucide-react"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -23,7 +26,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { type MonitorType, TYPE_LABELS, MONITOR_TYPES } from "../mock-data"
+import { Textarea } from "@/components/ui/textarea"
+import { type MonitorType, TYPE_LABELS, MONITOR_TYPES, AGENT_OBS_TYPES } from "../mock-data"
 
 // PLAN_LABELS maps plan identifiers to user-facing display names.
 const PLAN_LABELS: Record<string, string> = {
@@ -53,6 +57,9 @@ const TYPE_DESCRIPTIONS: Record<MonitorType, string> = {
   domain_expiry: "域名到期时间监控",
   icp_change: "ICP 备案信息变更监控",
   keyword: "页面关键字存在性检测",
+  llm_endpoint: "监控 LLM API 延迟和可用性",
+  tool_api: "监控 AI Tool API 响应",
+  rag: "监控 RAG 检索系统",
 }
 
 const TARGET_PLACEHOLDERS: Record<MonitorType, string> = {
@@ -65,6 +72,15 @@ const TARGET_PLACEHOLDERS: Record<MonitorType, string> = {
   domain_expiry: "example.com",
   icp_change: "example.com",
   keyword: "https://example.com",
+  llm_endpoint: "https://api.openai.com/v1/chat/completions",
+  tool_api: "https://tool.example.com/api",
+  rag: "https://rag.example.com/query",
+}
+
+const AGENT_OBS_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
+  llm_endpoint: Cpu,
+  tool_api: Wrench,
+  rag: Database,
 }
 
 interface FormState {
@@ -80,6 +96,11 @@ interface FormState {
   packetLossThreshold: string
   port: string
   expectedIp: string
+  // agent obs (M21/M22/M23)
+  agentObsEndpointUrl: string
+  agentObsModelName: string
+  agentObsLatencySlaMs: string
+  agentObsPayloadTemplate: string
 }
 
 const DEFAULT_FORM: FormState = {
@@ -94,6 +115,10 @@ const DEFAULT_FORM: FormState = {
   packetLossThreshold: "10",
   port: "80",
   expectedIp: "",
+  agentObsEndpointUrl: "",
+  agentObsModelName: "",
+  agentObsLatencySlaMs: "5000",
+  agentObsPayloadTemplate: "",
 }
 
 function StepIndicator({
@@ -254,6 +279,43 @@ export function NewMonitorClient() {
                 </CardContent>
               </Card>
             ))}
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-muted-foreground">AI Agent 监控</p>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              {AGENT_OBS_TYPES.map((type) => {
+                const Icon = AGENT_OBS_ICONS[type]
+                return (
+                  <Card
+                    key={type}
+                    data-testid={`type-card-${type}`}
+                    className={[
+                      "cursor-pointer transition-all hover:border-primary hover:shadow-md",
+                      form.type === type ? "border-primary ring-2 ring-primary" : "",
+                    ].join(" ")}
+                    onClick={() => update("type", type)}
+                  >
+                    <CardContent className="p-4">
+                      <div className="flex items-start justify-between">
+                        <div className="flex items-center gap-1.5">
+                          {Icon && <Icon className="h-3.5 w-3.5 text-muted-foreground" />}
+                          <Badge variant="outline" className="text-xs">
+                            {TYPE_LABELS[type]}
+                          </Badge>
+                        </div>
+                        {form.type === type && (
+                          <Check className="h-4 w-4 text-primary shrink-0" />
+                        )}
+                      </div>
+                      <p className="mt-2 text-xs text-muted-foreground leading-relaxed">
+                        {TYPE_DESCRIPTIONS[type]}
+                      </p>
+                    </CardContent>
+                  </Card>
+                )
+              })}
+            </div>
           </div>
         </div>
       )}
@@ -434,11 +496,58 @@ export function NewMonitorClient() {
                   </div>
                 )}
 
+                {form.type === "llm_endpoint" && (
+                  <>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-obs-endpoint">Endpoint URL <span className="text-destructive">*</span></Label>
+                      <Input
+                        id="agent-obs-endpoint"
+                        data-testid="agent-obs-endpoint-url"
+                        placeholder="https://api.openai.com/v1/chat/completions"
+                        value={form.agentObsEndpointUrl}
+                        onChange={(e) => update("agentObsEndpointUrl", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-obs-model">模型名称</Label>
+                      <Input
+                        id="agent-obs-model"
+                        data-testid="agent-obs-model-name"
+                        placeholder="gpt-4"
+                        value={form.agentObsModelName}
+                        onChange={(e) => update("agentObsModelName", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-obs-latency">延迟 SLA (ms)</Label>
+                      <Input
+                        id="agent-obs-latency"
+                        data-testid="agent-obs-latency-sla"
+                        placeholder="5000"
+                        value={form.agentObsLatencySlaMs}
+                        onChange={(e) => update("agentObsLatencySlaMs", e.target.value)}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="agent-obs-payload">Payload 模板 (JSON)</Label>
+                      <Textarea
+                        id="agent-obs-payload"
+                        data-testid="agent-obs-payload-template"
+                        placeholder='{"model":"gpt-4","messages":[{"role":"user","content":"ping"}]}'
+                        value={form.agentObsPayloadTemplate}
+                        onChange={(e) => update("agentObsPayloadTemplate", e.target.value)}
+                        rows={4}
+                      />
+                    </div>
+                  </>
+                )}
+
                 {form.type !== "http" &&
                   form.type !== "https" &&
                   form.type !== "ping" &&
                   form.type !== "tcp" &&
-                  form.type !== "dns" && (
+                  form.type !== "dns" &&
+                  form.type !== "llm_endpoint" && (
                     <p className="text-sm text-muted-foreground">
                       此类型暂无额外高级配置项
                     </p>

@@ -1,0 +1,95 @@
+# 认证配置
+
+## API Key 类型
+
+| 类型 | 前缀 | 说明 |
+|------|------|------|
+| 生产 Key | `sk_live_` | 调用真实 API，消耗配额 |
+| 测试 Key | `sk_test_` | 测试用，配额豁免，返回 stub 数据 |
+
+前往 [idcd 控制台](https://idcd.com/app/settings/api-keys) 创建 API Key。
+
+## 配置方式
+
+### 方式 1：环境变量（推荐）
+
+```bash
+export IDCD_API_KEY=sk_live_your_key_here
+```
+
+添加到 `~/.bashrc` 或 `~/.zshrc` 永久生效：
+
+```bash
+echo 'export IDCD_API_KEY=sk_live_your_key_here' >> ~/.zshrc
+source ~/.zshrc
+```
+
+### 方式 2：命令行参数
+
+```bash
+/path/to/mcp --api-key sk_live_your_key_here
+```
+
+### 方式 3：在 Claude Code 配置中传入
+
+```bash
+claude mcp add idcd -- /path/to/mcp --api-key sk_live_xxx
+```
+
+### 方式 4：在 Cursor mcp.json 中配置
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_xxx"
+      }
+    }
+  }
+}
+```
+
+## API Base URL 覆盖
+
+默认使用 `https://api.idcd.com`。如需自定义（私有部署或测试环境）：
+
+```bash
+export IDCD_API_URL=https://your-custom-api.example.com
+```
+
+或通过命令行参数：
+
+```bash
+/path/to/mcp --api-url https://your-custom-api.example.com
+```
+
+## Token 有效期
+
+根据 idcd 决策（DECISIONS.md §D2）：
+
+- **Personal Key**：24 小时有效
+- **Workspace Key**：90 天有效，支持自动续期
+- **Service Key**：90 天有效，支持自动续期
+
+无永久 token，到期后需在控制台刷新。
+
+## 无 API Key 的行为
+
+如果未配置 API Key，调用任何工具都会返回提示而不是报错：
+
+```
+⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量
+```
+
+MCP server 不会崩溃，方便调试和开发。
+
+## 权限说明
+
+所有 MCP 工具均使用 `Authorization: Bearer <key>` 头传递认证信息。工具分为两类：
+
+- **探测工具**（`ping`、`http`、`traceroute`、`diagnose`）：消耗拨测配额
+- **信息查询工具**（`dns`、`ssl`、`ip`、`whois`）：消耗信息查询配额
+
+配额详情见 [控制台用量页](https://idcd.com/app/usage)。

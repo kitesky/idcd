@@ -1,0 +1,110 @@
+# Cursor IDE 集成
+
+## 配置步骤
+
+**步骤 1**：安装 MCP server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+确认安装路径：
+
+```bash
+which mcp
+# 通常为 ~/go/bin/mcp
+```
+
+**步骤 2**：创建 MCP 配置文件
+
+在项目根目录创建 `.cursor/mcp.json`（项目级配置），或在 `~/.cursor/mcp.json`（全局配置）：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/Users/yourname/go/bin/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+将 `command` 替换为实际的 `mcp` 二进制路径，将 API Key 替换为你在 [idcd 控制台](https://idcd.com/app/settings/api-keys) 创建的真实 key。
+
+**步骤 3**：重启 Cursor
+
+保存配置后重启 Cursor IDE，MCP 工具将自动加载。
+
+**步骤 4**：验证工具可用
+
+在 Cursor 的 AI 对话框中输入：
+
+```
+用 diagnose 工具检测 github.com 的网络状态
+```
+
+如果工具正常加载，Cursor 会调用 `diagnose` 并返回实时诊断结果。
+
+## 使用示例
+
+**排查部署问题**
+
+```
+我刚部署了 https://myapp.example.com，帮我用 diagnose 工具检测一下是否一切正常
+```
+
+**检查证书到期**
+
+```
+用 ssl 工具检查一下 example.com 证书还有多少天到期
+```
+
+**DNS 解析调试**
+
+```
+用 dns 工具查询 example.com 的 A 记录和 MX 记录
+```
+
+**多节点延迟对比**
+
+```
+用 ping 工具测试 google.com 和 cloudflare.com 各 5 次，对比延迟
+```
+
+## 环境变量方式（推荐生产使用）
+
+避免将 API Key 写入版本控制，推荐通过环境变量注入。在系统级别设置：
+
+```bash
+# ~/.zshrc 或 ~/.bashrc
+export IDCD_API_KEY=sk_live_your_key_here
+```
+
+然后在 `.cursor/mcp.json` 中不填 `env` 字段，让 Cursor 继承系统环境变量：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/Users/yourname/go/bin/mcp"
+    }
+  }
+}
+```
+
+## 常见问题
+
+**工具加载后提示 "⚠ 需要 API key"**
+
+检查 `IDCD_API_KEY` 环境变量是否正确设置，或在 mcp.json 的 `env` 字段中配置。
+
+**`command` 路径找不到**
+
+运行 `which mcp` 确认 mcp 二进制的实际路径，并在 mcp.json 中使用绝对路径。
+
+**配置修改后未生效**
+
+需要完全重启 Cursor IDE（退出并重新打开），而不是仅刷新窗口。

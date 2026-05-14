@@ -1,0 +1,167 @@
+# Python 集成
+
+通过 MCP Python SDK 或直接调用 idcd MCP server 的 HTTP/SSE 接口，在 Python 应用中使用 idcd 网络诊断能力。
+
+## 方式 1：HTTP/SSE 模式
+
+### 启动 MCP Server（HTTP 模式）
+
+```bash
+export IDCD_API_KEY=sk_live_your_key_here
+/path/to/mcp --transport http --port 8082
+```
+
+Server 运行后提供两个端点：
+
+- `GET http://localhost:8082/sse` — SSE 事件流（接收响应）
+- `POST http://localhost:8082/messages` — 发送 JSON-RPC 请求
+
+### Python 调用示例
+
+```python
+import json
+import requests
+
+MCP_URL = "http://localhost:8082"
+
+def call_tool(tool_name: str, args: dict) -> str:
+    """通过 MCP HTTP 接口调用工具"""
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": args
+        }
+    }
+    response = requests.post(f"{MCP_URL}/messages", json=payload, timeout=30)
+    response.raise_for_status()
+    result = response.json()
+    if "result" in result:
+        content = result["result"].get("content", [])
+        return "\n".join(item.get("text", "") for item in content)
+    return str(result.get("error", "Unknown error"))
+
+
+# Ping 检测
+print(call_tool("ping", {"target": "google.com", "count": 3}))
+
+# HTTP 检测
+print(call_tool("http", {"url": "https://example.com"}))
+
+# SSL 证书检查
+print(call_tool("ssl", {"host": "github.com"}))
+
+# 一键诊断
+print(call_tool("diagnose", {"target": "cloudflare.com"}))
+```
+
+## 方式 2：stdio 模式（subprocess）
+
+使用 `subprocess` 直接调用 mcp 二进制，通过 stdin/stdout 通信：
+
+```python
+import json
+import subprocess
+
+def call_mcp_tool(tool_name: str, args: dict, api_key: str) -> str:
+    """通过 stdio 模式调用 MCP 工具"""
+    request = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {
+            "name": tool_name,
+            "arguments": args
+        }
+    }
+
+    proc = subprocess.run(
+        ["/path/to/mcp", "--api-key", api_key],
+        input=json.dumps(request) + "\n",
+        capture_output=True,
+        text=True,
+        timeout=30
+    )
+
+    response = json.loads(proc.stdout.strip())
+    if "result" in response:
+        content = response["result"].get("content", [])
+        return "\n".join(item.get("text", "") for item in content)
+    return str(response.get("error", "Unknown error"))
+
+
+api_key = "sk_live_your_key_here"
+result = call_mcp_tool("ping", {"target": "8.8.8.8"}, api_key)
+print(result)
+```
+
+## 方式 3：使用官方 MCP Python SDK
+
+安装 MCP Python SDK：
+
+```bash
+pip install mcp
+```
+
+```python
+import asyncio
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+async def main():
+    server_params = StdioServerParameters(
+        command="/path/to/mcp",
+        env={"IDCD_API_KEY": "sk_live_your_key_here"}
+    )
+
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # 列出所有可用工具
+            tools = await session.list_tools()
+            print("可用工具:", [t.name for t in tools.tools])
+
+            # 调用 diagnose 工具
+            result = await session.call_tool("diagnose", {"target": "github.com"})
+            for content in result.content:
+                print(content.text)
+
+asyncio.run(main())
+```
+
+## 实用脚本：批量 SSL 证书监控
+
+```python
+import json
+import requests
+
+DOMAINS = ["example.com", "github.com", "google.com"]
+MCP_URL = "http://localhost:8082"
+
+def check_ssl(domain: str) -> dict:
+    payload = {
+        "jsonrpc": "2.0",
+        "id": 1,
+        "method": "tools/call",
+        "params": {"name": "ssl", "arguments": {"host": domain}}
+    }
+    resp = requests.post(f"{MCP_URL}/messages", json=payload, timeout=15)
+    result = resp.json()
+    text = result["result"]["content"][0]["text"]
+    return {"domain": domain, "result": text}
+
+for domain in DOMAINS:
+    info = check_ssl(domain)
+    print(f"{info['domain']}:\n{info['result']}\n")
+```
+
+## 依赖说明
+
+| 方式 | 额外依赖 |
+|------|----------|
+| HTTP/SSE 模式 | `requests`（pip install requests） |
+| stdio 模式 | 无（仅标准库） |
+| MCP Python SDK | `mcp`（pip install mcp） |

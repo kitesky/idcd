@@ -1,0 +1,73 @@
+# 快速开始
+
+## 5 分钟接入 Claude Code
+
+**步骤 1**：获取 API Key
+
+前往 [idcd 控制台](https://idcd.com/app/settings/api-keys) 创建 API Key。
+
+**步骤 2**：安装 MCP server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+**步骤 3**：添加到 Claude Code
+
+```bash
+claude mcp add idcd -- /path/to/mcp --api-key sk_live_xxx
+```
+
+或设置环境变量后：
+
+```bash
+export IDCD_API_KEY=sk_live_xxx
+claude mcp add idcd -- /path/to/mcp
+```
+
+**步骤 4**：在对话中使用
+
+```
+你: 检测一下 google.com 的全球 Ping 延迟
+Claude: [调用 ping tool]
+PING google.com
+节点: Tokyo JP — 32ms ✓
+节点: Singapore SG — 45ms ✓
+平均: 38ms | 丢包: 0%
+```
+
+## Cursor IDE 集成
+
+在 `.cursor/mcp.json` 中：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_xxx"
+      }
+    }
+  }
+}
+```
+
+## HTTP/SSE 模式
+
+如需 SSE 长连接模式（多客户端共享）：
+
+```bash
+/path/to/mcp --transport http --port 8082
+```
+
+MCP server 将在 `http://localhost:8082` 提供：
+
+- `GET /sse` — SSE 事件流
+- `POST /messages` — 消息端点
+
+## 下一步
+
+- [认证详细说明](/mcp/authentication)
+- [所有工具参考](/mcp/tools)
+- [更多集成示例](/mcp/examples/claude-code)

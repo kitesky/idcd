@@ -1,0 +1,116 @@
+# Claude Code 集成
+
+## 配置步骤
+
+**步骤 1**：安装 MCP server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+**步骤 2**：设置 API Key
+
+```bash
+export IDCD_API_KEY=sk_live_your_key_here
+```
+
+**步骤 3**：注册到 Claude Code
+
+```bash
+claude mcp add idcd -- $(which mcp)
+```
+
+或者直接指定路径并传入 API Key：
+
+```bash
+claude mcp add idcd -- /Users/yourname/go/bin/mcp --api-key sk_live_xxx
+```
+
+**步骤 4**：验证注册成功
+
+```bash
+claude mcp list
+```
+
+输出中应包含 `idcd` 条目。
+
+## 使用示例
+
+在 Claude Code 对话中，直接用自然语言调用：
+
+**全面网络诊断**
+
+```
+用 diagnose 检测 example.com 的网络健康状态
+```
+
+**SSL 证书监控**
+
+```
+用 ssl 工具检查 mysite.com 的证书有效期，如果不足 30 天告诉我
+```
+
+**路由追踪**
+
+```
+用 traceroute 追踪到 8.8.8.8 的路径，找出延迟最高的节点
+```
+
+**批量 Ping 对比**
+
+```
+分别用 ping 测试 1.1.1.1 和 8.8.8.8，哪个延迟更低？
+```
+
+**DNS 调试**
+
+```
+用 dns 工具查一下 github.com 的 NS 记录是哪些
+```
+
+**IP 归属查询**
+
+```
+用 ip 工具查询 104.16.132.229 属于哪个运营商
+```
+
+## 项目级 MCP 配置
+
+如果需要在特定项目中使用（而不是全局），可以在项目目录下创建 `.claude/settings.json`：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/Users/yourname/go/bin/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+## 移除配置
+
+```bash
+claude mcp remove idcd
+```
+
+## 常见问题
+
+**`claude mcp add` 后工具无响应**
+
+检查 mcp 二进制是否有执行权限：
+
+```bash
+chmod +x $(which mcp)
+```
+
+**提示 "⚠ 需要 API key"**
+
+确认在执行 `claude mcp add` 之前已设置 `IDCD_API_KEY` 环境变量，或在命令中使用 `--api-key` 参数传入。
+
+**测试 Key 与生产 Key 的区别**
+
+使用 `sk_test_` 前缀的测试 Key 不消耗配额，返回 stub 数据，适合调试和集成测试。生产使用应换成 `sk_live_` 前缀的 Key。

@@ -1,0 +1,60 @@
+# Tools 总览
+
+idcd MCP server 提供 8 个工具，覆盖网络诊断的主要场景。
+
+## 工具列表
+
+| 工具 | 功能描述 | 主要参数 |
+|------|----------|----------|
+| [`ping`](/mcp/tools/ping) | 多节点 ICMP Ping，测量延迟和丢包 | `target`（必填）、`count` |
+| [`http`](/mcp/tools/http) | HTTP/HTTPS 连通性检测，含状态码和延迟 | `url`（必填）、`method` |
+| [`dns`](/mcp/tools/dns) | DNS 解析查询，支持多种记录类型 | `domain`（必填）、`type` |
+| [`traceroute`](/mcp/tools/traceroute) | 路由追踪，含 ASN 和 ISP 信息 | `target`（必填）、`max_hops` |
+| [`ssl`](/mcp/tools/ssl) | SSL/TLS 证书有效性和到期检测 | `host`（必填） |
+| [`ip`](/mcp/tools/ip) | IP 地理归属与 ASN 查询 | `address`（必填） |
+| [`whois`](/mcp/tools/whois) | WHOIS 域名或 IP 注册信息查询 | `query`（必填） |
+| [`diagnose`](/mcp/tools/diagnose) | 一键全面诊断（ping + DNS + HTTP + SSL） | `target`（必填） |
+
+## 工具分类
+
+### 探测工具（消耗拨测配额）
+
+- **ping** — ICMP 拨测，发起真实网络包测试
+- **http** — HTTP 拨测，检测 URL 可达性
+- **traceroute** — 路由追踪，逐跳探测路径
+- **diagnose** — 综合诊断，内部调用 DNS + HTTP + SSL + Ping
+
+### 信息查询工具（消耗查询配额）
+
+- **dns** — DNS 解析，查询各类记录
+- **ssl** — 证书信息，不发起 HTTP 请求
+- **ip** — IP 归属查询，基于 GeoIP 数据库
+- **whois** — 注册信息查询，对接 WHOIS 服务
+
+## 典型使用场景
+
+**排查网站访问问题**
+
+```
+用 diagnose 工具检测一下 example.com 的网络状态
+```
+
+diagnose 会依次执行 DNS 解析、HTTP 检测、SSL 证书检查、Ping 测试并汇总结果。
+
+**检查证书到期时间**
+
+```
+用 ssl 工具检查 example.com 的证书还有多少天到期
+```
+
+**追踪高延迟根因**
+
+```
+用 traceroute 工具追踪到 8.8.8.8 的路由路径
+```
+
+**批量 IP 归属查询**
+
+```
+用 ip 工具查询 1.1.1.1 的归属地和 ISP
+```

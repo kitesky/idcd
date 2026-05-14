@@ -493,6 +493,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 - [x] **K4** 钉钉/飞书 OAuth 登录 — `handler/oauth.go`（DingTalkLogin/Callback + FeishuLogin/Callback），CSRF state 存 Redis（5min TTL，crypto/rand 16字节），`findOrCreateOAuthUser` 走 `user_credential` 表，`handler/oauth_state.go`（redisStateStore），config `OAuth{}` 扩展，路由注册 `/v1/auth/dingtalk` + `/v1/auth/feishu` 及 callback，前端登录页第三方按钮 + `oauth-callback/page.tsx`，9 Go tests + 4 前端 tests 全绿，完成 2026-05-14
 
+- [x] **K7** MCP 文档站 — `apps/docs/pages/mcp/` MCP 专区：概述/quickstart/authentication + 8 个 tool 独立文档（ping/http/dns/traceroute/ssl/ip/whois/diagnose，参数与 `apps/mcp/internal/tools/` 实际 inputSchema 对齐）+ 3 个集成示例（Cursor/Claude Code/Python），`_meta.js` 导航注册，`next.config.mjs` 修复 Next.js 16 turbopack/webpack 兼容，`package.json` build 脚本加 `--webpack` 标志，`pnpm -F docs build` 全部 22 页面构建通过，完成 2026-05-14
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

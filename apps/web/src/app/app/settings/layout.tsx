@@ -7,6 +7,7 @@ const NAV_ITEMS = [
   { href: "/app/settings/security", label: "安全" },
   { href: "/app/settings/api-keys", label: "API Keys" },
   { href: "/app/settings/tokens", label: "访问令牌" },
+  { href: "/app/settings/sessions", label: "活跃会话" },
   { href: "/app/settings/team", label: "团队" },
 ] as const
 

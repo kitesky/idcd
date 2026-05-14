@@ -78,6 +78,12 @@ func UserIDContextKey() any {
 	return userIDKey
 }
 
+// SessionIDContextKey returns the context key used to store session IDs.
+// Exposed for tests that need to inject a session ID without running the full middleware.
+func SessionIDContextKey() any {
+	return sessionIDKey
+}
+
 // extractBearerToken extracts a JWT from the Authorization header or the
 // access_token HttpOnly cookie. Cookie takes precedence for browser clients;
 // Bearer is kept for non-browser API clients (CLI tools, server-to-server).

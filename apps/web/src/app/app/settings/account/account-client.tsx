@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import Link from "next/link"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
@@ -22,13 +23,8 @@ import {
   Badge,
   Alert,
   AlertDescription,
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
 } from "@/components/ui"
+import { apiRequest } from "@/lib/api"
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
 
@@ -74,21 +70,22 @@ export function AccountClient() {
     setPwdError(null)
     setPwdSuccess(false)
     try {
-      // Mock: simulate API call (values used in real impl)
-      void values
-      await new Promise((r) => setTimeout(r, 300))
+      await apiRequest("/v1/account/password", {
+        method: "PATCH",
+        body: JSON.stringify({
+          current_password: values.current_password,
+          new_password: values.new_password,
+        }),
+      })
       setPwdSuccess(true)
       form.reset()
       setTimeout(() => setPwdSuccess(false), 3000)
-    } catch {
-      setPwdError("密码更新失败，请稍后重试")
+    } catch (err) {
+      setPwdError(err instanceof Error ? err.message : "密码更新失败，请稍后重试")
     } finally {
       setPwdLoading(false)
     }
   }
-
-  // ── 2FA card state ───────────────────────────────────────────────────────
-  const [show2FADialog, setShow2FADialog] = useState(false)
 
   // ── Danger zone state ────────────────────────────────────────────────────
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -225,29 +222,9 @@ export function AccountClient() {
             </Badge>
           </div>
 
-          <Button
-            variant="outline"
-            data-testid="btn-enable-2fa"
-            onClick={() => setShow2FADialog(true)}
-          >
-            启用 2FA
+          <Button variant="outline" asChild data-testid="btn-enable-2fa">
+            <Link href="/app/settings/security">前往安全设置</Link>
           </Button>
-
-          <Dialog open={show2FADialog} onOpenChange={setShow2FADialog}>
-            <DialogContent data-testid="2fa-dialog">
-              <DialogHeader>
-                <DialogTitle>两步验证即将上线</DialogTitle>
-                <DialogDescription>
-                  两步验证功能即将上线，敬请期待
-                </DialogDescription>
-              </DialogHeader>
-              <DialogFooter>
-                <Button data-testid="btn-2fa-dialog-close" onClick={() => setShow2FADialog(false)}>
-                  确认
-                </Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
         </CardContent>
       </Card>
 

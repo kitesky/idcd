@@ -1,11 +1,14 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import {
+  Avatar,
+  AvatarImage,
+  AvatarFallback,
   Button,
   Input,
   Textarea,
@@ -23,6 +26,9 @@ import {
 } from "@/components/ui"
 import { apiRequest } from "@/lib/api"
 
+const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
+const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+
 const profileSchema = z.object({
   email: z.string().email(),
   display_name: z.string().max(50, { message: "显示名称不能超过 50 个字符" }).optional(),
@@ -35,6 +41,7 @@ interface UserProfile {
   email: string
   display_name?: string
   bio?: string
+  avatar_url?: string
 }
 
 export default function ProfilePage() {
@@ -44,6 +51,13 @@ export default function ProfilePage() {
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+
+  // Avatar state
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
+  const [avatarError, setAvatarError] = useState<string | null>(null)
+  const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
 
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
@@ -57,12 +71,16 @@ export default function ProfilePage() {
   useEffect(() => {
     async function loadProfile() {
       try {
-        const profile = await apiRequest<UserProfile>("/v1/account/profile")
+        const res = await apiRequest<{ data: UserProfile }>("/v1/account/profile")
+        const profile = res.data
         form.reset({
           email: profile.email,
           display_name: profile.display_name || "",
           bio: profile.bio || "",
         })
+        if (profile.avatar_url) {
+          setAvatarUrl(profile.avatar_url)
+        }
       } catch (err) {
         console.error("Failed to load profile:", err)
         // Cookie may be expired — redirect to login.
@@ -72,6 +90,70 @@ export default function ProfilePage() {
 
     loadProfile()
   }, [router, form])
+
+  // Derive initials for the Avatar fallback from display_name or email
+  const displayName = form.watch("display_name")
+  const email = form.watch("email")
+  const initials = (() => {
+    const name = displayName?.trim() || email?.trim() || ""
+    if (!name) return "?"
+    const parts = name.split(/\s+/)
+    if (parts.length >= 2) {
+      return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    return name.slice(0, 2).toUpperCase()
+  })()
+
+  function handleAvatarClick() {
+    fileInputRef.current?.click()
+  }
+
+  async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+
+    // Reset error
+    setAvatarError(null)
+
+    // Client-side validation
+    if (!ALLOWED_TYPES.includes(file.type)) {
+      setAvatarError("仅支持 JPG、PNG、GIF、WebP 格式的图片")
+      e.target.value = ""
+      return
+    }
+    if (file.size > MAX_FILE_SIZE) {
+      setAvatarError("图片大小不能超过 5MB")
+      e.target.value = ""
+      return
+    }
+
+    // Show local preview immediately
+    const previewURL = URL.createObjectURL(file)
+    setAvatarPreview(previewURL)
+
+    // Upload to backend
+    setIsUploadingAvatar(true)
+    try {
+      const formData = new FormData()
+      formData.append("avatar", file)
+
+      const result = await apiRequest<{ data: { avatar_url: string } }>("/v1/account/avatar", {
+        method: "POST",
+        body: formData,
+        // No Content-Type header needed — apiRequest detects FormData and lets
+        // the browser set the multipart/form-data boundary automatically.
+      })
+
+      setAvatarUrl(result.data.avatar_url)
+      setAvatarPreview(null)
+    } catch (err) {
+      setAvatarError(err instanceof Error ? err.message : "头像上传失败，请稍后重试")
+      setAvatarPreview(null)
+    } finally {
+      setIsUploadingAvatar(false)
+      e.target.value = ""
+    }
+  }
 
   async function onSubmit(values: ProfileFormValues) {
     setIsLoading(true)
@@ -138,6 +220,52 @@ export default function ProfilePage() {
               资料更新成功！
             </div>
           )}
+
+          {/* Avatar upload area */}
+          <div className="flex flex-col items-start gap-3">
+            <span className="text-sm font-medium leading-none">头像</span>
+            <div className="flex items-center gap-4">
+              <button
+                type="button"
+                onClick={handleAvatarClick}
+                disabled={isUploadingAvatar}
+                className="relative group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
+                aria-label="点击更换头像"
+              >
+                <Avatar className="h-16 w-16 cursor-pointer ring-2 ring-border group-hover:ring-primary transition-all">
+                  <AvatarImage
+                    src={avatarPreview ?? avatarUrl ?? undefined}
+                    alt="用户头像"
+                  />
+                  <AvatarFallback className="text-lg font-semibold">
+                    {initials}
+                  </AvatarFallback>
+                </Avatar>
+                {/* Overlay on hover */}
+                <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                  <span className="text-white text-xs font-medium">
+                    {isUploadingAvatar ? "上传中..." : "更换"}
+                  </span>
+                </div>
+              </button>
+              <div className="text-sm text-muted-foreground">
+                <p>点击头像更换图片</p>
+                <p>支持 JPG、PNG、GIF、WebP，最大 5MB</p>
+              </div>
+            </div>
+            {/* Hidden file input */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/gif,image/webp"
+              className="hidden"
+              onChange={handleFileChange}
+              aria-label="选择头像文件"
+            />
+            {avatarError && (
+              <p className="text-sm text-destructive">{avatarError}</p>
+            )}
+          </div>
 
           <Form {...form}>
             <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">

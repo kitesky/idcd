@@ -38,22 +38,16 @@ describe("AccountClient", () => {
     expect(screen.getByTestId("btn-enable-2fa")).toBeInTheDocument()
   })
 
-  it("shows 2FA dialog when enable button is clicked", () => {
+  it("renders the 2FA button as a link to security settings", () => {
     render(<AccountClient />)
     const btn = screen.getByTestId("btn-enable-2fa")
-    fireEvent.click(btn)
-    expect(screen.getByTestId("2fa-dialog")).toBeInTheDocument()
-    expect(screen.getByText(/两步验证功能即将上线/)).toBeInTheDocument()
+    expect(btn).toBeInTheDocument()
+    expect(btn.closest("a")).toHaveAttribute("href", "/app/settings/security")
   })
 
-  it("closes 2FA dialog when confirm button is clicked", async () => {
+  it("2FA section shows '前往安全设置' text", () => {
     render(<AccountClient />)
-    fireEvent.click(screen.getByTestId("btn-enable-2fa"))
-    expect(screen.getByTestId("2fa-dialog")).toBeInTheDocument()
-    fireEvent.click(screen.getByTestId("btn-2fa-dialog-close"))
-    await waitFor(() => {
-      expect(screen.queryByTestId("2fa-dialog")).not.toBeInTheDocument()
-    })
+    expect(screen.getByText("前往安全设置")).toBeInTheDocument()
   })
 
   it("renders the danger zone card with destructive border", () => {

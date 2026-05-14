@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import {
   Button,
   Input,
@@ -19,6 +19,7 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui"
+import { apiRequest } from "@/lib/api"
 
 type Step = "idle" | "scan" | "verify" | "backup"
 
@@ -29,13 +30,6 @@ const MOCK_PASSKEYS = [
     created_at: new Date("2026-04-10T08:00:00Z").toISOString(),
     last_used_at: new Date("2026-05-14T06:00:00Z").toISOString(),
   },
-]
-
-const MOCK_SECRET = "JBSWY3DPEHPK3PXP"
-const MOCK_OTPAUTH = `otpauth://totp/idcd:user@example.com?secret=${MOCK_SECRET}&issuer=idcd`
-const MOCK_BACKUP_CODES = [
-  "ABCD1234", "EFGH5678", "IJKL9012", "MNOP3456",
-  "QRST7890", "UVWX1234", "YZAB5678", "CDEF9012",
 ]
 
 type PasskeyItem = {
@@ -54,22 +48,62 @@ export function SecurityClient() {
   const [disableError, setDisableError] = useState<string | null>(null)
   const [showDisableDialog, setShowDisableDialog] = useState(false)
 
+  const [secretData, setSecretData] = useState<{ secret: string; otpauth_uri: string } | null>(null)
+  const [backupCodes, setBackupCodes] = useState<string[]>([])
+  const [setupLoading, setSetupLoading] = useState(false)
+  const [verifyLoading, setVerifyLoading] = useState(false)
+  const [disableLoading, setDisableLoading] = useState(false)
+
   const [passkeys, setPasskeys] = useState<PasskeyItem[]>(MOCK_PASSKEYS)
   const [passkeyAdding, setPasskeyAdding] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
-  function openSetup() {
+  // Load 2FA status on mount
+  useEffect(() => {
+    apiRequest<{ enabled: boolean }>("/v1/account/2fa/status")
+      .then((res) => setEnabled(res.enabled))
+      .catch(() => {
+        // Silently ignore — leave default false; server may be unavailable during dev/test
+      })
+  }, [])
+
+  async function openSetup() {
     setStep("scan")
     setCode("")
     setCodeError(null)
+    setSecretData(null)
+    setSetupLoading(true)
+    try {
+      const res = await apiRequest<{ data: { secret: string; otpauth_uri: string } }>("/v1/account/2fa/setup", {
+        method: "POST",
+      })
+      setSecretData(res.data)
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : "获取 2FA 配置失败")
+    } finally {
+      setSetupLoading(false)
+    }
   }
 
-  function handleVerify() {
+  async function handleVerify() {
     if (code.length !== 6 || !/^\d+$/.test(code)) {
       setCodeError("请输入 6 位数字验证码")
       return
     }
-    setStep("backup")
+    setVerifyLoading(true)
+    setCodeError(null)
+    try {
+      const res = await apiRequest<{ data: { backup_codes: string[] } }>("/v1/account/2fa/verify", {
+        method: "POST",
+        body: JSON.stringify({ code }),
+      })
+      setBackupCodes(res.data.backup_codes)
+      setStep("backup")
+    } catch (err) {
+      setCodeError(err instanceof Error ? err.message : "验证失败，请重试")
+    } finally {
+      setVerifyLoading(false)
+    }
   }
 
   function handleFinish() {
@@ -77,17 +111,31 @@ export function SecurityClient() {
     setStep("idle")
     setCode("")
     setCodeError(null)
+    setBackupCodes([])
+    setSecretData(null)
   }
 
-  function handleDisable() {
+  async function handleDisable() {
     if (disableCode.length !== 6 || !/^\d+$/.test(disableCode)) {
       setDisableError("请输入 6 位数字验证码")
       return
     }
-    setEnabled(false)
-    setShowDisableDialog(false)
-    setDisableCode("")
+    setDisableLoading(true)
     setDisableError(null)
+    try {
+      await apiRequest("/v1/account/2fa/disable", {
+        method: "POST",
+        body: JSON.stringify({ code: disableCode }),
+      })
+      setEnabled(false)
+      setShowDisableDialog(false)
+      setDisableCode("")
+      setDisableError(null)
+    } catch (err) {
+      setDisableError(err instanceof Error ? err.message : "关闭失败，请重试")
+    } finally {
+      setDisableLoading(false)
+    }
   }
 
   async function handleAddPasskey() {
@@ -155,7 +203,9 @@ export function SecurityClient() {
     setPasskeys(prev => prev.filter(p => p.id !== id))
   }
 
-  const qrURL = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(MOCK_OTPAUTH)}`
+  const qrURL = secretData
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(secretData.otpauth_uri)}`
+    : ""
 
   return (
     <div data-testid="security-page" className="space-y-6">
@@ -186,8 +236,9 @@ export function SecurityClient() {
               variant="outline"
               data-testid="btn-enable-2fa"
               onClick={openSetup}
+              disabled={setupLoading}
             >
-              启用 2FA
+              {setupLoading ? "加载中..." : "启用 2FA"}
             </Button>
           ) : (
             <Button
@@ -267,19 +318,30 @@ export function SecurityClient() {
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center gap-4 py-2">
-                <img
-                  src={qrURL}
-                  alt="TOTP QR code"
-                  width={200}
-                  height={200}
-                  data-testid="2fa-qr-image"
-                />
+                {setupLoading ? (
+                  <div className="flex items-center justify-center w-[200px] h-[200px] text-sm text-muted-foreground">
+                    加载中...
+                  </div>
+                ) : (
+                  <img
+                    src={qrURL}
+                    alt="TOTP QR code"
+                    width={200}
+                    height={200}
+                    data-testid="2fa-qr-image"
+                  />
+                )}
                 <div className="text-xs text-muted-foreground break-all text-center">
-                  密钥：<span data-testid="2fa-secret" className="font-mono">{MOCK_SECRET}</span>
+                  密钥：<span data-testid="2fa-secret" className="font-mono">{secretData?.secret ?? ""}</span>
                 </div>
               </div>
+              {codeError && (
+                <Alert variant="destructive" data-testid="2fa-code-error">
+                  <AlertDescription>{codeError}</AlertDescription>
+                </Alert>
+              )}
               <DialogFooter>
-                <Button data-testid="btn-scanned" onClick={() => setStep("verify")}>
+                <Button data-testid="btn-scanned" onClick={() => setStep("verify")} disabled={setupLoading}>
                   我已扫描
                 </Button>
               </DialogFooter>
@@ -313,8 +375,8 @@ export function SecurityClient() {
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setStep("scan")}>返回</Button>
-                <Button data-testid="btn-verify-code" onClick={handleVerify}>
-                  验证并启用
+                <Button data-testid="btn-verify-code" onClick={handleVerify} disabled={verifyLoading}>
+                  {verifyLoading ? "验证中..." : "验证并启用"}
                 </Button>
               </DialogFooter>
             </>
@@ -329,7 +391,7 @@ export function SecurityClient() {
                 </DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-2 gap-2 py-2" data-testid="backup-codes-grid">
-                {MOCK_BACKUP_CODES.map((c) => (
+                {backupCodes.map((c) => (
                   <code
                     key={c}
                     className="rounded bg-muted px-2 py-1 text-sm font-mono text-center"
@@ -377,8 +439,8 @@ export function SecurityClient() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowDisableDialog(false)}>取消</Button>
-            <Button variant="destructive" data-testid="btn-confirm-disable" onClick={handleDisable}>
-              确认关闭
+            <Button variant="destructive" data-testid="btn-confirm-disable" onClick={handleDisable} disabled={disableLoading}>
+              {disableLoading ? "处理中..." : "确认关闭"}
             </Button>
           </DialogFooter>
         </DialogContent>

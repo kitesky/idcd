@@ -1,14 +1,17 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
 export async function apiRequest<T = any>(path: string, options?: RequestInit): Promise<T> {
-  const headers: HeadersInit = { "Content-Type": "application/json" }
+  // Do not set a default Content-Type when the body is FormData — the browser
+  // needs to set it automatically (including the multipart boundary parameter).
+  const defaultHeaders: HeadersInit =
+    options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }
 
   const res = await fetch(API_BASE + path, {
     ...options,
     // credentials: "include" sends the HttpOnly access_token cookie automatically.
     // Tokens are no longer stored in localStorage.
     credentials: "include",
-    headers: { ...headers, ...options?.headers },
+    headers: { ...defaultHeaders, ...options?.headers },
   })
 
   if (!res.ok) {

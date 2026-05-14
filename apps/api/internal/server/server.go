@@ -144,6 +144,7 @@ func (s *Server) setupRouter() {
 		patH := handler.NewPATHandler(s.pgxPool)
 		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis, fieldCipher)
 		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").WithAuth(jwtSvc, sessSvc)
+		sessionH := handler.NewSessionHandler(sessSvc, s.redis)
 		authnMW := middleware.Authn(jwtSvc, sessSvc)
 
 		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
@@ -185,6 +186,8 @@ func (s *Server) setupRouter() {
 				r.Use(authnMW)
 				r.Get("/profile", acctH.GetProfile)
 				r.Patch("/profile", acctH.UpdateProfile)
+				r.Post("/avatar", acctH.UploadAvatar)
+				r.Patch("/password", acctH.ChangePassword)
 				r.Delete("/", acctH.DeleteAccount)
 				// API key management
 				r.Get("/api-keys", apiKeyH.ListAPIKeys)
@@ -209,6 +212,11 @@ func (s *Server) setupRouter() {
 					r.Post("/register/complete", webauthnH.RegisterComplete)
 					r.Get("/", webauthnH.List)
 					r.Delete("/{id}", webauthnH.Delete)
+				})
+				// Session management
+				r.Route("/sessions", func(r chi.Router) {
+					r.Get("/", sessionH.ListSessions)
+					r.Delete("/{session_id}", sessionH.RevokeSession)
 				})
 			})
 			r.Route("/info", func(r chi.Router) {

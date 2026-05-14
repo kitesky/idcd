@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
@@ -475,6 +476,62 @@ func (m *mockQuotaPool) QueryRow(_ context.Context, _ string, _ ...interface{}) 
 	return m.countRow
 }
 
+// mockBulkRows implements pgx.Rows for testing BulkAction ownership queries.
+type mockBulkRows struct {
+	ids  []string
+	pos  int
+	done bool
+}
+
+func newMockBulkRows(ids []string) *mockBulkRows { return &mockBulkRows{ids: ids} }
+
+func (r *mockBulkRows) Next() bool {
+	if r.pos < len(r.ids) {
+		r.pos++
+		return true
+	}
+	r.done = true
+	return false
+}
+
+func (r *mockBulkRows) Scan(dest ...interface{}) error {
+	if r.pos == 0 || r.pos > len(r.ids) {
+		return errors.New("no row")
+	}
+	if len(dest) > 0 {
+		if d, ok := dest[0].(*string); ok {
+			*d = r.ids[r.pos-1]
+		}
+	}
+	return nil
+}
+
+func (r *mockBulkRows) Close()                            {}
+func (r *mockBulkRows) Err() error                        { return nil }
+func (r *mockBulkRows) CommandTag() pgconn.CommandTag     { return pgconn.CommandTag{} }
+func (r *mockBulkRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
+func (r *mockBulkRows) Values() ([]interface{}, error)    { return nil, nil }
+func (r *mockBulkRows) RawValues() [][]byte               { return nil }
+func (r *mockBulkRows) Conn() *pgx.Conn                   { return nil }
+
+// mockBulkPool satisfies BulkPool.
+// ownedIDs is the set of monitor IDs to return from Query (simulating owned monitors).
+type mockBulkPool struct {
+	mockQuotaPool
+	ownedIDs []string
+	execErr  error
+	execSQL  string
+}
+
+func (m *mockBulkPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+	return newMockBulkRows(m.ownedIDs), nil
+}
+
+func (m *mockBulkPool) Exec(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
+	m.execSQL = sql
+	return pgconn.CommandTag{}, m.execErr
+}
+
 
 // freePlanPoolWith returns a mockQuotaPool set to "free" plan with given monitor count.
 func freePlanPoolWith(count int) *mockQuotaPool {
@@ -698,5 +755,131 @@ func TestMonitorHandler_Create_ProPlan_60sInterval(t *testing.T) {
 
 	if rec.Code != http.StatusCreated {
 		t.Errorf("expected 201 for pro plan with 60s interval, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BulkAction tests
+// ─────────────────────────────────────────────────────────────────────────────
+
+func bulkReq(t *testing.T, userID string, body any) (*httptest.ResponseRecorder, *http.Request) {
+	t.Helper()
+	b, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPost, "/v1/monitors/bulk", bytes.NewReader(b))
+	req.Header.Set("Content-Type", "application/json")
+	if userID != "" {
+		req = injectUserID(req, userID)
+	}
+	return httptest.NewRecorder(), req
+}
+
+func TestBulkAction_noAuth(t *testing.T) {
+	h := NewMonitorHandler(&mockMonitorQuerier{})
+	rec, req := bulkReq(t, "", map[string]any{"ids": []string{"mon_1"}, "action": "pause"})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusUnauthorized {
+		t.Errorf("expected 401, got %d", rec.Code)
+	}
+}
+
+func TestBulkAction_emptyIDs(t *testing.T) {
+	pool := &mockBulkPool{ownedIDs: nil}
+	h := NewMonitorHandler(&mockMonitorQuerier{}).WithBulkPool(pool)
+	rec, req := bulkReq(t, "u_test", map[string]any{"ids": []string{}, "action": "pause"})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestBulkAction_tooManyIDs(t *testing.T) {
+	pool := &mockBulkPool{ownedIDs: nil}
+	h := NewMonitorHandler(&mockMonitorQuerier{}).WithBulkPool(pool)
+	ids := make([]string, 51)
+	for i := range ids {
+		ids[i] = "mon_x"
+	}
+	rec, req := bulkReq(t, "u_test", map[string]any{"ids": ids, "action": "pause"})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestBulkAction_invalidAction(t *testing.T) {
+	pool := &mockBulkPool{ownedIDs: nil}
+	h := NewMonitorHandler(&mockMonitorQuerier{}).WithBulkPool(pool)
+	rec, req := bulkReq(t, "u_test", map[string]any{"ids": []string{"mon_1"}, "action": "archive"})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected 400, got %d", rec.Code)
+	}
+}
+
+func TestBulkAction_pauseSuccess(t *testing.T) {
+	pool := &mockBulkPool{ownedIDs: []string{"mon_aaa", "mon_bbb"}}
+	h := NewMonitorHandler(&mockMonitorQuerier{}).WithBulkPool(pool)
+	rec, req := bulkReq(t, "u_test", map[string]any{
+		"ids":    []string{"mon_aaa", "mon_bbb"},
+		"action": "pause",
+	})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data BulkActionResponse `json:"data"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if len(resp.Data.Succeeded) != 2 {
+		t.Errorf("expected 2 succeeded, got %d", len(resp.Data.Succeeded))
+	}
+	if len(resp.Data.Failed) != 0 {
+		t.Errorf("expected 0 failed, got %d", len(resp.Data.Failed))
+	}
+	if resp.Data.Total != 2 {
+		t.Errorf("expected total=2, got %d", resp.Data.Total)
+	}
+}
+
+func TestBulkAction_deleteSuccess(t *testing.T) {
+	pool := &mockBulkPool{ownedIDs: []string{"mon_aaa"}}
+	h := NewMonitorHandler(&mockMonitorQuerier{}).WithBulkPool(pool)
+	rec, req := bulkReq(t, "u_test", map[string]any{
+		"ids":    []string{"mon_aaa"},
+		"action": "delete",
+	})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestBulkAction_crossUserMonitorsGoToFailed(t *testing.T) {
+	pool := &mockBulkPool{ownedIDs: []string{"mon_mine"}}
+	h := NewMonitorHandler(&mockMonitorQuerier{}).WithBulkPool(pool)
+	rec, req := bulkReq(t, "u_test", map[string]any{
+		"ids":    []string{"mon_mine", "mon_other_user"},
+		"action": "pause",
+	})
+	h.BulkAction(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d: %s", rec.Code, rec.Body.String())
+	}
+	var resp struct {
+		Data BulkActionResponse `json:"data"`
+	}
+	_ = json.NewDecoder(rec.Body).Decode(&resp)
+	if len(resp.Data.Succeeded) != 1 {
+		t.Errorf("expected 1 succeeded, got %d", len(resp.Data.Succeeded))
+	}
+	if len(resp.Data.Failed) != 1 {
+		t.Errorf("expected 1 failed, got %d", len(resp.Data.Failed))
+	}
+	if resp.Data.Failed[0] != "mon_other_user" {
+		t.Errorf("expected mon_other_user in failed, got %v", resp.Data.Failed)
+	}
+	if resp.Data.Total != 2 {
+		t.Errorf("expected total=2, got %d", resp.Data.Total)
 	}
 }

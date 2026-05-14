@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
@@ -37,10 +38,19 @@ type QuotaPool interface {
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
 }
 
+// BulkPool extends QuotaPool with Exec and Query needed for bulk operations.
+// *pgxpool.Pool satisfies this.
+type BulkPool interface {
+	QuotaPool
+	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+}
+
 // MonitorHandler handles monitor CRUD endpoints.
 type MonitorHandler struct {
-	q    MonitorQuerier
-	pool QuotaPool // optional; nil disables DB-backed quota checks
+	q        MonitorQuerier
+	pool     QuotaPool // optional; nil disables DB-backed quota checks
+	bulkPool BulkPool  // optional; nil disables bulk operations
 }
 
 // NewMonitorHandler creates a MonitorHandler wired to the given querier.
@@ -52,7 +62,13 @@ func NewMonitorHandler(q MonitorQuerier) *MonitorHandler {
 // WithQuotaPool returns a copy of the handler with the quota pool configured.
 // Call this in server setup to enable per-plan quota enforcement.
 func (h *MonitorHandler) WithQuotaPool(pool QuotaPool) *MonitorHandler {
-	return &MonitorHandler{q: h.q, pool: pool}
+	return &MonitorHandler{q: h.q, pool: pool, bulkPool: h.bulkPool}
+}
+
+// WithBulkPool returns a copy of the handler with the bulk pool configured.
+// Call this in server setup to enable bulk operations.
+func (h *MonitorHandler) WithBulkPool(pool BulkPool) *MonitorHandler {
+	return &MonitorHandler{q: h.q, pool: h.pool, bulkPool: pool}
 }
 
 // userPlan fetches the subscription plan for a user.
@@ -162,6 +178,19 @@ type MonitorListResponse struct {
 	Total  int               `json:"total"`
 	Page   int               `json:"page"`
 	Limit  int               `json:"limit"`
+}
+
+// BulkActionRequest is the body for POST /v1/monitors/bulk.
+type BulkActionRequest struct {
+	IDs    []string `json:"ids"`
+	Action string   `json:"action"`
+}
+
+// BulkActionResponse is returned by POST /v1/monitors/bulk.
+type BulkActionResponse struct {
+	Succeeded []string `json:"succeeded"`
+	Failed    []string `json:"failed"`
+	Total     int      `json:"total"`
 }
 
 // validMonitorTypes is the allowed set for monitor type field.
@@ -460,6 +489,98 @@ func (h *MonitorHandler) Pause(w http.ResponseWriter, r *http.Request) {
 // Resume handles POST /v1/monitors/:id/resume.
 func (h *MonitorHandler) Resume(w http.ResponseWriter, r *http.Request) {
 	h.setStatus(w, r, "active")
+}
+
+// BulkAction handles POST /v1/monitors/bulk.
+func (h *MonitorHandler) BulkAction(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		response.Error(w, r, apperr.Unauthorized("authentication required"))
+		return
+	}
+
+	var req BulkActionRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		response.Error(w, r, apperr.Validation("invalid JSON request body", ""))
+		return
+	}
+
+	if len(req.IDs) == 0 {
+		response.Error(w, r, apperr.Validation("ids must not be empty", "ids"))
+		return
+	}
+	if len(req.IDs) > 50 {
+		response.Error(w, r, apperr.Validation("ids must not exceed 50", "ids"))
+		return
+	}
+
+	validActions := map[string]bool{"pause": true, "resume": true, "delete": true}
+	if !validActions[req.Action] {
+		response.Error(w, r, apperr.Validation("action must be pause, resume, or delete", "action"))
+		return
+	}
+
+	if h.bulkPool == nil {
+		response.Error(w, r, apperr.Internal("bulk operations not available", nil))
+		return
+	}
+
+	rows, err := h.bulkPool.Query(ctx,
+		`SELECT id FROM monitors WHERE id = ANY($1) AND user_id = $2 AND status != 'archived'`,
+		req.IDs, userID,
+	)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to verify monitor ownership", err))
+		return
+	}
+	owned := make(map[string]bool)
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			response.Error(w, r, apperr.Internal("failed to scan monitor ids", err))
+			return
+		}
+		owned[id] = true
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		response.Error(w, r, apperr.Internal("failed to query monitor ownership", err))
+		return
+	}
+
+	succeeded := make([]string, 0, len(req.IDs))
+	failed := make([]string, 0)
+	for _, id := range req.IDs {
+		if !owned[id] {
+			failed = append(failed, id)
+		} else {
+			succeeded = append(succeeded, id)
+		}
+	}
+
+	if len(succeeded) > 0 {
+		var sql string
+		switch req.Action {
+		case "pause":
+			sql = `UPDATE monitors SET status='paused', updated_at=NOW() WHERE id = ANY($1) AND user_id = $2`
+		case "resume":
+			sql = `UPDATE monitors SET status='active', updated_at=NOW() WHERE id = ANY($1) AND user_id = $2`
+		case "delete":
+			sql = `UPDATE monitors SET status='archived', updated_at=NOW() WHERE id = ANY($1) AND user_id = $2`
+		}
+		if _, err := h.bulkPool.Exec(ctx, sql, succeeded, userID); err != nil {
+			response.Error(w, r, apperr.Internal("failed to execute bulk action", err))
+			return
+		}
+	}
+
+	response.JSON(w, r, http.StatusOK, BulkActionResponse{
+		Succeeded: succeeded,
+		Failed:    failed,
+		Total:     len(req.IDs),
+	})
 }
 
 func (h *MonitorHandler) setStatus(w http.ResponseWriter, r *http.Request, status string) {

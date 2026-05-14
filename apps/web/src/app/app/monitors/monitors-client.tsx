@@ -17,6 +17,7 @@ import {
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Checkbox } from "@/components/ui/checkbox"
 import {
   Table,
   TableBody,
@@ -31,6 +32,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 import {
   type Monitor,
   type MonitorStatus,
@@ -70,11 +81,39 @@ interface MonitorsClientProps {
 export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
   const router = useRouter()
   const [monitors, setMonitors] = useState<Monitor[]>(initialMonitors)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [pendingBulkAction, setPendingBulkAction] = useState<
+    "pause" | "resume" | "delete" | null
+  >(null)
 
   const total = monitors.length
   const upCount = monitors.filter((m) => m.status === "UP").length
   const downCount = monitors.filter((m) => m.status === "DOWN").length
   const checkingCount = monitors.filter((m) => m.status !== "PAUSED").length
+
+  const allSelected =
+    monitors.length > 0 && selectedIds.size === monitors.length
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(monitors.map((m) => m.id)))
+    }
+  }
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
 
   function togglePause(id: string) {
     setMonitors((prev) =>
@@ -90,6 +129,40 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
 
   function deleteMonitor(id: string) {
     setMonitors((prev) => prev.filter((m) => m.id !== id))
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      next.delete(id)
+      return next
+    })
+  }
+
+  function executeBulkAction(action: "pause" | "resume" | "delete") {
+    if (action === "pause") {
+      setMonitors((prev) =>
+        prev.map((m) =>
+          selectedIds.has(m.id) ? { ...m, status: "PAUSED" as MonitorStatus } : m
+        )
+      )
+    } else if (action === "resume") {
+      setMonitors((prev) =>
+        prev.map((m) =>
+          selectedIds.has(m.id) ? { ...m, status: "UP" as MonitorStatus } : m
+        )
+      )
+    } else if (action === "delete") {
+      setMonitors((prev) => prev.filter((m) => !selectedIds.has(m.id)))
+    }
+    setSelectedIds(new Set())
+    setPendingBulkAction(null)
+  }
+
+  function requestBulkAction(action: "pause" | "resume" | "delete") {
+    if (action === "delete") {
+      setPendingBulkAction("delete")
+      setBulkDeleteOpen(true)
+    } else {
+      executeBulkAction(action)
+    }
   }
 
   return (
@@ -165,6 +238,13 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-10">
+                <Checkbox
+                  checked={allSelected}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="全选"
+                />
+              </TableHead>
               <TableHead>名称</TableHead>
               <TableHead>类型</TableHead>
               <TableHead>目标</TableHead>
@@ -178,7 +258,7 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
             {monitors.length === 0 ? (
               <TableRow>
                 <TableCell
-                  colSpan={7}
+                  colSpan={8}
                   className="h-32 text-center text-muted-foreground"
                 >
                   暂无监控项目，
@@ -192,7 +272,17 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
               </TableRow>
             ) : (
               monitors.map((monitor) => (
-                <TableRow key={monitor.id}>
+                <TableRow
+                  key={monitor.id}
+                  data-selected={selectedIds.has(monitor.id)}
+                >
+                  <TableCell>
+                    <Checkbox
+                      checked={selectedIds.has(monitor.id)}
+                      onCheckedChange={() => toggleSelect(monitor.id)}
+                      aria-label={`选择 ${monitor.name}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     <Link
                       href={`/app/monitors/${monitor.id}`}
@@ -264,6 +354,77 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
           </TableBody>
         </Table>
       </Card>
+
+      {/* 批量操作浮动栏 */}
+      {selectedIds.size > 0 && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50">
+          <div className="flex items-center gap-3 rounded-xl border bg-background px-5 py-3 shadow-lg">
+            <span className="text-sm font-medium text-muted-foreground">
+              已选择 {selectedIds.size} 个监控
+            </span>
+            <div className="h-4 w-px bg-border" />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => requestBulkAction("pause")}
+            >
+              <Pause className="mr-1.5 h-3.5 w-3.5" />
+              暂停
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => requestBulkAction("resume")}
+            >
+              <Play className="mr-1.5 h-3.5 w-3.5" />
+              恢复
+            </Button>
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={() => requestBulkAction("delete")}
+            >
+              <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+              删除
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setSelectedIds(new Set())}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 批量删除确认 Dialog */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认批量删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              即将删除 {selectedIds.size} 个监控，此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setPendingBulkAction(null)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={() => {
+                setBulkDeleteOpen(false)
+                if (pendingBulkAction) {
+                  executeBulkAction(pendingBulkAction)
+                }
+              }}
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }

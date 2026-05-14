@@ -2,7 +2,10 @@
 // Each channel adapter (webhook, wecom, dingtalk, feishu, etc.) implements this interface.
 package channel
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // Payload contains the notification content to be sent.
 type Payload struct {
@@ -18,4 +21,11 @@ type Channel interface {
 	Send(ctx context.Context, p Payload) error
 	// Type returns the channel type string (e.g. "webhook", "wecom").
 	Type() string
+}
+
+// drainAndClose fully reads and discards body, then closes it.
+// Draining before Close allows the HTTP transport to reuse the underlying TCP connection.
+func drainAndClose(body io.ReadCloser) {
+	_, _ = io.Copy(io.Discard, body)
+	body.Close()
 }

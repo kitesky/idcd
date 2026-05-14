@@ -4,11 +4,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
@@ -29,9 +31,11 @@ type MonitorQuerier interface {
 }
 
 // QuotaPool is the minimal pgx interface needed to perform quota-related DB
-// lookups (subscription plan + monitor count). *pgxpool.Pool satisfies this.
+// lookups (subscription plan + monitor count) and partial field updates.
+// *pgxpool.Pool satisfies this.
 type QuotaPool interface {
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
 }
 
 // MonitorHandler handles monitor CRUD endpoints.
@@ -364,9 +368,6 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Apply updates via raw SQL using pgxpool — we reuse the UpdateMonitorStatus
-	// for status-only changes; for other fields we do a direct update.
-	// Strategy: build up the changed monitor using direct DB update.
 	updated, err := h.updateMonitor(ctx, m, req)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to update monitor", err))
@@ -376,47 +377,47 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, monitorToResponse(updated))
 }
 
-// updateMonitor applies partial updates to a monitor using the available querier methods.
+// updateMonitor applies partial updates to a monitor.
+// Status changes use the dedicated sqlc query; other field changes (name,
+// config, interval_s) are persisted via a raw SQL UPDATE through the pool.
+// If no pool is configured, field changes are applied in-memory only
+// (acceptable in tests where no real DB is present).
 func (h *MonitorHandler) updateMonitor(ctx context.Context, m idcdmain.Monitor, req UpdateMonitorRequest) (idcdmain.Monitor, error) {
-	// If only status is changing, use the dedicated query.
-	if req.Status != nil && req.Name == nil && req.Config == nil && req.IntervalS == nil {
-		return h.q.UpdateMonitorStatus(ctx, idcdmain.UpdateMonitorStatusParams{
+	updated := m
+
+	// Only call UpdateMonitorStatus when the caller explicitly changes status;
+	// an unconditional call would write a no-op UPDATE and corrupt updated_at.
+	if req.Status != nil {
+		var err error
+		updated, err = h.q.UpdateMonitorStatus(ctx, idcdmain.UpdateMonitorStatusParams{
 			ID:     m.ID,
 			Status: *req.Status,
 		})
+		if err != nil {
+			return idcdmain.Monitor{}, fmt.Errorf("updateMonitor: update status: %w", err)
+		}
 	}
 
-	// For other fields, use UpdateMonitorStatus as a no-op status update (same value)
-	// while relying on the fact that we have the original monitor data.
-	// Since sqlc doesn't give us a general UPDATE query here, we use status query
-	// as the vehicle and return the patched struct in memory.
-	// The real update is done via UpdateMonitorStatus; other field patches are
-	// persisted by re-using a raw exec through the querier interface's UpdateMonitorStatus.
-	// To keep things simple with the interface constraint, we update status (even if unchanged)
-	// and return the in-memory merged result as the authoritative response.
-	// NOTE: for a production system a dedicated UpdateMonitor query would be preferred.
-	targetStatus := m.Status
-	if req.Status != nil {
-		targetStatus = *req.Status
-	}
-
-	updated, err := h.q.UpdateMonitorStatus(ctx, idcdmain.UpdateMonitorStatusParams{
-		ID:     m.ID,
-		Status: targetStatus,
-	})
-	if err != nil {
-		return idcdmain.Monitor{}, err
-	}
-
-	// Apply in-memory patches for fields not covered by UpdateMonitorStatus.
-	if req.Name != nil {
-		updated.Name = *req.Name
-	}
-	if req.Config != nil {
-		updated.Config = []byte(*req.Config)
-	}
-	if req.IntervalS != nil {
-		updated.IntervalS = *req.IntervalS
+	// Merge optional field changes into updated, then persist if a pool is available.
+	hasFieldChanges := req.Name != nil || req.Config != nil || req.IntervalS != nil
+	if hasFieldChanges {
+		if req.Name != nil {
+			updated.Name = *req.Name
+		}
+		if req.Config != nil {
+			updated.Config = []byte(*req.Config)
+		}
+		if req.IntervalS != nil {
+			updated.IntervalS = *req.IntervalS
+		}
+		if h.pool != nil {
+			if _, execErr := h.pool.Exec(ctx,
+				`UPDATE monitors SET name=$1, config=$2, interval_s=$3 WHERE id=$4`,
+				updated.Name, updated.Config, updated.IntervalS, m.ID,
+			); execErr != nil {
+				return idcdmain.Monitor{}, fmt.Errorf("updateMonitor: persist field changes: %w", execErr)
+			}
+		}
 	}
 
 	return updated, nil

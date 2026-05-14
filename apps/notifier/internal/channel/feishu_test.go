@@ -10,7 +10,7 @@ import (
 )
 
 func TestFeishuChannel_Type(t *testing.T) {
-	ch := NewFeishu(FeishuConfig{WebhookURL: "http://example.com"})
+	ch := newFeishuWithClient(FeishuConfig{WebhookURL: "https://example.com"}, &http.Client{})
 	if ch.Type() != "feishu" {
 		t.Errorf("expected type 'feishu', got %q", ch.Type())
 	}
@@ -26,7 +26,7 @@ func TestFeishuChannel_Send_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewFeishu(FeishuConfig{WebhookURL: srv.URL})
+	ch := newFeishuWithClient(FeishuConfig{WebhookURL: srv.URL}, srv.Client())
 	p := Payload{Title: "Down", Body: "site unreachable", URL: "https://dash.idcd.com", Level: "critical"}
 
 	if err := ch.Send(context.Background(), p); err != nil {
@@ -61,7 +61,7 @@ func TestFeishuChannel_Send_WarningLevel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewFeishu(FeishuConfig{WebhookURL: srv.URL})
+	ch := newFeishuWithClient(FeishuConfig{WebhookURL: srv.URL}, srv.Client())
 	if err := ch.Send(context.Background(), Payload{Level: "warning", Title: "W", Body: "B", URL: "U"}); err != nil {
 		t.Fatal(err)
 	}
@@ -78,7 +78,7 @@ func TestFeishuChannel_Send_InfoLevel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewFeishu(FeishuConfig{WebhookURL: srv.URL})
+	ch := newFeishuWithClient(FeishuConfig{WebhookURL: srv.URL}, srv.Client())
 	if err := ch.Send(context.Background(), Payload{Level: "info", Title: "I", Body: "B", URL: "U"}); err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestFeishuChannel_Send_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewFeishu(FeishuConfig{WebhookURL: srv.URL})
+	ch := newFeishuWithClient(FeishuConfig{WebhookURL: srv.URL}, srv.Client())
 	p := Payload{Title: "T", Body: "B", URL: "U", Level: "info"}
 
 	if err := ch.Send(context.Background(), p); err == nil {
@@ -116,5 +116,28 @@ func TestFeishuTemplate(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("feishuTemplate(%q) = %q, want %q", tc.level, got, tc.want)
 		}
+	}
+}
+
+// ---- SSRF validation tests ----
+
+func TestNewFeishu_RejectsHTTP(t *testing.T) {
+	_, err := NewFeishu(FeishuConfig{WebhookURL: "http://open.feishu.cn/open-apis/bot/v2/hook/x"})
+	if err == nil {
+		t.Fatal("expected error for http:// scheme, got nil")
+	}
+}
+
+func TestNewFeishu_RejectsPrivateIP(t *testing.T) {
+	_, err := NewFeishu(FeishuConfig{WebhookURL: "https://192.168.0.1/hook"})
+	if err == nil {
+		t.Fatal("expected SSRF error for private IP, got nil")
+	}
+}
+
+func TestNewFeishu_AcceptsPublicHTTPS(t *testing.T) {
+	_, err := NewFeishu(FeishuConfig{WebhookURL: "https://open.feishu.cn/open-apis/bot/v2/hook/abc"})
+	if err != nil {
+		t.Errorf("expected no error for public https URL, got: %v", err)
 	}
 }

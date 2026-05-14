@@ -3,7 +3,9 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -452,7 +454,11 @@ func (h *AlertHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 			&existing.Name, &existing.DelayS, &existing.RecoveryN,
 			&existing.MuteStart, &existing.MuteEnd, &existing.Enabled, &createdAt)
 	if err != nil {
-		response.Error(w, r, apperr.NotFound("alert policy not found"))
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, r, apperr.NotFound("alert policy not found"))
+		} else {
+			response.Error(w, r, apperr.Internal("failed to fetch alert policy", err))
+		}
 		return
 	}
 	if err := json.Unmarshal(channelIDsJSON, &existing.ChannelIDs); err != nil {
@@ -554,7 +560,7 @@ func (h *AlertHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	status := q.Get("status")
 	limit := 50
 	if l := q.Get("limit"); l != "" {
-		if v, err := parseInt(l); err == nil && v > 0 && v <= 200 {
+		if v, err := strconv.Atoi(l); err == nil && v > 0 && v <= 200 {
 			limit = v
 		}
 	}
@@ -575,16 +581,16 @@ func (h *AlertHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	argIdx := 2
 
 	if monitorID != "" {
-		query += " AND ae.monitor_id = $" + itoa(argIdx)
+		query += " AND ae.monitor_id = $" + strconv.Itoa(argIdx)
 		args = append(args, monitorID)
 		argIdx++
 	}
 	if status != "" {
-		query += " AND ae.status = $" + itoa(argIdx)
+		query += " AND ae.status = $" + strconv.Itoa(argIdx)
 		args = append(args, status)
 		argIdx++
 	}
-	query += " ORDER BY ae.started_at DESC LIMIT $" + itoa(argIdx)
+	query += " ORDER BY ae.started_at DESC LIMIT $" + strconv.Itoa(argIdx)
 	args = append(args, limit)
 
 	rows, err := h.pool.Query(ctx, query, args...)
@@ -671,40 +677,6 @@ func (h *AlertHandler) AcknowledgeEvent(w http.ResponseWriter, r *http.Request) 
 		"acknowledged_by":  userID,
 		"acknowledged_at":  now.UTC().Format(time.RFC3339),
 	})
-}
-
-// ─────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────
-
-func parseInt(s string) (int, error) {
-	v := 0
-	_, err := itoa2(s, &v)
-	return v, err
-}
-
-func itoa2(s string, out *int) (int, error) {
-	n := 0
-	for _, c := range s {
-		if c < '0' || c > '9' {
-			return 0, apperr.Validation("not a number", "")
-		}
-		n = n*10 + int(c-'0')
-	}
-	*out = n
-	return n, nil
-}
-
-func itoa(n int) string {
-	if n == 0 {
-		return "0"
-	}
-	buf := make([]byte, 0, 4)
-	for n > 0 {
-		buf = append([]byte{byte('0' + n%10)}, buf...)
-		n /= 10
-	}
-	return string(buf)
 }
 
 // alertUserPlan fetches the subscription plan for a user via the pool.

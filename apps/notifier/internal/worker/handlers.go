@@ -232,25 +232,41 @@ func buildChannel(channelType string, cfgJSON []byte) (channel.Channel, error) {
 		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
 			return nil, fmt.Errorf("unmarshal webhook config: %w", err)
 		}
-		return channel.NewWebhook(cfg), nil
+		ch, err := channel.NewWebhook(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("build webhook channel: %w", err)
+		}
+		return ch, nil
 	case "wecom":
 		var cfg channel.WecomConfig
 		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
 			return nil, fmt.Errorf("unmarshal wecom config: %w", err)
 		}
-		return channel.NewWecom(cfg), nil
+		ch, err := channel.NewWecom(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("build wecom channel: %w", err)
+		}
+		return ch, nil
 	case "dingtalk":
 		var cfg channel.DingtalkConfig
 		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
 			return nil, fmt.Errorf("unmarshal dingtalk config: %w", err)
 		}
-		return channel.NewDingtalk(cfg), nil
+		ch, err := channel.NewDingtalk(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("build dingtalk channel: %w", err)
+		}
+		return ch, nil
 	case "feishu":
 		var cfg channel.FeishuConfig
 		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
 			return nil, fmt.Errorf("unmarshal feishu config: %w", err)
 		}
-		return channel.NewFeishu(cfg), nil
+		ch, err := channel.NewFeishu(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("build feishu channel: %w", err)
+		}
+		return ch, nil
 	default:
 		return nil, fmt.Errorf("unsupported channel type: %s", channelType)
 	}

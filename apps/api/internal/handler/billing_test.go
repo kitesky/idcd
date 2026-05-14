@@ -9,7 +9,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/go-chi/chi/v5"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -34,8 +33,10 @@ func withUser(r *http.Request, userID string) *http.Request {
 	return r.WithContext(ctx)
 }
 
+type testContextKey string
+
 func withRequestID(r *http.Request) *http.Request {
-	ctx := context.WithValue(r.Context(), "request_id", "test-req-id")
+	ctx := context.WithValue(r.Context(), testContextKey("request_id"), "test-req-id")
 	return r.WithContext(ctx)
 }
 
@@ -480,11 +481,4 @@ func TestParseIntParam(t *testing.T) {
 	assert.Equal(t, 1, parseIntParam("-1", 1))
 }
 
-// ---- chi URL param helper for router test ----
 
-func newChiCtxWithParam(r *http.Request, key, value string) *http.Request {
-	chiCtx := chi.NewRouteContext()
-	chiCtx.URLParams.Add(key, value)
-	ctx := context.WithValue(r.Context(), chi.RouteCtxKey, chiCtx)
-	return r.WithContext(ctx)
-}

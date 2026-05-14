@@ -27,10 +27,6 @@ func (m *mockSender) Send(ctx context.Context, msg email.Message) error {
 	return nil
 }
 
-func (m *mockSender) reset() {
-	m.sentMessages = nil
-	m.sendError = nil
-}
 
 func setupHandlers(t *testing.T) (*Handlers, *mockSender) {
 	// Create mock sender

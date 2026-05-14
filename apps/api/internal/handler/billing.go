@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -98,7 +99,7 @@ func (h *BillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	plan := billing.Plan(req.Plan)
 	if !billing.ValidPlan(plan) {
-		response.Error(w, r, apperr.Validation("unknown plan: "+req.Plan, ""))
+		response.Error(w, r, apperr.Validation("unknown plan", "plan"))
 		return
 	}
 
@@ -367,7 +368,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				UPDATE subscriptions SET status = 'active', updated_at = $2
 				WHERE id = $1
 			`, event.SubscriptionID, now); err != nil {
-				return err
+				return fmt.Errorf("billing: activate subscription %s: %w", event.SubscriptionID, err)
 			}
 		}
 		// Persist payment record.
@@ -385,7 +386,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				ON CONFLICT (id) DO NOTHING
 			`, payID, event.UserID, invID, h.provider.Name(), event.ExtTxnID,
 				event.AmountCents, currency, now); err != nil {
-				return err
+				return fmt.Errorf("billing: insert payment record pay=%s: %w", payID, err)
 			}
 			if _, err := h.pool.Exec(ctx, `
 				INSERT INTO invoices (id, user_id, subscription_id, provider, ext_invoice_id,
@@ -394,7 +395,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				ON CONFLICT (id) DO NOTHING
 			`, invID, event.UserID, event.SubscriptionID, h.provider.Name(), event.ExtTxnID,
 				event.AmountCents, currency, now); err != nil {
-				return err
+				return fmt.Errorf("billing: insert invoice record inv=%s: %w", invID, err)
 			}
 		}
 
@@ -404,7 +405,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				UPDATE subscriptions SET status = 'past_due', updated_at = $2
 				WHERE id = $1
 			`, event.SubscriptionID, now); err != nil {
-				return err
+				return fmt.Errorf("billing: mark subscription past_due %s: %w", event.SubscriptionID, err)
 			}
 		}
 
@@ -414,7 +415,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				UPDATE subscriptions SET status = 'cancelled', cancel_at = $2, updated_at = $2
 				WHERE id = $1
 			`, event.SubscriptionID, now); err != nil {
-				return err
+				return fmt.Errorf("billing: cancel subscription %s: %w", event.SubscriptionID, err)
 			}
 		}
 
@@ -424,7 +425,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				UPDATE payments SET status = 'refunded'
 				WHERE ext_txn_id = $1 AND provider = $2
 			`, event.ExtTxnID, h.provider.Name()); err != nil {
-				return err
+				return fmt.Errorf("billing: mark payment refunded ext_txn=%s: %w", event.ExtTxnID, err)
 			}
 		}
 
@@ -437,7 +438,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				    refund_failed_at = $2
 				WHERE ext_txn_id = $1 AND provider = $3
 			`, event.ExtTxnID, now, h.provider.Name()); err != nil {
-				return err
+				return fmt.Errorf("billing: mark refund_failed ext_txn=%s: %w", event.ExtTxnID, err)
 			}
 		}
 	}

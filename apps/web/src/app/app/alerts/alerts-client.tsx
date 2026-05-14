@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import {
   Bell,
   Mail,
@@ -142,10 +142,10 @@ interface ToastMsg {
 
 function useToast() {
   const [toasts, setToasts] = useState<ToastMsg[]>([])
-  let counter = 0
+  const counterRef = useRef(0)
 
   const toast = (message: string) => {
-    const id = ++counter
+    const id = ++counterRef.current
     setToasts((prev) => [...prev, { id, message }])
     setTimeout(() => {
       setToasts((prev) => prev.filter((t) => t.id !== id))

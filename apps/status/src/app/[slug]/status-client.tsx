@@ -1,12 +1,15 @@
 "use client"
 
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { cn } from "@/lib/utils"
 import type { StatusPageData, ServiceStatus } from "./mock-data"
 import { generateUptimeHistory } from "./mock-data"
 
-// ── Minimal shadcn-style components (no shadcn package in status app) ──────────
+// ── Minimal shadcn-compatible components ──────────────────────────────────────────────
+// shadcn/ui is not installed in this standalone app; these thin wrappers mirror
+// the shadcn API surface and use the CSS variables defined in globals.css so
+// that a later migration to the real shadcn package is a one-line swap.
 
 function Badge({
   variant,
@@ -41,7 +44,7 @@ function Card({
   return (
     <div
       className={cn(
-        "rounded-lg border border-[hsl(217.2_32.6%_17.5%)] bg-[hsl(222.2_84%_4.9%)] text-[hsl(210_40%_98%)]",
+        "rounded-lg border border-border bg-card text-card-foreground",
         className
       )}
     >
@@ -50,35 +53,48 @@ function Card({
   )
 }
 
-// ── Status helpers ─────────────────────────────────────────────────────────────
+// ── Status helpers ─────────────────────────────────────────────────────────────────────────────
 
-function overallStatusConfig(status: ServiceStatus) {
+/** Maps ServiceStatus to a Chinese label for use in aria attributes. */
+const STATUS_LABEL_ZH: Record<ServiceStatus, string> = {
+  operational: "正常",
+  degraded: "降级",
+  outage: "中断",
+  maintenance: "维护中",
+}
+
+function overallStatusConfig(status: ServiceStatus): {
+  label: string
+  variant: "success" | "warning" | "destructive" | "secondary"
+  icon: React.ReactNode
+  bgClass: string
+} {
   switch (status) {
     case "operational":
       return {
         label: "全部服务正常",
-        variant: "success" as const,
+        variant: "success",
         icon: <CheckCircle2 className="h-6 w-6 text-green-400" />,
         bgClass: "bg-green-900/20 border-green-800",
       }
     case "degraded":
       return {
         label: "部分服务降级",
-        variant: "warning" as const,
+        variant: "warning",
         icon: <AlertTriangle className="h-6 w-6 text-yellow-400" />,
         bgClass: "bg-yellow-900/20 border-yellow-800",
       }
     case "outage":
       return {
         label: "严重服务中断",
-        variant: "destructive" as const,
+        variant: "destructive",
         icon: <XCircle className="h-6 w-6 text-red-400" />,
         bgClass: "bg-red-900/20 border-red-800",
       }
     case "maintenance":
       return {
         label: "计划维护中",
-        variant: "secondary" as const,
+        variant: "secondary",
         icon: <AlertTriangle className="h-6 w-6 text-blue-400" />,
         bgClass: "bg-blue-900/20 border-blue-800",
       }
@@ -94,7 +110,8 @@ function monitorStatusDot(status: ServiceStatus) {
   }
   return (
     <span
-      aria-label={status}
+      aria-label={STATUS_LABEL_ZH[status]}
+      role="img"
       className={cn(
         "inline-block h-2.5 w-2.5 rounded-full",
         colors[status]
@@ -125,7 +142,7 @@ function formatDate(iso: string) {
   })
 }
 
-// ── Main client component ──────────────────────────────────────────────────────
+// ── Main client component ──────────────────────────────────────────────────────────────────────────────
 
 interface StatusClientProps {
   data: StatusPageData
@@ -137,7 +154,10 @@ export function StatusClient({ data }: StatusClientProps) {
   )
 
   const statusCfg = overallStatusConfig(data.overallStatus)
-  const uptimeHistory = generateUptimeHistory(99.5)
+
+  // Memoize so that the 90-day grid is stable across re-renders (group
+  // expand/collapse toggling must not re-randomize the history blocks).
+  const uptimeHistory = useMemo(() => generateUptimeHistory(99.5), [])
 
   function toggleGroup(id: string) {
     setExpandedGroups((prev) => {
@@ -149,7 +169,7 @@ export function StatusClient({ data }: StatusClientProps) {
   }
 
   return (
-    <div className="min-h-screen bg-[hsl(222.2_84%_4.9%)] text-[hsl(210_40%_98%)]">
+    <div className="min-h-screen bg-background text-foreground">
       <div className="mx-auto max-w-3xl px-4 py-12">
 
         {/* ── Header ── */}
@@ -192,7 +212,7 @@ export function StatusClient({ data }: StatusClientProps) {
                 </button>
 
                 {expanded && (
-                  <div className="border-t border-[hsl(217.2_32.6%_17.5%)] divide-y divide-[hsl(217.2_32.6%_17.5%)]">
+                  <div className="border-t border-border divide-y divide-border">
                     {group.monitors.map((monitor) => (
                       <div
                         key={monitor.id}
@@ -201,7 +221,7 @@ export function StatusClient({ data }: StatusClientProps) {
                       >
                         <span className="text-sm">{monitor.name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-[hsl(215_20.2%_65.1%)]">
+                          <span className="text-xs text-muted-foreground">
                             {monitor.uptimePercent.toFixed(2)}%
                           </span>
                           {monitorStatusDot(monitor.status)}
@@ -229,6 +249,7 @@ export function StatusClient({ data }: StatusClientProps) {
                 <div
                   key={i}
                   title={`${day.date}: ${day.uptime.toFixed(1)}%`}
+                  aria-label={`${day.date} 可用率 ${day.uptime.toFixed(1)}%，状态：${STATUS_LABEL_ZH[day.status]}`}
                   className={cn(
                     "h-5 w-full rounded-sm",
                     uptimeDayColor(day.status)
@@ -236,7 +257,7 @@ export function StatusClient({ data }: StatusClientProps) {
                 />
               ))}
             </div>
-            <div className="mt-3 flex items-center justify-between text-xs text-[hsl(215_20.2%_65.1%)]">
+            <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
               <span>90 天前</span>
               <div className="flex items-center gap-3">
                 <span className="flex items-center gap-1">
@@ -261,7 +282,7 @@ export function StatusClient({ data }: StatusClientProps) {
         <div className="mb-10" data-testid="recent-events">
           <h2 className="text-lg font-semibold mb-4">最近事件公告</h2>
           {data.events.length === 0 ? (
-            <Card className="px-5 py-8 text-center text-[hsl(215_20.2%_65.1%)] text-sm">
+            <Card className="px-5 py-8 text-center text-muted-foreground text-sm">
               最近 90 天内无事件记录
             </Card>
           ) : (
@@ -276,10 +297,10 @@ export function StatusClient({ data }: StatusClientProps) {
                       {evt.status === "resolved" ? "已解决" : "处理中"}
                     </Badge>
                   </div>
-                  <p className="text-xs text-[hsl(215_20.2%_65.1%)] leading-relaxed mb-3">
+                  <p className="text-xs text-muted-foreground leading-relaxed mb-3">
                     {evt.description}
                   </p>
-                  <div className="text-xs text-[hsl(215_20.2%_65.1%)] space-y-1">
+                  <div className="text-xs text-muted-foreground space-y-1">
                     <div>发生时间：{formatDate(evt.createdAt)}</div>
                     {evt.resolvedAt && (
                       <div>解决时间：{formatDate(evt.resolvedAt)}</div>
@@ -299,7 +320,7 @@ export function StatusClient({ data }: StatusClientProps) {
               href="https://idcd.com"
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-[hsl(215_20.2%_65.1%)] hover:text-[hsl(210_40%_98%)] transition-colors"
+              className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               Powered by idcd
               <ExternalLink className="h-3 w-3" />

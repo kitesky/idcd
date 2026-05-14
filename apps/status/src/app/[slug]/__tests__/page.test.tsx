@@ -1,16 +1,22 @@
 import { describe, it, expect, vi } from "vitest"
-import { render, screen, fireEvent } from "@testing-library/react"
+import { render, screen, fireEvent, within } from "@testing-library/react"
 import { StatusClient } from "../status-client"
 import { MOCK_STATUS_PAGES } from "../mock-data"
 
-// Mock generateUptimeHistory to return deterministic data
+// Mock generateUptimeHistory to return deterministic data.
+// Dates are generated as real ISO date strings to avoid invalid calendar dates.
 vi.mock("../mock-data", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../mock-data")>()
-  const deterministicHistory = Array.from({ length: 90 }, (_, i) => ({
-    date: `2026-02-${String(i + 1).padStart(2, "0")}`,
-    status: "operational" as const,
-    uptime: 99.9,
-  }))
+  const base = new Date("2026-02-13")
+  const deterministicHistory = Array.from({ length: 90 }, (_, i) => {
+    const d = new Date(base)
+    d.setDate(base.getDate() - (89 - i))
+    return {
+      date: d.toISOString().slice(0, 10),
+      status: "operational" as const,
+      uptime: 99.9,
+    }
+  })
   return {
     ...actual,
     generateUptimeHistory: vi.fn(() => deterministicHistory),
@@ -46,7 +52,10 @@ describe("StatusClient", () => {
     // Groups start expanded, so monitor rows should be visible
     expect(screen.getByTestId("monitor-row-mon-web")).toBeInTheDocument()
     expect(screen.getByText("官网 (acme.com)")).toBeInTheDocument()
-    expect(screen.getByText("API 服务")).toBeInTheDocument()
+    // Use within() to scope to the monitor row, avoiding ambiguity with the
+    // event description that also mentions "API 服务" in affectedServices.
+    const apiMonitorRow = screen.getByTestId("monitor-row-mon-api")
+    expect(within(apiMonitorRow).getByText("API 服务")).toBeInTheDocument()
   })
 
   it("collapses a group when its toggle is clicked", () => {
@@ -86,11 +95,13 @@ describe("StatusClient", () => {
   it("renders all 8 monitor items across 3 groups", () => {
     render(<StatusClient data={demoData} />)
     // 3 monitors in core + 2 in data + 3 in infra = 8 total
-    expect(screen.getByText("认证服务")).toBeInTheDocument()
-    expect(screen.getByText("数据库集群")).toBeInTheDocument()
-    expect(screen.getByText("缓存服务 (Redis)")).toBeInTheDocument()
-    expect(screen.getByText("CDN 分发")).toBeInTheDocument()
-    expect(screen.getByText("DNS 解析")).toBeInTheDocument()
-    expect(screen.getByText("邮件通知")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-web")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-api")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-auth")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-db")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-cache")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-cdn")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-dns")).toBeInTheDocument()
+    expect(screen.getByTestId("monitor-row-mon-email")).toBeInTheDocument()
   })
 })

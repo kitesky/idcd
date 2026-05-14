@@ -92,7 +92,8 @@ func (m *mockAlertPool) QueryRow(_ context.Context, _ string, _ ...interface{}) 
 	if m.queryRowVal != nil {
 		return m.queryRowVal
 	}
-	return &mockAlertRow{err: apperr_notfound("not found")}
+	// Return pgx.ErrNoRows so callers can distinguish "not found" from real DB errors.
+	return &mockAlertRow{err: pgx.ErrNoRows}
 }
 
 func (m *mockAlertPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
@@ -142,15 +143,6 @@ func copyValue(dest, src interface{}) {
 		}
 	}
 }
-
-// apperr_notfound is a helper returning a sentinel error for "not found" in tests.
-func apperr_notfound(msg string) error {
-	return &notFoundErr{msg: msg}
-}
-
-type notFoundErr struct{ msg string }
-
-func (e *notFoundErr) Error() string { return e.msg }
 
 // alertWithUserID injects a user ID into the request context.
 func alertWithUserID(r *http.Request, userID string) *http.Request {
@@ -533,32 +525,3 @@ func TestAlertHandler_AcknowledgeEvent_Unauthenticated(t *testing.T) {
 
 // ─────────────────────────────────────────────
 // Helper function tests
-// ─────────────────────────────────────────────
-
-func TestItoa(t *testing.T) {
-	tests := []struct {
-		n    int
-		want string
-	}{
-		{0, "0"},
-		{1, "1"},
-		{9, "9"},
-		{10, "10"},
-		{42, "42"},
-		{100, "100"},
-		{999, "999"},
-	}
-	for _, tc := range tests {
-		got := itoa(tc.n)
-		assert.Equal(t, tc.want, got, "itoa(%d)", tc.n)
-	}
-}
-
-func TestParseInt(t *testing.T) {
-	v, err := parseInt("42")
-	require.NoError(t, err)
-	assert.Equal(t, 42, v)
-
-	_, err = parseInt("abc")
-	assert.Error(t, err)
-}

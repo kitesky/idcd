@@ -22,13 +22,17 @@ type WecomChannel struct {
 }
 
 // NewWecom creates a WecomChannel.
-func NewWecom(cfg WecomConfig) *WecomChannel {
+// Returns an error if the configured webhook URL fails SSRF validation.
+func NewWecom(cfg WecomConfig) (*WecomChannel, error) {
+	if err := validateWebhookURL(cfg.WebhookURL); err != nil {
+		return nil, fmt.Errorf("wecom: invalid webhook_url: %w", err)
+	}
 	return &WecomChannel{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-	}
+	}, nil
 }
 
 // Type implements Channel.
@@ -46,8 +50,8 @@ type wecomMarkdown struct {
 
 // Send implements Channel.
 func (w *WecomChannel) Send(ctx context.Context, p Payload) error {
-	levelIcon := levelIcon(p.Level)
-	content := fmt.Sprintf("## %s %s\n\n%s\n\n[查看详情](%s)", levelIcon, p.Title, p.Body, p.URL)
+	icon := levelIcon(p.Level)
+	content := fmt.Sprintf("## %s %s\n\n%s\n\n[查看详情](%s)", icon, p.Title, p.Body, p.URL)
 
 	req := wecomRequest{
 		MsgType:  "markdown",
@@ -73,7 +77,7 @@ func (w *WecomChannel) post(ctx context.Context, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("wecom: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("wecom: unexpected status: %d", resp.StatusCode)
@@ -91,4 +95,10 @@ func levelIcon(level string) string {
 	default:
 		return "🔵"
 	}
+}
+
+// newWecomWithClient creates a WecomChannel using the provided HTTP client,
+// skipping URL validation. This is intended for tests only.
+func newWecomWithClient(cfg WecomConfig, client *http.Client) *WecomChannel {
+	return &WecomChannel{cfg: cfg, client: client}
 }

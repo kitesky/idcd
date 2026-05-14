@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
@@ -84,13 +85,6 @@ func fakeMonitor(id, userID string) idcdmain.Monitor {
 func injectUserID(r *http.Request, userID string) *http.Request {
 	ctx := context.WithValue(r.Context(), middleware.UserIDContextKey(), userID)
 	return r.WithContext(ctx)
-}
-
-// routeWithID wraps handler in a chi router that provides the {id} URL param.
-func routeWithID(pattern string, h http.HandlerFunc) http.Handler {
-	router := chi.NewRouter()
-	router.MethodFunc("*", pattern, h)
-	return router
 }
 
 // --- tests ---
@@ -459,7 +453,7 @@ func (m *mockQuotaRow) Scan(dest ...interface{}) error {
 
 // mockQuotaPool returns configurable responses for QueryRow calls.
 // The first call returns planRow, all subsequent calls return countRow.
-// It satisfies the QuotaPool interface (returns pgx.Row).
+// It satisfies the QuotaPool interface (returns pgx.Row and no-ops Exec).
 type mockQuotaPool struct {
 	planRow  *mockQuotaRow
 	countRow *mockQuotaRow
@@ -472,6 +466,10 @@ func (m *mockQuotaPool) QueryRow(_ context.Context, _ string, _ ...interface{}) 
 		return m.planRow
 	}
 	return m.countRow
+}
+
+func (m *mockQuotaPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+	return pgconn.NewCommandTag("UPDATE 1"), nil
 }
 
 // freePlanPoolWith returns a mockQuotaPool set to "free" plan with given monitor count.

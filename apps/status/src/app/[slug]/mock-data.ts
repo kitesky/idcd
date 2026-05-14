@@ -121,25 +121,39 @@ export const MOCK_STATUS_PAGES: Record<string, StatusPageData> = {
   },
 }
 
-/** 生成过去 90 天的可用率数据（模拟） */
+/**
+ * 生成过去 90 天的可用率数据（模拟）。
+ *
+ * @param seedPercent - Target overall uptime percentage (0-100).
+ *   Higher values produce more operational days and fewer degraded/outage days.
+ *   NOTE: This is placeholder mock data. Replace with a real API call when
+ *   the backend data model is wired in. Results are non-deterministic across
+ *   calls; callers should memoize the output to avoid re-randomisation.
+ */
 export function generateUptimeHistory(
   seedPercent: number
 ): Array<{ date: string; status: ServiceStatus; uptime: number }> {
-  const result = []
+  // Derive failure window directly from seedPercent.
+  // At 99.5%: operationalRate=0.995, failureRate=0.005 (0.425% degraded, 0.075% outage).
+  // At 95%:   operationalRate=0.95,  failureRate=0.05  (4.25% degraded, 0.75% outage).
+  const operationalRate = seedPercent / 100
+  const failureRate = 1 - operationalRate
+  const degradedRate = failureRate * 0.85   // 85% of failures are degraded, not full outage
+
+  const result: Array<{ date: string; status: ServiceStatus; uptime: number }> = []
   const now = new Date()
   for (let i = 89; i >= 0; i--) {
     const d = new Date(now)
     d.setDate(d.getDate() - i)
     const dateStr = d.toISOString().slice(0, 10)
 
-    // 大部分天 operational，偶尔 degraded，极少 outage
     const rand = Math.random()
     let status: ServiceStatus
     let uptime: number
-    if (rand > 0.97) {
+    if (rand >= operationalRate + degradedRate) {
       status = "outage"
       uptime = 60 + Math.random() * 20
-    } else if (rand > 0.93) {
+    } else if (rand >= operationalRate) {
       status = "degraded"
       uptime = 85 + Math.random() * 10
     } else {

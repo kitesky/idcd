@@ -4,7 +4,7 @@ import { useState } from "react"
 import { useRouter } from "next/navigation"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
-import * as z from "zod"
+import * as z from "zod/v3"
 import {
   Button,
   Input,
@@ -101,7 +101,7 @@ export function AccountClient() {
       // Mock: real impl calls DELETE /v1/account
       await new Promise((r) => setTimeout(r, 300))
       // Show toast-like message then redirect
-      router.push("/auth/logout" as any)
+      router.push("/auth/logout")
     } catch {
       setDeleteError("提交失败，请稍后重试")
       setDeleteLoading(false)

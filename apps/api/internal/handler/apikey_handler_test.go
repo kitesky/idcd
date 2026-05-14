@@ -22,9 +22,8 @@ import (
 // ─────────────────────────────────────────────
 
 type mockAPIKeyQuerier struct {
-	keys   map[string]idcdmain.ApiKey
-	nextID int
-	err    error // if non-nil, all write ops return this error
+	keys map[string]idcdmain.ApiKey
+	err  error // if non-nil, all write ops return this error
 }
 
 func newMockAPIKeyQuerier() *mockAPIKeyQuerier {

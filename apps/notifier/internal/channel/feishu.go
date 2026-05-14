@@ -22,13 +22,17 @@ type FeishuChannel struct {
 }
 
 // NewFeishu creates a FeishuChannel.
-func NewFeishu(cfg FeishuConfig) *FeishuChannel {
+// Returns an error if the configured webhook URL fails SSRF validation.
+func NewFeishu(cfg FeishuConfig) (*FeishuChannel, error) {
+	if err := validateWebhookURL(cfg.WebhookURL); err != nil {
+		return nil, fmt.Errorf("feishu: invalid webhook_url: %w", err)
+	}
 	return &FeishuChannel{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-	}
+	}, nil
 }
 
 // Type implements Channel.
@@ -36,8 +40,8 @@ func (f *FeishuChannel) Type() string { return "feishu" }
 
 // feishuRequest is the JSON body for the Feishu robot API with an interactive card.
 type feishuRequest struct {
-	MsgType string      `json:"msg_type"`
-	Card    feishuCard  `json:"card"`
+	MsgType string     `json:"msg_type"`
+	Card    feishuCard `json:"card"`
 }
 
 type feishuCard struct {
@@ -61,9 +65,9 @@ type feishuCardTitle struct {
 }
 
 type feishuCardElement struct {
-	Tag  string          `json:"tag"`
-	Text feishuCardText  `json:"text,omitempty"`
-	URL  string          `json:"url,omitempty"`
+	Tag  string         `json:"tag"`
+	Text feishuCardText `json:"text,omitempty"`
+	URL  string         `json:"url,omitempty"`
 }
 
 type feishuCardText struct {
@@ -114,7 +118,7 @@ func (f *FeishuChannel) post(ctx context.Context, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("feishu: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("feishu: unexpected status: %d", resp.StatusCode)
@@ -132,4 +136,10 @@ func feishuTemplate(level string) string {
 	default:
 		return "blue"
 	}
+}
+
+// newFeishuWithClient creates a FeishuChannel using the provided HTTP client,
+// skipping URL validation. This is intended for tests only.
+func newFeishuWithClient(cfg FeishuConfig, client *http.Client) *FeishuChannel {
+	return &FeishuChannel{cfg: cfg, client: client}
 }

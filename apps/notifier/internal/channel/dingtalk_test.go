@@ -11,7 +11,7 @@ import (
 )
 
 func TestDingtalkChannel_Type(t *testing.T) {
-	ch := NewDingtalk(DingtalkConfig{WebhookURL: "http://example.com", Secret: "s"})
+	ch := newDingtalkWithClient(DingtalkConfig{WebhookURL: "https://example.com", Secret: "s"}, &http.Client{})
 	if ch.Type() != "dingtalk" {
 		t.Errorf("expected type 'dingtalk', got %q", ch.Type())
 	}
@@ -29,7 +29,7 @@ func TestDingtalkChannel_Send_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewDingtalk(DingtalkConfig{WebhookURL: srv.URL, Secret: "my-secret"})
+	ch := newDingtalkWithClient(DingtalkConfig{WebhookURL: srv.URL, Secret: "my-secret"}, srv.Client())
 	p := Payload{Title: "Down", Body: "monitor failed", URL: "https://dash.idcd.com", Level: "critical"}
 
 	if err := ch.Send(context.Background(), p); err != nil {
@@ -59,7 +59,7 @@ func TestDingtalkChannel_Send_Success(t *testing.T) {
 }
 
 func TestDingtalkChannel_SignURL_ContainsParams(t *testing.T) {
-	ch := NewDingtalk(DingtalkConfig{WebhookURL: "https://oapi.dingtalk.com/robot/send?access_token=abc", Secret: "secret"})
+	ch := newDingtalkWithClient(DingtalkConfig{WebhookURL: "https://oapi.dingtalk.com/robot/send?access_token=abc", Secret: "secret"}, &http.Client{})
 	signed, err := ch.signURL()
 	if err != nil {
 		t.Fatalf("signURL error: %v", err)
@@ -77,7 +77,7 @@ func TestDingtalkChannel_SignURL_ContainsParams(t *testing.T) {
 }
 
 func TestDingtalkChannel_SignURL_NoExistingParams(t *testing.T) {
-	ch := NewDingtalk(DingtalkConfig{WebhookURL: "https://oapi.dingtalk.com/robot/send", Secret: "secret"})
+	ch := newDingtalkWithClient(DingtalkConfig{WebhookURL: "https://oapi.dingtalk.com/robot/send", Secret: "secret"}, &http.Client{})
 	signed, err := ch.signURL()
 	if err != nil {
 		t.Fatalf("signURL error: %v", err)
@@ -93,10 +93,33 @@ func TestDingtalkChannel_Send_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewDingtalk(DingtalkConfig{WebhookURL: srv.URL, Secret: "s"})
+	ch := newDingtalkWithClient(DingtalkConfig{WebhookURL: srv.URL, Secret: "s"}, srv.Client())
 	p := Payload{Title: "T", Body: "B", URL: "U", Level: "warning"}
 
 	if err := ch.Send(context.Background(), p); err == nil {
 		t.Fatal("expected error for 400, got nil")
+	}
+}
+
+// ---- SSRF validation tests ----
+
+func TestNewDingtalk_RejectsHTTP(t *testing.T) {
+	_, err := NewDingtalk(DingtalkConfig{WebhookURL: "http://oapi.dingtalk.com/robot/send?access_token=x", Secret: "s"})
+	if err == nil {
+		t.Fatal("expected error for http:// scheme, got nil")
+	}
+}
+
+func TestNewDingtalk_RejectsPrivateIP(t *testing.T) {
+	_, err := NewDingtalk(DingtalkConfig{WebhookURL: "https://172.16.5.10/hook", Secret: "s"})
+	if err == nil {
+		t.Fatal("expected SSRF error for private IP, got nil")
+	}
+}
+
+func TestNewDingtalk_AcceptsPublicHTTPS(t *testing.T) {
+	_, err := NewDingtalk(DingtalkConfig{WebhookURL: "https://oapi.dingtalk.com/robot/send?access_token=abc", Secret: "s"})
+	if err != nil {
+		t.Errorf("expected no error for public https URL, got: %v", err)
 	}
 }

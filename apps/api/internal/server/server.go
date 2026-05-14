@@ -323,7 +323,6 @@ func (s *Server) metricsMiddleware() func(http.Handler) http.Handler {
 	}
 }
 
-
 // Start starts the HTTP server and the internal metrics server.
 func (s *Server) Start() error {
 	go s.startMetricsServer()

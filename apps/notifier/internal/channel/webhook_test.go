@@ -9,7 +9,7 @@ import (
 )
 
 func TestWebhookChannel_Type(t *testing.T) {
-	ch := NewWebhook(WebhookConfig{URL: "http://example.com"})
+	ch := newWebhookWithClient(WebhookConfig{URL: "https://example.com"}, &http.Client{})
 	if ch.Type() != "webhook" {
 		t.Errorf("expected type 'webhook', got %q", ch.Type())
 	}
@@ -31,7 +31,7 @@ func TestWebhookChannel_Send_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWebhook(WebhookConfig{URL: srv.URL})
+	ch := newWebhookWithClient(WebhookConfig{URL: srv.URL}, srv.Client())
 	p := Payload{Title: "Down", Body: "site is down", URL: "https://example.com", Level: "critical"}
 
 	if err := ch.Send(context.Background(), p); err != nil {
@@ -60,7 +60,7 @@ func TestWebhookChannel_Send_ServerError_Retries(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWebhook(WebhookConfig{URL: srv.URL})
+	ch := newWebhookWithClient(WebhookConfig{URL: srv.URL}, srv.Client())
 	p := Payload{Title: "T", Body: "B", URL: "U", Level: "warning"}
 
 	err := ch.Send(context.Background(), p)
@@ -75,7 +75,7 @@ func TestWebhookChannel_Send_ServerError_Retries(t *testing.T) {
 }
 
 func TestWebhookChannel_Send_InvalidURL(t *testing.T) {
-	ch := NewWebhook(WebhookConfig{URL: "http://127.0.0.1:0/no-such-server"})
+	ch := newWebhookWithClient(WebhookConfig{URL: "http://127.0.0.1:0/no-such-server"}, &http.Client{})
 	p := Payload{Title: "T", Body: "B", URL: "U", Level: "info"}
 
 	err := ch.Send(context.Background(), p)
@@ -90,9 +90,65 @@ func TestWebhookChannel_Send_2xxAccepted(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWebhook(WebhookConfig{URL: srv.URL})
+	ch := newWebhookWithClient(WebhookConfig{URL: srv.URL}, srv.Client())
 	p := Payload{Title: "T", Body: "B", URL: "U", Level: "info"}
 	if err := ch.Send(context.Background(), p); err != nil {
 		t.Fatalf("expected no error for 202, got: %v", err)
+	}
+}
+
+func TestWebhookChannel_Send_ContextCancelled_SkipsRetries(t *testing.T) {
+	callCount := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		callCount++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+
+	ch := newWebhookWithClient(WebhookConfig{URL: srv.URL}, srv.Client())
+	p := Payload{Title: "T", Body: "B", URL: "U", Level: "warning"}
+
+	err := ch.Send(ctx, p)
+	if err == nil {
+		t.Fatal("expected error for cancelled context, got nil")
+	}
+	// No HTTP calls should be made when context is already cancelled
+	if callCount != 0 {
+		t.Errorf("expected 0 HTTP calls for pre-cancelled context, got %d", callCount)
+	}
+}
+
+// ---- SSRF validation tests ----
+
+func TestNewWebhook_RejectsHTTP(t *testing.T) {
+	_, err := NewWebhook(WebhookConfig{URL: "http://example.com/hook"})
+	if err == nil {
+		t.Fatal("expected error for http:// scheme, got nil")
+	}
+}
+
+func TestNewWebhook_RejectsPrivateIP(t *testing.T) {
+	cases := []string{
+		"https://192.168.1.1/hook",
+		"https://10.0.0.1/hook",
+		"https://172.16.0.1/hook",
+		"https://127.0.0.1/hook",
+		"https://169.254.169.254/latest/meta-data/",
+	}
+	for _, u := range cases {
+		_, err := NewWebhook(WebhookConfig{URL: u})
+		if err == nil {
+			t.Errorf("expected SSRF error for %q, got nil", u)
+		}
+	}
+}
+
+func TestNewWebhook_AcceptsPublicHTTPS(t *testing.T) {
+	_, err := NewWebhook(WebhookConfig{URL: "https://hooks.example.com/notify"})
+	if err != nil {
+		t.Errorf("expected no error for public https URL, got: %v", err)
 	}
 }

@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
-  Activity,
   BarChart3,
   Bell,
   ChevronDown,
@@ -44,7 +43,7 @@ const NAV_GROUPS = [
       { icon: Settings, label: "个人设置", href: "/app/settings/profile" },
     ],
   },
-]
+] as const
 
 // ─── Sidebar content (shared between desktop + mobile) ────────────────────────
 
@@ -98,6 +97,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
 
+  const [authChecked, setAuthChecked] = useState(false)
   const [plan, setPlan] = useState<string>("Free")
   const [userEmail, setUserEmail] = useState<string>("user@example.com")
   const [userMenuOpen, setUserMenuOpen] = useState(false)
@@ -116,6 +116,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setPlan(savedPlan)
     const savedEmail = localStorage.getItem("mock_email") ?? "user@example.com"
     setUserEmail(savedEmail)
+    setAuthChecked(true)
   }, [router])
 
   // Close user menu on outside click
@@ -133,6 +134,9 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [pathname])
+
+  // Block rendering until auth check completes — prevents protected content flash
+  if (!authChecked) return null
 
   const planVariant =
     plan === "Pro"

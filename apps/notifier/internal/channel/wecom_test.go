@@ -10,7 +10,7 @@ import (
 )
 
 func TestWecomChannel_Type(t *testing.T) {
-	ch := NewWecom(WecomConfig{WebhookURL: "http://example.com"})
+	ch := newWecomWithClient(WecomConfig{WebhookURL: "https://example.com"}, &http.Client{})
 	if ch.Type() != "wecom" {
 		t.Errorf("expected type 'wecom', got %q", ch.Type())
 	}
@@ -26,7 +26,7 @@ func TestWecomChannel_Send_Success(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWecom(WecomConfig{WebhookURL: srv.URL})
+	ch := newWecomWithClient(WecomConfig{WebhookURL: srv.URL}, srv.Client())
 	p := Payload{Title: "Alert", Body: "Something broke", URL: "https://dash.idcd.com", Level: "critical"}
 
 	if err := ch.Send(context.Background(), p); err != nil {
@@ -59,7 +59,7 @@ func TestWecomChannel_Send_WarningLevel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWecom(WecomConfig{WebhookURL: srv.URL})
+	ch := newWecomWithClient(WecomConfig{WebhookURL: srv.URL}, srv.Client())
 	p := Payload{Title: "Warn", Body: "latency high", URL: "https://dash.idcd.com", Level: "warning"}
 
 	if err := ch.Send(context.Background(), p); err != nil {
@@ -78,7 +78,7 @@ func TestWecomChannel_Send_InfoLevel(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWecom(WecomConfig{WebhookURL: srv.URL})
+	ch := newWecomWithClient(WecomConfig{WebhookURL: srv.URL}, srv.Client())
 	p := Payload{Title: "Info", Body: "recovered", URL: "https://dash.idcd.com", Level: "info"}
 
 	if err := ch.Send(context.Background(), p); err != nil {
@@ -95,7 +95,7 @@ func TestWecomChannel_Send_ServerError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	ch := NewWecom(WecomConfig{WebhookURL: srv.URL})
+	ch := newWecomWithClient(WecomConfig{WebhookURL: srv.URL}, srv.Client())
 	p := Payload{Title: "T", Body: "B", URL: "U", Level: "info"}
 
 	if err := ch.Send(context.Background(), p); err == nil {
@@ -118,5 +118,28 @@ func TestLevelIcon(t *testing.T) {
 		if got != tc.want {
 			t.Errorf("levelIcon(%q) = %q, want %q", tc.level, got, tc.want)
 		}
+	}
+}
+
+// ---- SSRF validation tests ----
+
+func TestNewWecom_RejectsHTTP(t *testing.T) {
+	_, err := NewWecom(WecomConfig{WebhookURL: "http://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=x"})
+	if err == nil {
+		t.Fatal("expected error for http:// scheme, got nil")
+	}
+}
+
+func TestNewWecom_RejectsPrivateIP(t *testing.T) {
+	_, err := NewWecom(WecomConfig{WebhookURL: "https://10.0.0.1/hook"})
+	if err == nil {
+		t.Fatal("expected SSRF error for private IP, got nil")
+	}
+}
+
+func TestNewWecom_AcceptsPublicHTTPS(t *testing.T) {
+	_, err := NewWecom(WecomConfig{WebhookURL: "https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=abc"})
+	if err != nil {
+		t.Errorf("expected no error for public https URL, got: %v", err)
 	}
 }

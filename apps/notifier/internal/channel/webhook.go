@@ -21,13 +21,17 @@ type WebhookChannel struct {
 }
 
 // NewWebhook creates a WebhookChannel with a 10-second timeout HTTP client.
-func NewWebhook(cfg WebhookConfig) *WebhookChannel {
+// Returns an error if the configured URL fails SSRF validation.
+func NewWebhook(cfg WebhookConfig) (*WebhookChannel, error) {
+	if err := validateWebhookURL(cfg.URL); err != nil {
+		return nil, fmt.Errorf("webhook: invalid url: %w", err)
+	}
 	return &WebhookChannel{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-	}
+	}, nil
 }
 
 // Type implements Channel.
@@ -42,14 +46,10 @@ type webhookBody struct {
 }
 
 // Send implements Channel. It posts the payload as JSON to the configured URL,
-// retrying up to 3 times on transient failures.
+// retrying up to 3 times on transient failures. Retries are skipped when the
+// context has already been cancelled.
 func (w *WebhookChannel) Send(ctx context.Context, p Payload) error {
-	body := webhookBody{
-		Title: p.Title,
-		Body:  p.Body,
-		URL:   p.URL,
-		Level: p.Level,
-	}
+	body := webhookBody(p) // direct conversion — same field layout
 
 	data, err := json.Marshal(body)
 	if err != nil {
@@ -58,6 +58,10 @@ func (w *WebhookChannel) Send(ctx context.Context, p Payload) error {
 
 	var lastErr error
 	for attempt := 1; attempt <= 3; attempt++ {
+		// Do not start a new attempt if the caller has already given up.
+		if ctx.Err() != nil {
+			return fmt.Errorf("webhook: context cancelled before attempt %d: %w", attempt, ctx.Err())
+		}
 		lastErr = w.doPost(ctx, data)
 		if lastErr == nil {
 			return nil
@@ -77,10 +81,16 @@ func (w *WebhookChannel) doPost(ctx context.Context, data []byte) error {
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("unexpected status: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// newWebhookWithClient creates a WebhookChannel using the provided HTTP client,
+// skipping URL validation. This is intended for tests only.
+func newWebhookWithClient(cfg WebhookConfig, client *http.Client) *WebhookChannel {
+	return &WebhookChannel{cfg: cfg, client: client}
 }

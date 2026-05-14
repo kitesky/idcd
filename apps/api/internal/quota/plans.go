@@ -21,14 +21,16 @@ func QuotaExceeded(msg string) *apperr.Error {
 }
 
 // PlanLimits holds the quota upper bounds for a single subscription plan.
-// A value of 0 means unlimited (no enforcement).
+// For integer fields, a value of 0 means unlimited (no enforcement) unless
+// NoStatusPages is true, which explicitly disallows status pages (free tier).
 type PlanLimits struct {
-	MaxMonitors     int // 0 = unlimited
-	MinIntervalS    int // smallest allowed check interval in seconds
-	MaxNodes        int // 0 = unlimited
-	MaxChannels     int // 0 = unlimited
-	MaxStatusPages  int // 0 = unlimited
-	MaxAPIDailyReqs int // 0 = unlimited
+	MaxMonitors     int  // 0 = unlimited
+	MinIntervalS    int  // smallest allowed check interval in seconds
+	MaxNodes        int  // 0 = unlimited
+	MaxChannels     int  // 0 = unlimited
+	MaxStatusPages  int  // 0 = unlimited (unless NoStatusPages is true)
+	NoStatusPages   bool // true = status pages not available on this plan
+	MaxAPIDailyReqs int  // 0 = unlimited
 }
 
 // planTable stores the canonical limits for each plan name.
@@ -38,7 +40,8 @@ var planTable = map[string]PlanLimits{
 		MinIntervalS:    300,
 		MaxNodes:        1,
 		MaxChannels:     1,
-		MaxStatusPages:  0, // free has 0 status pages
+		MaxStatusPages:  0,
+		NoStatusPages:   true, // free tier: status pages feature not available
 		MaxAPIDailyReqs: 100,
 	},
 	"pro": {
@@ -158,16 +161,15 @@ func CheckChannelCount(plan string, current int) error {
 // the plan's status page limit. current is the user's existing count.
 func CheckStatusPageCount(plan string, current int) error {
 	l := Limits(plan)
-	if l.MaxStatusPages == 0 && plan != "free" {
-		// business unlimited
-		return nil
-	}
-	if l.MaxStatusPages == 0 && plan == "free" {
-		// free has 0 allowed status pages
+	if l.NoStatusPages {
 		return QuotaExceeded(fmt.Sprintf(
 			"您的 %s 档不支持状态页功能。升级 Pro 档可创建最多 3 个状态页。",
 			planDisplayName(plan),
 		))
+	}
+	// MaxStatusPages == 0 means unlimited (e.g., business plan).
+	if l.MaxStatusPages == 0 {
+		return nil
 	}
 	if current >= l.MaxStatusPages {
 		return QuotaExceeded(fmt.Sprintf(

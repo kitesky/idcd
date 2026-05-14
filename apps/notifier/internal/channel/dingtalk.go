@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -28,13 +29,17 @@ type DingtalkChannel struct {
 }
 
 // NewDingtalk creates a DingtalkChannel.
-func NewDingtalk(cfg DingtalkConfig) *DingtalkChannel {
+// Returns an error if the configured webhook URL fails SSRF validation.
+func NewDingtalk(cfg DingtalkConfig) (*DingtalkChannel, error) {
+	if err := validateWebhookURL(cfg.WebhookURL); err != nil {
+		return nil, fmt.Errorf("dingtalk: invalid webhook_url: %w", err)
+	}
 	return &DingtalkChannel{
 		cfg: cfg,
 		client: &http.Client{
 			Timeout: 10 * time.Second,
 		},
-	}
+	}, nil
 }
 
 // Type implements Channel.
@@ -42,8 +47,8 @@ func (d *DingtalkChannel) Type() string { return "dingtalk" }
 
 // dingtalkRequest is the JSON body for the DingTalk robot API.
 type dingtalkRequest struct {
-	MsgType  string            `json:"msgtype"`
-	Markdown dingtalkMarkdown  `json:"markdown"`
+	MsgType  string           `json:"msgtype"`
+	Markdown dingtalkMarkdown `json:"markdown"`
 }
 
 type dingtalkMarkdown struct {
@@ -86,17 +91,11 @@ func (d *DingtalkChannel) signURL() (string, error) {
 	mac.Write([]byte(stringToSign))
 	sig := base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	base := d.cfg.WebhookURL
 	separator := "?"
-	if len(base) > 0 {
-		for _, ch := range base {
-			if ch == '?' {
-				separator = "&"
-				break
-			}
-		}
+	if strings.Contains(d.cfg.WebhookURL, "?") {
+		separator = "&"
 	}
-	return base + separator + "timestamp=" + ts + "&sign=" + url.QueryEscape(sig), nil
+	return d.cfg.WebhookURL + separator + "timestamp=" + ts + "&sign=" + url.QueryEscape(sig), nil
 }
 
 func (d *DingtalkChannel) post(ctx context.Context, targetURL string, data []byte) error {
@@ -110,10 +109,16 @@ func (d *DingtalkChannel) post(ctx context.Context, targetURL string, data []byt
 	if err != nil {
 		return fmt.Errorf("dingtalk: do request: %w", err)
 	}
-	defer resp.Body.Close()
+	defer drainAndClose(resp.Body)
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return fmt.Errorf("dingtalk: unexpected status: %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// newDingtalkWithClient creates a DingtalkChannel using the provided HTTP client,
+// skipping URL validation. This is intended for tests only.
+func newDingtalkWithClient(cfg DingtalkConfig, client *http.Client) *DingtalkChannel {
+	return &DingtalkChannel{cfg: cfg, client: client}
 }

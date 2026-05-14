@@ -27,6 +27,7 @@ build/
 .next/
 .turbo/
 out/
+*.tsbuildinfo
 
 # Logs
 *.log

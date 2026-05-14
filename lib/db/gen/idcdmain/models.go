@@ -93,6 +93,20 @@ type AuditLog struct {
 	Metadata     []byte             `json:"metadata"`
 }
 
+type Invoice struct {
+	ID              string             `json:"id"`
+	UserID          string             `json:"user_id"`
+	SubscriptionID  *string            `json:"subscription_id"`
+	PaddleInvoiceID *string            `json:"paddle_invoice_id"`
+	AmountCents     int32              `json:"amount_cents"`
+	Currency        string             `json:"currency"`
+	Status          string             `json:"status"`
+	PaidAt          pgtype.Timestamptz `json:"paid_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	Provider        string             `json:"provider"`
+	ExtInvoiceID    *string            `json:"ext_invoice_id"`
+}
+
 type Monitor struct {
 	ID          string             `json:"id"`
 	UserID      string             `json:"user_id"`
@@ -119,6 +133,30 @@ type MonitorCheck struct {
 	Metadata  []byte             `json:"metadata"`
 }
 
+type Payment struct {
+	ID               string             `json:"id"`
+	UserID           string             `json:"user_id"`
+	InvoiceID        *string            `json:"invoice_id"`
+	PaddleTxnID      *string            `json:"paddle_txn_id"`
+	AmountCents      int32              `json:"amount_cents"`
+	Currency         string             `json:"currency"`
+	Status           string             `json:"status"`
+	RefundRetryCount int32              `json:"refund_retry_count"`
+	RefundFailedAt   pgtype.Timestamptz `json:"refund_failed_at"`
+	Metadata         []byte             `json:"metadata"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	Provider         string             `json:"provider"`
+	ExtTxnID         *string            `json:"ext_txn_id"`
+}
+
+type PaymentProvider struct {
+	ID        string             `json:"id"`
+	Provider  string             `json:"provider"`
+	Enabled   bool               `json:"enabled"`
+	Config    []byte             `json:"config"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
 type ProbeTask struct {
 	ID               string             `json:"id"`
 	Type             string             `json:"type"`
@@ -134,6 +172,32 @@ type ProbeTask struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	StartedAt        pgtype.Timestamptz `json:"started_at"`
 	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+}
+
+type StatusPage struct {
+	ID           string             `json:"id"`
+	UserID       string             `json:"user_id"`
+	Slug         string             `json:"slug"`
+	Name         string             `json:"name"`
+	Description  *string            `json:"description"`
+	CustomDomain *string            `json:"custom_domain"`
+	Branding     bool               `json:"branding"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type Subscription struct {
+	ID                 string             `json:"id"`
+	UserID             string             `json:"user_id"`
+	Plan               string             `json:"plan"`
+	Status             string             `json:"status"`
+	PaddleSubID        *string            `json:"paddle_sub_id"`
+	CurrentPeriodStart pgtype.Timestamptz `json:"current_period_start"`
+	CurrentPeriodEnd   pgtype.Timestamptz `json:"current_period_end"`
+	CancelAt           pgtype.Timestamptz `json:"cancel_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+	Provider           string             `json:"provider"`
+	ExtSubID           *string            `json:"ext_sub_id"`
 }
 
 type User struct {

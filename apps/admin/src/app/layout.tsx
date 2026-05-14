@@ -40,6 +40,7 @@ export default function RootLayout({
                 <a href="/users" className="text-muted-foreground hover:text-foreground transition-colors">用户管理</a>
                 <a href="/nodes" className="text-muted-foreground hover:text-foreground transition-colors">节点健康</a>
                 <a href="/refund-failed" className="text-muted-foreground hover:text-foreground transition-colors">退款失败</a>
+                <a href="/beta-invitations" className="text-muted-foreground hover:text-foreground transition-colors">Beta 邀请码</a>
               </nav>
             </div>
           </header>

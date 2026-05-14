@@ -148,11 +148,13 @@ func (h *WebAuthnHandler) RegisterComplete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Consume challenge atomically — prevents concurrent replay of the same challenge.
 	var storedUserID string
 	var expiresAt time.Time
 	err := h.pool.QueryRow(r.Context(), `
-		SELECT user_id, expires_at FROM webauthn_challenges
+		DELETE FROM webauthn_challenges
 		WHERE challenge = $1 AND purpose = 'registration'
+		RETURNING user_id, expires_at
 	`, req.Challenge).Scan(&storedUserID, &expiresAt)
 	if err != nil {
 		response.Error(w, r, apperr.Validation("invalid or unknown challenge", ""))
@@ -188,9 +190,6 @@ func (h *WebAuthnHandler) RegisterComplete(w http.ResponseWriter, r *http.Reques
 		response.Error(w, r, apperr.Internal("failed to store credential", err))
 		return
 	}
-
-	_, _ = h.pool.Exec(r.Context(),
-		`DELETE FROM webauthn_challenges WHERE challenge = $1`, req.Challenge)
 
 	response.JSON(w, r, http.StatusOK, registerCompleteResponse{
 		CredentialID: credentialID,
@@ -337,10 +336,12 @@ func (h *WebAuthnHandler) AuthComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Consume challenge atomically — prevents concurrent replay of the same challenge.
 	var expiresAt time.Time
 	err := h.pool.QueryRow(r.Context(), `
-		SELECT expires_at FROM webauthn_challenges
+		DELETE FROM webauthn_challenges
 		WHERE challenge = $1 AND purpose = 'authentication'
+		RETURNING expires_at
 	`, req.Challenge).Scan(&expiresAt)
 	if err != nil {
 		response.Error(w, r, apperr.Validation("invalid or unknown challenge", ""))
@@ -376,9 +377,6 @@ func (h *WebAuthnHandler) AuthComplete(w http.ResponseWriter, r *http.Request) {
 		UPDATE webauthn_credentials SET sign_count = $1, last_used_at = now()
 		WHERE credential_id = $2
 	`, newSignCount, credentialID)
-
-	_, _ = h.pool.Exec(r.Context(),
-		`DELETE FROM webauthn_challenges WHERE challenge = $1`, req.Challenge)
 
 	if h.jwtSvc == nil || h.sessSvc == nil {
 		response.Error(w, r, apperr.Internal("auth service not configured", nil))

@@ -51,6 +51,12 @@ func ValidateCode(secret, code string) (bool, error) {
 	return false, nil
 }
 
+// UsedCodeKey returns the Redis key for tracking a consumed TOTP code.
+// TTL should be 90s (±1 time-step window) to block replays.
+func UsedCodeKey(userID, code string) string {
+	return "totp:used:" + userID + ":" + code
+}
+
 func OTPAuthURL(issuer, account, secret string) string {
 	return fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s", issuer, account, secret, issuer)
 }

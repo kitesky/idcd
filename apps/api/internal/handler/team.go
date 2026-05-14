@@ -22,6 +22,7 @@ type TeamPool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 type TeamHandler struct {
@@ -113,7 +114,15 @@ func (h *TeamHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var name, slug, plan, ownerID string
 	var createdAt, updatedAt time.Time
 
-	err := h.pool.QueryRow(r.Context(),
+	// Wrap both INSERTs in a transaction — orphaned teams (no owner membership) must not persist.
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to begin transaction", err))
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	err = tx.QueryRow(r.Context(),
 		`INSERT INTO teams (id, name, slug, plan, owner_id)
 		 VALUES ($1, $2, $3, 'free', $4)
 		 RETURNING id, name, slug, plan, owner_id, created_at, updated_at`,
@@ -129,13 +138,18 @@ func (h *TeamHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	memberID := idgen.New("tmb_")
-	_, err = h.pool.Exec(r.Context(),
+	_, err = tx.Exec(r.Context(),
 		`INSERT INTO team_memberships (id, team_id, user_id, role)
 		 VALUES ($1, $2, $3, 'owner')`,
 		memberID, teamID, userID,
 	)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to create membership", err))
+		return
+	}
+
+	if err = tx.Commit(r.Context()); err != nil {
+		response.Error(w, r, apperr.Internal("failed to commit team creation", err))
 		return
 	}
 
@@ -419,6 +433,16 @@ func (h *TeamHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Owner cannot leave the team — transfer ownership first.
+	var ownerID string
+	_ = h.pool.QueryRow(r.Context(),
+		`SELECT owner_id FROM teams WHERE id = $1`, teamID,
+	).Scan(&ownerID)
+	if targetUserID == ownerID {
+		response.Error(w, r, apperr.Validation("owner cannot leave the team; transfer ownership first", ""))
+		return
+	}
+
 	tag, err := h.pool.Exec(r.Context(),
 		`DELETE FROM team_memberships WHERE team_id = $1 AND user_id = $2`,
 		teamID, targetUserID,
@@ -600,23 +624,29 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var invID, teamID, role string
+	// Atomically consume the invitation — prevents two concurrent accepts with the same token.
+	var invID, teamID, role, invitedBy string
 	var expiresAt time.Time
 	err := h.pool.QueryRow(r.Context(),
-		`SELECT id, team_id, role, expires_at FROM team_invitations
-		 WHERE token = $1 AND status = 'pending'`,
+		`UPDATE team_invitations
+		 SET status = 'accepted'
+		 WHERE token = $1 AND status = 'pending'
+		 RETURNING id, team_id, role, invited_by, expires_at`,
 		req.Token,
-	).Scan(&invID, &teamID, &role, &expiresAt)
+	).Scan(&invID, &teamID, &role, &invitedBy, &expiresAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {
 			response.Error(w, r, apperr.NotFound("invitation not found or already used"))
 			return
 		}
-		response.Error(w, r, apperr.Internal("failed to look up invitation", err))
+		response.Error(w, r, apperr.Internal("failed to accept invitation", err))
 		return
 	}
 
 	if time.Now().After(expiresAt) {
+		// Roll back the status change since the invite is expired.
+		_, _ = h.pool.Exec(r.Context(),
+			`UPDATE team_invitations SET status = 'pending' WHERE id = $1`, invID)
 		response.Error(w, r, apperr.Validation("invitation has expired", ""))
 		return
 	}
@@ -624,21 +654,12 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	memberID := idgen.New("tmb_")
 	_, err = h.pool.Exec(r.Context(),
 		`INSERT INTO team_memberships (id, team_id, user_id, role, invited_by)
-		 VALUES ($1, $2, $3, $4, (SELECT invited_by FROM team_invitations WHERE id = $5))
+		 VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (team_id, user_id) DO NOTHING`,
-		memberID, teamID, userID, role, invID,
+		memberID, teamID, userID, role, invitedBy,
 	)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to create membership", err))
-		return
-	}
-
-	_, err = h.pool.Exec(r.Context(),
-		`UPDATE team_invitations SET status = 'accepted' WHERE id = $1`,
-		invID,
-	)
-	if err != nil {
-		response.Error(w, r, apperr.Internal("failed to mark invitation accepted", err))
 		return
 	}
 

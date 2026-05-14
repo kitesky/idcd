@@ -24,6 +24,7 @@ const (
 	mfaPendingKeyPrefix = "mfa:pending:"
 	mfaPendingTTL       = 5 * time.Minute
 	totpIssuer          = "idcd"
+	totpUsedCodeTTL     = 90 * time.Second // ±1 time-step replay window
 )
 
 type TOTPPool interface {
@@ -116,6 +117,13 @@ func (h *TOTPHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Block replay: same code can only be used once in the ±1 time-step window.
+	usedKey := totp.UsedCodeKey(userID, req.Code)
+	if h.redis.Exists(r.Context(), usedKey).Val() > 0 {
+		response.Error(w, r, apperr.Validation("invalid TOTP code", ""))
+		return
+	}
+
 	ok, err := totp.ValidateCode(secret, req.Code)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to validate code", err))
@@ -125,6 +133,7 @@ func (h *TOTPHandler) Verify(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("invalid TOTP code", ""))
 		return
 	}
+	_ = h.redis.Set(r.Context(), usedKey, "1", totpUsedCodeTTL)
 
 	backupCodes, err := totp.GenerateBackupCodes()
 	if err != nil {
@@ -184,6 +193,14 @@ func (h *TOTPHandler) Disable(w http.ResponseWriter, r *http.Request) {
 	}
 
 	secret := strings.TrimSpace(string(secretBytes))
+
+	// Block replay within the ±1 time-step window.
+	usedKey := totp.UsedCodeKey(userID, req.Code)
+	if h.redis.Exists(r.Context(), usedKey).Val() > 0 {
+		response.Error(w, r, apperr.Validation("invalid TOTP code", ""))
+		return
+	}
+
 	ok, err := totp.ValidateCode(secret, req.Code)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to validate code", err))
@@ -193,6 +210,7 @@ func (h *TOTPHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("invalid TOTP code", ""))
 		return
 	}
+	_ = h.redis.Set(r.Context(), usedKey, "1", totpUsedCodeTTL)
 
 	_, err = h.pool.Exec(r.Context(),
 		`DELETE FROM user_2fa WHERE user_id = $1`, userID,

@@ -51,6 +51,7 @@ func TestTeamHandler_Create_Success(t *testing.T) {
 	defer mockPool.Close()
 
 	now := time.Now()
+	mockPool.ExpectBegin()
 	mockPool.ExpectQuery(regexp.QuoteMeta(`INSERT INTO teams`)).
 		WithArgs(pgxmock.AnyArg(), "Acme Corp", "acme", "u_owner").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "name", "slug", "plan", "owner_id", "created_at", "updated_at"}).
@@ -59,6 +60,7 @@ func TestTeamHandler_Create_Success(t *testing.T) {
 	mockPool.ExpectExec(regexp.QuoteMeta(`INSERT INTO team_memberships`)).
 		WithArgs(pgxmock.AnyArg(), "team_abc", "u_owner").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mockPool.ExpectCommit()
 
 	req := teamRequest(http.MethodPost, "/v1/teams", map[string]string{"name": "Acme Corp", "slug": "acme"})
 	req = prepReq(req, "u_owner")
@@ -134,18 +136,15 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 	defer mockPool.Close()
 
 	expiresAt := time.Now().Add(24 * time.Hour)
-	mockPool.ExpectQuery(regexp.QuoteMeta(`SELECT id, team_id, role, expires_at FROM team_invitations`)).
+	// Now uses UPDATE...RETURNING to atomically consume the invitation.
+	mockPool.ExpectQuery(regexp.QuoteMeta(`UPDATE team_invitations`)).
 		WithArgs("valid-token-abc").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "team_id", "role", "expires_at"}).
-			AddRow("tinv_xyz", "team_abc", "member", expiresAt))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "team_id", "role", "invited_by", "expires_at"}).
+			AddRow("tinv_xyz", "team_abc", "member", "u_inviter", expiresAt))
 
 	mockPool.ExpectExec(regexp.QuoteMeta(`INSERT INTO team_memberships`)).
-		WithArgs(pgxmock.AnyArg(), "team_abc", "u_joiner", "member", "tinv_xyz").
+		WithArgs(pgxmock.AnyArg(), "team_abc", "u_joiner", "member", "u_inviter").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
-
-	mockPool.ExpectExec(regexp.QuoteMeta(`UPDATE team_invitations SET status = 'accepted' WHERE id = $1`)).
-		WithArgs("tinv_xyz").
-		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
 	req := teamRequest(http.MethodPost, "/v1/teams/accept-invitation",
 		map[string]string{"token": "valid-token-abc"})
@@ -164,6 +163,11 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 func TestTeamHandler_RemoveMember_SelfLeave(t *testing.T) {
 	h, mockPool := newTeamTestHandler(t)
 	defer mockPool.Close()
+
+	// Owner check: u_self is not the team owner, so removal is allowed.
+	mockPool.ExpectQuery(regexp.QuoteMeta(`SELECT owner_id FROM teams WHERE id = $1`)).
+		WithArgs("team_abc").
+		WillReturnRows(pgxmock.NewRows([]string{"owner_id"}).AddRow("u_owner"))
 
 	mockPool.ExpectExec(regexp.QuoteMeta(`DELETE FROM team_memberships WHERE team_id = $1 AND user_id = $2`)).
 		WithArgs("team_abc", "u_self").

@@ -192,10 +192,17 @@ func (h *AuthHandler) recordReferral(ctx context.Context, code, referredID strin
 	}
 	_ = codeID
 
+	// Prevent self-referral.
+	if referrerID == referredID {
+		return
+	}
+
 	rewardID := idgen.New("rwd_")
+	// ON CONFLICT guards against duplicate rows from concurrent registrations with the same code.
 	_, _ = h.referralPool.Exec(ctx, `
 		INSERT INTO referral_rewards (id, referrer_id, referred_id, code, status, reward_amount)
 		VALUES ($1, $2, $3, $4, 'pending', 10.00)
+		ON CONFLICT (referrer_id, referred_id) DO NOTHING
 	`, rewardID, referrerID, referredID, code)
 
 	_, _ = h.referralPool.Exec(ctx,

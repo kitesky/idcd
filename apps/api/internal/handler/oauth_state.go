@@ -39,3 +39,12 @@ func (s *redisStateStore) Del(ctx context.Context, key string) error {
 	}
 	return nil
 }
+
+// GetDel atomically reads and deletes a key. Prevents TOCTOU replay on concurrent callbacks.
+func (s *redisStateStore) GetDel(ctx context.Context, key string) (string, error) {
+	val, err := s.redis.GetDel(ctx, key).Result()
+	if err != nil {
+		return "", fmt.Errorf("state store getdel: %w", err)
+	}
+	return val, nil
+}

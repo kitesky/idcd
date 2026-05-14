@@ -134,10 +134,12 @@ func TestCommunityNode_Redeem_InsufficientBalance(t *testing.T) {
 	h, mockPool := newCommunityNodeTestHandler(t)
 	defer mockPool.Close()
 
+	mockPool.ExpectBegin()
 	balanceRow := pgxmock.NewRows([]string{"balance"}).AddRow(100)
 	mockPool.ExpectQuery(regexp.QuoteMeta(`SELECT COALESCE`)).
 		WithArgs("u_test").
 		WillReturnRows(balanceRow)
+	mockPool.ExpectRollback()
 
 	body := `{"reward_type":"api_calls","points":500}`
 	req := httptest.NewRequest(http.MethodPost, "/v1/account/points/redeem", strings.NewReader(body))

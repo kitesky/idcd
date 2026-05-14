@@ -38,10 +38,12 @@ const (
 )
 
 // OAuthStateStore stores and validates short-lived CSRF state tokens.
+// GetDel atomically reads and removes a key — prevents TOCTOU replay on concurrent callbacks.
 type OAuthStateStore interface {
 	Set(ctx context.Context, key, value string, ttl time.Duration) error
 	Get(ctx context.Context, key string) (string, error)
 	Del(ctx context.Context, key string) error
+	GetDel(ctx context.Context, key string) (string, error)
 }
 
 // OAuthQuerier is the subset of DB queries used by OAuthHandler.
@@ -137,11 +139,10 @@ func (h *OAuthHandler) DingTalkCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	key := oauthStateKey(providerDingTalk, state)
-	if _, err := h.stateStore.Get(r.Context(), key); err != nil {
+	if _, err := h.stateStore.GetDel(r.Context(), key); err != nil {
 		response.Error(w, r, apperr.Validation("invalid or expired state", ""))
 		return
 	}
-	_ = h.stateStore.Del(r.Context(), key)
 
 	accessToken, err := h.exchangeDingTalkToken(r.Context(), code)
 	if err != nil {
@@ -291,11 +292,10 @@ func (h *OAuthHandler) FeishuCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	key := oauthStateKey(providerFeishu, state)
-	if _, err := h.stateStore.Get(r.Context(), key); err != nil {
+	if _, err := h.stateStore.GetDel(r.Context(), key); err != nil {
 		response.Error(w, r, apperr.Validation("invalid or expired state", ""))
 		return
 	}
-	_ = h.stateStore.Del(r.Context(), key)
 
 	accessToken, err := h.exchangeFeishuToken(r.Context(), code)
 	if err != nil {

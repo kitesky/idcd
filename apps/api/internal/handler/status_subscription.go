@@ -6,7 +6,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"net"
 	"net/http"
+	"net/mail"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -112,6 +115,26 @@ func (h *StatusSubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Req
 	if !validSubChannelTypes[req.ChannelType] {
 		response.Error(w, r, apperr.Validation("channel_type must be one of: email, webhook, wecom, dingtalk", "channel_type"))
 		return
+	}
+
+	// Validate endpoint format to prevent stored SSRF and email header injection.
+	switch req.ChannelType {
+	case "email":
+		if _, err := mail.ParseAddress(req.Endpoint); err != nil {
+			response.Error(w, r, apperr.Validation("endpoint must be a valid email address", "endpoint"))
+			return
+		}
+	case "webhook", "wecom", "dingtalk":
+		u, err := url.ParseRequestURI(req.Endpoint)
+		if err != nil || u.Scheme != "https" {
+			response.Error(w, r, apperr.Validation("endpoint must be a valid HTTPS URL", "endpoint"))
+			return
+		}
+		host := u.Hostname()
+		if ip := net.ParseIP(host); ip != nil && isPrivateIP(req.Endpoint) {
+			response.Error(w, r, apperr.Validation("endpoint must not point to a private IP address", "endpoint"))
+			return
+		}
 	}
 
 	events := req.Events

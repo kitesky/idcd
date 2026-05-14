@@ -112,6 +112,18 @@ func (m *mockStateStore) Del(_ context.Context, key string) error {
 	return nil
 }
 
+func (m *mockStateStore) GetDel(_ context.Context, key string) (string, error) {
+	if m.err != nil {
+		return "", m.err
+	}
+	v, ok := m.data[key]
+	if !ok {
+		return "", errors.New("not found")
+	}
+	delete(m.data, key)
+	return v, nil
+}
+
 func newTestOAuthHandler(q *mockOAuthQuerier, stateStore OAuthStateStore, dingtalkSrv, feishuSrv *httptest.Server) *OAuthHandler {
 	cfg := OAuthConfig{
 		DingTalkAppID:  "test_dt_app",

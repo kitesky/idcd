@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"net"
 	"net/http"
 	"time"
 
@@ -20,6 +21,7 @@ type CommunityNodePool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 type CommunityNodeHandler struct {
@@ -101,6 +103,17 @@ func (h *CommunityNodeHandler) Apply(w http.ResponseWriter, r *http.Request) {
 
 	if req.Hostname == "" || req.IPAddress == "" || req.Country == "" {
 		response.Error(w, r, apperr.Validation("hostname, ip_address, and country are required", ""))
+		return
+	}
+
+	// Prevent internal-IP registration (SSRF / privilege escalation via node verification).
+	parsedIP := net.ParseIP(req.IPAddress)
+	if parsedIP == nil {
+		response.Error(w, r, apperr.Validation("ip_address must be a valid IP address", "ip_address"))
+		return
+	}
+	if isPrivateIP(req.IPAddress) {
+		response.Error(w, r, apperr.Validation("ip_address must be a public IP address", "ip_address"))
 		return
 	}
 
@@ -261,11 +274,21 @@ func (h *CommunityNodeHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	var currentBalance int
-	err := h.pool.QueryRow(ctx, `
-		SELECT COALESCE((SELECT balance FROM node_points WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1), 0)
-	`, userID).Scan(&currentBalance)
+	tx, err := h.pool.Begin(ctx)
 	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to begin transaction", err))
+		return
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	// Lock the latest balance row to serialize concurrent redemptions.
+	var currentBalance int
+	err = tx.QueryRow(ctx, `
+		SELECT COALESCE(balance, 0) FROM node_points
+		WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1
+		FOR UPDATE
+	`, userID).Scan(&currentBalance)
+	if err != nil && err.Error() != "no rows in result set" {
 		response.Error(w, r, apperr.Internal("failed to check balance", err))
 		return
 	}
@@ -280,7 +303,7 @@ func (h *CommunityNodeHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 	pointsID := idgen.New("pts_")
 	redeemID := idgen.New("red_")
 
-	_, err = h.pool.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
 		INSERT INTO node_points (id, user_id, amount, balance, reason, ref_id, created_at)
 		VALUES ($1, $2, $3, $4, 'redemption', $5, $6)
 	`, pointsID, userID, -req.Points, newBalance, redeemID, now)
@@ -289,12 +312,17 @@ func (h *CommunityNodeHandler) Redeem(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.pool.Exec(ctx, `
+	_, err = tx.Exec(ctx, `
 		INSERT INTO point_redemptions (id, user_id, points_spent, reward_type, reward_amount, status, created_at)
 		VALUES ($1, $2, $3, $4, $5, 'pending', $6)
 	`, redeemID, userID, req.Points, req.RewardType, rewardAmount, now)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to create redemption", err))
+		return
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		response.Error(w, r, apperr.Internal("failed to commit redemption", err))
 		return
 	}
 

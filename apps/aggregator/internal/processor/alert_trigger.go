@@ -183,6 +183,10 @@ func (t *AlertTrigger) processPolicy(ctx context.Context, monitorID, checkStatus
 		t.logger.Error("alert_trigger: insert alert event", "monitor_id", monitorID, "err", err)
 		return
 	}
+	if event == nil {
+		// Another aggregator instance won the race; skip notifications for this instance.
+		return
+	}
 
 	if userID != "" {
 		if err := RecordNoise(ctx, t.db, userID, monitorID, "fire", event.startedAt); err != nil {
@@ -487,12 +491,20 @@ func (t *AlertTrigger) getFiringEvent(ctx context.Context, monitorID, policyID s
 func (t *AlertTrigger) insertAlertEvent(ctx context.Context, monitorID, policyID string) (*alertEvent, error) {
 	id := idgen.AlertEvent()
 	now := time.Now().UTC()
-	_, err := t.db.Exec(ctx, `
+	// ON CONFLICT DO NOTHING prevents duplicate firing events from concurrent aggregator instances.
+	// The partial UNIQUE index uq_alert_events_firing on (monitor_id, policy_id) WHERE status='firing'
+	// makes this idempotent.
+	tag, err := t.db.Exec(ctx, `
 		INSERT INTO alert_events (id, monitor_id, policy_id, status, started_at)
 		VALUES ($1, $2, $3, 'firing', $4)
+		ON CONFLICT DO NOTHING
 	`, id, monitorID, policyID, now)
 	if err != nil {
 		return nil, fmt.Errorf("insert alert_event: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		// Another instance already created the event; treat as no-op.
+		return nil, nil
 	}
 	return &alertEvent{id: id, monitorID: monitorID, policyID: policyID, status: "firing", startedAt: now}, nil
 }

@@ -29,6 +29,14 @@ export interface AlertPolicy {
   enabled: boolean
 }
 
+export interface AlertNotification {
+  id: string
+  alert_event_id: string
+  status: "sent" | "failed" | "pending"
+  sent_at: string | null
+  error: string | null
+}
+
 const BASE = Date.now()
 
 export const MOCK_ALERT_EVENTS: AlertEvent[] = [
@@ -111,6 +119,19 @@ export const MOCK_ALERT_POLICIES: AlertPolicy[] = [
     enabled: false,
   },
 ]
+
+export const MOCK_NOTIFICATIONS: Record<string, AlertNotification[]> = {
+  "ch-001": [
+    { id: "n-001", alert_event_id: "ae-001", status: "sent", sent_at: new Date(BASE - 15 * 60_000).toISOString(), error: null },
+    { id: "n-002", alert_event_id: "ae-002", status: "failed", sent_at: new Date(BASE - 3 * 3600_000).toISOString(), error: "connection timeout" },
+    { id: "n-003", alert_event_id: "ae-003", status: "sent", sent_at: new Date(BASE - 5 * 3600_000).toISOString(), error: null },
+  ],
+  "ch-002": [
+    { id: "n-004", alert_event_id: "ae-001", status: "sent", sent_at: new Date(BASE - 15 * 60_000).toISOString(), error: null },
+    { id: "n-005", alert_event_id: "ae-002", status: "pending", sent_at: null, error: null },
+  ],
+  "ch-003": [],
+}
 
 export const MOCK_MONITOR_NAMES = [
   "idcd.com 主站",

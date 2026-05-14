@@ -6,6 +6,7 @@ import {
   MOCK_ALERT_EVENTS,
   MOCK_ALERT_CHANNELS,
   MOCK_ALERT_POLICIES,
+  MOCK_NOTIFICATIONS,
 } from "../mock-data"
 
 // AlertsClient uses only standard React state — no external mocks needed.
@@ -158,6 +159,29 @@ describe("AlertsClient — 告警通道 Tab", () => {
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
     expect(screen.getByText("删除通道")).toBeInTheDocument()
+  })
+
+  it("通道 Card 显示「查看交付记录」按钮", () => {
+    render(<AlertsClient />)
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    MOCK_ALERT_CHANNELS.forEach((ch) => {
+      expect(screen.getByTestId(`delivery-history-toggle-${ch.id}`)).toBeInTheDocument()
+    })
+  })
+
+  it("点击交付记录按钮后展开显示通知列表", () => {
+    render(<AlertsClient />)
+    fireEvent.mouseDown(screen.getByTestId("tab-channels"))
+    const firstCh = MOCK_ALERT_CHANNELS[0]
+    const toggle = screen.getByTestId(`delivery-history-toggle-${firstCh.id}`)
+    fireEvent.mouseDown(toggle)
+    fireEvent.click(toggle)
+    const content = screen.getByTestId(`delivery-history-content-${firstCh.id}`)
+    expect(content).toBeInTheDocument()
+    const notifications = MOCK_NOTIFICATIONS[firstCh.id] ?? []
+    notifications.slice(0, 10).forEach((n) => {
+      expect(within(content).getByTestId(`notif-row-${n.id}`)).toBeInTheDocument()
+    })
   })
 })
 

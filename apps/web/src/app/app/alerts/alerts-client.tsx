@@ -10,6 +10,8 @@ import {
   Trash2,
   Pencil,
   AlertCircle,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -55,10 +57,12 @@ import {
   type AlertEvent,
   type AlertChannel,
   type AlertPolicy,
+  type AlertNotification,
   type ChannelType,
   MOCK_ALERT_EVENTS,
   MOCK_ALERT_CHANNELS,
   MOCK_ALERT_POLICIES,
+  MOCK_NOTIFICATIONS,
   MOCK_MONITOR_NAMES,
   CHANNEL_TYPE_LABELS,
   CHANNEL_TYPES,
@@ -82,6 +86,12 @@ function channelIcon(type: ChannelType) {
   if (type === "email") return <Mail className="h-4 w-4" aria-hidden />
   if (type === "wecom" || type === "feishu") return <MessageSquare className="h-4 w-4" aria-hidden />
   return <Bell className="h-4 w-4" aria-hidden />
+}
+
+function notifStatusBadge(status: AlertNotification["status"]) {
+  if (status === "sent") return <Badge variant="success">成功</Badge>
+  if (status === "failed") return <Badge variant="destructive">失败</Badge>
+  return <Badge variant="secondary">待发</Badge>
 }
 
 // ─── Toast (simple in-page notification) ─────────────────────────────────────
@@ -425,6 +435,63 @@ interface ChannelsTabProps {
   onAdd: () => void
 }
 
+function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
+  const [open, setOpen] = useState(false)
+  const notifications = MOCK_NOTIFICATIONS[channelId] ?? []
+
+  return (
+    <div className="border-t">
+      <Button
+        variant="ghost"
+        size="sm"
+        className="w-full justify-between rounded-none px-4 py-2 text-xs text-muted-foreground"
+        onClick={() => setOpen((v) => !v)}
+        data-testid={`delivery-history-toggle-${channelId}`}
+      >
+        查看交付记录（{notifications.length} 条）
+        {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+      </Button>
+      {open && (
+        <div data-testid={`delivery-history-content-${channelId}`} className="px-4 pb-3">
+          {notifications.length === 0 ? (
+            <p className="py-2 text-center text-xs text-muted-foreground">暂无交付记录</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="text-xs">状态</TableHead>
+                  <TableHead className="text-xs">告警事件</TableHead>
+                  <TableHead className="text-xs">发送时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {notifications.slice(0, 10).map((n) => (
+                  <TableRow key={n.id} data-testid={`notif-row-${n.id}`}>
+                    <TableCell className="py-1">{notifStatusBadge(n.status)}</TableCell>
+                    <TableCell className="py-1 font-mono text-xs text-muted-foreground">
+                      {n.alert_event_id}
+                    </TableCell>
+                    <TableCell className="py-1 text-xs text-muted-foreground tabular-nums">
+                      {n.sent_at
+                        ? new Date(n.sent_at).toLocaleString("zh-CN", {
+                            month: "numeric",
+                            day: "numeric",
+                            hour: "2-digit",
+                            minute: "2-digit",
+                          })
+                        : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ChannelsTab({ channels, onTest, onDelete, onAdd }: ChannelsTabProps) {
   return (
     <div className="space-y-4">
@@ -477,6 +544,7 @@ function ChannelsTab({ channels, onTest, onDelete, onAdd }: ChannelsTabProps) {
                 <Trash2 className="h-4 w-4" />
               </Button>
             </CardFooter>
+            <ChannelDeliveryHistory channelId={ch.id} />
           </Card>
         ))}
       </div>

@@ -127,6 +127,10 @@ func copyValue(dest, src interface{}) {
 		if v, ok := src.(int); ok {
 			*d = v
 		}
+	case *int64:
+		if v, ok := src.(int64); ok {
+			*d = v
+		}
 	case *time.Time:
 		if v, ok := src.(time.Time); ok {
 			*d = v

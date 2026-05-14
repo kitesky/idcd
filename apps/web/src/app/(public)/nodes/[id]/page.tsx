@@ -3,7 +3,10 @@ import Link from "next/link"
 import { ArrowLeft, Activity, Clock, Wifi } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { getMockDiagnostics } from "./mock-diagnostics"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import type { NodeDiagnosticsData } from "./mock-diagnostics"
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
 interface Props {
   params: Promise<{ id: string }>
@@ -14,6 +17,21 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return {
     title: `节点诊断 ${id} - idcd`,
     description: `查看节点 ${id} 的延迟分布、健康趋势和诊断数据`,
+  }
+}
+
+async function getNodeDiagnostics(
+  id: string,
+): Promise<{ data: NodeDiagnosticsData } | null | "not_found"> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/nodes/${encodeURIComponent(id)}/diagnostics`, {
+      next: { revalidate: 30 },
+    })
+    if (res.status === 404) return "not_found"
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
   }
 }
 
@@ -33,7 +51,55 @@ const LATENCY_BARS = [
 
 export default async function NodeDetailPage({ params }: Props) {
   const { id } = await params
-  const diag = getMockDiagnostics(id)
+  const result = await getNodeDiagnostics(id)
+
+  if (result === "not_found") {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-5xl">
+          <div className="mb-6">
+            <Link
+              href="/nodes"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              返回节点列表
+            </Link>
+          </div>
+          <Alert data-testid="not-found-state">
+            <AlertDescription>
+              节点 <span className="font-mono">{id}</span> 不存在或已下线。
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    )
+  }
+
+  if (!result) {
+    return (
+      <div className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-5xl">
+          <div className="mb-6">
+            <Link
+              href="/nodes"
+              className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              返回节点列表
+            </Link>
+          </div>
+          <Alert variant="destructive" data-testid="error-state">
+            <AlertDescription>
+              暂时无法加载节点诊断数据，请稍后重试。
+            </AlertDescription>
+          </Alert>
+        </div>
+      </div>
+    )
+  }
+
+  const diag = result.data
 
   const statusInfo = STATUS_MAP[diag.status] ?? STATUS_MAP["unknown"]
   const dist = diag.latency_distribution

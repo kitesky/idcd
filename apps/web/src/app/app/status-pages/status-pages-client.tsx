@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { ExternalLink, Plus } from "lucide-react"
+import { useState, useEffect, useCallback } from "react"
+import { ExternalLink, Plus, AlertCircle } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   AlertDialog,
   AlertDialogContent,
@@ -31,31 +32,48 @@ import {
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { apiRequest } from "@/lib/api"
 
-interface StatusPageItem {
+interface StatusPage {
   id: string
   name: string
   slug: string
-  monitorCount: number
-  url: string
+  is_public: boolean
+  overall_status: string
+  created_at: string
 }
-
-const MOCK_STATUS_PAGES: StatusPageItem[] = [
-  {
-    id: "sp-001",
-    name: "acme.com 服务状态",
-    slug: "demo",
-    monitorCount: 8,
-    url: "https://demo.status.idcd.com",
-  },
-]
 
 const IS_FREE_PLAN = true
 
-function CreateSheetContent({ onClose }: { onClose: () => void }) {
+function StatusPageSkeleton() {
+  return (
+    <div className="space-y-3" data-testid="status-pages-skeleton">
+      {[1, 2, 3].map((i) => (
+        <Card key={i}>
+          <CardContent className="flex items-center justify-between py-4 px-5">
+            <div className="space-y-2">
+              <Skeleton className="h-4 w-48" />
+              <Skeleton className="h-3 w-32" />
+            </div>
+            <Skeleton className="h-4 w-12" />
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )
+}
+
+interface CreateSheetContentProps {
+  onClose: () => void
+  onCreated: () => void
+}
+
+function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
   const [desc, setDesc] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   function handleNameChange(val: string) {
     setName(val)
@@ -67,8 +85,32 @@ function CreateSheetContent({ onClose }: { onClose: () => void }) {
     )
   }
 
+  async function handleCreate() {
+    if (!name.trim() || !slug.trim()) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await apiRequest("/v1/status-pages", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), slug: slug.trim(), is_public: true }),
+      })
+      onCreated()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建失败，请重试")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
   return (
     <div className="space-y-4 mt-4">
+      {error && (
+        <Alert variant="destructive" data-testid="create-sp-error">
+          <AlertCircle className="h-4 w-4" />
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
       <div className="space-y-1.5">
         <Label htmlFor="sp-name">页面名称</Label>
         <Input
@@ -107,10 +149,15 @@ function CreateSheetContent({ onClose }: { onClose: () => void }) {
       </div>
       <Separator />
       <div className="flex gap-2">
-        <Button className="flex-1" data-testid="create-sp-button">
-          创建状态页
+        <Button
+          className="flex-1"
+          onClick={handleCreate}
+          disabled={submitting || !name.trim() || !slug.trim()}
+          data-testid="create-sp-button"
+        >
+          {submitting ? "创建中..." : "创建状态页"}
         </Button>
-        <Button variant="outline" onClick={onClose} data-testid="cancel-sp-button">
+        <Button variant="outline" onClick={onClose} disabled={submitting} data-testid="cancel-sp-button">
           取消
         </Button>
       </div>
@@ -119,14 +166,49 @@ function CreateSheetContent({ onClose }: { onClose: () => void }) {
 }
 
 export function StatusPagesClient() {
+  const [statusPages, setStatusPages] = useState<StatusPage[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
   const [showUpgradeDialog, setShowUpgradeDialog] = useState(false)
   const [showCreateSheet, setShowCreateSheet] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+
+  const fetchStatusPages = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const res = await apiRequest<{ data: { status_pages: StatusPage[] } }>("/v1/status-pages")
+      setStatusPages(res.data.status_pages ?? [])
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+    } finally {
+      setLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    fetchStatusPages()
+  }, [fetchStatusPages])
 
   function handleNewPage() {
     if (IS_FREE_PLAN) {
       setShowUpgradeDialog(true)
     } else {
       setShowCreateSheet(true)
+    }
+  }
+
+  async function handleDelete(id: string) {
+    setDeletingId(id)
+    try {
+      await apiRequest(`/v1/status-pages/${id}`, { method: "DELETE" })
+      setStatusPages((prev) => prev.filter((sp) => sp.id !== id))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "删除失败，请重试")
+    } finally {
+      setDeletingId(null)
+      setConfirmDeleteId(null)
     }
   }
 
@@ -146,6 +228,14 @@ export function StatusPagesClient() {
         </Alert>
       )}
 
+      {error && (
+        <Alert variant="destructive" data-testid="sp-error-alert">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>错误</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">状态页列表</h2>
         <Button onClick={handleNewPage} data-testid="new-page-button">
@@ -154,15 +244,17 @@ export function StatusPagesClient() {
         </Button>
       </div>
 
-      {MOCK_STATUS_PAGES.length === 0 ? (
+      {loading ? (
+        <StatusPageSkeleton />
+      ) : statusPages.length === 0 ? (
         <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12 text-center">
+          <CardContent className="flex flex-col items-center justify-center py-12 text-center" data-testid="sp-empty-state">
             <p className="text-sm text-muted-foreground">暂无状态页</p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-3" data-testid="status-pages-list">
-          {MOCK_STATUS_PAGES.map((sp) => (
+          {statusPages.map((sp) => (
             <Card key={sp.id} data-testid={`status-page-card-${sp.id}`}>
               <CardContent className="flex items-center justify-between py-4 px-5">
                 <div className="space-y-1">
@@ -171,20 +263,30 @@ export function StatusPagesClient() {
                   </div>
                   <div className="flex items-center gap-3 text-xs text-muted-foreground">
                     <span className="font-mono">{sp.slug}</span>
-                    <span>·</span>
-                    <span>{sp.monitorCount} 个监控项</span>
                   </div>
                 </div>
-                <a
-                  href={sp.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-primary hover:underline underline-offset-4"
-                  data-testid={`status-page-link-${sp.id}`}
-                >
-                  访问
-                  <ExternalLink className="h-3 w-3" />
-                </a>
+                <div className="flex items-center gap-3">
+                  <a
+                    href={`https://${sp.slug}.status.idcd.com`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="inline-flex items-center gap-1 text-xs text-primary hover:underline underline-offset-4"
+                    data-testid={`status-page-link-${sp.id}`}
+                  >
+                    访问
+                    <ExternalLink className="h-3 w-3" />
+                  </a>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="text-destructive hover:text-destructive"
+                    onClick={() => setConfirmDeleteId(sp.id)}
+                    disabled={deletingId === sp.id}
+                    data-testid={`delete-sp-btn-${sp.id}`}
+                  >
+                    {deletingId === sp.id ? "删除中..." : "删除"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}
@@ -207,13 +309,37 @@ export function StatusPagesClient() {
         </AlertDialogContent>
       </AlertDialog>
 
+      {/* Delete confirm dialog */}
+      <AlertDialog open={!!confirmDeleteId} onOpenChange={(open) => !open && setConfirmDeleteId(null)}>
+        <AlertDialogContent data-testid="delete-confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogDescription>
+              此操作不可恢复，确定要删除该状态页吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="delete-cancel-button">取消</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => confirmDeleteId && handleDelete(confirmDeleteId)}
+              data-testid="delete-confirm-button"
+            >
+              确认删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
       {/* Create sheet */}
       <Sheet open={showCreateSheet} onOpenChange={(open) => !open && setShowCreateSheet(false)}>
         <SheetContent data-testid="create-sheet">
           <SheetHeader>
             <SheetTitle>新建状态页</SheetTitle>
           </SheetHeader>
-          <CreateSheetContent onClose={() => setShowCreateSheet(false)} />
+          <CreateSheetContent
+            onClose={() => setShowCreateSheet(false)}
+            onCreated={fetchStatusPages}
+          />
         </SheetContent>
       </Sheet>
     </div>

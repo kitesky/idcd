@@ -29,6 +29,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { cn } from "@/components/ui/index"
+import { apiRequest } from "@/lib/api"
 
 interface QuotaUsageItem {
   used: number
@@ -51,7 +52,10 @@ interface QuotaData {
   max_nodes: number
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+interface PointsData {
+  balance: number
+  total_earned: number
+}
 
 function formatResetTime(resetAtUnix: number): string {
   const d = new Date(resetAtUnix * 1000)
@@ -81,19 +85,22 @@ const API_TREND = [
 
 const MAX_TREND = Math.max(...API_TREND.map((d) => d.count))
 
-const POINTS_BALANCE_MOCK = 1250
-
 const REDEEM_OPTIONS = [
   { value: "api_calls", label: "1000 次 API 调用额度（500 积分）", points: 500 },
   { value: "monitors", label: "1 个月 Pro 监控（1000 积分）", points: 1000 },
 ]
 
-function PointsBalanceCard() {
+interface PointsBalanceCardProps {
+  balance: number | null
+  loading: boolean
+}
+
+function PointsBalanceCard({ balance, loading }: PointsBalanceCardProps) {
   const [redeemType, setRedeemType] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
 
   const selected = REDEEM_OPTIONS.find((o) => o.value === redeemType)
-  const canRedeem = selected && POINTS_BALANCE_MOCK >= selected.points
+  const canRedeem = selected && balance !== null && balance >= selected.points
 
   return (
     <Card data-testid="points-balance-card">
@@ -111,15 +118,19 @@ function PointsBalanceCard() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
-        <div className="flex items-end gap-1">
-          <span className="text-2xl font-bold tabular-nums" data-testid="points-value">
-            {POINTS_BALANCE_MOCK.toLocaleString()}
-          </span>
-          <span className="text-sm text-muted-foreground mb-0.5">pts</span>
-        </div>
+        {loading ? (
+          <Skeleton className="h-8 w-24" data-testid="skeleton-points" />
+        ) : (
+          <div className="flex items-end gap-1">
+            <span className="text-2xl font-bold tabular-nums" data-testid="points-value">
+              {(balance ?? 0).toLocaleString()}
+            </span>
+            <span className="text-sm text-muted-foreground mb-0.5">pts</span>
+          </div>
+        )}
         <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
           <DialogTrigger asChild>
-            <Button variant="outline" size="sm" data-testid="redeem-button">
+            <Button variant="outline" size="sm" data-testid="redeem-button" disabled={loading}>
               兑换积分
             </Button>
           </DialogTrigger>
@@ -127,7 +138,7 @@ function PointsBalanceCard() {
             <DialogHeader>
               <DialogTitle>兑换积分</DialogTitle>
               <DialogDescription>
-                当前余额 {POINTS_BALANCE_MOCK.toLocaleString()} pts
+                当前余额 {(balance ?? 0).toLocaleString()} pts
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
@@ -169,16 +180,19 @@ function PointsBalanceCard() {
 export function UsageClient() {
   const [data, setData] = useState<QuotaData | null>(null)
   const [loading, setLoading] = useState(true)
+  const [pointsData, setPointsData] = useState<PointsData | null>(null)
+  const [pointsLoading, setPointsLoading] = useState(true)
 
   useEffect(() => {
-    fetch(`${API_BASE}/v1/account/quota`, { credentials: "include" })
-      .then((res) => {
-        if (!res.ok) throw new Error(`quota fetch failed: ${res.status}`)
-        return res.json()
-      })
-      .then((json) => setData(json.data as QuotaData))
+    apiRequest<{ data: QuotaData }>("/v1/account/quota")
+      .then((json) => setData(json.data))
       .catch(() => setData(null))
       .finally(() => setLoading(false))
+
+    apiRequest<{ data: PointsData }>("/v1/account/points")
+      .then((json) => setPointsData(json.data))
+      .catch(() => setPointsData(null))
+      .finally(() => setPointsLoading(false))
   }, [])
 
   return (
@@ -436,7 +450,7 @@ export function UsageClient() {
       </Card>
 
       {/* ── 积分余额 ── */}
-      <PointsBalanceCard />
+      <PointsBalanceCard balance={pointsData?.balance ?? null} loading={pointsLoading} />
     </div>
   )
 }

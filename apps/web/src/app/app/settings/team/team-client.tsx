@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import {
   Button,
   Card,
@@ -27,7 +27,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui"
+import { Alert, AlertDescription, Skeleton } from "@/components/ui"
 import { Key, Plus, UserPlus, Users } from "lucide-react"
+import { apiRequest } from "@/lib/api"
 
 interface TeamAPIKey {
   id: string
@@ -59,64 +61,6 @@ interface Team {
   plan: string
   member_count: number
 }
-
-const MOCK_TEAM: Team = {
-  id: "team_acme01",
-  name: "Acme Corp",
-  slug: "acme",
-  plan: "free",
-  member_count: 3,
-}
-
-const MOCK_MEMBERS: TeamMember[] = [
-  {
-    id: "tmb_001",
-    user_id: "u_owner01",
-    email: "alice@acme.com",
-    role: "owner",
-    joined_at: "2025-03-01",
-  },
-  {
-    id: "tmb_002",
-    user_id: "u_admin01",
-    email: "bob@acme.com",
-    role: "admin",
-    joined_at: "2025-03-15",
-  },
-  {
-    id: "tmb_003",
-    user_id: "u_member01",
-    email: "carol@acme.com",
-    role: "member",
-    joined_at: "2025-04-01",
-  },
-]
-
-const MOCK_INVITATIONS: PendingInvitation[] = [
-  {
-    id: "tinv_001",
-    email: "dave@acme.com",
-    role: "member",
-    expires_at: "2026-05-21",
-  },
-]
-
-const MOCK_TEAM_KEYS: TeamAPIKey[] = [
-  {
-    id: "key_t001",
-    name: "CI/CD Key",
-    prefix: "sk_live_deadbeef...",
-    key_type: "production",
-    created_at: "2026-05-01",
-  },
-  {
-    id: "key_t002",
-    name: "Staging Key",
-    prefix: "sk_test_cafebabe...",
-    key_type: "test",
-    created_at: "2026-05-10",
-  },
-]
 
 function RoleBadge({ role }: { role: string }) {
   if (role === "owner") {
@@ -191,71 +135,218 @@ function EmptyState({ onCreateTeam }: { onCreateTeam: () => void }) {
   )
 }
 
+function TableSkeleton({ rows = 3, cols = 4 }: { rows?: number; cols?: number }) {
+  return (
+    <>
+      {Array.from({ length: rows }).map((_, i) => (
+        <TableRow key={i}>
+          {Array.from({ length: cols }).map((__, j) => (
+            <TableCell key={j}>
+              <Skeleton className="h-4 w-full" />
+            </TableCell>
+          ))}
+        </TableRow>
+      ))}
+    </>
+  )
+}
+
 export function TeamClient() {
-  const [team, setTeam] = useState<Team | null>(MOCK_TEAM)
-  const [members] = useState<TeamMember[]>(MOCK_MEMBERS)
-  const [invitations] = useState<PendingInvitation[]>(MOCK_INVITATIONS)
-  const [teamKeys, setTeamKeys] = useState<TeamAPIKey[]>(MOCK_TEAM_KEYS)
-  const [teamPlan] = useState<"free" | "agent_pro">("free")
+  const [team, setTeam] = useState<Team | null>(null)
+  const [members, setMembers] = useState<TeamMember[]>([])
+  const [invitations, setInvitations] = useState<PendingInvitation[]>([])
+  const [teamKeys, setTeamKeys] = useState<TeamAPIKey[]>([])
+  const [teamPlan, setTeamPlan] = useState<string>("free")
+
+  const [loadingTeam, setLoadingTeam] = useState(true)
+  const [loadingMembers, setLoadingMembers] = useState(false)
+  const [loadingInvitations, setLoadingInvitations] = useState(false)
+  const [loadingKeys, setLoadingKeys] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const [showCreateTeamDialog, setShowCreateTeamDialog] = useState(false)
   const [newTeamName, setNewTeamName] = useState("")
   const [newTeamSlug, setNewTeamSlug] = useState("")
+  const [creatingTeam, setCreatingTeam] = useState(false)
 
   const [showInviteDialog, setShowInviteDialog] = useState(false)
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState("member")
+  const [inviting, setInviting] = useState(false)
 
   const [showAddKeyDialog, setShowAddKeyDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState("")
   const [newKeyType, setNewKeyType] = useState<"production" | "test">("production")
+  const [addingKey, setAddingKey] = useState(false)
 
-  function handleCreateTeam() {
+  // Load team on mount
+  useEffect(() => {
+    setLoadingTeam(true)
+    apiRequest<{ data: { teams: Team[] } }>("/v1/teams")
+      .then((json) => {
+        const teams = json.data?.teams ?? []
+        if (teams.length > 0) {
+          const t = teams[0]
+          setTeam(t)
+          setTeamPlan(t.plan)
+          loadTeamDetails(t.id)
+        }
+      })
+      .catch((err) => setError(err.message ?? "加载团队失败"))
+      .finally(() => setLoadingTeam(false))
+  }, [])
+
+  function loadTeamDetails(teamId: string) {
+    setLoadingMembers(true)
+    apiRequest<{ data: { members: TeamMember[] } }>(`/v1/teams/${teamId}/members`)
+      .then((json) => setMembers(json.data?.members ?? []))
+      .catch(() => setMembers([]))
+      .finally(() => setLoadingMembers(false))
+
+    setLoadingInvitations(true)
+    apiRequest<{ data: { invitations: PendingInvitation[] } }>(`/v1/teams/${teamId}/invitations`)
+      .then((json) => setInvitations(json.data?.invitations ?? []))
+      .catch(() => setInvitations([]))
+      .finally(() => setLoadingInvitations(false))
+
+    setLoadingKeys(true)
+    apiRequest<{ data: { api_keys: TeamAPIKey[] } }>(`/v1/teams/${teamId}/api-keys`)
+      .then((json) => setTeamKeys(json.data?.api_keys ?? []))
+      .catch(() => setTeamKeys([]))
+      .finally(() => setLoadingKeys(false))
+  }
+
+  async function handleCreateTeam() {
     if (!newTeamName.trim() || !newTeamSlug.trim()) return
-    setTeam({
-      id: "team_new01",
-      name: newTeamName,
-      slug: newTeamSlug,
-      plan: "free",
-      member_count: 1,
-    })
-    setNewTeamName("")
-    setNewTeamSlug("")
-    setShowCreateTeamDialog(false)
+    setCreatingTeam(true)
+    try {
+      const json = await apiRequest<{ data: { team: Team } }>("/v1/teams", {
+        method: "POST",
+        body: JSON.stringify({ name: newTeamName, slug: newTeamSlug }),
+      })
+      const t = json.data?.team
+      if (t) {
+        setTeam(t)
+        setTeamPlan(t.plan)
+        loadTeamDetails(t.id)
+      }
+      setNewTeamName("")
+      setNewTeamSlug("")
+      setShowCreateTeamDialog(false)
+    } catch (err: any) {
+      setError(err.message ?? "创建团队失败")
+    } finally {
+      setCreatingTeam(false)
+    }
   }
 
-  function handleInvite() {
-    if (!inviteEmail.trim()) return
-    setInviteEmail("")
-    setInviteRole("member")
-    setShowInviteDialog(false)
+  async function handleInvite() {
+    if (!inviteEmail.trim() || !team) return
+    setInviting(true)
+    try {
+      const json = await apiRequest<{ data: { invitation: PendingInvitation } }>(
+        `/v1/teams/${team.id}/invitations`,
+        {
+          method: "POST",
+          body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+        }
+      )
+      const inv = json.data?.invitation
+      if (inv) {
+        setInvitations((prev) => [...prev, inv])
+      }
+      setInviteEmail("")
+      setInviteRole("member")
+      setShowInviteDialog(false)
+    } catch (err: any) {
+      setError(err.message ?? "邀请成员失败")
+    } finally {
+      setInviting(false)
+    }
   }
 
-  function handleAddKey() {
-    if (!newKeyName.trim()) return
-    const prefix = newKeyType === "production" ? "sk_live_" : "sk_test_"
-    setTeamKeys((prev) => [
-      ...prev,
-      {
-        id: "key_new_" + Date.now(),
-        name: newKeyName,
-        prefix: prefix + "xxxxxxxx...",
-        key_type: newKeyType,
-        created_at: new Date().toISOString().slice(0, 10),
-      },
-    ])
-    setNewKeyName("")
-    setNewKeyType("production")
-    setShowAddKeyDialog(false)
+  async function handleAddKey() {
+    if (!newKeyName.trim() || !team) return
+    setAddingKey(true)
+    try {
+      const json = await apiRequest<{ data: { api_key: TeamAPIKey } }>(
+        `/v1/teams/${team.id}/api-keys`,
+        {
+          method: "POST",
+          body: JSON.stringify({ name: newKeyName, key_type: newKeyType }),
+        }
+      )
+      const key = json.data?.api_key
+      if (key) {
+        setTeamKeys((prev) => [...prev, key])
+      }
+      setNewKeyName("")
+      setNewKeyType("production")
+      setShowAddKeyDialog(false)
+    } catch (err: any) {
+      setError(err.message ?? "创建 API Key 失败")
+    } finally {
+      setAddingKey(false)
+    }
   }
 
-  function handleRevokeKey(keyID: string) {
-    setTeamKeys((prev) => prev.filter((k) => k.id !== keyID))
+  async function handleRevokeKey(keyID: string) {
+    if (!team) return
+    try {
+      await apiRequest(`/v1/teams/${team.id}/api-keys/${keyID}`, { method: "DELETE" })
+      setTeamKeys((prev) => prev.filter((k) => k.id !== keyID))
+    } catch (err: any) {
+      setError(err.message ?? "撤销 API Key 失败")
+    }
+  }
+
+  async function handleRemoveMember(userId: string) {
+    if (!team) return
+    try {
+      await apiRequest(`/v1/teams/${team.id}/members/${userId}`, { method: "DELETE" })
+      setMembers((prev) => prev.filter((m) => m.user_id !== userId))
+      setTeam((prev) => prev ? { ...prev, member_count: prev.member_count - 1 } : prev)
+    } catch (err: any) {
+      setError(err.message ?? "移除成员失败")
+    }
+  }
+
+  if (loadingTeam) {
+    return (
+      <div data-testid="team-page">
+        <Card>
+          <CardHeader>
+            <Skeleton className="h-5 w-40" data-testid="skeleton-team-name" />
+            <Skeleton className="h-4 w-64 mt-1" />
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10" />
+                  <TableHead>邮箱</TableHead>
+                  <TableHead>角色</TableHead>
+                  <TableHead>加入时间</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                <TableSkeleton rows={3} cols={4} />
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
+    )
   }
 
   if (!team) {
     return (
       <div data-testid="team-page">
+        {error && (
+          <Alert variant="destructive" className="mb-4" data-testid="team-error-alert">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
         <EmptyState onCreateTeam={() => setShowCreateTeamDialog(true)} />
 
         <Dialog
@@ -282,8 +373,12 @@ export function TeamClient() {
                 onChange={(e) => setNewTeamSlug(e.target.value)}
                 data-testid="input-team-slug"
               />
-              <Button onClick={handleCreateTeam} data-testid="btn-confirm-create-team">
-                创建团队
+              <Button
+                onClick={handleCreateTeam}
+                disabled={creatingTeam}
+                data-testid="btn-confirm-create-team"
+              >
+                {creatingTeam ? "创建中..." : "创建团队"}
               </Button>
             </div>
           </DialogContent>
@@ -294,6 +389,12 @@ export function TeamClient() {
 
   return (
     <div className="flex flex-col gap-6" data-testid="team-page">
+      {error && (
+        <Alert variant="destructive" data-testid="team-error-alert">
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )}
+
       <Card data-testid="team-info-card">
         <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4">
           <div>
@@ -323,29 +424,53 @@ export function TeamClient() {
                 <TableHead>邮箱</TableHead>
                 <TableHead>角色</TableHead>
                 <TableHead>加入时间</TableHead>
+                <TableHead />
               </TableRow>
             </TableHeader>
             <TableBody>
-              {members.map((m) => (
-                <TableRow key={m.id} data-testid={`member-row-${m.id}`}>
-                  <TableCell>
-                    <MemberAvatar email={m.email} />
-                  </TableCell>
-                  <TableCell className="text-sm">{m.email}</TableCell>
-                  <TableCell>
-                    <RoleBadge role={m.role} />
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {m.joined_at}
+              {loadingMembers ? (
+                <TableSkeleton rows={3} cols={5} />
+              ) : members.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
+                    暂无成员
                   </TableCell>
                 </TableRow>
-              ))}
+              ) : (
+                members.map((m) => (
+                  <TableRow key={m.id} data-testid={`member-row-${m.id}`}>
+                    <TableCell>
+                      <MemberAvatar email={m.email} />
+                    </TableCell>
+                    <TableCell className="text-sm">{m.email}</TableCell>
+                    <TableCell>
+                      <RoleBadge role={m.role} />
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {m.joined_at}
+                    </TableCell>
+                    <TableCell>
+                      {m.role !== "owner" && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive text-xs"
+                          onClick={() => handleRemoveMember(m.user_id)}
+                          data-testid={`btn-remove-member-${m.id}`}
+                        >
+                          移除
+                        </Button>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
             </TableBody>
           </Table>
         </CardContent>
       </Card>
 
-      {invitations.length > 0 && (
+      {(loadingInvitations || invitations.length > 0) && (
         <Card data-testid="pending-invitations-card">
           <CardHeader>
             <CardTitle className="text-base">待处理邀请</CardTitle>
@@ -360,17 +485,21 @@ export function TeamClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {invitations.map((inv) => (
-                  <TableRow key={inv.id} data-testid={`invitation-row-${inv.id}`}>
-                    <TableCell className="text-sm">{inv.email}</TableCell>
-                    <TableCell>
-                      <RoleBadge role={inv.role} />
-                    </TableCell>
-                    <TableCell className="text-xs text-muted-foreground">
-                      {inv.expires_at}
-                    </TableCell>
-                  </TableRow>
-                ))}
+                {loadingInvitations ? (
+                  <TableSkeleton rows={2} cols={3} />
+                ) : (
+                  invitations.map((inv) => (
+                    <TableRow key={inv.id} data-testid={`invitation-row-${inv.id}`}>
+                      <TableCell className="text-sm">{inv.email}</TableCell>
+                      <TableCell>
+                        <RoleBadge role={inv.role} />
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {inv.expires_at}
+                      </TableCell>
+                    </TableRow>
+                  ))
+                )}
               </TableBody>
             </Table>
           </CardContent>
@@ -407,43 +536,46 @@ export function TeamClient() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {teamKeys.map((k) => (
-                <TableRow key={k.id} data-testid={`key-row-${k.id}`}>
-                  <TableCell className="text-sm font-medium">{k.name}</TableCell>
-                  <TableCell className="font-mono text-xs text-muted-foreground">
-                    {k.prefix}
-                  </TableCell>
-                  <TableCell>
-                    <Badge
-                      variant={k.key_type === "production" ? "default" : "secondary"}
-                      className="text-xs"
-                      data-testid={`key-type-badge-${k.id}`}
-                    >
-                      {k.key_type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {k.created_at}
-                  </TableCell>
-                  <TableCell>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      className="text-destructive hover:text-destructive text-xs"
-                      onClick={() => handleRevokeKey(k.id)}
-                      data-testid={`btn-revoke-key-${k.id}`}
-                    >
-                      撤销
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {teamKeys.length === 0 && (
+              {loadingKeys ? (
+                <TableSkeleton rows={2} cols={5} />
+              ) : teamKeys.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
                     暂无团队 API Key
                   </TableCell>
                 </TableRow>
+              ) : (
+                teamKeys.map((k) => (
+                  <TableRow key={k.id} data-testid={`key-row-${k.id}`}>
+                    <TableCell className="text-sm font-medium">{k.name}</TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {k.prefix}
+                    </TableCell>
+                    <TableCell>
+                      <Badge
+                        variant={k.key_type === "production" ? "default" : "secondary"}
+                        className="text-xs"
+                        data-testid={`key-type-badge-${k.id}`}
+                      >
+                        {k.key_type}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {k.created_at}
+                    </TableCell>
+                    <TableCell>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="text-destructive hover:text-destructive text-xs"
+                        onClick={() => handleRevokeKey(k.id)}
+                        data-testid={`btn-revoke-key-${k.id}`}
+                      >
+                        撤销
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))
               )}
             </TableBody>
           </Table>
@@ -498,8 +630,12 @@ export function TeamClient() {
                 <SelectItem value="test">test</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleAddKey} data-testid="btn-confirm-add-key">
-              创建 Key
+            <Button
+              onClick={handleAddKey}
+              disabled={addingKey}
+              data-testid="btn-confirm-add-key"
+            >
+              {addingKey ? "创建中..." : "创建 Key"}
             </Button>
           </div>
         </DialogContent>
@@ -530,8 +666,12 @@ export function TeamClient() {
                 <SelectItem value="member">member</SelectItem>
               </SelectContent>
             </Select>
-            <Button onClick={handleInvite} data-testid="btn-confirm-invite">
-              发送邀请
+            <Button
+              onClick={handleInvite}
+              disabled={inviting}
+              data-testid="btn-confirm-invite"
+            >
+              {inviting ? "发送中..." : "发送邀请"}
             </Button>
           </div>
         </DialogContent>

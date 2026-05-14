@@ -1,8 +1,16 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from "vitest"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, waitFor } from "@testing-library/react"
 import { BillingClient } from "../billing/billing-client"
 import { UsageClient } from "../usage/usage-client"
 import { StatusPagesClient } from "../status-pages/status-pages-client"
+
+vi.mock("@/lib/api", () => ({
+  apiRequest: vi.fn(),
+  API_BASE: "http://localhost:8080",
+}))
+
+import { apiRequest } from "@/lib/api"
+const mockApiRequest = vi.mocked(apiRequest)
 
 const mockQuotaData = {
   data: {
@@ -84,17 +92,15 @@ describe("BillingClient", () => {
 
 describe("UsageClient", () => {
   beforeEach(() => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockResolvedValue({
-        ok: true,
-        json: () => Promise.resolve(mockQuotaData),
-      })
-    )
-  })
-
-  afterEach(() => {
-    vi.unstubAllGlobals()
+    mockApiRequest.mockImplementation((path: string) => {
+      if (path === "/v1/account/quota") {
+        return Promise.resolve(mockQuotaData)
+      }
+      if (path === "/v1/account/points") {
+        return Promise.resolve({ data: { balance: 0, total_earned: 0 } })
+      }
+      return Promise.resolve({})
+    })
   })
 
   it("renders usage page container", () => {
@@ -103,7 +109,7 @@ describe("UsageClient", () => {
   })
 
   it("shows loading skeletons before data arrives", () => {
-    vi.stubGlobal("fetch", vi.fn(() => new Promise(() => {})))
+    mockApiRequest.mockImplementation(() => new Promise(() => {}))
     render(<UsageClient />)
     expect(screen.getByTestId("skeleton-api-calls")).toBeInTheDocument()
     expect(screen.getByTestId("skeleton-monitors")).toBeInTheDocument()
@@ -152,7 +158,26 @@ describe("UsageClient", () => {
 
 // ── StatusPagesClient tests ────────────────────────────────────────────────────
 
+const mockStatusPageApiData = {
+  data: {
+    status_pages: [
+      {
+        id: "sp-001",
+        name: "acme.com 服务状态",
+        slug: "demo",
+        is_public: true,
+        overall_status: "operational",
+        created_at: "2026-05-01T00:00:00Z",
+      },
+    ],
+  },
+}
+
 describe("StatusPagesClient", () => {
+  beforeEach(() => {
+    mockApiRequest.mockImplementation(() => Promise.resolve(mockStatusPageApiData))
+  })
+
   it("renders status pages page container", () => {
     render(<StatusPagesClient />)
     expect(screen.getByTestId("status-pages-page")).toBeInTheDocument()
@@ -163,24 +188,29 @@ describe("StatusPagesClient", () => {
     expect(screen.getByTestId("free-plan-notice")).toBeInTheDocument()
   })
 
-  it("renders status pages list with demo page", () => {
+  it("renders status pages list after load", async () => {
     render(<StatusPagesClient />)
-    expect(screen.getByTestId("status-pages-list")).toBeInTheDocument()
-    expect(screen.getByTestId("status-page-card-sp-001")).toBeInTheDocument()
-    expect(screen.getByText("acme.com 服务状态")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("status-pages-list")).toBeInTheDocument()
+      expect(screen.getByTestId("status-page-card-sp-001")).toBeInTheDocument()
+      expect(screen.getByText("acme.com 服务状态")).toBeInTheDocument()
+    })
   })
 
-  it("status page card shows slug and monitor count", () => {
+  it("status page card shows slug", async () => {
     render(<StatusPagesClient />)
-    const card = screen.getByTestId("status-page-card-sp-001")
-    expect(card.textContent).toContain("demo")
-    expect(card.textContent).toContain("8 个监控项")
+    await waitFor(() => {
+      const card = screen.getByTestId("status-page-card-sp-001")
+      expect(card.textContent).toContain("demo")
+    })
   })
 
-  it("status page card has external link", () => {
+  it("status page card has external link", async () => {
     render(<StatusPagesClient />)
-    const link = screen.getByTestId("status-page-link-sp-001")
-    expect(link).toBeInTheDocument()
-    expect(link).toHaveAttribute("href", "https://demo.status.idcd.com")
+    await waitFor(() => {
+      const link = screen.getByTestId("status-page-link-sp-001")
+      expect(link).toBeInTheDocument()
+      expect(link).toHaveAttribute("href", "https://demo.status.idcd.com")
+    })
   })
 })

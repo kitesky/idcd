@@ -1,10 +1,13 @@
 "use client"
 
-import { useState } from "react"
-import { FileWarning, Clock, Zap } from "lucide-react"
+import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation"
+import { FileWarning, Clock, Zap, AlertCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   Table,
   TableBody,
@@ -13,107 +16,17 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog"
+import { apiRequest } from "@/lib/api"
 
-interface TimelineEntry {
-  time: string
-  event: string
-}
-
-interface ActionItem {
-  item: string
-  owner: string
-  due_date: string
-}
-
-interface PostmortemDraft {
-  title: string
+interface Incident {
+  alert_event_id: string
+  monitor_id: string
+  monitor_name: string
+  status: string
   severity: string
-  impact: string
-  timeline: TimelineEntry[]
-  root_cause: string
-  resolution: string
-  action_items: ActionItem[]
-}
-
-interface IncidentRow {
-  id: string
-  monitorName: string
-  startedAt: string
-  duration: string
-  severity: "low" | "medium" | "high" | "critical"
-  status: "firing" | "resolved"
-  hasPostmortem: boolean
-}
-
-const MOCK_INCIDENTS: IncidentRow[] = [
-  {
-    id: "ev_001",
-    monitorName: "API Gateway",
-    startedAt: "2026-05-13 14:23",
-    duration: "47 分钟",
-    severity: "high",
-    status: "resolved",
-    hasPostmortem: true,
-  },
-  {
-    id: "ev_002",
-    monitorName: "Payment Service",
-    startedAt: "2026-05-12 09:11",
-    duration: "3 小时 12 分钟",
-    severity: "critical",
-    status: "resolved",
-    hasPostmortem: false,
-  },
-  {
-    id: "ev_003",
-    monitorName: "Auth Service",
-    startedAt: "2026-05-11 22:05",
-    duration: "8 分钟",
-    severity: "low",
-    status: "resolved",
-    hasPostmortem: false,
-  },
-  {
-    id: "ev_004",
-    monitorName: "Database Primary",
-    startedAt: "2026-05-10 03:47",
-    duration: "22 分钟",
-    severity: "medium",
-    status: "resolved",
-    hasPostmortem: true,
-  },
-  {
-    id: "ev_005",
-    monitorName: "CDN Edge",
-    startedAt: "2026-05-09 11:30",
-    duration: "2 小时 5 分钟",
-    severity: "critical",
-    status: "resolved",
-    hasPostmortem: false,
-  },
-]
-
-const MOCK_DRAFT: PostmortemDraft = {
-  title: "[high] API Gateway 服务中断（47 分钟）",
-  severity: "high",
-  impact: "API Gateway（http）检测到异常，影响持续约 47 分钟",
-  timeline: [
-    { time: "2026-05-13T14:23:00Z", event: "故障开始" },
-    { time: "2026-05-13T15:10:00Z", event: "故障结束" },
-  ],
-  root_cause: "[待补充] 初步判断为基础设施异常，具体根因需进一步分析",
-  resolution: "故障于 2026-05-13T15:10:00Z 恢复，共持续 47 分钟",
-  action_items: [
-    { item: "检查服务器负载", owner: "待指定", due_date: "2026-05-21" },
-    { item: "增加健康检查超时重试", owner: "待指定", due_date: "2026-05-21" },
-    { item: "验证回滚计划", owner: "待指定", due_date: "2026-05-21" },
-  ],
+  started_at: string
+  resolved_at: string | null
+  has_postmortem: boolean
 }
 
 const severityVariant: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
@@ -130,22 +43,68 @@ const severityLabel: Record<string, string> = {
   low: "低",
 }
 
-export default function IncidentsPage() {
-  const [draft, setDraft] = useState<PostmortemDraft | null>(null)
-  const [dialogOpen, setDialogOpen] = useState(false)
-  const [generating, setGenerating] = useState<string | null>(null)
+function formatDate(isoString: string | null): string {
+  if (!isoString) return "—"
+  const d = new Date(isoString)
+  if (isNaN(d.getTime())) return isoString
+  const pad = (n: number) => String(n).padStart(2, "0")
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
 
-  function handleGenerate(incident: IncidentRow) {
-    setGenerating(incident.id)
-    setTimeout(() => {
-      setDraft({
-        ...MOCK_DRAFT,
-        title: `[${incident.severity}] ${incident.monitorName} 服务中断（${incident.duration}）`,
-        impact: `${incident.monitorName}（http）检测到异常，影响持续约 ${incident.duration}`,
+function IncidentsTableSkeleton() {
+  return (
+    <div className="space-y-2" data-testid="incidents-skeleton">
+      {[1, 2, 3, 4, 5].map((i) => (
+        <div key={i} className="flex items-center gap-4 py-3 px-1">
+          <Skeleton className="h-4 w-32" />
+          <Skeleton className="h-4 w-36" />
+          <Skeleton className="h-4 w-20" />
+          <Skeleton className="h-5 w-12" />
+          <Skeleton className="h-5 w-14" />
+          <Skeleton className="h-8 w-20" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
+export default function IncidentsPage() {
+  const router = useRouter()
+  const [incidents, setIncidents] = useState<Incident[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [generating, setGenerating] = useState<string | null>(null)
+  const [generateError, setGenerateError] = useState<string | null>(null)
+
+  useEffect(() => {
+    async function fetchIncidents() {
+      setLoading(true)
+      setError(null)
+      try {
+        const res = await apiRequest<{ data: { incidents: Incident[] } }>("/v1/reports/incidents")
+        setIncidents(res.data.incidents ?? [])
+      } catch (err) {
+        setError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+      } finally {
+        setLoading(false)
+      }
+    }
+    fetchIncidents()
+  }, [])
+
+  async function handleGenerate(alertEventId: string) {
+    setGenerating(alertEventId)
+    setGenerateError(null)
+    try {
+      const res = await apiRequest<{ data: { id: string; title: string } }>("/v1/postmortems/draft", {
+        method: "POST",
+        body: JSON.stringify({ alert_event_id: alertEventId }),
       })
+      router.push(`/app/incidents/${res.data.id}`)
+    } catch (err) {
+      setGenerateError(err instanceof Error ? err.message : "生成复盘失败，请重试")
       setGenerating(null)
-      setDialogOpen(true)
-    }, 600)
+    }
   }
 
   return (
@@ -161,125 +120,93 @@ export default function IncidentsPage() {
           </div>
         </div>
 
+        {error && (
+          <Alert variant="destructive" className="mb-6" data-testid="incidents-error-alert">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>加载失败</AlertTitle>
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+
+        {generateError && (
+          <Alert variant="destructive" className="mb-6" data-testid="generate-error-alert">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>操作失败</AlertTitle>
+            <AlertDescription>{generateError}</AlertDescription>
+          </Alert>
+        )}
+
         <Card data-testid="incidents-table-card">
           <CardHeader>
             <CardTitle>告警事件</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table data-testid="incidents-table">
-              <TableHeader>
-                <TableRow>
-                  <TableHead>监控名</TableHead>
-                  <TableHead>开始时间</TableHead>
-                  <TableHead>持续时间</TableHead>
-                  <TableHead>严重程度</TableHead>
-                  <TableHead>复盘状态</TableHead>
-                  <TableHead>操作</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {MOCK_INCIDENTS.map((incident) => (
-                  <TableRow key={incident.id} data-testid={`incident-row-${incident.id}`}>
-                    <TableCell className="font-medium">{incident.monitorName}</TableCell>
-                    <TableCell>
-                      <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                        <Clock className="h-3 w-3" />
-                        {incident.startedAt}
-                      </span>
-                    </TableCell>
-                    <TableCell>{incident.duration}</TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={severityVariant[incident.severity]}
-                        data-testid={`severity-badge-${incident.id}`}
-                      >
-                        {severityLabel[incident.severity]}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {incident.hasPostmortem ? (
-                        <Badge variant="secondary" data-testid={`postmortem-status-${incident.id}`}>
-                          已生成
-                        </Badge>
-                      ) : (
-                        <Badge variant="outline" data-testid={`postmortem-status-${incident.id}`}>
-                          未生成
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleGenerate(incident)}
-                        disabled={generating === incident.id}
-                        data-testid={`generate-btn-${incident.id}`}
-                      >
-                        <Zap className="mr-1 h-3 w-3" />
-                        {generating === incident.id ? "生成中..." : "生成复盘"}
-                      </Button>
-                    </TableCell>
+            {loading ? (
+              <IncidentsTableSkeleton />
+            ) : incidents.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-12 text-center" data-testid="incidents-empty-state">
+                <p className="text-sm text-muted-foreground">暂无故障记录</p>
+              </div>
+            ) : (
+              <Table data-testid="incidents-table">
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>监控名</TableHead>
+                    <TableHead>开始时间</TableHead>
+                    <TableHead>严重程度</TableHead>
+                    <TableHead>复盘状态</TableHead>
+                    <TableHead>操作</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {incidents.map((incident) => (
+                    <TableRow key={incident.alert_event_id} data-testid={`incident-row-${incident.alert_event_id}`}>
+                      <TableCell className="font-medium">{incident.monitor_name}</TableCell>
+                      <TableCell>
+                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                          <Clock className="h-3 w-3" />
+                          {formatDate(incident.started_at)}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        <Badge
+                          variant={severityVariant[incident.severity] ?? "outline"}
+                          data-testid={`severity-badge-${incident.alert_event_id}`}
+                        >
+                          {severityLabel[incident.severity] ?? incident.severity}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {incident.has_postmortem ? (
+                          <Badge variant="secondary" data-testid={`postmortem-status-${incident.alert_event_id}`}>
+                            已生成
+                          </Badge>
+                        ) : (
+                          <Badge variant="outline" data-testid={`postmortem-status-${incident.alert_event_id}`}>
+                            未生成
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleGenerate(incident.alert_event_id)}
+                          disabled={generating === incident.alert_event_id}
+                          data-testid={`generate-btn-${incident.alert_event_id}`}
+                        >
+                          <Zap className="mr-1 h-3 w-3" />
+                          {generating === incident.alert_event_id ? "生成中..." : "生成复盘"}
+                        </Button>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
       </div>
-
-      <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-2xl" data-testid="postmortem-dialog">
-          <DialogHeader>
-            <DialogTitle data-testid="postmortem-dialog-title">
-              {draft?.title ?? "复盘草稿"}
-            </DialogTitle>
-          </DialogHeader>
-          {draft && (
-            <div className="space-y-4 text-sm">
-              <div>
-                <p className="font-semibold text-muted-foreground">严重程度</p>
-                <Badge variant={severityVariant[draft.severity]} className="mt-1">
-                  {severityLabel[draft.severity] ?? draft.severity}
-                </Badge>
-              </div>
-              <div>
-                <p className="font-semibold text-muted-foreground">影响范围</p>
-                <p className="mt-1">{draft.impact}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-muted-foreground">时间线</p>
-                <ul className="mt-1 space-y-1">
-                  {draft.timeline.map((t, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span className="text-muted-foreground">{t.time}</span>
-                      <span>{t.event}</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-              <div>
-                <p className="font-semibold text-muted-foreground">根因分析</p>
-                <p className="mt-1">{draft.root_cause}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-muted-foreground">处置方案</p>
-                <p className="mt-1">{draft.resolution || "—"}</p>
-              </div>
-              <div>
-                <p className="font-semibold text-muted-foreground">改进措施</p>
-                <ul className="mt-1 space-y-1">
-                  {draft.action_items.map((a, i) => (
-                    <li key={i} className="flex gap-2">
-                      <span>•</span>
-                      <span>{a.item}（负责人：{a.owner}，截止：{a.due_date}）</span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
     </div>
   )
 }

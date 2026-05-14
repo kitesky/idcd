@@ -12,11 +12,58 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export const metadata: Metadata = {
   title: "透明度报告 — idcd",
   description: "idcd 平台 KMS 信任根状态、TSA 健康度、节点覆盖与平台可用率公开仪表盘",
   alternates: { canonical: "https://idcd.com/transparency" },
+}
+
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
+
+interface TransparencyData {
+  overall_status: string
+  last_updated?: string
+  platform_uptime: { "30d": number; "90d": number; "365d": number }
+  nodes: { total: number; online?: number; active?: number; tier1?: number; regions?: number }
+  kms: {
+    status: string
+    provider?: string
+    last_ceremony?: string
+    next_ceremony?: string
+    quorum_holders?: number
+  }
+  tsa: {
+    providers: Array<{ name: string; status: string; last_check?: string }>
+  }
+  recent_incidents: Array<{
+    date: string
+    title: string
+    duration_min: number
+    severity: string
+    resolved: boolean
+  }>
+  appeal_stats: {
+    total: number
+    resolved: number
+    pending?: number
+    avg_resolution_h?: number
+    avg_hours?: number
+  }
+}
+
+async function getTransparencyData(): Promise<{ data: TransparencyData } | null> {
+  try {
+    const res = await fetch(`${API_BASE}/v1/transparency`, {
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return null
+    return res.json()
+  } catch {
+    return null
+  }
 }
 
 interface UptimeBlocksProps {
@@ -38,35 +85,6 @@ function UptimeBlocks({ uptime }: UptimeBlocksProps) {
   )
 }
 
-const mockData = {
-  overall_status: "operational",
-  last_updated: new Date().toISOString(),
-  platform_uptime: { "30d": 99.97, "90d": 99.95, "365d": 99.92 },
-  nodes: { total: 127, active: 124, regions: 18 },
-  kms: {
-    status: "operational",
-    last_ceremony: "2026-01-15T10:00:00Z",
-    next_ceremony: "2027-01-15T10:00:00Z",
-    quorum_holders: 5,
-  },
-  tsa: {
-    providers: [
-      { name: "DigiCert", status: "operational", last_check: new Date().toISOString() },
-      { name: "GlobalSign", status: "operational", last_check: new Date().toISOString() },
-    ],
-  },
-  recent_incidents: [
-    {
-      date: "2026-05-10",
-      title: "API 网关短暂延迟升高",
-      duration_min: 12,
-      severity: "low",
-      resolved: true,
-    },
-  ],
-  appeal_stats: { total: 3, resolved: 3, pending: 0, avg_resolution_h: 18.5 },
-}
-
 function statusBadge(status: string) {
   if (status === "operational") {
     return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">● 运行正常</Badge>
@@ -80,8 +98,54 @@ function severityBadge(severity: string) {
   return <Badge variant="destructive">高</Badge>
 }
 
-export default function TransparencyPage() {
-  const d = mockData
+function TransparencyLoadingSkeleton() {
+  return (
+    <main className="min-h-screen bg-background">
+      <div className="container mx-auto px-4 py-8 max-w-5xl">
+        <div className="mb-8">
+          <Skeleton className="h-9 w-48 mb-2" />
+          <Skeleton className="h-5 w-96" />
+        </div>
+        <Skeleton className="h-16 w-full mb-6" />
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          {[1, 2, 3].map((i) => (
+            <Skeleton key={i} className="h-32 w-full" />
+          ))}
+        </div>
+        <Skeleton className="h-40 w-full mb-6" />
+        <Skeleton className="h-48 w-full mb-6" />
+        <Skeleton className="h-40 w-full" />
+      </div>
+    </main>
+  )
+}
+
+export default async function TransparencyPage() {
+  const result = await getTransparencyData()
+
+  if (!result) {
+    return (
+      <main className="min-h-screen bg-background">
+        <div className="container mx-auto px-4 py-8 max-w-5xl">
+          <div className="mb-8">
+            <h1 className="text-3xl font-bold tracking-tight">透明度报告</h1>
+          </div>
+          <Alert variant="destructive" data-testid="error-state">
+            <AlertDescription>
+              暂时无法加载透明度报告数据，请稍后刷新页面重试。
+            </AlertDescription>
+          </Alert>
+        </div>
+      </main>
+    )
+  }
+
+  const d = result.data
+  const lastUpdated = d.last_updated ?? new Date().toISOString()
+  const activeNodes = d.nodes.online ?? d.nodes.active ?? 0
+  const regionsOrTier1 = d.nodes.regions ?? d.nodes.tier1 ?? 0
+  const avgResolutionH = d.appeal_stats.avg_resolution_h ?? d.appeal_stats.avg_hours ?? 0
+  const pendingAppeals = d.appeal_stats.pending ?? (d.appeal_stats.total - d.appeal_stats.resolved)
 
   return (
     <main className="min-h-screen bg-background">
@@ -89,7 +153,7 @@ export default function TransparencyPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">透明度报告</h1>
           <p className="mt-2 text-muted-foreground">
-            idcd 平台实时运行状态 · 最后更新：{new Date(d.last_updated).toLocaleString("zh-CN")}
+            idcd 平台实时运行状态 · 最后更新：{new Date(lastUpdated).toLocaleString("zh-CN")}
           </p>
         </div>
 
@@ -143,12 +207,12 @@ export default function TransparencyPage() {
                 <p className="text-sm text-muted-foreground mt-1">总节点</p>
               </div>
               <div>
-                <p className="text-3xl font-bold text-green-400">{d.nodes.active}</p>
+                <p className="text-3xl font-bold text-green-400">{activeNodes}</p>
                 <p className="text-sm text-muted-foreground mt-1">活跃节点</p>
               </div>
               <div>
-                <p className="text-3xl font-bold">{d.nodes.regions}</p>
-                <p className="text-sm text-muted-foreground mt-1">覆盖地区</p>
+                <p className="text-3xl font-bold">{regionsOrTier1}</p>
+                <p className="text-sm text-muted-foreground mt-1">{d.nodes.regions != null ? "覆盖地区" : "T1 节点"}</p>
               </div>
             </div>
           </CardContent>
@@ -163,22 +227,34 @@ export default function TransparencyPage() {
               <span className="text-sm text-muted-foreground">状态</span>
               {statusBadge(d.kms.status)}
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">上次密钥仪式</span>
-              <span className="text-sm font-medium">
-                {new Date(d.kms.last_ceremony).toLocaleDateString("zh-CN")}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">下次计划仪式</span>
-              <span className="text-sm font-medium">
-                {new Date(d.kms.next_ceremony).toLocaleDateString("zh-CN")}
-              </span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Quorum 持有者</span>
-              <span className="text-sm font-medium">{d.kms.quorum_holders} 人（3-of-5）</span>
-            </div>
+            {d.kms.provider && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">服务商</span>
+                <span className="text-sm font-medium">{d.kms.provider}</span>
+              </div>
+            )}
+            {d.kms.last_ceremony && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">上次密钥仪式</span>
+                <span className="text-sm font-medium">
+                  {new Date(d.kms.last_ceremony).toLocaleDateString("zh-CN")}
+                </span>
+              </div>
+            )}
+            {d.kms.next_ceremony && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">下次计划仪式</span>
+                <span className="text-sm font-medium">
+                  {new Date(d.kms.next_ceremony).toLocaleDateString("zh-CN")}
+                </span>
+              </div>
+            )}
+            {d.kms.quorum_holders != null && (
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">Quorum 持有者</span>
+                <span className="text-sm font-medium">{d.kms.quorum_holders} 人（3-of-5）</span>
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -190,9 +266,11 @@ export default function TransparencyPage() {
               </CardHeader>
               <CardContent className="space-y-2">
                 {statusBadge(p.status)}
-                <p className="text-xs text-muted-foreground mt-2">
-                  最近检查：{new Date(p.last_check).toLocaleString("zh-CN")}
-                </p>
+                {p.last_check && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    最近检查：{new Date(p.last_check).toLocaleString("zh-CN")}
+                  </p>
+                )}
               </CardContent>
             </Card>
           ))}
@@ -203,34 +281,38 @@ export default function TransparencyPage() {
             <CardTitle>近期事故</CardTitle>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>日期</TableHead>
-                  <TableHead>描述</TableHead>
-                  <TableHead>持续时间</TableHead>
-                  <TableHead>严重程度</TableHead>
-                  <TableHead>状态</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {d.recent_incidents.map((inc, i) => (
-                  <TableRow key={i}>
-                    <TableCell className="text-sm">{inc.date}</TableCell>
-                    <TableCell className="text-sm">{inc.title}</TableCell>
-                    <TableCell className="text-sm">{inc.duration_min} 分钟</TableCell>
-                    <TableCell>{severityBadge(inc.severity)}</TableCell>
-                    <TableCell>
-                      {inc.resolved ? (
-                        <Badge variant="secondary">已解决</Badge>
-                      ) : (
-                        <Badge variant="destructive">处理中</Badge>
-                      )}
-                    </TableCell>
+            {d.recent_incidents.length === 0 ? (
+              <p className="text-sm text-muted-foreground text-center py-4">近期无事故记录</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>日期</TableHead>
+                    <TableHead>描述</TableHead>
+                    <TableHead>持续时间</TableHead>
+                    <TableHead>严重程度</TableHead>
+                    <TableHead>状态</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {d.recent_incidents.map((inc, i) => (
+                    <TableRow key={i}>
+                      <TableCell className="text-sm">{inc.date}</TableCell>
+                      <TableCell className="text-sm">{inc.title}</TableCell>
+                      <TableCell className="text-sm">{inc.duration_min} 分钟</TableCell>
+                      <TableCell>{severityBadge(inc.severity)}</TableCell>
+                      <TableCell>
+                        {inc.resolved ? (
+                          <Badge variant="secondary">已解决</Badge>
+                        ) : (
+                          <Badge variant="destructive">处理中</Badge>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
           </CardContent>
         </Card>
 
@@ -249,11 +331,11 @@ export default function TransparencyPage() {
                 <p className="text-sm text-muted-foreground mt-1">已解决</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{d.appeal_stats.pending}</p>
+                <p className="text-2xl font-bold">{pendingAppeals}</p>
                 <p className="text-sm text-muted-foreground mt-1">待处理</p>
               </div>
               <div>
-                <p className="text-2xl font-bold">{d.appeal_stats.avg_resolution_h}h</p>
+                <p className="text-2xl font-bold">{avgResolutionH}h</p>
                 <p className="text-sm text-muted-foreground mt-1">平均解决时间</p>
               </div>
             </div>

@@ -7,24 +7,51 @@ vi.mock("next/navigation", () => ({
 }))
 
 // Default fetch mock: status=disabled, setup returns secret, verify returns backup codes, disable succeeds
+// passkeys list returns one mock passkey by default
 function mockFetch(overrides?: Record<string, { ok: boolean; body: unknown }>) {
   const defaults: Record<string, { ok: boolean; body: unknown }> = {
     "/v1/account/2fa/status": { ok: true, body: { enabled: false } },
     "/v1/account/2fa/setup": { ok: true, body: { data: { secret: "TESTSECRET", otpauth_uri: "otpauth://totp/test?secret=TESTSECRET" } } },
     "/v1/account/2fa/verify": { ok: true, body: { data: { backup_codes: ["CODE1234", "CODE5678", "CODE9012", "CODE3456", "CODE7890", "CODE1111", "CODE2222", "CODE3333"] } } },
     "/v1/account/2fa/disable": { ok: true, body: {} },
+    "/v1/account/passkeys": {
+      ok: true,
+      body: {
+        data: {
+          passkeys: [
+            {
+              id: "pk_Test1",
+              device_name: "MacBook Pro (Touch ID)",
+              created_at: new Date("2026-04-10T08:00:00Z").toISOString(),
+              last_used_at: new Date("2026-05-14T06:00:00Z").toISOString(),
+            },
+          ],
+        },
+      },
+    },
   }
   const map = { ...defaults, ...overrides }
 
   return vi.fn().mockImplementation((url: string) => {
     // Strip API_BASE prefix if present
     const path = url.replace(/^http:\/\/localhost:8080/, "")
+    // Exact match first
     const entry = map[path]
     if (entry) {
       return Promise.resolve({
         ok: entry.ok,
         json: () => Promise.resolve(entry.body),
         statusText: entry.ok ? "OK" : "Error",
+      })
+    }
+    // Prefix match for dynamic paths (e.g. DELETE /v1/account/passkeys/:id)
+    const prefixEntry = Object.entries(map).find(([k]) => k !== path && path.startsWith(k + "/"))
+    if (prefixEntry) {
+      const [, e] = prefixEntry
+      return Promise.resolve({
+        ok: e.ok,
+        json: () => Promise.resolve(e.body),
+        statusText: e.ok ? "OK" : "Error",
       })
     }
     return Promise.resolve({
@@ -200,16 +227,74 @@ describe("SecurityClient", () => {
     expect(screen.getByTestId("btn-add-passkey")).toBeInTheDocument()
   })
 
-  it("renders mock passkey list items", async () => {
-    await act(async () => { render(<SecurityClient />) })
-    expect(screen.getByTestId("passkey-list")).toBeInTheDocument()
-    expect(screen.getByText("MacBook Pro (Touch ID)")).toBeInTheDocument()
+  it("shows loading skeleton while fetching passkeys", async () => {
+    // Delay the passkeys response so loading state is observable
+    const slowFetch = vi.fn().mockImplementation((url: string) => {
+      const path = url.replace(/^http:\/\/localhost:8080/, "")
+      if (path === "/v1/account/passkeys") {
+        return new Promise((resolve) =>
+          setTimeout(() =>
+            resolve({
+              ok: true,
+              json: () => Promise.resolve({ data: { passkeys: [] } }),
+              statusText: "OK",
+            }),
+            100
+          )
+        )
+      }
+      return fetchMock(url)
+    })
+    vi.stubGlobal("fetch", slowFetch)
+    render(<SecurityClient />)
+    expect(screen.getByTestId("passkey-loading")).toBeInTheDocument()
+    await waitFor(() => expect(screen.queryByTestId("passkey-loading")).not.toBeInTheDocument())
   })
 
-  it("removes a passkey from list when delete button clicked", async () => {
+  it("renders passkey list items loaded from API", async () => {
     await act(async () => { render(<SecurityClient />) })
-    const deleteBtn = screen.getByTestId("btn-delete-passkey-wc_MockPasskey1")
-    fireEvent.click(deleteBtn)
-    expect(screen.queryByText("MacBook Pro (Touch ID)")).not.toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("passkey-list")).toBeInTheDocument()
+      expect(screen.getByText("MacBook Pro (Touch ID)")).toBeInTheDocument()
+    })
+  })
+
+  it("removes a passkey from list after successful DELETE API call", async () => {
+    await act(async () => { render(<SecurityClient />) })
+    await waitFor(() => expect(screen.getByTestId("btn-delete-passkey-pk_Test1")).toBeInTheDocument())
+    await act(async () => { fireEvent.click(screen.getByTestId("btn-delete-passkey-pk_Test1")) })
+    await waitFor(() => {
+      expect(screen.queryByText("MacBook Pro (Touch ID)")).not.toBeInTheDocument()
+    })
+  })
+
+  it("shows error and keeps passkey in list when DELETE API fails", async () => {
+    fetchMock = mockFetch({ "/v1/account/passkeys": {
+      ok: true,
+      body: {
+        data: {
+          passkeys: [
+            {
+              id: "pk_Test1",
+              device_name: "MacBook Pro (Touch ID)",
+              created_at: new Date("2026-04-10T08:00:00Z").toISOString(),
+              last_used_at: null,
+            },
+          ],
+        },
+      },
+    },
+    // Override prefix: DELETE /v1/account/passkeys/pk_Test1 → fail
+    // We add a more-specific key so prefix match hits it
+    "/v1/account/passkeys/pk_Test1": { ok: false, body: { message: "删除失败" } },
+    })
+    vi.stubGlobal("fetch", fetchMock)
+    await act(async () => { render(<SecurityClient />) })
+    await waitFor(() => expect(screen.getByTestId("btn-delete-passkey-pk_Test1")).toBeInTheDocument())
+    await act(async () => { fireEvent.click(screen.getByTestId("btn-delete-passkey-pk_Test1")) })
+    await waitFor(() => {
+      expect(screen.getByTestId("passkey-error")).toBeInTheDocument()
+      expect(screen.getByText("MacBook Pro (Touch ID)")).toBeInTheDocument()
+    })
   })
 })

@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { MonitorDetailClient } from "./monitor-detail-client"
-import { MOCK_MONITORS } from "../mock-data"
+import { MOCK_MONITORS } from "../types"
 
 type Props = {
   params: Promise<{ id: string }>

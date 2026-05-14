@@ -27,7 +27,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
-import { type MonitorType, TYPE_LABELS, MONITOR_TYPES, AGENT_OBS_TYPES } from "../mock-data"
+import { type MonitorType, TYPE_LABELS, MONITOR_TYPES, AGENT_OBS_TYPES } from "../types"
 
 // PLAN_LABELS maps plan identifiers to user-facing display names.
 const PLAN_LABELS: Record<string, string> = {

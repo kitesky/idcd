@@ -43,6 +43,39 @@ export interface CheckResult {
   error?: string
 }
 
+export const TYPE_LABELS: Record<MonitorType, string> = {
+  http: "HTTP",
+  https: "HTTPS",
+  ping: "Ping",
+  tcp: "TCP",
+  dns: "DNS",
+  ssl_expiry: "SSL到期",
+  domain_expiry: "域名到期",
+  icp_change: "ICP变更",
+  keyword: "关键字",
+  llm_endpoint: "LLM Endpoint",
+  tool_api: "Tool API",
+  rag: "RAG",
+}
+
+export const MONITOR_TYPES: MonitorType[] = [
+  "http",
+  "https",
+  "ping",
+  "tcp",
+  "dns",
+  "ssl_expiry",
+  "domain_expiry",
+  "icp_change",
+  "keyword",
+]
+
+export const AGENT_OBS_TYPES: MonitorType[] = [
+  "llm_endpoint",
+  "tool_api",
+  "rag",
+]
+
 export const MOCK_MONITORS: Monitor[] = [
   {
     id: "mon-001",
@@ -174,36 +207,3 @@ export function generateMockCheckResults(monitorId: string): CheckResult[] {
   }
   return results
 }
-
-export const TYPE_LABELS: Record<MonitorType, string> = {
-  http: "HTTP",
-  https: "HTTPS",
-  ping: "Ping",
-  tcp: "TCP",
-  dns: "DNS",
-  ssl_expiry: "SSL到期",
-  domain_expiry: "域名到期",
-  icp_change: "ICP变更",
-  keyword: "关键字",
-  llm_endpoint: "LLM Endpoint",
-  tool_api: "Tool API",
-  rag: "RAG",
-}
-
-export const MONITOR_TYPES: MonitorType[] = [
-  "http",
-  "https",
-  "ping",
-  "tcp",
-  "dns",
-  "ssl_expiry",
-  "domain_expiry",
-  "icp_change",
-  "keyword",
-]
-
-export const AGENT_OBS_TYPES: MonitorType[] = [
-  "llm_endpoint",
-  "tool_api",
-  "rag",
-]

@@ -23,7 +23,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { type Monitor, type MonitorStatus, TYPE_LABELS } from "../mock-data"
+import { type Monitor, type MonitorStatus, TYPE_LABELS } from "../types"
 import { apiRequest, API_BASE } from "@/lib/api"
 
 interface LatestCheck {

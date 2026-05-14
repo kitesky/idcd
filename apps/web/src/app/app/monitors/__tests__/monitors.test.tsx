@@ -19,7 +19,7 @@ vi.mock("next/link", () => ({
 }))
 
 import { MonitorsClient } from "../monitors-client"
-import { MOCK_MONITORS } from "../mock-data"
+import { MOCK_MONITORS } from "../types"
 import { MonitorDetailClient } from "../[id]/monitor-detail-client"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

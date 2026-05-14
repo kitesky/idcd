@@ -65,7 +65,7 @@ import {
   CHANNEL_TYPES,
   formatDuration,
   truncateConfig,
-} from "./mock-data"
+} from "./types"
 import { apiRequest } from "@/lib/api"
 
 // ─── Types ───────────────────────────────────────────────────────────────────

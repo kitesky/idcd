@@ -45,7 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
-import { type MonitorType, TYPE_LABELS } from "./mock-data"
+import { type MonitorType, TYPE_LABELS } from "./types"
 
 // ── Backend API types ────────────────────────────────────────────────────────
 

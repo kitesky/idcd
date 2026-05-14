@@ -23,15 +23,6 @@ import { apiRequest } from "@/lib/api"
 
 type Step = "idle" | "scan" | "verify" | "backup"
 
-const MOCK_PASSKEYS = [
-  {
-    id: "wc_MockPasskey1",
-    device_name: "MacBook Pro (Touch ID)",
-    created_at: new Date("2026-04-10T08:00:00Z").toISOString(),
-    last_used_at: new Date("2026-05-14T06:00:00Z").toISOString(),
-  },
-]
-
 type PasskeyItem = {
   id: string
   device_name: string
@@ -54,7 +45,8 @@ export function SecurityClient() {
   const [verifyLoading, setVerifyLoading] = useState(false)
   const [disableLoading, setDisableLoading] = useState(false)
 
-  const [passkeys, setPasskeys] = useState<PasskeyItem[]>(MOCK_PASSKEYS)
+  const [passkeys, setPasskeys] = useState<PasskeyItem[]>([])
+  const [passkeyLoading, setPasskeyLoading] = useState(false)
   const [passkeyAdding, setPasskeyAdding] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
@@ -65,6 +57,17 @@ export function SecurityClient() {
       .catch(() => {
         // Silently ignore — leave default false; server may be unavailable during dev/test
       })
+  }, [])
+
+  // Load passkeys on mount
+  useEffect(() => {
+    setPasskeyLoading(true)
+    apiRequest<{ data: { passkeys: PasskeyItem[] } }>("/v1/account/passkeys")
+      .then((res) => setPasskeys(res.data.passkeys))
+      .catch(() => {
+        // Silently ignore — leave empty list; server may be unavailable during dev/test
+      })
+      .finally(() => setPasskeyLoading(false))
   }, [])
 
   async function openSetup() {
@@ -199,8 +202,14 @@ export function SecurityClient() {
     }
   }
 
-  function handleDeletePasskey(id: string) {
-    setPasskeys(prev => prev.filter(p => p.id !== id))
+  async function handleDeletePasskey(id: string) {
+    setPasskeyError(null)
+    try {
+      await apiRequest(`/v1/account/passkeys/${id}`, { method: "DELETE" })
+      setPasskeys(prev => prev.filter(p => p.id !== id))
+    } catch (err) {
+      setPasskeyError(err instanceof Error ? err.message : "删除 Passkey 失败")
+    }
   }
 
   const qrURL = secretData
@@ -273,11 +282,27 @@ export function SecurityClient() {
             variant="outline"
             data-testid="btn-add-passkey"
             onClick={handleAddPasskey}
-            disabled={passkeyAdding}
+            disabled={passkeyAdding || passkeyLoading}
           >
             {passkeyAdding ? "添加中..." : "添加 Passkey"}
           </Button>
-          {passkeys.length > 0 && (
+          {passkeyLoading && (
+            <div className="space-y-2" data-testid="passkey-loading">
+              {[1, 2].map((i) => (
+                <div
+                  key={i}
+                  className="flex items-center justify-between rounded border px-3 py-2 animate-pulse"
+                >
+                  <div className="space-y-1.5">
+                    <div className="h-3 w-36 rounded bg-muted" />
+                    <div className="h-2 w-24 rounded bg-muted" />
+                  </div>
+                  <div className="h-8 w-12 rounded bg-muted" />
+                </div>
+              ))}
+            </div>
+          )}
+          {!passkeyLoading && passkeys.length > 0 && (
             <div className="space-y-2" data-testid="passkey-list">
               {passkeys.map((pk) => (
                 <div

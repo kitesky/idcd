@@ -37,6 +37,53 @@ export interface AlertNotification {
   error: string | null
 }
 
+export type SilenceStatus = "active" | "upcoming" | "expired"
+
+export interface AlertSilence {
+  id: string
+  monitorId?: string
+  monitorName?: string
+  reason: string
+  startsAt: string
+  endsAt: string
+  status: SilenceStatus
+}
+
+export const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
+  email: "邮件",
+  webhook: "Webhook",
+  wecom: "企业微信",
+  dingtalk: "钉钉",
+  feishu: "飞书",
+}
+
+export const CHANNEL_TYPES: ChannelType[] = [
+  "email",
+  "webhook",
+  "wecom",
+  "dingtalk",
+  "feishu",
+]
+
+/** Format duration from start time to now (or to end time) */
+export function formatDuration(startedAt: string, endedAt?: string): string {
+  const start = new Date(startedAt).getTime()
+  const end = endedAt ? new Date(endedAt).getTime() : Date.now()
+  const diffMs = end - start
+  const mins = Math.floor(diffMs / 60_000)
+  if (mins < 60) return `${mins} 分钟`
+  const hours = Math.floor(mins / 60)
+  const remainMins = mins % 60
+  if (remainMins === 0) return `${hours} 小时`
+  return `${hours} 小时 ${remainMins} 分钟`
+}
+
+/** Truncate a URL/config string for display */
+export function truncateConfig(config: string, maxLen = 32): string {
+  if (config.length <= maxLen) return config
+  return config.slice(0, maxLen) + "…"
+}
+
 const BASE = Date.now()
 
 export const MOCK_ALERT_EVENTS: AlertEvent[] = [
@@ -141,53 +188,6 @@ export const MOCK_MONITOR_NAMES = [
   "idcd.com SSL 证书",
   "DNS 解析检查",
 ]
-
-export const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
-  email: "邮件",
-  webhook: "Webhook",
-  wecom: "企业微信",
-  dingtalk: "钉钉",
-  feishu: "飞书",
-}
-
-export const CHANNEL_TYPES: ChannelType[] = [
-  "email",
-  "webhook",
-  "wecom",
-  "dingtalk",
-  "feishu",
-]
-
-/** Format duration from start time to now (or to end time) */
-export function formatDuration(startedAt: string, endedAt?: string): string {
-  const start = new Date(startedAt).getTime()
-  const end = endedAt ? new Date(endedAt).getTime() : Date.now()
-  const diffMs = end - start
-  const mins = Math.floor(diffMs / 60_000)
-  if (mins < 60) return `${mins} 分钟`
-  const hours = Math.floor(mins / 60)
-  const remainMins = mins % 60
-  if (remainMins === 0) return `${hours} 小时`
-  return `${hours} 小时 ${remainMins} 分钟`
-}
-
-/** Truncate a URL/config string for display */
-export function truncateConfig(config: string, maxLen = 32): string {
-  if (config.length <= maxLen) return config
-  return config.slice(0, maxLen) + "…"
-}
-
-export type SilenceStatus = "active" | "upcoming" | "expired"
-
-export interface AlertSilence {
-  id: string
-  monitorId?: string
-  monitorName?: string
-  reason: string
-  startsAt: string
-  endsAt: string
-  status: SilenceStatus
-}
 
 const NOW = Date.now()
 

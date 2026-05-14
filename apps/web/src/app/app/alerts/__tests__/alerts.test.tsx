@@ -6,7 +6,7 @@ import {
   MOCK_ALERT_EVENTS,
   MOCK_ALERT_CHANNELS,
   MOCK_ALERT_POLICIES,
-} from "../mock-data"
+} from "../types"
 
 // Mock the API module so tests don't hit a real server
 vi.mock("@/lib/api", () => ({

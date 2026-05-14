@@ -16,6 +16,7 @@ import {
   LogOut,
   Menu,
   Settings,
+  UserCheck,
   X,
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
@@ -45,6 +46,7 @@ const NAV_GROUPS = [
     items: [
       { icon: Activity, label: "监控列表", href: "/app/monitors" },
       { icon: Bell, label: "告警管理", href: "/app/alerts" },
+      { icon: UserCheck, label: "On-Call", href: "/app/oncall" },
     ],
   },
   {

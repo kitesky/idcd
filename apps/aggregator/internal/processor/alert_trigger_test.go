@@ -38,12 +38,17 @@ func TestAlertTrigger_ThreeConsecutiveFailures_CreatesFiringEvent(t *testing.T) 
 	ctx := context.Background()
 	monitorID := "m_test001"
 	policyID := "pol_test001"
+	userID := "u_test001"
 	channelID := "ch_test001"
 
-	mock.ExpectQuery("SELECT id, channel_ids, recovery_n, enabled FROM alert_policies").
+	mock.ExpectQuery("SELECT id, user_id, channel_ids, recovery_n, enabled FROM alert_policies").
 		WithArgs(monitorID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "channel_ids", "recovery_n", "enabled"}).
-			AddRow(policyID, []string{channelID}, 3, true))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "channel_ids", "recovery_n", "enabled"}).
+			AddRow(policyID, userID, []string{channelID}, 3, true))
+
+	mock.ExpectQuery("SELECT COUNT").
+		WithArgs(userID, monitorID).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	mock.ExpectQuery("SELECT status FROM monitor_checks").
 		WithArgs(monitorID, 3).
@@ -58,6 +63,10 @@ func TestAlertTrigger_ThreeConsecutiveFailures_CreatesFiringEvent(t *testing.T) 
 
 	mock.ExpectExec("INSERT INTO alert_events").
 		WithArgs(pgxmock.AnyArg(), monitorID, policyID, pgxmock.AnyArg()).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	mock.ExpectExec("INSERT INTO alert_noise_stats").
+		WithArgs(pgxmock.AnyArg(), userID, pgxmock.AnyArg(), monitorID).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	mock.ExpectQuery("SELECT id, type, config FROM alert_channels").
@@ -80,12 +89,17 @@ func TestAlertTrigger_LessThanNFailures_NoEvent(t *testing.T) {
 	ctx := context.Background()
 	monitorID := "m_test002"
 	policyID := "pol_test002"
+	userID := "u_test002"
 	channelID := "ch_test002"
 
-	mock.ExpectQuery("SELECT id, channel_ids, recovery_n, enabled FROM alert_policies").
+	mock.ExpectQuery("SELECT id, user_id, channel_ids, recovery_n, enabled FROM alert_policies").
 		WithArgs(monitorID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "channel_ids", "recovery_n", "enabled"}).
-			AddRow(policyID, []string{channelID}, 3, true))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "channel_ids", "recovery_n", "enabled"}).
+			AddRow(policyID, userID, []string{channelID}, 3, true))
+
+	mock.ExpectQuery("SELECT COUNT").
+		WithArgs(userID, monitorID).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	mock.ExpectQuery("SELECT status FROM monitor_checks").
 		WithArgs(monitorID, 3).
@@ -112,14 +126,19 @@ func TestAlertTrigger_Recovery_ResolvesEvent(t *testing.T) {
 	ctx := context.Background()
 	monitorID := "m_test003"
 	policyID := "pol_test003"
+	userID := "u_test003"
 	channelID := "ch_test003"
 	eventID := "ae_existing001"
-	startedAt := time.Now().Add(-5 * time.Minute)
+	startedAt := time.Now().Add(-10 * time.Minute)
 
-	mock.ExpectQuery("SELECT id, channel_ids, recovery_n, enabled FROM alert_policies").
+	mock.ExpectQuery("SELECT id, user_id, channel_ids, recovery_n, enabled FROM alert_policies").
 		WithArgs(monitorID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "channel_ids", "recovery_n", "enabled"}).
-			AddRow(policyID, []string{channelID}, 3, true))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "channel_ids", "recovery_n", "enabled"}).
+			AddRow(policyID, userID, []string{channelID}, 3, true))
+
+	mock.ExpectQuery("SELECT COUNT").
+		WithArgs(userID, monitorID).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	mock.ExpectQuery("SELECT status FROM monitor_checks").
 		WithArgs(monitorID, 3).
@@ -142,6 +161,10 @@ func TestAlertTrigger_Recovery_ResolvesEvent(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"id", "type", "config"}).
 			AddRow(channelID, "webhook", []byte(`{"url":"https://example.com"}`)))
 
+	mock.ExpectExec("INSERT INTO alert_noise_stats").
+		WithArgs(pgxmock.AnyArg(), userID, pgxmock.AnyArg(), monitorID).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
 	trigger.CheckAndTrigger(ctx, monitorID, "up")
 
 	if len(enq.calls) != 1 {
@@ -157,14 +180,19 @@ func TestAlertTrigger_Idempotent_NoSecondFiringEvent(t *testing.T) {
 	ctx := context.Background()
 	monitorID := "m_test004"
 	policyID := "pol_test004"
+	userID := "u_test004"
 	channelID := "ch_test004"
 	eventID := "ae_existing002"
 	startedAt := time.Now().Add(-10 * time.Minute)
 
-	mock.ExpectQuery("SELECT id, channel_ids, recovery_n, enabled FROM alert_policies").
+	mock.ExpectQuery("SELECT id, user_id, channel_ids, recovery_n, enabled FROM alert_policies").
 		WithArgs(monitorID).
-		WillReturnRows(pgxmock.NewRows([]string{"id", "channel_ids", "recovery_n", "enabled"}).
-			AddRow(policyID, []string{channelID}, 3, true))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "channel_ids", "recovery_n", "enabled"}).
+			AddRow(policyID, userID, []string{channelID}, 3, true))
+
+	mock.ExpectQuery("SELECT COUNT").
+		WithArgs(userID, monitorID).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	mock.ExpectQuery("SELECT status FROM monitor_checks").
 		WithArgs(monitorID, 3).
@@ -182,6 +210,33 @@ func TestAlertTrigger_Idempotent_NoSecondFiringEvent(t *testing.T) {
 
 	if len(enq.calls) != 0 {
 		t.Errorf("expected 0 notifications (idempotent), got %d", len(enq.calls))
+	}
+	if err := mock.ExpectationsWereMet(); err != nil {
+		t.Errorf("unfulfilled expectations: %v", err)
+	}
+}
+
+func TestAlertTrigger_Silenced_SkipsAlert(t *testing.T) {
+	mock, enq, trigger := newTestTrigger(t)
+	ctx := context.Background()
+	monitorID := "m_test005"
+	policyID := "pol_test005"
+	userID := "u_test005"
+	channelID := "ch_test005"
+
+	mock.ExpectQuery("SELECT id, user_id, channel_ids, recovery_n, enabled FROM alert_policies").
+		WithArgs(monitorID).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "user_id", "channel_ids", "recovery_n", "enabled"}).
+			AddRow(policyID, userID, []string{channelID}, 3, true))
+
+	mock.ExpectQuery("SELECT COUNT").
+		WithArgs(userID, monitorID).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
+
+	trigger.CheckAndTrigger(ctx, monitorID, "down")
+
+	if len(enq.calls) != 0 {
+		t.Errorf("expected 0 notifications (silenced), got %d", len(enq.calls))
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unfulfilled expectations: %v", err)

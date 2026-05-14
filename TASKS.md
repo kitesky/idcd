@@ -499,6 +499,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 - [x] **L2** 状态页订阅推送 — DB migration 00027（`status_page_subscriptions`：id/status_page_id/channel_type/endpoint/verified/verify_token/events），`handler/status_subscription.go`（5 端点：POST subscribe / GET verify / DELETE unsubscribe + 认证 GET list + DELETE），`idgen.StatusSubscription()`（ssub_ 前缀），email 类型 verified=false + crypto/rand 32字节 verify_token，webhook/wecom/dingtalk 直接 verified=true，`processor/subscription_notifier.go`（NotifySubscribers：查 status_page → 查 verified 订阅 → enqueue），alert_trigger.go 接入（firing→incident / resolved→recovery），server.go 路由注册（5条路由），状态页前端订阅区域（Email Input + 订阅按钮 + 发送成功提示 + 4种通道 Badge），7 handler tests + 2 notifier tests 全绿，完成 2026-05-14
 
+- [x] **L1** On-Call 排班系统 — DB migration 00024（`oncall_schedules`/`oncall_participants`/`oncall_overrides` 三表），`idgen.OncallSchedule/Participant/Override()`（sch_/par_/ovr_ 前缀），`apps/api/internal/oncall/calculator.go`（`CurrentOnCall`：override 优先 → 轮换计算，`nextRotationUser`：epoch 2024-01-01 + 周期整除幂等），`apps/api/internal/handler/oncall.go`（7 端点：POST/GET schedules + GET detail + POST/DELETE participants + POST overrides + GET current），server.go 路由注册（`/v1/oncall/schedules`），`alert_trigger.go` 接入 `sendOncallNotification`（monitor team → oncall schedule → 当前值班人邮箱 → enqueue，失败不阻断主流程），前端 `/app/oncall` 页面（当前值班 Card + 7天预览 + 创建排班 Dialog + 临时换班 Dialog），侧边栏"监控"组添加 On-Call 导航项（UserCheck icon），修复 `status_subscription.go` 类型名冲突（subscribeRequest→statusSubRequest 等），6 calculator tests + 5 handler tests + 7 前端 tests 全绿，完成 2026-05-14
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

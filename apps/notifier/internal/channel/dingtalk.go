@@ -37,7 +37,8 @@ func NewDingtalk(cfg DingtalkConfig) (*DingtalkChannel, error) {
 	return &DingtalkChannel{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Transport: safeTransport,
+			Timeout:   10 * time.Second,
 		},
 	}, nil
 }

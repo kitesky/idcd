@@ -15,6 +15,22 @@ import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Separator } from "@/components/ui/separator"
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "@/components/ui/alert-dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 
 interface StatusPageItem {
   id: string
@@ -36,51 +52,10 @@ const MOCK_STATUS_PAGES: StatusPageItem[] = [
 
 const IS_FREE_PLAN = true
 
-interface UpgradeDialogProps {
-  open: boolean
-  onClose: () => void
-}
-
-function UpgradeDialog({ open, onClose }: UpgradeDialogProps) {
-  if (!open) return null
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      data-testid="upgrade-dialog"
-    >
-      <Card className="w-full max-w-sm mx-4">
-        <CardHeader>
-          <CardTitle>升级解锁状态页</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Free 档不支持创建状态页。升级到 Pro 可创建最多 3 个状态页，支持自定义品牌与监控绑定。
-          </p>
-          <div className="flex gap-2">
-            <Button className="flex-1" data-testid="upgrade-confirm-button">
-              升级到 Pro
-            </Button>
-            <Button variant="outline" onClick={onClose} data-testid="upgrade-cancel-button">
-              稍后再说
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  )
-}
-
-interface CreateSheetProps {
-  open: boolean
-  onClose: () => void
-}
-
-function CreateSheet({ open, onClose }: CreateSheetProps) {
+function CreateSheetContent({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
   const [desc, setDesc] = useState("")
-
-  if (!open) return null
 
   function handleNameChange(val: string) {
     setName(val)
@@ -93,62 +68,52 @@ function CreateSheet({ open, onClose }: CreateSheetProps) {
   }
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60"
-      data-testid="create-sheet"
-    >
-      <Card className="w-full max-w-lg mx-4 mb-0 sm:mb-0 rounded-t-xl sm:rounded-xl">
-        <CardHeader>
-          <CardTitle>新建状态页</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="sp-name">页面名称</Label>
-            <Input
-              id="sp-name"
-              placeholder="例：acme.com 服务状态"
-              value={name}
-              onChange={(e) => handleNameChange(e.target.value)}
-              data-testid="sp-name-input"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="sp-slug">Slug（访问路径）</Label>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground shrink-0">
-                .status.idcd.com/
-              </span>
-              <Input
-                id="sp-slug"
-                placeholder="acme"
-                value={slug}
-                onChange={(e) => setSlug(e.target.value)}
-                data-testid="sp-slug-input"
-              />
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="sp-desc">描述（可选）</Label>
-            <Textarea
-              id="sp-desc"
-              placeholder="简短说明该状态页用途..."
-              value={desc}
-              onChange={(e) => setDesc(e.target.value)}
-              rows={3}
-              data-testid="sp-desc-input"
-            />
-          </div>
-          <Separator />
-          <div className="flex gap-2">
-            <Button className="flex-1" data-testid="create-sp-button">
-              创建状态页
-            </Button>
-            <Button variant="outline" onClick={onClose} data-testid="cancel-sp-button">
-              取消
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="space-y-4 mt-4">
+      <div className="space-y-1.5">
+        <Label htmlFor="sp-name">页面名称</Label>
+        <Input
+          id="sp-name"
+          placeholder="例：acme.com 服务状态"
+          value={name}
+          onChange={(e) => handleNameChange(e.target.value)}
+          data-testid="sp-name-input"
+        />
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="sp-slug">Slug（访问路径）</Label>
+        <div className="flex items-center gap-2">
+          <span className="text-sm text-muted-foreground shrink-0">
+            .status.idcd.com/
+          </span>
+          <Input
+            id="sp-slug"
+            placeholder="acme"
+            value={slug}
+            onChange={(e) => setSlug(e.target.value)}
+            data-testid="sp-slug-input"
+          />
+        </div>
+      </div>
+      <div className="space-y-1.5">
+        <Label htmlFor="sp-desc">描述（可选）</Label>
+        <Textarea
+          id="sp-desc"
+          placeholder="简短说明该状态页用途..."
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          rows={3}
+          data-testid="sp-desc-input"
+        />
+      </div>
+      <Separator />
+      <div className="flex gap-2">
+        <Button className="flex-1" data-testid="create-sp-button">
+          创建状态页
+        </Button>
+        <Button variant="outline" onClick={onClose} data-testid="cancel-sp-button">
+          取消
+        </Button>
+      </div>
     </div>
   )
 }
@@ -226,14 +191,31 @@ export function StatusPagesClient() {
         </div>
       )}
 
-      <UpgradeDialog
-        open={showUpgradeDialog}
-        onClose={() => setShowUpgradeDialog(false)}
-      />
-      <CreateSheet
-        open={showCreateSheet}
-        onClose={() => setShowCreateSheet(false)}
-      />
+      {/* Upgrade dialog */}
+      <AlertDialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
+        <AlertDialogContent data-testid="upgrade-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>升级解锁状态页</AlertDialogTitle>
+            <AlertDialogDescription>
+              Free 档不支持创建状态页。升级到 Pro 可创建最多 3 个状态页，支持自定义品牌与监控绑定。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="upgrade-cancel-button">稍后再说</AlertDialogCancel>
+            <AlertDialogAction data-testid="upgrade-confirm-button">升级到 Pro</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Create sheet */}
+      <Sheet open={showCreateSheet} onOpenChange={(open) => !open && setShowCreateSheet(false)}>
+        <SheetContent data-testid="create-sheet">
+          <SheetHeader>
+            <SheetTitle>新建状态页</SheetTitle>
+          </SheetHeader>
+          <CreateSheetContent onClose={() => setShowCreateSheet(false)} />
+        </SheetContent>
+      </Sheet>
     </div>
   )
 }

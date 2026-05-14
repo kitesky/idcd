@@ -30,6 +30,12 @@ UPDATE monitors
 SET last_check_at = NOW(), next_check_at = NOW() + make_interval(secs => $2), updated_at = NOW()
 WHERE id = $1;
 
+-- name: UpdateMonitorFields :one
+UPDATE monitors
+SET name = $2, config = $3, interval_s = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteMonitor :exec
 UPDATE monitors
 SET status = 'archived', updated_at = NOW()

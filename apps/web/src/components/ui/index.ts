@@ -26,3 +26,26 @@ export {
   TableHead, TableRow, TableCell, TableCaption,
 } from './table'
 export { cn } from '@/lib/utils'
+export { Checkbox } from './checkbox'
+export { Slider } from './slider'
+export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
+export {
+  Dialog, DialogPortal, DialogOverlay, DialogTrigger, DialogClose,
+  DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
+} from './dialog'
+export {
+  AlertDialog, AlertDialogPortal, AlertDialogOverlay, AlertDialogTrigger,
+  AlertDialogContent, AlertDialogHeader, AlertDialogFooter,
+  AlertDialogTitle, AlertDialogDescription, AlertDialogAction, AlertDialogCancel,
+} from './alert-dialog'
+export {
+  Sheet, SheetPortal, SheetOverlay, SheetTrigger, SheetClose,
+  SheetContent, SheetHeader, SheetFooter, SheetTitle, SheetDescription,
+} from './sheet'
+export {
+  DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuCheckboxItem, DropdownMenuRadioItem, DropdownMenuLabel,
+  DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuGroup,
+  DropdownMenuPortal, DropdownMenuSub, DropdownMenuSubContent,
+  DropdownMenuSubTrigger, DropdownMenuRadioGroup,
+} from './dropdown-menu'

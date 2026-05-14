@@ -22,6 +22,12 @@ import {
   Badge,
   Alert,
   AlertDescription,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+  DialogFooter,
 } from "@/components/ui"
 
 // ── Schemas ──────────────────────────────────────────────────────────────────
@@ -227,30 +233,21 @@ export function AccountClient() {
             启用 2FA
           </Button>
 
-          {/* Inline dialog (Radix AlertDialog not installed yet) */}
-          {show2FADialog && (
-            <div
-              className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-              data-testid="2fa-dialog"
-              onClick={() => setShow2FADialog(false)}
-            >
-              <div
-                className="bg-background border border-border rounded-lg p-6 max-w-sm w-full mx-4 space-y-4"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <h3 className="text-lg font-semibold">两步验证即将上线</h3>
-                <p className="text-sm text-muted-foreground">
+          <Dialog open={show2FADialog} onOpenChange={setShow2FADialog}>
+            <DialogContent data-testid="2fa-dialog">
+              <DialogHeader>
+                <DialogTitle>两步验证即将上线</DialogTitle>
+                <DialogDescription>
                   两步验证功能即将上线，敬请期待
-                </p>
-                <Button
-                  data-testid="btn-2fa-dialog-close"
-                  onClick={() => setShow2FADialog(false)}
-                >
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button data-testid="btn-2fa-dialog-close" onClick={() => setShow2FADialog(false)}>
                   确认
                 </Button>
-              </div>
-            </div>
-          )}
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
         </CardContent>
       </Card>
 

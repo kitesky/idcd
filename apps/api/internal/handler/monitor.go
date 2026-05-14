@@ -10,7 +10,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
@@ -27,15 +26,15 @@ type MonitorQuerier interface {
 	ListMonitorsByUser(ctx context.Context, arg idcdmain.ListMonitorsByUserParams) ([]idcdmain.Monitor, error)
 	CreateMonitor(ctx context.Context, arg idcdmain.CreateMonitorParams) (idcdmain.Monitor, error)
 	UpdateMonitorStatus(ctx context.Context, arg idcdmain.UpdateMonitorStatusParams) (idcdmain.Monitor, error)
+	UpdateMonitorFields(ctx context.Context, arg idcdmain.UpdateMonitorFieldsParams) (idcdmain.Monitor, error)
 	DeleteMonitor(ctx context.Context, id string) error
 }
 
 // QuotaPool is the minimal pgx interface needed to perform quota-related DB
-// lookups (subscription plan + monitor count) and partial field updates.
+// lookups (subscription plan + monitor count).
 // *pgxpool.Pool satisfies this.
 type QuotaPool interface {
 	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
 }
 
 // MonitorHandler handles monitor CRUD endpoints.
@@ -378,10 +377,8 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // updateMonitor applies partial updates to a monitor.
-// Status changes use the dedicated sqlc query; other field changes (name,
-// config, interval_s) are persisted via a raw SQL UPDATE through the pool.
-// If no pool is configured, field changes are applied in-memory only
-// (acceptable in tests where no real DB is present).
+// Both status changes and field changes (name, config, interval_s) go through
+// dedicated sqlc-generated queries — no raw SQL in the handler.
 func (h *MonitorHandler) updateMonitor(ctx context.Context, m idcdmain.Monitor, req UpdateMonitorRequest) (idcdmain.Monitor, error) {
 	updated := m
 
@@ -398,25 +395,29 @@ func (h *MonitorHandler) updateMonitor(ctx context.Context, m idcdmain.Monitor, 
 		}
 	}
 
-	// Merge optional field changes into updated, then persist if a pool is available.
-	hasFieldChanges := req.Name != nil || req.Config != nil || req.IntervalS != nil
-	if hasFieldChanges {
+	// Persist field changes (name / config / interval_s) via the sqlc-generated query.
+	if req.Name != nil || req.Config != nil || req.IntervalS != nil {
+		name := updated.Name
 		if req.Name != nil {
-			updated.Name = *req.Name
+			name = *req.Name
 		}
+		config := updated.Config
 		if req.Config != nil {
-			updated.Config = []byte(*req.Config)
+			config = []byte(*req.Config)
 		}
+		intervalS := updated.IntervalS
 		if req.IntervalS != nil {
-			updated.IntervalS = *req.IntervalS
+			intervalS = *req.IntervalS
 		}
-		if h.pool != nil {
-			if _, execErr := h.pool.Exec(ctx,
-				`UPDATE monitors SET name=$1, config=$2, interval_s=$3 WHERE id=$4`,
-				updated.Name, updated.Config, updated.IntervalS, m.ID,
-			); execErr != nil {
-				return idcdmain.Monitor{}, fmt.Errorf("updateMonitor: persist field changes: %w", execErr)
-			}
+		var err error
+		updated, err = h.q.UpdateMonitorFields(ctx, idcdmain.UpdateMonitorFieldsParams{
+			ID:        m.ID,
+			Name:      name,
+			Config:    config,
+			IntervalS: intervalS,
+		})
+		if err != nil {
+			return idcdmain.Monitor{}, fmt.Errorf("updateMonitor: persist field changes: %w", err)
 		}
 	}
 

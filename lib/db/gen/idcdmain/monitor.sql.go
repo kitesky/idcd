@@ -181,6 +181,46 @@ func (q *Queries) ListMonitorsByUser(ctx context.Context, arg ListMonitorsByUser
 	return items, nil
 }
 
+const updateMonitorFields = `-- name: UpdateMonitorFields :one
+UPDATE monitors
+SET name = $2, config = $3, interval_s = $4, updated_at = NOW()
+WHERE id = $1
+RETURNING id, user_id, name, type, target, config, interval_s, node_count, status, last_check_at, next_check_at, created_at, updated_at
+`
+
+type UpdateMonitorFieldsParams struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
+	Config    []byte `json:"config"`
+	IntervalS int32  `json:"interval_s"`
+}
+
+func (q *Queries) UpdateMonitorFields(ctx context.Context, arg UpdateMonitorFieldsParams) (Monitor, error) {
+	row := q.db.QueryRow(ctx, updateMonitorFields,
+		arg.ID,
+		arg.Name,
+		arg.Config,
+		arg.IntervalS,
+	)
+	var i Monitor
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Name,
+		&i.Type,
+		&i.Target,
+		&i.Config,
+		&i.IntervalS,
+		&i.NodeCount,
+		&i.Status,
+		&i.LastCheckAt,
+		&i.NextCheckAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const updateMonitorNextCheck = `-- name: UpdateMonitorNextCheck :exec
 UPDATE monitors
 SET last_check_at = NOW(), next_check_at = NOW() + make_interval(secs => $2), updated_at = NOW()

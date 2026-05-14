@@ -30,7 +30,8 @@ func NewWecom(cfg WecomConfig) (*WecomChannel, error) {
 	return &WecomChannel{
 		cfg: cfg,
 		client: &http.Client{
-			Timeout: 10 * time.Second,
+			Transport: safeTransport,
+			Timeout:   10 * time.Second,
 		},
 	}, nil
 }

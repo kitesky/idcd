@@ -11,7 +11,6 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
@@ -21,11 +20,12 @@ import (
 // --- mock querier ---
 
 type mockMonitorQuerier struct {
-	getByID           func(ctx context.Context, id string) (idcdmain.Monitor, error)
-	listByUser        func(ctx context.Context, arg idcdmain.ListMonitorsByUserParams) ([]idcdmain.Monitor, error)
-	createMonitor     func(ctx context.Context, arg idcdmain.CreateMonitorParams) (idcdmain.Monitor, error)
-	updateStatus      func(ctx context.Context, arg idcdmain.UpdateMonitorStatusParams) (idcdmain.Monitor, error)
-	deleteMonitor     func(ctx context.Context, id string) error
+	getByID        func(ctx context.Context, id string) (idcdmain.Monitor, error)
+	listByUser     func(ctx context.Context, arg idcdmain.ListMonitorsByUserParams) ([]idcdmain.Monitor, error)
+	createMonitor  func(ctx context.Context, arg idcdmain.CreateMonitorParams) (idcdmain.Monitor, error)
+	updateStatus   func(ctx context.Context, arg idcdmain.UpdateMonitorStatusParams) (idcdmain.Monitor, error)
+	updateFields   func(ctx context.Context, arg idcdmain.UpdateMonitorFieldsParams) (idcdmain.Monitor, error)
+	deleteMonitor  func(ctx context.Context, id string) error
 }
 
 func (m *mockMonitorQuerier) GetMonitorByID(ctx context.Context, id string) (idcdmain.Monitor, error) {
@@ -52,6 +52,13 @@ func (m *mockMonitorQuerier) CreateMonitor(ctx context.Context, arg idcdmain.Cre
 func (m *mockMonitorQuerier) UpdateMonitorStatus(ctx context.Context, arg idcdmain.UpdateMonitorStatusParams) (idcdmain.Monitor, error) {
 	if m.updateStatus != nil {
 		return m.updateStatus(ctx, arg)
+	}
+	return idcdmain.Monitor{}, errors.New("not implemented")
+}
+
+func (m *mockMonitorQuerier) UpdateMonitorFields(ctx context.Context, arg idcdmain.UpdateMonitorFieldsParams) (idcdmain.Monitor, error) {
+	if m.updateFields != nil {
+		return m.updateFields(ctx, arg)
 	}
 	return idcdmain.Monitor{}, errors.New("not implemented")
 }
@@ -468,9 +475,6 @@ func (m *mockQuotaPool) QueryRow(_ context.Context, _ string, _ ...interface{}) 
 	return m.countRow
 }
 
-func (m *mockQuotaPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
-	return pgconn.NewCommandTag("UPDATE 1"), nil
-}
 
 // freePlanPoolWith returns a mockQuotaPool set to "free" plan with given monitor count.
 func freePlanPoolWith(count int) *mockQuotaPool {

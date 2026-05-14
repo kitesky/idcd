@@ -18,6 +18,11 @@ import {
   TableHead,
   TableHeader,
   TableRow,
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
 } from "@/components/ui"
 import { Copy, CheckCircle2, Plus, Trash2 } from "lucide-react"
 
@@ -233,110 +238,102 @@ export function APIKeysClient() {
         </CardContent>
       </Card>
 
-      {/* ── Create Key Dialog (inline) ─────────────────────────────────── */}
-      {showCreateDialog && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-          data-testid="create-key-dialog"
-          onClick={handleCloseCreateDialog}
-        >
-          <div
-            className="bg-background border border-border rounded-lg p-6 max-w-md w-full mx-4 space-y-4"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <h3 className="text-lg font-semibold">创建 API Key</h3>
-
-            {!createdKey ? (
-              <>
-                <p className="text-sm text-muted-foreground">
-                  为新 API Key 设置一个易于识别的名称
-                </p>
-
-                {createError && (
-                  <Alert variant="destructive" data-testid="create-key-error">
-                    <AlertDescription>{createError}</AlertDescription>
-                  </Alert>
-                )}
-
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Key 名称</label>
-                  <Input
-                    placeholder="例如：生产环境、CI/CD"
-                    value={newKeyName}
-                    onChange={(e) => {
-                      setNewKeyName(e.target.value)
-                      setCreateError(null)
-                    }}
-                    disabled={creating}
-                    data-testid="input-key-name"
-                    autoFocus
-                  />
-                </div>
-
-                <div className="flex gap-3 justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={handleCloseCreateDialog}
-                    disabled={creating}
-                    data-testid="btn-cancel-create"
-                  >
-                    取消
-                  </Button>
-                  <Button
-                    onClick={handleCreate}
-                    disabled={creating || newKeyName.trim() === ""}
-                    data-testid="btn-submit-create"
-                  >
-                    {creating ? "创建中..." : "创建"}
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <>
-                <Alert data-testid="new-key-reveal">
-                  <AlertDescription className="space-y-2">
-                    <p className="text-amber-600 dark:text-amber-400 font-medium text-sm">
-                      此 key 只显示一次，请立即复制并妥善保管
-                    </p>
-                    <code
-                      className="block bg-muted p-2 rounded text-xs break-all"
-                      data-testid="new-key-value"
-                    >
-                      {createdKey}
-                    </code>
-                  </AlertDescription>
-                </Alert>
-
-                <div className="flex gap-3 justify-end">
-                  <Button
-                    variant="outline"
-                    onClick={handleCopy}
-                    data-testid="btn-copy-key"
-                  >
-                    {copied ? (
-                      <>
-                        <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-                        已复制
-                      </>
-                    ) : (
-                      <>
-                        <Copy className="mr-2 h-4 w-4" />
-                        复制
-                      </>
-                    )}
-                  </Button>
-                  <Button
-                    onClick={handleCloseCreateDialog}
-                    data-testid="btn-done-create"
-                  >
-                    完成
-                  </Button>
-                </div>
-              </>
+      {/* ── Create Key Dialog ─────────────────────────────────────────── */}
+      <Dialog open={showCreateDialog} onOpenChange={(open) => !open && handleCloseCreateDialog()}>
+        <DialogContent data-testid="create-key-dialog">
+          <DialogHeader>
+            <DialogTitle>创建 API Key</DialogTitle>
+            {!createdKey && (
+              <DialogDescription>为新 API Key 设置一个易于识别的名称</DialogDescription>
             )}
-          </div>
-        </div>
-      )}
+          </DialogHeader>
+
+          {!createdKey ? (
+            <div className="space-y-4">
+              {createError && (
+                <Alert variant="destructive" data-testid="create-key-error">
+                  <AlertDescription>{createError}</AlertDescription>
+                </Alert>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Key 名称</label>
+                <Input
+                  placeholder="例如：生产环境、CI/CD"
+                  value={newKeyName}
+                  onChange={(e) => {
+                    setNewKeyName(e.target.value)
+                    setCreateError(null)
+                  }}
+                  disabled={creating}
+                  data-testid="input-key-name"
+                  autoFocus
+                />
+              </div>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={handleCloseCreateDialog}
+                  disabled={creating}
+                  data-testid="btn-cancel-create"
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={handleCreate}
+                  disabled={creating || newKeyName.trim() === ""}
+                  data-testid="btn-submit-create"
+                >
+                  {creating ? "创建中..." : "创建"}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <Alert data-testid="new-key-reveal">
+                <AlertDescription className="space-y-2">
+                  <p className="text-amber-600 dark:text-amber-400 font-medium text-sm">
+                    此 key 只显示一次，请立即复制并妥善保管
+                  </p>
+                  <code
+                    className="block bg-muted p-2 rounded text-xs break-all"
+                    data-testid="new-key-value"
+                  >
+                    {createdKey}
+                  </code>
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex gap-3 justify-end">
+                <Button
+                  variant="outline"
+                  onClick={handleCopy}
+                  data-testid="btn-copy-key"
+                >
+                  {copied ? (
+                    <>
+                      <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+                      已复制
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="mr-2 h-4 w-4" />
+                      复制
+                    </>
+                  )}
+                </Button>
+                <Button
+                  onClick={handleCloseCreateDialog}
+                  data-testid="btn-done-create"
+                >
+                  完成
+                </Button>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* ── Security note ─────────────────────────────────────────────── */}
       <Alert data-testid="api-keys-security-note">

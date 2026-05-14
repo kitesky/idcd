@@ -9,7 +9,6 @@ import {
   Plus,
   Trash2,
   Pencil,
-  X,
   AlertCircle,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -18,6 +17,25 @@ import { Card, CardContent, CardHeader, CardTitle, CardFooter } from "@/componen
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Checkbox } from "@/components/ui/checkbox"
+import { Slider } from "@/components/ui/slider"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+} from "@/components/ui/sheet"
 import {
   Select,
   SelectContent,
@@ -50,8 +68,6 @@ import {
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-type Tab = "events" | "channels" | "policies"
-
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 function statusBadge(status: AlertEvent["status"]) {
@@ -66,71 +82,6 @@ function channelIcon(type: ChannelType) {
   if (type === "email") return <Mail className="h-4 w-4" aria-hidden />
   if (type === "wecom" || type === "feishu") return <MessageSquare className="h-4 w-4" aria-hidden />
   return <Bell className="h-4 w-4" aria-hidden />
-}
-
-// ─── Confirmation Dialog (inline, no Radix Dialog needed) ─────────────────
-
-interface ConfirmDialogProps {
-  open: boolean
-  title: string
-  description: string
-  onConfirm: () => void
-  onCancel: () => void
-}
-
-function ConfirmDialog({ open, title, description, onConfirm, onCancel }: ConfirmDialogProps) {
-  if (!open) return null
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="confirm-title"
-      data-testid="confirm-dialog"
-    >
-      <div className="w-full max-w-sm rounded-lg border bg-background p-6 shadow-lg">
-        <h2 id="confirm-title" className="text-lg font-semibold">{title}</h2>
-        <p className="mt-2 text-sm text-muted-foreground">{description}</p>
-        <div className="mt-6 flex justify-end gap-3">
-          <Button variant="outline" onClick={onCancel}>取消</Button>
-          <Button variant="destructive" onClick={onConfirm}>删除</Button>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-// ─── Side Sheet (drawer-like panel) ──────────────────────────────────────────
-
-interface SheetProps {
-  open: boolean
-  title: string
-  onClose: () => void
-  children: React.ReactNode
-}
-
-function Sheet({ open, title, onClose, children }: SheetProps) {
-  if (!open) return null
-  return (
-    <div
-      className="fixed inset-0 z-50 flex justify-end"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="sheet-title"
-      data-testid="side-sheet"
-    >
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} aria-hidden="true" />
-      <div className="relative z-10 flex h-full w-full max-w-md flex-col border-l bg-background shadow-xl">
-        <div className="flex items-center justify-between border-b px-6 py-4">
-          <h2 id="sheet-title" className="text-lg font-semibold">{title}</h2>
-          <Button variant="ghost" size="icon" onClick={onClose} aria-label="关闭">
-            <X className="h-4 w-4" />
-          </Button>
-        </div>
-        <div className="flex-1 overflow-y-auto px-6 py-4">{children}</div>
-      </div>
-    </div>
-  )
 }
 
 // ─── Toast (simple in-page notification) ─────────────────────────────────────
@@ -319,11 +270,9 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
           )}
           {channels.map((ch) => (
             <label key={ch.id} className="flex cursor-pointer items-center gap-2">
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
+              <Checkbox
                 checked={selectedChannels.includes(ch.id)}
-                onChange={() => toggleChannel(ch.id)}
+                onCheckedChange={() => toggleChannel(ch.id)}
                 aria-label={ch.name}
               />
               <span className="text-sm">{ch.name}</span>
@@ -336,19 +285,14 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="policy-delay">延迟告警（{delay} 分钟）</Label>
-        <input
-          id="policy-delay"
-          type="range"
+        <Label>延迟告警（{delay} 分钟）</Label>
+        <Slider
           min={0}
           max={60}
           step={1}
-          value={delay}
-          onChange={(e) => setDelay(Number(e.target.value))}
-          className="w-full accent-primary"
-          aria-valuenow={delay}
-          aria-valuemin={0}
-          aria-valuemax={60}
+          value={[delay]}
+          onValueChange={([v]) => setDelay(v)}
+          aria-label="延迟告警分钟数"
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>立即</span>
@@ -377,17 +321,13 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
         </div>
       </div>
 
-      <div className="flex items-center gap-3">
-        <label className="flex cursor-pointer items-center gap-2">
-          <input
-            type="checkbox"
-            className="h-4 w-4 accent-primary"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            aria-label="启用策略"
-          />
-          <span className="text-sm">启用策略</span>
-        </label>
+      <div className="flex items-center gap-2">
+        <Checkbox
+          id="policy-enabled"
+          checked={enabled}
+          onCheckedChange={(v) => setEnabled(Boolean(v))}
+        />
+        <Label htmlFor="policy-enabled" className="cursor-pointer text-sm">启用策略</Label>
       </div>
 
       <div className="flex gap-3 pt-2">
@@ -667,7 +607,6 @@ function PoliciesTab({
 // ─── Main AlertsClient ────────────────────────────────────────────────────────
 
 export function AlertsClient() {
-  const [activeTab, setActiveTab] = useState<Tab>("events")
   const [events, setEvents] = useState<AlertEvent[]>(MOCK_ALERT_EVENTS)
   const [channels, setChannels] = useState<AlertChannel[]>(MOCK_ALERT_CHANNELS)
   const [policies, setPolicies] = useState<AlertPolicy[]>(MOCK_ALERT_POLICIES)
@@ -778,94 +717,86 @@ export function AlertsClient() {
     setSheet((p) => ({ ...p, open: false }))
   }
 
-  // ── Tab labels ──
-  const TABS: { id: Tab; label: string }[] = [
-    { id: "events", label: "事件历史" },
-    { id: "channels", label: "告警通道" },
-    { id: "policies", label: "告警策略" },
-  ]
-
   return (
     <div className="space-y-6">
-      {/* Tab navigation */}
-      <div className="flex gap-1 rounded-lg border bg-muted/30 p-1" role="tablist" aria-label="告警管理">
-        {TABS.map((tab) => (
-          <button
-            key={tab.id}
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={[
-              "flex-1 rounded-md px-4 py-2 text-sm font-medium transition-colors",
-              activeTab === tab.id
-                ? "bg-background text-foreground shadow-sm"
-                : "text-muted-foreground hover:text-foreground",
-            ].join(" ")}
-            data-testid={`tab-${tab.id}`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
-
-      {/* Tab panels */}
-      {activeTab === "events" && (
-        <EventsTab events={events} onAcknowledge={handleAcknowledge} />
-      )}
-      {activeTab === "channels" && (
-        <ChannelsTab
-          channels={channels}
-          onTest={handleTestChannel}
-          onDelete={handleDeleteChannel}
-          onAdd={handleAddChannel}
-        />
-      )}
-      {activeTab === "policies" && (
-        <PoliciesTab
-          policies={policies}
-          channels={channels}
-          onToggle={handleTogglePolicy}
-          onEdit={handleEditPolicy}
-          onDelete={handleDeletePolicy}
-          onAdd={handleAddPolicy}
-        />
-      )}
+      {/* Tabs — navigation + panels */}
+      <Tabs defaultValue="events">
+        <TabsList className="w-full">
+          <TabsTrigger value="events" className="flex-1" data-testid="tab-events">事件历史</TabsTrigger>
+          <TabsTrigger value="channels" className="flex-1" data-testid="tab-channels">告警通道</TabsTrigger>
+          <TabsTrigger value="policies" className="flex-1" data-testid="tab-policies">告警策略</TabsTrigger>
+        </TabsList>
+        <TabsContent value="events">
+          <EventsTab events={events} onAcknowledge={handleAcknowledge} />
+        </TabsContent>
+        <TabsContent value="channels">
+          <ChannelsTab
+            channels={channels}
+            onTest={handleTestChannel}
+            onDelete={handleDeleteChannel}
+            onAdd={handleAddChannel}
+          />
+        </TabsContent>
+        <TabsContent value="policies">
+          <PoliciesTab
+            policies={policies}
+            channels={channels}
+            onToggle={handleTogglePolicy}
+            onEdit={handleEditPolicy}
+            onDelete={handleDeletePolicy}
+            onAdd={handleAddPolicy}
+          />
+        </TabsContent>
+      </Tabs>
 
       {/* Confirm dialog */}
-      <ConfirmDialog
-        open={confirm.open}
-        title={confirm.title}
-        description={confirm.description}
-        onConfirm={confirm.onConfirm}
-        onCancel={() => setConfirm((p) => ({ ...p, open: false }))}
-      />
+      <AlertDialog open={confirm.open} onOpenChange={(open) => !open && setConfirm((p) => ({ ...p, open: false }))}>
+        <AlertDialogContent data-testid="confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{confirm.title}</AlertDialogTitle>
+            <AlertDialogDescription>{confirm.description}</AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={confirm.onConfirm}
+            >
+              删除
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Side sheet */}
-      <Sheet
-        open={sheet.open}
-        title={
-          sheet.mode === "add-channel"
-            ? "添加告警通道"
-            : sheet.mode === "edit-policy"
-            ? "编辑告警策略"
-            : "新建告警策略"
-        }
-        onClose={() => setSheet((p) => ({ ...p, open: false }))}
-      >
-        {sheet.mode === "add-channel" && (
-          <AddChannelForm
-            onSave={handleSaveChannel}
-            onCancel={() => setSheet((p) => ({ ...p, open: false }))}
-          />
-        )}
-        {(sheet.mode === "add-policy" || sheet.mode === "edit-policy") && (
-          <PolicyForm
-            channels={channels}
-            initial={sheet.policy}
-            onSave={handleSavePolicy}
-            onCancel={() => setSheet((p) => ({ ...p, open: false }))}
-          />
-        )}
+      <Sheet open={sheet.open} onOpenChange={(open) => !open && setSheet((p) => ({ ...p, open: false }))}>
+        <SheetContent data-testid="side-sheet">
+          <SheetHeader>
+            <SheetTitle>
+              {sheet.mode === "add-channel"
+                ? "添加告警通道"
+                : sheet.mode === "edit-policy"
+                ? "编辑告警策略"
+                : "新建告警策略"}
+            </SheetTitle>
+          </SheetHeader>
+          <div className="mt-4 overflow-y-auto">
+            {sheet.mode === "add-channel" && (
+              <AddChannelForm
+                onSave={handleSaveChannel}
+                onCancel={() => setSheet((p) => ({ ...p, open: false }))}
+              />
+            )}
+            {(sheet.mode === "add-policy" || sheet.mode === "edit-policy") && (
+              <PolicyForm
+                channels={channels}
+                initial={sheet.policy}
+                onSave={handleSavePolicy}
+                onCancel={() => setSheet((p) => ({ ...p, open: false }))}
+              />
+            )}
+          </div>
+        </SheetContent>
       </Sheet>
 
       {/* Toast notifications */}

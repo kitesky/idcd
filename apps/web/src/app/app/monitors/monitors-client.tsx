@@ -26,6 +26,12 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
   type Monitor,
   type MonitorStatus,
   type MonitorType,
@@ -64,7 +70,6 @@ interface MonitorsClientProps {
 export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
   const router = useRouter()
   const [monitors, setMonitors] = useState<Monitor[]>(initialMonitors)
-  const [openMenuId, setOpenMenuId] = useState<string | null>(null)
 
   const total = monitors.length
   const upCount = monitors.filter((m) => m.status === "UP").length
@@ -81,12 +86,10 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
         } as Monitor
       })
     )
-    setOpenMenuId(null)
   }
 
   function deleteMonitor(id: string) {
     setMonitors((prev) => prev.filter((m) => m.id !== id))
-    setOpenMenuId(null)
   }
 
   return (
@@ -226,41 +229,33 @@ export function MonitorsClient({ initialMonitors }: MonitorsClientProps) {
                           <Pause className="h-4 w-4" />
                         )}
                       </Button>
-                      <div className="relative">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          onClick={() =>
-                            setOpenMenuId(
-                              openMenuId === monitor.id ? null : monitor.id
-                            )
-                          }
-                          aria-label="更多操作"
-                        >
-                          <MoreVertical className="h-4 w-4" />
-                        </Button>
-                        {openMenuId === monitor.id && (
-                          <div className="absolute right-0 top-8 z-50 min-w-[120px] rounded-md border bg-popover p-1 shadow-md">
-                            <button
-                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm hover:bg-accent"
-                              onClick={() =>
-                                router.push(`/app/monitors/${monitor.id}`)
-                              }
-                            >
-                              <Activity className="h-4 w-4" />
-                              查看详情
-                            </button>
-                            <button
-                              className="flex w-full items-center gap-2 rounded-sm px-2 py-1.5 text-sm text-destructive hover:bg-accent"
-                              onClick={() => deleteMonitor(monitor.id)}
-                            >
-                              <Trash2 className="h-4 w-4" />
-                              删除
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            aria-label="更多操作"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem
+                            onClick={() => router.push(`/app/monitors/${monitor.id}`)}
+                          >
+                            <Activity className="h-4 w-4" />
+                            查看详情
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            className="text-destructive focus:text-destructive"
+                            onClick={() => deleteMonitor(monitor.id)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                            删除
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </div>
                   </TableCell>
                 </TableRow>

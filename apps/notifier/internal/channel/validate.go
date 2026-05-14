@@ -1,10 +1,15 @@
 package channel
 
 import (
+	"context"
 	"fmt"
 	"net"
+	"net/http"
 	"net/url"
 	"strings"
+	"time"
+
+	"github.com/kite365/idcd/lib/shared/netutil"
 )
 
 // blockedHosts lists hostnames that must never be used as webhook targets,
@@ -15,25 +20,6 @@ var blockedHosts = []string{
 	"fd00:ec2::254",
 	"localhost",
 }
-
-// privateRanges4 holds pre-parsed RFC-1918 + CGNAT CIDR blocks.
-// Parsed once at init to avoid per-call allocations inside isPrivateOrReserved.
-var privateRanges4 = func() []net.IPNet {
-	cidrs := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"100.64.0.0/10", // CGNAT
-	}
-	blocks := make([]net.IPNet, 0, len(cidrs))
-	for _, c := range cidrs {
-		_, block, _ := net.ParseCIDR(c)
-		if block != nil {
-			blocks = append(blocks, *block)
-		}
-	}
-	return blocks
-}()
 
 // validateWebhookURL rejects URLs that could be used for SSRF attacks.
 // Rules:
@@ -62,7 +48,7 @@ func validateWebhookURL(rawURL string) error {
 
 	// Reject bare IP literals that are in private/reserved ranges.
 	if ip := net.ParseIP(host); ip != nil {
-		if isPrivateOrReserved(ip) {
+		if netutil.IsPrivateIP(ip) {
 			return fmt.Errorf("webhook url resolves to a private/reserved address: %s", host)
 		}
 	}
@@ -78,26 +64,30 @@ func validateWebhookURL(rawURL string) error {
 	return nil
 }
 
-// isPrivateOrReserved returns true for addresses that should never be
-// reachable over the public internet.
-func isPrivateOrReserved(ip net.IP) bool {
-	if ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() ||
-		ip.IsUnspecified() || ip.IsMulticast() {
-		return true
-	}
+// safeTransport is a shared *http.Transport that re-validates the resolved IP
+// on every TCP dial, preventing DNS rebinding (TOCTOU) attacks. Shared across
+// all channel instances to allow connection-pool reuse.
+var safeTransport = newSafeTransport()
 
-	for _, block := range privateRanges4 {
-		if block.Contains(ip) {
-			return true
-		}
+func newSafeTransport() *http.Transport {
+	dialer := &net.Dialer{
+		Timeout:   30 * time.Second,
+		KeepAlive: 30 * time.Second,
 	}
-
-	// fc00::/7 — ULA (Unique Local IPv6)
-	if ip6 := ip.To16(); ip6 != nil && ip.To4() == nil {
-		if ip6[0]&0xfe == 0xfc {
-			return true
-		}
+	return &http.Transport{
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, fmt.Errorf("safe transport: invalid addr %q: %w", addr, err)
+			}
+			ip := net.ParseIP(host)
+			if ip == nil {
+				return nil, fmt.Errorf("safe transport: non-IP address %q after dial resolution", host)
+			}
+			if netutil.IsPrivateIP(ip) {
+				return nil, fmt.Errorf("safe transport: resolved address %s is private/reserved", host)
+			}
+			return dialer.DialContext(ctx, network, net.JoinHostPort(host, port))
+		},
 	}
-
-	return false
 }

@@ -11,8 +11,11 @@ import (
 type Querier interface {
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
+	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
 	CreateMonitor(ctx context.Context, arg CreateMonitorParams) (Monitor, error)
+	CreatePayment(ctx context.Context, arg CreatePaymentParams) (Payment, error)
 	CreateSession(ctx context.Context, arg CreateSessionParams) (UserSession, error)
+	CreateSubscription(ctx context.Context, arg CreateSubscriptionParams) (Subscription, error)
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserCredential(ctx context.Context, arg CreateUserCredentialParams) (UserCredential, error)
 	CreateUserOTP(ctx context.Context, arg CreateUserOTPParams) (UserOtp, error)
@@ -23,6 +26,9 @@ type Querier interface {
 	GetMonitorByID(ctx context.Context, id string) (Monitor, error)
 	GetSessionByID(ctx context.Context, id string) (UserSession, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (UserSession, error)
+	// billing.sql — sqlc queries for billing tables (post-00010 migration)
+	// Run `sqlc generate` after the 00010 migration has been applied.
+	GetSubscriptionByUserID(ctx context.Context, userID string) (GetSubscriptionByUserIDRow, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username *string) (User, error)
@@ -35,6 +41,7 @@ type Querier interface {
 	ListAuditLogsByActor(ctx context.Context, arg ListAuditLogsByActorParams) ([]AuditLog, error)
 	ListAuditLogsByOwner(ctx context.Context, arg ListAuditLogsByOwnerParams) ([]AuditLog, error)
 	ListAuditLogsByResource(ctx context.Context, arg ListAuditLogsByResourceParams) ([]AuditLog, error)
+	ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]ListInvoicesByUserRow, error)
 	ListMonitorsByUser(ctx context.Context, arg ListMonitorsByUserParams) ([]Monitor, error)
 	ListUserCredentialsByUser(ctx context.Context, userID string) ([]UserCredential, error)
 	MarkUserOTPUsed(ctx context.Context, id string) error
@@ -44,8 +51,11 @@ type Querier interface {
 	RevokeSession(ctx context.Context, id string) error
 	SoftDeleteUser(ctx context.Context, id string) error
 	UpdateAPIKeyLastUsed(ctx context.Context, arg UpdateAPIKeyLastUsedParams) error
+	UpdateMonitorFields(ctx context.Context, arg UpdateMonitorFieldsParams) (Monitor, error)
 	UpdateMonitorNextCheck(ctx context.Context, arg UpdateMonitorNextCheckParams) error
 	UpdateMonitorStatus(ctx context.Context, arg UpdateMonitorStatusParams) (Monitor, error)
+	UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStatusParams) (Payment, error)
+	UpdateSubscriptionStatus(ctx context.Context, arg UpdateSubscriptionStatusParams) (Subscription, error)
 	UpdateUserEmailVerified(ctx context.Context, id string) (User, error)
 	UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error

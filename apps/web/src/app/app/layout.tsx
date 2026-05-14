@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useRef, useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import {
@@ -17,6 +17,15 @@ import {
 } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { cn } from "@/lib/utils"
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
@@ -100,9 +109,7 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
   const [authChecked, setAuthChecked] = useState(false)
   const [plan, setPlan] = useState<string>("Free")
   const [userEmail, setUserEmail] = useState<string>("user@example.com")
-  const [userMenuOpen, setUserMenuOpen] = useState(false)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
-  const userMenuRef = useRef<HTMLDivElement>(null)
 
   // Auth guard + load mock data from localStorage
   useEffect(() => {
@@ -119,24 +126,36 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     setAuthChecked(true)
   }, [router])
 
-  // Close user menu on outside click
-  useEffect(() => {
-    function handleClick(e: MouseEvent) {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false)
-      }
-    }
-    document.addEventListener("mousedown", handleClick)
-    return () => document.removeEventListener("mousedown", handleClick)
-  }, [])
-
   // Close mobile menu on route change
   useEffect(() => {
     setMobileMenuOpen(false)
   }, [pathname])
 
-  // Block rendering until auth check completes — prevents protected content flash
-  if (!authChecked) return null
+  // Show skeleton shell while auth check runs — prevents CLS and content flash
+  if (!authChecked) {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <header className="sticky top-0 z-50 flex h-14 items-center border-b bg-background/95 px-4">
+          <Skeleton className="h-6 w-16" />
+          <div className="flex-1" />
+          <Skeleton className="h-8 w-24 rounded-full" />
+        </header>
+        <div className="flex flex-1">
+          <aside className="hidden w-60 shrink-0 border-r md:block">
+            <div className="flex flex-col gap-2 px-3 py-4">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <Skeleton key={i} className="h-9 w-full rounded-md" />
+              ))}
+            </div>
+          </aside>
+          <main className="flex-1 p-6">
+            <Skeleton className="h-8 w-48 mb-4" />
+            <Skeleton className="h-64 w-full rounded-lg" />
+          </main>
+        </div>
+      </div>
+    )
+  }
 
   const planVariant =
     plan === "Pro"
@@ -187,62 +206,43 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
         </Badge>
 
         {/* User menu */}
-        <div className="relative" ref={userMenuRef} data-testid="user-menu-wrapper">
-          <Button
-            variant="ghost"
-            size="sm"
-            className="flex items-center gap-1.5"
-            aria-label="用户菜单"
-            data-testid="user-menu-trigger"
-            onClick={() => setUserMenuOpen((v) => !v)}
-          >
-            <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
-              {userEmail.charAt(0).toUpperCase()}
-            </div>
-            <span className="hidden max-w-[140px] truncate text-sm sm:inline-block">
-              {userEmail}
-            </span>
-            <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-          </Button>
-
-          {/* Dropdown */}
-          {userMenuOpen && (
-            <div
-              className="absolute right-0 top-9 z-50 min-w-[180px] overflow-hidden rounded-md border bg-popover shadow-md"
-              data-testid="user-dropdown"
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="flex items-center gap-1.5"
+              aria-label="用户菜单"
+              data-testid="user-menu-trigger"
             >
-              <div className="px-3 py-2 border-b">
-                <p className="text-xs text-muted-foreground truncate">{userEmail}</p>
+              <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+                {userEmail.charAt(0).toUpperCase()}
               </div>
-              <div className="p-1">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-2 text-sm"
-                  asChild
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  <Link href="/app/settings/profile">
-                    <Settings className="h-4 w-4" />
-                    设置
-                  </Link>
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full justify-start gap-2 text-sm text-destructive hover:text-destructive"
-                  asChild
-                  onClick={() => setUserMenuOpen(false)}
-                >
-                  <Link href="/auth/logout">
-                    <LogOut className="h-4 w-4" />
-                    退出
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          )}
-        </div>
+              <span className="hidden max-w-[140px] truncate text-sm sm:inline-block">
+                {userEmail}
+              </span>
+              <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48" data-testid="user-dropdown">
+            <DropdownMenuLabel className="text-xs font-normal text-muted-foreground truncate">
+              {userEmail}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/app/settings/profile" className="flex items-center gap-2 cursor-pointer">
+                <Settings className="h-4 w-4" />
+                设置
+              </Link>
+            </DropdownMenuItem>
+            <DropdownMenuItem asChild>
+              <Link href="/auth/logout" className="flex items-center gap-2 cursor-pointer text-destructive focus:text-destructive">
+                <LogOut className="h-4 w-4" />
+                退出
+              </Link>
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </header>
 
       {/* ── Body: sidebar + main ────────────────────────────────────────────── */}

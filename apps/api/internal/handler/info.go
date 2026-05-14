@@ -15,6 +15,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/netutil"
 )
 
 // InfoHandler handles network information query endpoints.
@@ -401,40 +402,12 @@ func isIP(s string) bool {
 	return net.ParseIP(s) != nil
 }
 
-// isPrivateIP checks if an IP address is private (RFC1918, loopback, link-local).
+// isPrivateIP checks if an IP address string is private or reserved.
+// Delegates to netutil.IsPrivateIP for the canonical full-range check.
 func isPrivateIP(ipStr string) bool {
 	ip := net.ParseIP(ipStr)
 	if ip == nil {
 		return false
 	}
-
-	// Check for loopback
-	if ip.IsLoopback() {
-		return true
-	}
-
-	// Check for link-local
-	if ip.IsLinkLocalUnicast() || ip.IsLinkLocalMulticast() {
-		return true
-	}
-
-	// Check for private ranges
-	privateRanges := []string{
-		"10.0.0.0/8",
-		"172.16.0.0/12",
-		"192.168.0.0/16",
-		"fc00::/7", // IPv6 ULA
-	}
-
-	for _, cidr := range privateRanges {
-		_, ipNet, err := net.ParseCIDR(cidr)
-		if err != nil {
-			continue
-		}
-		if ipNet.Contains(ip) {
-			return true
-		}
-	}
-
-	return false
+	return netutil.IsPrivateIP(ip)
 }

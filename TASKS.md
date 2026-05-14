@@ -221,7 +221,9 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 组件：拨测表单 + 实时结果展示（SSE 或 polling）+ 节点选择器
   - Turnstile 集成（无登录用户拨测前校验）
   - SEO：`<title>` + `<meta description>` + Schema.org + hreflang
-  - *deps: D1, B4, B5* | *lane: D*
+  - `apps/web/src/app/tools/[slug]/` 动态路由 + `tools-config.ts` 50+ 工具元数据
+  - 5 类 client 组件（probe/text/converter/generator/lookup），116 测试 ✓
+  - *deps: D1, B4, B5* | *lane: D* | *完成 2026-05-14*
 
 - [x] **D4** 一键诊断（`/tools/diagnose`）
   - 输入域名 → 并发发起：DNS + HTTPS + Ping + Traceroute + SSL + 备案 + WHOIS + 安全头
@@ -480,6 +482,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-13 | A7（auth 包）完成：jwt/session/apikey，103 tests ✓ | — |
 | 2026-05-13 | B8（notifier）完成：SMTP+模板+asynq，26 tests ✓ | — |
 | 2026-05-13 | D1（Next.js 骨架）完成：App Router + shadcn/ui + packages/ui，15 tests ✓ | D2/D8 可启动 |
+| 2026-05-14 | D3（工具页 SSG 50+）完成：[slug] 动态路由 + tool-functions + SSE API，216 tests ✓ | A5/C3/C4 需人工操作 |
 
 ---
 

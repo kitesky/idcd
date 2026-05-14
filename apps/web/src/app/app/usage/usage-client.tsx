@@ -11,6 +11,23 @@ import {
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { cn } from "@/components/ui/index"
 
 interface QuotaUsageItem {
@@ -63,6 +80,91 @@ const API_TREND = [
 ]
 
 const MAX_TREND = Math.max(...API_TREND.map((d) => d.count))
+
+const POINTS_BALANCE_MOCK = 1250
+
+const REDEEM_OPTIONS = [
+  { value: "api_calls", label: "1000 次 API 调用额度（500 积分）", points: 500 },
+  { value: "monitors", label: "1 个月 Pro 监控（1000 积分）", points: 1000 },
+]
+
+function PointsBalanceCard() {
+  const [redeemType, setRedeemType] = useState("")
+  const [dialogOpen, setDialogOpen] = useState(false)
+
+  const selected = REDEEM_OPTIONS.find((o) => o.value === redeemType)
+  const canRedeem = selected && POINTS_BALANCE_MOCK >= selected.points
+
+  return (
+    <Card data-testid="points-balance-card">
+      <CardHeader className="pb-2">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-sm font-medium text-muted-foreground">
+            积分余额
+          </CardTitle>
+          <Badge variant="secondary" className="text-xs" data-testid="points-badge">
+            社区节点
+          </Badge>
+        </div>
+        <CardDescription className="text-xs">
+          贡献节点每次心跳 +1 积分，激活奖励 +200 积分
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <div className="flex items-end gap-1">
+          <span className="text-2xl font-bold tabular-nums" data-testid="points-value">
+            {POINTS_BALANCE_MOCK.toLocaleString()}
+          </span>
+          <span className="text-sm text-muted-foreground mb-0.5">pts</span>
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" data-testid="redeem-button">
+              兑换积分
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>兑换积分</DialogTitle>
+              <DialogDescription>
+                当前余额 {POINTS_BALANCE_MOCK.toLocaleString()} pts
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <Select value={redeemType} onValueChange={setRedeemType}>
+                <SelectTrigger data-testid="redeem-select">
+                  <SelectValue placeholder="选择兑换类型" />
+                </SelectTrigger>
+                <SelectContent>
+                  {REDEEM_OPTIONS.map((o) => (
+                    <SelectItem key={o.value} value={o.value}>
+                      {o.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <DialogFooter>
+              <Button
+                variant="outline"
+                onClick={() => setDialogOpen(false)}
+              >
+                取消
+              </Button>
+              <Button
+                disabled={!canRedeem}
+                onClick={() => setDialogOpen(false)}
+                data-testid="confirm-redeem"
+              >
+                确认兑换
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      </CardContent>
+    </Card>
+  )
+}
 
 export function UsageClient() {
   const [data, setData] = useState<QuotaData | null>(null)
@@ -332,6 +434,9 @@ export function UsageClient() {
           </div>
         </CardContent>
       </Card>
+
+      {/* ── 积分余额 ── */}
+      <PointsBalanceCard />
     </div>
   )
 }

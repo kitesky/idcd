@@ -506,7 +506,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 [x] K1 Team/Org 基础（teams + memberships + invitations + /app/settings/team）
 [x] K5 团队级 API Key + Agent Pro 订阅（team-scoped keys + /v1/teams/{id}/billing）
 [-] 团队 / 多用户 / 角色权限（完整 S3）   → S3，M12+
-[-] 众包节点                              → S3，M13
+[x] K8 众包节点申请 + 积分系统（node_applications + node_points + point_redemptions，DB migration 00023，6 API endpoints + 7 Go tests，/nodes/apply 申请页 + PointsBalanceCard + 兑换 Dialog，8 前端 tests，738 Go + 515 前端 tests ✓，完成 2026-05-14）
 [-] 管理台完整功能                        → S2 末/S3
 [-] 企业版 SSO / 私有部署                 → S4
 ```

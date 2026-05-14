@@ -4,13 +4,11 @@ import { Separator } from "@/components/ui"
 const productLinks = [
   { name: "工具", href: "/tools" },
   { name: "节点", href: "/nodes" },
-  { name: "定价", href: "/pricing" },
 ]
 
 const resourceLinks = [
-  { name: "文档", href: "/docs" },
+  { name: "文档", href: "/docs/api" },
   { name: "API", href: "/docs/api" },
-  { name: "博客", href: "/blog" },
 ]
 
 const companyLinks = [

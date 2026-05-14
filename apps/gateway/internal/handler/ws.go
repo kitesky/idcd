@@ -162,7 +162,15 @@ func hashAPIKey(key string) string {
 // ── read / write pumps ────────────────────────────────────────────────────────
 
 func (h *WSHandler) readPump(c *hub.Connection) {
-	defer h.hub.Unregister(c.NodeID, "connection_closed")
+	nodeID := c.NodeID
+	defer func() {
+		h.hub.Unregister(nodeID, "connection_closed")
+		if h.pool != nil {
+			ctx := context.Background()
+			_, _ = h.pool.Exec(ctx,
+				`UPDATE enrolled_nodes SET status = 'offline' WHERE node_id = $1`, nodeID)
+		}
+	}()
 
 	c.Conn.SetReadDeadline(time.Now().Add(60 * time.Second))
 	c.Conn.SetPongHandler(func(string) error {

@@ -15,6 +15,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/gateway/internal/config"
+	"github.com/kite365/idcd/apps/gateway/internal/dispatcher"
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
 	"github.com/kite365/idcd/apps/gateway/internal/scheduler"
 	"github.com/kite365/idcd/apps/gateway/internal/server"
@@ -117,6 +118,12 @@ func main() {
 		cleanupScheduler := scheduler.NewCleanupScheduler(pool, 5*time.Minute, loggerInst)
 		go cleanupScheduler.Run(cleanupCtx)
 	}
+
+	// Start task dispatcher: reads probe.tasks stream and forwards to connected agents.
+	dispatchCtx, cancelDispatch := context.WithCancel(ctx)
+	defer cancelDispatch()
+	taskDispatcher := dispatcher.New(rdb, h, loggerInst)
+	go taskDispatcher.Run(dispatchCtx)
 
 	// Create and start HTTP server
 	srv := server.New(cfg, h, rdb, pool, streamCli, loggerInst)

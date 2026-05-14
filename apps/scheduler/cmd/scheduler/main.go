@@ -101,13 +101,18 @@ func run() error {
 	taskQueue := queue.New(rdb, "scheduler:tasks")
 	streamClient := stream.New(rdb)
 
-	// S1: Use static node selector (will be replaced with DB-based selector in S2)
-	// For now, use a hardcoded list of nodes for testing
-	nodeSelector := scheduler.NewStaticNodeSelector([]string{
-		"nd_us_ny_01_aws",
-		"nd_eu_de_01_hetzner",
-		"nd_ap_jp_01_vultr",
-	})
+	// Use DBNodeSelector when a DB pool is available (production).
+	// Fall back to StaticNodeSelector for local dev without DB.
+	var nodeSelector scheduler.NodeSelector
+	if pool != nil {
+		nodeSelector = scheduler.NewDBNodeSelector(pool)
+	} else {
+		nodeSelector = scheduler.NewStaticNodeSelector([]string{
+			"nd_us_ny_01_aws",
+			"nd_eu_de_01_hetzner",
+			"nd_ap_jp_01_vultr",
+		})
+	}
 
 	// Create scheduler
 	sched := scheduler.New(scheduler.Config{

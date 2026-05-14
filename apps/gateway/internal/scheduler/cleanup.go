@@ -51,7 +51,7 @@ func (s *CleanupScheduler) Run(ctx context.Context) {
 // cleanup performs the actual cleanup operation.
 func (s *CleanupScheduler) cleanup(ctx context.Context) {
 	query := `
-		UPDATE node
+		UPDATE enrolled_nodes
 		SET status = 'offline'
 		WHERE last_seen_at < NOW() - $1::interval
 		  AND status = 'active'

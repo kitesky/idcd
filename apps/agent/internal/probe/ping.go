@@ -1,21 +1,31 @@
 package probe
 
 import (
+	"errors"
 	"fmt"
 	"math"
 	"net"
+	"os"
 	"time"
 )
 
 // SimplePingSender provides a simplified ping implementation without raw sockets
 type SimplePingSender struct{}
 
-// Execute performs a simplified ping probe using TCP connect as fallback.
+// Execute performs a ping probe. Tries real ICMP first (needs CAP_NET_RAW);
+// falls back to TCP-connect simulation when the raw socket is unavailable.
 func (p *PingProbe) Execute(target string, timeout time.Duration, options map[string]any) *Result {
 	start := time.Now()
 
 	if p.Sender == nil {
-		p.Sender = &SimplePingSender{}
+		// Try ICMP first; fall back to SimplePingSender if permission denied.
+		icmpSender := &ICMPPingSender{}
+		if _, err := icmpSender.SendPing("127.0.0.1", 500*time.Millisecond, 1); err != nil &&
+			isPermissionError(err) {
+			p.Sender = &SimplePingSender{}
+		} else {
+			p.Sender = icmpSender
+		}
 	}
 
 	// Parse options
@@ -144,6 +154,16 @@ func calculatePingStats(sent, received int, rtts []time.Duration) PingStats {
 	}
 
 	return stats
+}
+
+// isPermissionError returns true when the error is an OS permission denial,
+// meaning raw socket access (CAP_NET_RAW) is unavailable.
+func isPermissionError(err error) bool {
+	var pe *os.PathError
+	if errors.As(err, &pe) {
+		return os.IsPermission(pe.Err)
+	}
+	return os.IsPermission(err)
 }
 
 func getIntOption(options map[string]any, key string, defaultValue int) int {

@@ -236,7 +236,7 @@ func (c *Connection) IsClosed() bool {
 // UpdateNodeHeartbeat updates the last_heartbeat_at timestamp in the database
 // and sets the node status to 'active'.
 func (h *Hub) UpdateNodeHeartbeat(ctx context.Context, pool *pgxpool.Pool, nodeID string) error {
-	query := `UPDATE node SET last_seen_at = NOW(), status = 'active' WHERE id = $1`
+	query := `UPDATE enrolled_nodes SET last_seen_at = NOW(), status = 'active' WHERE node_id = $1`
 	_, err := pool.Exec(ctx, query, nodeID)
 	return err
 }

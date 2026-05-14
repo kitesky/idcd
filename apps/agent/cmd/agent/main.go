@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -43,6 +44,13 @@ type Agent struct {
 }
 
 func main() {
+	versionFlag := flag.Bool("version", false, "print version and exit")
+	flag.Parse()
+	if *versionFlag {
+		fmt.Println(version())
+		os.Exit(0)
+	}
+
 	cfgPath := config.DefaultPath()
 	cfg := config.MustLoad(cfgPath)
 
@@ -77,6 +85,7 @@ func main() {
 	defer cancel()
 
 	go agent.Run(ctx)
+	go startHealthServer(cfg.NodeID)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -379,3 +388,29 @@ func version() string {
 
 // buildVersion is set via ldflags at build time.
 var buildVersion string
+
+// startHealthServer runs a minimal HTTP health endpoint on :9101
+// (or AGENT_HEALTH_PORT if set). Used by idcd-agent-ctl and monitoring.
+func startHealthServer(nodeID string) {
+	port := os.Getenv("AGENT_HEALTH_PORT")
+	if port == "" {
+		port = "9101"
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"status":"ok","node_id":%q,"version":%q}`, nodeID, version())
+	})
+	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	srv := &http.Server{
+		Addr:        ":" + port,
+		Handler:     mux,
+		ReadTimeout: 5 * time.Second,
+	}
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		// Non-fatal: health endpoint failure should not crash the agent
+		_ = err
+	}
+}

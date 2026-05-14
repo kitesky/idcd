@@ -8,7 +8,7 @@ import {
 import { Cron } from 'croner'
 import {
   parseCIDR,
-  normalizeIPv6, compressIPv6, getIPv6Type,
+  checkIPv6,
   HTTP_STATUS_CODES, MIME_TYPES,
   TIMEZONES, getTimeInZone,
   dateDiff, addDays,
@@ -277,51 +277,51 @@ export function CidrCalcClient() {
 // ── IPv6 检测 ─────────────────────────────────────────────────────────────────
 export function Ipv6CheckClient() {
   const [input, setInput] = useState('2001:db8::1')
-  const [error, setError] = useState('')
-  const [result, setResult] = useState<{ full: string; compressed: string; type: string } | null>(null)
+  const [result, setResult] = useState<ReturnType<typeof checkIPv6> | null>(null)
 
   const check = () => {
-    try {
-      const full = normalizeIPv6(input)
-      const compressed = compressIPv6(input)
-      const type = getIPv6Type(input)
-      setResult({ full, compressed, type })
-      setError('')
-    } catch (e) {
-      setError(e instanceof Error ? e.message : '无效的 IPv6 地址')
-      setResult(null)
-    }
+    const r = checkIPv6(input)
+    setResult(r)
   }
+
+  const rows = result && result.valid
+    ? [
+        ['完整展开', result.expanded],
+        ['压缩格式', result.compressed],
+        ['地址类型', result.type],
+        ['IPv4 映射', result.isIPv4Mapped ? '是' : '否'],
+      ]
+    : []
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">IPv6 检测</h1>
-        <p className="text-muted-foreground mt-2">验证 IPv6 地址格式，扩展/压缩格式互转</p>
+        <p className="text-muted-foreground mt-2">验证 IPv6 地址格式，扩展/压缩格式互转，类型识别</p>
       </div>
       <Card>
         <CardHeader><CardTitle>输入 IPv6 地址</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="flex gap-2">
-            <Input value={input} onChange={e => setInput(e.target.value)} className="font-mono" placeholder="2001:db8::1 或 ::1" />
+            <Input value={input} onChange={e => setInput(e.target.value)} className="font-mono" placeholder="2001:db8::1 或 ::1 或 ::ffff:1.2.3.4" />
             <Button onClick={check}>检测</Button>
           </div>
-          {error && <Badge variant="destructive">{error}</Badge>}
+          {result && (
+            <Badge variant={result.valid ? 'default' : 'destructive'}>
+              {result.valid ? '有效 IPv6 地址' : '无效的 IPv6 地址'}
+            </Badge>
+          )}
         </CardContent>
       </Card>
-      {result && (
+      {result && result.valid && (
         <Card>
           <CardHeader><CardTitle>检测结果</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {[
-              ['完整格式', result.full],
-              ['压缩格式', result.compressed],
-              ['地址类型', result.type],
-            ].map(([label, value]) => (
+            {rows.map(([label, value]) => (
               <div key={label} className="flex gap-4 py-2 border-b last:border-0 text-sm">
                 <span className="text-muted-foreground w-24 shrink-0">{label}</span>
                 <code className="font-mono flex-1">{value}</code>
-                {label !== '地址类型' && (
+                {label !== '地址类型' && label !== 'IPv4 映射' && (
                   <Button variant="ghost" size="sm" onClick={() => navigator.clipboard.writeText(value)}>复制</Button>
                 )}
               </div>

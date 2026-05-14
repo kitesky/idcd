@@ -151,6 +151,70 @@ export function parseCIDR(cidr: string): CIDRInfo {
 
 // ── IPv6 处理 ────────────────────────────────────────────────────────────────
 
+export type IPv6AddressType =
+  | 'Loopback'
+  | 'Unspecified'
+  | 'Link-local'
+  | 'Unique Local'
+  | 'Multicast'
+  | 'IPv4-Mapped'
+  | 'Global Unicast'
+  | 'Documentation'
+
+export interface IPv6CheckResult {
+  valid: boolean
+  expanded: string
+  compressed: string
+  type: IPv6AddressType
+  isIPv4Mapped: boolean
+}
+
+export function checkIPv6(input: string): IPv6CheckResult {
+  const trimmed = input.trim()
+  let expanded: string
+  try {
+    expanded = normalizeIPv6(trimmed)
+  } catch {
+    return { valid: false, expanded: '', compressed: '', type: 'Global Unicast', isIPv4Mapped: false }
+  }
+  const compressed = compressIPv6(trimmed)
+  const isIPv4Mapped = /^0000:0000:0000:0000:0000:ffff:/i.test(expanded)
+  let type: IPv6AddressType
+  if (expanded === '0000:0000:0000:0000:0000:0000:0000:0000') {
+    type = 'Unspecified'
+  } else if (expanded === '0000:0000:0000:0000:0000:0000:0000:0001') {
+    type = 'Loopback'
+  } else if (isIPv4Mapped) {
+    type = 'IPv4-Mapped'
+  } else if (/^fe[89ab]/i.test(expanded.replace(/:/g, '').slice(0, 4))) {
+    type = 'Link-local'
+  } else if (/^f[cd]/i.test(expanded.slice(0, 2))) {
+    type = 'Unique Local'
+  } else if (/^ff/i.test(expanded.slice(0, 2))) {
+    type = 'Multicast'
+  } else if (expanded.startsWith('2001:0db8')) {
+    type = 'Documentation'
+  } else {
+    type = 'Global Unicast'
+  }
+  return { valid: true, expanded, compressed, type, isIPv4Mapped }
+}
+
+export function ipv4ToIPv6Mapped(ipv4: string): string {
+  const parts = ipv4.trim().split('.')
+  if (parts.length !== 4) throw new Error('无效的 IPv4 地址')
+  if (parts.some(p => isNaN(Number(p)) || Number(p) < 0 || Number(p) > 255)) {
+    throw new Error('无效的 IPv4 地址')
+  }
+  return `::ffff:${ipv4.trim()}`
+}
+
+export function ipv6ToPTR(address: string): string {
+  const expanded = normalizeIPv6(address)
+  const nibbles = expanded.replace(/:/g, '').split('').reverse()
+  return nibbles.join('.') + '.ip6.arpa'
+}
+
 export function normalizeIPv6(address: string): string {
   const zoneIdx = address.indexOf('%')
   const addr = zoneIdx >= 0 ? address.slice(0, zoneIdx) : address

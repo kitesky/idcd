@@ -15,6 +15,7 @@ const resourceLinks = [
 
 const companyLinks = [
   { name: "关于", href: "/about" },
+  { name: "透明度报告", href: "/transparency" },
   { name: "条款", href: "/terms" },
   { name: "隐私", href: "/privacy" },
   { name: "AUP", href: "/aup" },

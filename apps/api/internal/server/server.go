@@ -116,6 +116,10 @@ func (s *Server) setupRouter() {
 	openAPIHandler := handler.NewOpenAPIHandler()
 	r.Get("/v1/openapi.json", openAPIHandler.OpenAPI)
 
+	// Transparency dashboard — public, no auth required
+	transparencyH := handler.NewTransparencyHandler()
+	r.Get("/v1/transparency", transparencyH.Get)
+
 	// Prometheus metrics are served on a separate internal port (see startMetricsServer).
 	// Do NOT expose /metrics on the public router.
 
@@ -460,6 +464,13 @@ func (s *Server) setupRouter() {
 			r.Post("/{id}/overrides", oncallH.CreateOverride)
 			r.Get("/{id}/current", oncallH.GetCurrentOnCall)
 		})
+
+		// Incident postmortem endpoints (authentication required)
+		pmH := handler.NewPostmortemHandler(s.pgxPool)
+		r.With(authnMW).Post("/v1/incidents/{event_id}/draft", pmH.Draft)
+		r.With(authnMW).Get("/v1/incidents/{event_id}/postmortem", pmH.Get)
+		r.With(authnMW).Patch("/v1/incidents/{event_id}/postmortem", pmH.Update)
+		r.With(authnMW).Get("/v1/incidents", pmH.List)
 
 		// Beta invitation endpoints (user-facing + admin).
 		betaH := handler.NewBetaInvitationHandler(s.pgxPool)

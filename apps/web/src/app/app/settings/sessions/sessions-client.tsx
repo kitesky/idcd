@@ -12,6 +12,7 @@ import {
   Skeleton,
 } from "@/components/ui"
 import { Monitor, Smartphone, Laptop } from "lucide-react"
+import { apiRequest } from "@/lib/api"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -24,21 +25,12 @@ interface Session {
 // ── API helpers ───────────────────────────────────────────────────────────────
 
 async function fetchSessions(): Promise<Session[]> {
-  const res = await fetch("/api/v1/account/sessions", { credentials: "include" })
-  if (!res.ok) throw new Error("failed to load sessions")
-  const body = await res.json()
-  return (body.data?.sessions ?? []) as Session[]
+  const body = await apiRequest<{ data: { sessions: Session[] } }>("/v1/account/sessions")
+  return body.data?.sessions ?? []
 }
 
 async function revokeSession(id: string): Promise<void> {
-  const res = await fetch(`/api/v1/account/sessions/${id}`, {
-    method: "DELETE",
-    credentials: "include",
-  })
-  if (!res.ok && res.status !== 204) {
-    const body = await res.json().catch(() => ({}))
-    throw new Error(body?.error?.message ?? "failed to revoke session")
-  }
+  await apiRequest(`/v1/account/sessions/${id}`, { method: "DELETE" })
 }
 
 // ── Utilities ─────────────────────────────────────────────────────────────────

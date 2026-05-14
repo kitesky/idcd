@@ -1,3 +1,4 @@
+import { cache } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
 import { MOCK_STATUS_PAGES } from "./mock-data"
@@ -20,10 +21,13 @@ export async function generateStaticParams() {
  * Resolve the status page slug from a custom domain by calling the internal
  * API endpoint. Returns the slug on success, or null when not found / not
  * yet verified.
+ *
+ * Wrapped in React cache() so generateMetadata and the page component share
+ * the same result within a single request — avoids two identical API calls.
  */
-async function resolveSlugFromCustomDomain(
+const resolveSlugFromCustomDomain = cache(async (
   customDomain: string,
-): Promise<string | null> {
+): Promise<string | null> => {
   const apiBase =
     process.env.INTERNAL_API_URL ?? "http://localhost:8080"
   try {
@@ -37,7 +41,7 @@ async function resolveSlugFromCustomDomain(
   } catch {
     return null
   }
-}
+})
 
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug: rawSlug } = await params

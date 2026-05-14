@@ -45,6 +45,7 @@ type ServerConfig struct {
 	Port        int      `yaml:"port"`
 	Env         string   `yaml:"env"` // development | staging | production
 	CORSOrigins []string `yaml:"cors_origins"`
+	AdminToken  string   `yaml:"admin_token"`
 }
 
 type JWTConfig struct {

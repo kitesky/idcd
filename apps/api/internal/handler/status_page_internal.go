@@ -4,11 +4,11 @@ package handler
 import (
 	"context"
 	"net/http"
-	"strings"
 
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/netutil"
 )
 
 // statusPageInternalQuerier is the subset of DB operations required by StatusPageInternalHandler.
@@ -36,7 +36,7 @@ type byDomainResponse struct {
 // Returns the slug for a verified custom domain or 404.
 func (h *StatusPageInternalHandler) ByDomain(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	domain := strings.ToLower(strings.TrimSpace(r.URL.Query().Get("domain")))
+	domain := netutil.NormalizeDomain(r.URL.Query().Get("domain"))
 	if domain == "" {
 		response.Error(w, r, apperr.Validation("domain query parameter is required", "domain"))
 		return
@@ -48,7 +48,6 @@ func (h *StatusPageInternalHandler) ByDomain(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	// Only return the slug when the domain has been verified.
 	if !sp.CustomDomainVerifiedAt.Valid {
 		response.Error(w, r, apperr.NotFound("custom domain not yet verified"))
 		return

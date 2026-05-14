@@ -118,7 +118,7 @@ func TestSetStatusPageDomain_Success(t *testing.T) {
 	}
 	h := NewStatusPageDomainHandler(q, slog.Default())
 	// Override CNAME lookup so the async goroutine doesn't attempt real DNS.
-	h = h.withLookupCNAME(func(d string) (string, error) {
+	h = h.withLookupCNAME(func(_ context.Context, d string) (string, error) {
 		return "status.idcd.com.", nil
 	})
 
@@ -256,7 +256,7 @@ func TestVerifyStatusPageDomain_CNAMECorrect(t *testing.T) {
 		},
 	}
 	h := NewStatusPageDomainHandler(q, slog.Default())
-	h = h.withLookupCNAME(func(domain string) (string, error) {
+	h = h.withLookupCNAME(func(_ context.Context, domain string) (string, error) {
 		return "status.idcd.com.", nil
 	})
 
@@ -285,7 +285,7 @@ func TestVerifyStatusPageDomain_CNAMEWrong(t *testing.T) {
 		},
 	}
 	h := NewStatusPageDomainHandler(q, slog.Default())
-	h = h.withLookupCNAME(func(domain string) (string, error) {
+	h = h.withLookupCNAME(func(_ context.Context, domain string) (string, error) {
 		return "other-host.example.com.", nil // wrong CNAME
 	})
 

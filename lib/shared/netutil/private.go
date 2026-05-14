@@ -1,7 +1,13 @@
 // Package netutil provides shared network utility helpers.
 package netutil
 
-import "net"
+import (
+	"net"
+	"strings"
+)
+
+// NormalizeDomain lowercases and trims whitespace from a domain name.
+func NormalizeDomain(s string) string { return strings.ToLower(strings.TrimSpace(s)) }
 
 // privateNets holds pre-parsed CIDR blocks for all private/reserved IP ranges.
 // Parsed once at init to avoid per-call allocations.

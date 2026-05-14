@@ -445,6 +445,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ---
 
+### M8 — S2 收官
+
+- [x] **I1** `/leaderboard` CDN 月度性能排行榜 — 3 Tab + mock 数据 + SEO，42 tests ✓，完成 2026-05-14
+- [x] **I2** API OpenAPI 文档站 — /v1/openapi.json endpoint + /docs/api 参考页，10+11 tests ✓，完成 2026-05-14
+- [x] **I3** 管理后台扩展 — /admin/metrics 系统概览 + /admin/users 用户管理 + admin API（metrics/users/detail），600 Go tests ✓，完成 2026-05-14
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

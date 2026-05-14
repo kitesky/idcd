@@ -24,11 +24,18 @@ export function middleware(request: NextRequest) {
     hostname === "127.0.0.1"
 
   if (!isIdcdSubdomain && hostname !== "") {
-    // This is a custom domain request.
-    // Attach the custom domain as a search param so the page component can
-    // resolve the slug by calling the internal API.
+    // Custom domain request: attach hostname as a search param so the page
+    // component can resolve the slug via the internal API.
     const url = request.nextUrl.clone()
     url.searchParams.set("customDomain", hostname)
+    return NextResponse.rewrite(url)
+  }
+
+  // Standard subdomain: strip any user-supplied customDomain param to prevent
+  // parameter injection (a user adding ?customDomain=evil.com to a normal URL).
+  if (request.nextUrl.searchParams.has("customDomain")) {
+    const url = request.nextUrl.clone()
+    url.searchParams.delete("customDomain")
     return NextResponse.rewrite(url)
   }
 

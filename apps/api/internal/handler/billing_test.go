@@ -33,16 +33,9 @@ func withUser(r *http.Request, userID string) *http.Request {
 	return r.WithContext(ctx)
 }
 
-type testContextKey string
-
-func withRequestID(r *http.Request) *http.Request {
-	ctx := context.WithValue(r.Context(), testContextKey("request_id"), "test-req-id")
-	return r.WithContext(ctx)
-}
-
 func prepReq(r *http.Request, userID string) *http.Request {
 	r = withUser(r, userID)
-	r = withRequestID(r)
+	r = withRequestID(r, "test-req-id")
 	return r
 }
 
@@ -85,7 +78,7 @@ func TestBillingHandler_Subscribe_NoAuth(t *testing.T) {
 
 	body, _ := json.Marshal(map[string]string{"plan": "pro"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/billing/subscribe", bytes.NewReader(body))
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.Subscribe(rr, req)
@@ -158,7 +151,7 @@ func TestBillingHandler_Cancel_NoAuth(t *testing.T) {
 	defer mockPool.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/billing/cancel", nil)
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.Cancel(rr, req)
@@ -311,7 +304,7 @@ func TestBillingHandler_ListInvoices_NoAuth(t *testing.T) {
 	defer mockPool.Close()
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/billing/invoices", nil)
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.ListInvoices(rr, req)
@@ -353,7 +346,7 @@ func TestBillingHandler_Webhook_PaymentSucceeded(t *testing.T) {
 	body, _ := json.Marshal(payload)
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader(body))
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.Webhook(rr, req)
@@ -367,7 +360,7 @@ func TestBillingHandler_Webhook_EmptyBody(t *testing.T) {
 	defer mockPool.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader([]byte{}))
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.Webhook(rr, req)
@@ -380,7 +373,7 @@ func TestBillingHandler_Webhook_InvalidPayload(t *testing.T) {
 	defer mockPool.Close()
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader([]byte("not json")))
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.Webhook(rr, req)
@@ -423,7 +416,7 @@ func TestBillingHandler_StubConfirm_Success(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/billing/stub-confirm?sub_id="+res.SubscriptionID+"&plan=pro", nil)
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.StubConfirm(rr, req)
@@ -438,7 +431,7 @@ func TestBillingHandler_StubConfirm_MissingSubID(t *testing.T) {
 	defer mockPool.Close()
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/billing/stub-confirm", nil)
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.StubConfirm(rr, req)
@@ -456,7 +449,7 @@ func TestBillingHandler_StubConfirm_SubNotInDB(t *testing.T) {
 		WillReturnRows(rows)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/billing/stub-confirm?sub_id=sub_nonexistent", nil)
-	req = withRequestID(req)
+	req = withRequestID(req, "test-req-id")
 	rr := httptest.NewRecorder()
 
 	h.StubConfirm(rr, req)

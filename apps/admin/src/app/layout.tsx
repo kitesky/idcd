@@ -36,18 +36,10 @@ export default function RootLayout({
                 idcd Admin
               </span>
               <nav className="flex gap-4 text-sm">
-                <a
-                  href="/nodes"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  节点健康
-                </a>
-                <a
-                  href="/refund-failed"
-                  className="text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  退款失败
-                </a>
+                <a href="/metrics" className="text-muted-foreground hover:text-foreground transition-colors">系统概览</a>
+                <a href="/users" className="text-muted-foreground hover:text-foreground transition-colors">用户管理</a>
+                <a href="/nodes" className="text-muted-foreground hover:text-foreground transition-colors">节点健康</a>
+                <a href="/refund-failed" className="text-muted-foreground hover:text-foreground transition-colors">退款失败</a>
               </nav>
             </div>
           </header>

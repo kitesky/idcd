@@ -112,6 +112,10 @@ func (s *Server) setupRouter() {
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/deep", healthHandler.DeepHealth)
 
+	// OpenAPI spec endpoint — no auth required
+	openAPIHandler := handler.NewOpenAPIHandler()
+	r.Get("/v1/openapi.json", openAPIHandler.OpenAPI)
+
 	// Prometheus metrics are served on a separate internal port (see startMetricsServer).
 	// Do NOT expose /metrics on the public router.
 
@@ -288,6 +292,16 @@ func (s *Server) setupRouter() {
 		r.Route("/internal/status-pages", func(r chi.Router) {
 			r.Get("/by-domain", statusPageInternalH.ByDomain)
 		})
+
+		// Admin management endpoints (token-protected, VPN-only in production).
+		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		r.Route("/internal/admin", func(r chi.Router) {
+			r.Use(adminH.AdminAuthMiddleware)
+			r.Get("/metrics", adminH.AdminMetrics)
+			r.Get("/users", adminH.AdminUsers)
+			r.Get("/users/{id}", adminH.AdminUserDetail)
+		})
+
 	}
 
 	s.router = r

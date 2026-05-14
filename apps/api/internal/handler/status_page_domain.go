@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -19,6 +20,13 @@ import (
 	"github.com/kite365/idcd/lib/shared/netutil"
 )
 
+// statusPageCNAMETarget is the canonical CNAME value users must point their domain to.
+const statusPageCNAMETarget = "status.idcd.com."
+
+// asyncVerifySem caps concurrent background DNS-verify goroutines to prevent
+// goroutine accumulation under burst traffic.
+var asyncVerifySem = make(chan struct{}, 20)
+
 // statusPageDomainQuerier is the subset of DB operations required by StatusPageDomainHandler.
 type statusPageDomainQuerier interface {
 	GetStatusPageByID(ctx context.Context, id string) (idcdmain.StatusPage, error)
@@ -28,7 +36,8 @@ type statusPageDomainQuerier interface {
 }
 
 // domainValidator is a function type for DNS CNAME lookups (injectable for testing).
-type domainValidator func(domain string) (string, error)
+// The context allows callers to impose a deadline on slow DNS queries.
+type domainValidator func(ctx context.Context, domain string) (string, error)
 
 // StatusPageDomainHandler handles custom domain binding and verification for status pages.
 type StatusPageDomainHandler struct {
@@ -40,9 +49,11 @@ type StatusPageDomainHandler struct {
 // NewStatusPageDomainHandler creates a StatusPageDomainHandler wired to the given querier.
 func NewStatusPageDomainHandler(q statusPageDomainQuerier, logger *slog.Logger) *StatusPageDomainHandler {
 	return &StatusPageDomainHandler{
-		q:           q,
-		logger:      logger,
-		lookupCNAME: net.LookupCNAME,
+		q:      q,
+		logger: logger,
+		lookupCNAME: func(ctx context.Context, domain string) (string, error) {
+			return net.DefaultResolver.LookupCNAME(ctx, domain)
+		},
 	}
 }
 
@@ -71,7 +82,7 @@ var idcdDomainSuffixes = []string{
 // isValidCustomDomain reports whether host is an acceptable custom domain.
 // Returns a non-empty reason string when the domain is rejected.
 func isValidCustomDomain(host string) string {
-	host = strings.ToLower(strings.TrimSpace(host))
+	host = netutil.NormalizeDomain(host)
 	if host == "" {
 		return "custom_domain cannot be empty"
 	}
@@ -87,11 +98,12 @@ func isValidCustomDomain(host string) string {
 }
 
 // isPrivateDomain resolves the domain and returns true if any resolved IP is private.
-// This prevents SSRF via custom domain binding.
-func isPrivateDomain(domain string) bool {
-	addrs, err := net.LookupHost(domain)
+// Uses the request context so it respects the handler's deadline rather than blocking indefinitely.
+func isPrivateDomain(ctx context.Context, domain string) bool {
+	rctx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupHost(rctx, domain)
 	if err != nil {
-		// If DNS fails we treat it as safe (validation will catch the CNAME mismatch later).
 		return false
 	}
 	for _, addr := range addrs {
@@ -153,18 +165,15 @@ func (h *StatusPageDomainHandler) SetStatusPageDomain(w http.ResponseWriter, r *
 		return
 	}
 
-	// Unbind: empty string clears the domain.
 	if req.CustomDomain == "" {
-		updated, err := h.q.SetStatusPageCustomDomain(ctx, idcdmain.SetStatusPageCustomDomainParams{
+		if _, err := h.q.SetStatusPageCustomDomain(ctx, idcdmain.SetStatusPageCustomDomainParams{
 			ID:           id,
 			CustomDomain: nil,
 			UserID:       userID,
-		})
-		if err != nil {
+		}); err != nil {
 			response.Error(w, r, apperr.Internal("failed to clear custom domain", err))
 			return
 		}
-		_ = updated
 		response.JSON(w, r, http.StatusOK, DomainResponse{
 			CustomDomain: "",
 			Verified:     false,
@@ -172,19 +181,17 @@ func (h *StatusPageDomainHandler) SetStatusPageDomain(w http.ResponseWriter, r *
 		return
 	}
 
-	// Validate domain format.
 	if reason := isValidCustomDomain(req.CustomDomain); reason != "" {
 		response.Error(w, r, apperr.Validation(reason, "custom_domain"))
 		return
 	}
 
-	// SSRF: reject domains that resolve to private IPs.
-	if isPrivateDomain(req.CustomDomain) {
+	if isPrivateDomain(ctx, req.CustomDomain) {
 		response.Error(w, r, apperr.Validation("domain resolves to a private IP address", "custom_domain"))
 		return
 	}
 
-	domain := strings.ToLower(strings.TrimSpace(req.CustomDomain))
+	domain := netutil.NormalizeDomain(req.CustomDomain)
 	updated, err := h.q.SetStatusPageCustomDomain(ctx, idcdmain.SetStatusPageCustomDomainParams{
 		ID:           id,
 		CustomDomain: &domain,
@@ -195,7 +202,6 @@ func (h *StatusPageDomainHandler) SetStatusPageDomain(w http.ResponseWriter, r *
 		return
 	}
 
-	// Kick off an async background DNS verification (best-effort).
 	go h.asyncVerifyDNS(updated.ID, domain)
 
 	instructions := "请添加 CNAME 记录: " + domain + " → status.idcd.com"
@@ -233,9 +239,8 @@ func (h *StatusPageDomainHandler) VerifyStatusPageDomain(w http.ResponseWriter, 
 
 	domain := *sp.CustomDomain
 
-	// DNS CNAME lookup.
-	cname, err := h.lookupCNAME(domain)
-	if err != nil || !strings.Contains(strings.ToLower(cname), "status.idcd.com.") {
+	cname, err := h.lookupCNAME(ctx, domain)
+	if err != nil || !strings.Contains(strings.ToLower(cname), statusPageCNAMETarget) {
 		errMsg := "CNAME 未正确配置"
 		if err != nil {
 			errMsg = "DNS 查询失败: " + err.Error()
@@ -247,7 +252,6 @@ func (h *StatusPageDomainHandler) VerifyStatusPageDomain(w http.ResponseWriter, 
 		return
 	}
 
-	// Mark as verified.
 	if markErr := h.q.MarkCustomDomainVerified(ctx, id); markErr != nil {
 		if h.logger != nil {
 			h.logger.Error("failed to mark custom domain verified", "id", id, "error", markErr)
@@ -260,16 +264,27 @@ func (h *StatusPageDomainHandler) VerifyStatusPageDomain(w http.ResponseWriter, 
 }
 
 // asyncVerifyDNS attempts a background DNS check and marks the domain verified if it passes.
-// Errors are logged and silently ignored — the user can trigger manual verification.
+// Errors are silently ignored — the user can trigger manual verification via the verify endpoint.
+// asyncVerifySem caps concurrency; the 15-second context prevents indefinite blocking.
 func (h *StatusPageDomainHandler) asyncVerifyDNS(statusPageID, domain string) {
-	cname, err := h.lookupCNAME(domain)
+	select {
+	case asyncVerifySem <- struct{}{}:
+		defer func() { <-asyncVerifySem }()
+	default:
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+
+	cname, err := h.lookupCNAME(ctx, domain)
 	if err != nil {
 		return
 	}
-	if !strings.Contains(strings.ToLower(cname), "status.idcd.com.") {
+	if !strings.Contains(strings.ToLower(cname), statusPageCNAMETarget) {
 		return
 	}
-	if markErr := h.q.MarkCustomDomainVerified(context.Background(), statusPageID); markErr != nil {
+	if markErr := h.q.MarkCustomDomainVerified(ctx, statusPageID); markErr != nil {
 		if h.logger != nil {
 			h.logger.Error("asyncVerifyDNS: failed to mark verified", "id", statusPageID, "error", markErr)
 		}

@@ -89,7 +89,8 @@ function formatDateTime(iso: string): string {
 }
 
 interface MonitorDetailClientProps {
-  monitor: Monitor
+  monitor: Monitor | null
+  monitorId: string
 }
 
 const EMPTY_BUCKETS: CheckBucket[] = Array.from({ length: 48 }, () => ({
@@ -101,8 +102,9 @@ const EMPTY_BUCKETS: CheckBucket[] = Array.from({ length: 48 }, () => ({
   status: "empty" as const,
 }))
 
-export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
-  const [currentMonitor, setCurrentMonitor] = useState<Monitor>(monitor)
+export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientProps) {
+  const [currentMonitor, setCurrentMonitor] = useState<Monitor | null>(monitor)
+  const id = monitor?.id ?? monitorId
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
   const [latestCheck, setLatestCheck] = useState<LatestCheck | null>(null)
   const [checkBuckets, setCheckBuckets] = useState<CheckBucket[] | null>(null)
@@ -146,6 +148,15 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
       ...prev,
       status: prev.status === "PAUSED" ? "UP" : "PAUSED",
     }))
+  }
+
+  if (!currentMonitor) {
+    return (
+      <div className="flex flex-col items-center gap-4 py-16 text-muted-foreground">
+        <p>监控项不存在或已被删除</p>
+        <Link href="/app/monitors" className="text-sm underline">返回监控列表</Link>
+      </div>
+    )
   }
 
   return (

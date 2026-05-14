@@ -85,11 +85,22 @@
 - 数据库 / Redis 操作用 **miniredis**（stream）/ **pgx mock** 或测试库隔离，不依赖真实环境
 - 测试命令：`go test ./...`（在项目根运行，通过 go.work 覆盖所有 module）
 
-### 前端（Next.js / TypeScript）
+### 前端（Next.js / TypeScript）—— 唯一前端项目 `apps/web`
 
+**所有前端内容统一在 `apps/web` 一个 Next.js 项目中，无单独子应用。**
+
+路由分组架构（不影响 URL 路径）：
+- `app/(public)/` — 公开页面（带 Nav + Footer）：首页、工具、文档入口
+- `app/app/` — 用户后台（需登录，Sidebar 布局）
+- `app/auth/` — 登录 / 注册等认证页
+- `app/admin/` — 内部管理后台（仅 VPN 可访问，独立 header，无公开 Nav）
+- `app/status/[slug]/` — 状态页（支持自定义域名，通过 middleware 路由）
+- `app/docs/` — 产品文档（自建 sidebar 布局，shadcn/ui 样式）
+
+测试：
 - 每个 utility 函数必须有 Vitest 单元测试
 - 组件测试用 Testing Library（关键交互路径）
-- 测试命令：`pnpm --recursive test --passWithNoTests`
+- 测试命令：`pnpm --filter @idcd/web test`
 
 ### 提交前检查清单
 

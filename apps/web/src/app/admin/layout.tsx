@@ -13,7 +13,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     <div className="flex min-h-screen flex-col dark">
       <header className="border-b bg-card px-6 py-3">
         <div className="flex items-center gap-6">
-          <Link href="/admin" className="text-base font-semibold text-primary">
+          <Link href={"/admin" as any} className="text-base font-semibold text-primary">
             idcd Admin
           </Link>
           <nav className="flex gap-4 text-sm">

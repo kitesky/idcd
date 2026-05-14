@@ -25,7 +25,7 @@ dev-setup:
 	go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest
 	go install github.com/pressly/goose/v3/cmd/goose@latest
 	@echo "$(BOLD)→ Node dependencies$(RESET)"
-	pnpm install
+	cd apps/web && pnpm install
 	@echo ""
 	@echo "$(GREEN)✓ Setup done.$(RESET)"
 	@echo "  如还没有 config/dev.env.yaml，执行："
@@ -38,7 +38,7 @@ dev-up:
 # ── 测试 ─────────────────────────────────────────────────────
 test:
 	go test ./... -count=1 -timeout 120s
-	pnpm --recursive test --passWithNoTests 2>/dev/null || true
+	cd apps/web && pnpm test --passWithNoTests 2>/dev/null || true
 
 # ── 数据填充 ─────────────────────────────────────────────────
 seed:
@@ -65,7 +65,7 @@ lint-attestation:
 
 lint-ts:
 	@echo "$(BOLD)→ ESLint + tsc$(RESET)"
-	pnpm --recursive lint 2>/dev/null || true
+	cd apps/web && pnpm lint 2>/dev/null || true
 
 # ── 构建 ─────────────────────────────────────────────────────
 BUILD_DIR := bin
@@ -98,7 +98,7 @@ build-notifier:
 # ── 清理 ─────────────────────────────────────────────────────
 clean:
 	rm -rf $(BUILD_DIR)
-	pnpm --recursive exec -- rm -rf .next dist 2>/dev/null || true
+	cd apps/web && rm -rf .next dist 2>/dev/null || true
 
 # ── DB 迁移快捷命令 ────────────────────────────────────────────
 _DSN := $(shell python3 -c "import yaml; c=yaml.safe_load(open('config/dev.env.yaml')); print(c['database']['main']['dsn'])" 2>/dev/null)

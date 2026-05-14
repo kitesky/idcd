@@ -151,10 +151,10 @@ describe("MonitorDetailClient — 详情页渲染", () => {
     expect(screen.getByText("错误信息")).toBeInTheDocument()
   })
 
-  it("渲染 SSE 实时更新占位", () => {
+  it("渲染 SSE 实时更新区域", () => {
     render(<MonitorDetailClient monitor={upMonitor} />)
     expect(screen.getByText("实时更新中")).toBeInTheDocument()
-    expect(screen.getByText(/SSE 实时推送/)).toBeInTheDocument()
+    expect(screen.getByTestId("sse-live-check")).toBeInTheDocument()
   })
 
   it("DOWN 监控：可用率显示 94.2%", () => {

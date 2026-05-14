@@ -209,6 +209,7 @@ func (s *Server) setupRouter() {
 
 			// Monitor CRUD endpoints (authentication required)
 			monitorH := handler.NewMonitorHandler(idcdmain.New(s.pgxPool)).WithQuotaPool(s.pgxPool)
+			monitorStreamH := handler.NewMonitorStreamHandler(idcdmain.New(s.pgxPool), s.pgxPool)
 			r.Route("/monitors", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Use(apiQuotaMW)
@@ -219,6 +220,7 @@ func (s *Server) setupRouter() {
 				r.Delete("/{id}", monitorH.Delete)
 				r.Post("/{id}/pause", monitorH.Pause)
 				r.Post("/{id}/resume", monitorH.Resume)
+				r.With(authnMW).Get("/{id}/stream", monitorStreamH.Stream)
 			})
 
 			// Admin billing endpoints
@@ -260,11 +262,13 @@ func (s *Server) setupRouter() {
 				r.Get("/verify", statusPageDomainH.VerifyStatusPageDomain)
 			})
 
-			// Dashboard summary endpoint (authentication required)
-			dashboardH := handler.NewDashboardHandler()
+			// Dashboard summary and pins endpoints (authentication required)
+			dashboardH := handler.NewDashboardHandler(s.pgxPool, s.redis)
 			r.Route("/dashboard", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Get("/summary", dashboardH.Summary)
+				r.Get("/pins", dashboardH.GetPins)
+				r.Put("/pins", dashboardH.UpdatePins)
 			})
 
 			// SLA monthly report endpoint (authentication required)
@@ -276,6 +280,7 @@ func (s *Server) setupRouter() {
 
 			// Alert channels, policies, and events (authentication required)
 			alertH := handler.NewAlertHandler(s.pgxPool)
+			alertNotifH := handler.NewAlertNotificationHandler(s.pgxPool)
 			r.Route("/alert-channels", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Use(apiQuotaMW)
@@ -283,6 +288,7 @@ func (s *Server) setupRouter() {
 				r.Get("/", alertH.ListChannels)
 				r.Delete("/{id}", alertH.DeleteChannel)
 				r.Post("/{id}/test", alertH.TestChannel)
+				r.With(authnMW).Get("/{id}/notifications", alertNotifH.List)
 			})
 			r.Route("/alert-policies", func(r chi.Router) {
 				r.Use(authnMW)

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import {
   ArrowLeft,
@@ -29,6 +29,37 @@ import {
   generateMockTrendBlocks,
   generateMockCheckResults,
 } from "../mock-data"
+
+interface LatestCheck {
+  monitor_id: string
+  node_id: string
+  status: "up" | "down" | "degraded"
+  latency_ms: number | null
+  checked_at: string
+  error: string
+}
+
+function checkStatusBadge(status: "up" | "down" | "degraded") {
+  switch (status) {
+    case "up":
+      return <Badge variant="success">UP</Badge>
+    case "down":
+      return <Badge variant="destructive">DOWN</Badge>
+    case "degraded":
+      return <Badge variant="warning">降级</Badge>
+  }
+}
+
+function relativeTime(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime()
+  const diffS = Math.floor(diffMs / 1000)
+  if (diffS < 10) return "刚刚"
+  if (diffS < 60) return `${diffS}秒前`
+  const diffM = Math.floor(diffS / 60)
+  if (diffM < 60) return `${diffM}分钟前`
+  const diffH = Math.floor(diffM / 60)
+  return `${diffH}小时前`
+}
 
 function statusBadge(status: MonitorStatus) {
   switch (status) {
@@ -59,9 +90,24 @@ interface MonitorDetailClientProps {
 export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
   const [currentMonitor, setCurrentMonitor] = useState<Monitor>(monitor)
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
+  const [latestCheck, setLatestCheck] = useState<LatestCheck | null>(null)
 
   const trendBlocks = generateMockTrendBlocks(monitor.id)
   const checkResults = generateMockCheckResults(monitor.id)
+
+  useEffect(() => {
+    const es = new EventSource(`/api/v1/monitors/${monitor.id}/stream`)
+    es.addEventListener("check", (e: MessageEvent) => {
+      try {
+        const check = JSON.parse(e.data) as LatestCheck
+        setLatestCheck(check)
+      } catch {
+      }
+    })
+    es.addEventListener("error", () => {
+    })
+    return () => es.close()
+  }, [monitor.id])
 
   function togglePause() {
     setCurrentMonitor((prev) => ({
@@ -122,15 +168,26 @@ export function MonitorDetailClient({ monitor }: MonitorDetailClientProps) {
         </p>
       </div>
 
-      {/* SSE 实时更新占位 */}
-      <div className="flex items-center gap-3 rounded-md border border-dashed px-4 py-3">
+      <div className="flex items-center gap-3 rounded-md border border-dashed px-4 py-3" data-testid="sse-live-check">
         <Badge variant="secondary" className="gap-1.5">
           <Radio className="h-3 w-3 animate-pulse" />
           实时更新中
         </Badge>
-        <span className="text-xs text-muted-foreground">
-          SSE 实时推送将在 S2 上线后启用，当前展示最近检测快照
-        </span>
+        {latestCheck ? (
+          <div className="flex items-center gap-3 text-xs">
+            {checkStatusBadge(latestCheck.status)}
+            {latestCheck.latency_ms != null && (
+              <span className="font-mono text-muted-foreground">
+                {latestCheck.latency_ms}ms
+              </span>
+            )}
+            <span className="text-muted-foreground">
+              {relativeTime(latestCheck.checked_at)}
+            </span>
+          </div>
+        ) : (
+          <span className="text-xs text-muted-foreground">等待最新检测数据…</span>
+        )}
       </div>
 
       {/* 统计卡片行 */}

@@ -461,6 +461,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J2** Email 告警通道 — `apps/notifier/internal/channel/email.go`，EmailChannel 实现 Channel 接口，HTML 告警邮件（FIRING/RESOLVED），`buildChannel` 路由 `type=email`，12 tests ✓，完成 2026-05-14
 - [x] **J3** Alert 事件触发器 — `apps/aggregator/internal/processor/alert_trigger.go`，AlertTrigger 检测连续 N 次失败创建 alert_event(firing)、恢复时 resolved、幂等防重复，asynq enqueue 到 notifier 队列，集成到 Process() 主流程，26 aggregator tests ✓，完成 2026-05-14
 - [x] **J4** SLA 月报基础 — `GET /v1/reports/sla`（Bearer token 认证，months 参数最大 12），TimescaleDB hypertable 聚合查询，`/app/reports` 前端页面（shadcn/ui Card + Table + Badge 颜色编码），侧边栏"月度报告"导航项，9 Go tests + 8 前端 tests ✓，完成 2026-05-14
+- [x] **J5** Monitor SSE 实时推送 — `GET /v1/monitors/{id}/stream`（Bearer token 认证，ownership check，每 5s 轮询 monitor_checks 最新记录，每 15s ping 心跳），`MonitorStreamHandler` + `MonitorStreamPool` 接口，路由注册到 `/monitors/{id}/stream`，前端 `useEffect` + `EventSource` 连接 + `latestCheck` state 实时显示最新状态/延迟/相对时间，全局 `MockEventSource` jsdom setup，4 Go tests + 405 前端 tests ✓，完成 2026-05-14
 - [x] **J7** Admin beta 邀请码管理页面 — `/admin/beta-invitations` 页面（邀请码列表 + 状态过滤 + 审批/撤销操作 + 创建 Dialog），侧边栏导航"Beta 邀请码"，5 前端 tests ✓，完成 2026-05-14
 
 ---

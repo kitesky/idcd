@@ -4,20 +4,22 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kite365/idcd/apps/notifier/internal/channel"
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
 	"github.com/kite365/idcd/lib/shared/apperr"
-	"log/slog"
 )
 
 // Task type constants for different email types.
 const (
-	TaskSendVerifyEmail    = "task:send_verify_email"
-	TaskSendWelcome        = "task:send_welcome"
-	TaskSendResetPassword  = "task:send_reset_password"
+	TaskSendVerifyEmail   = "task:send_verify_email"
+	TaskSendWelcome       = "task:send_welcome"
+	TaskSendResetPassword = "task:send_reset_password"
+	TypeAlertNotification = "alert:notification"
 )
 
 // SendVerifyEmailPayload holds the payload for sending verification email.
@@ -175,6 +177,85 @@ func (h *Handlers) HandleSendResetPassword(ctx context.Context, task *asynq.Task
 	return nil
 }
 
+// AlertNotificationPayload holds the payload for sending an alert notification
+// via a specific channel.
+type AlertNotificationPayload struct {
+	ChannelType   string `json:"channel_type"`   // "webhook" | "wecom" | "dingtalk" | "feishu"
+	ChannelConfig []byte `json:"channel_config"` // JSON-encoded channel config
+	Title         string `json:"title"`
+	Body          string `json:"body"`
+	URL           string `json:"url"`
+	Level         string `json:"level"` // "critical" | "warning" | "info"
+}
+
+// HandleAlertNotification processes alert notification tasks by routing to the
+// appropriate channel adapter based on the channel_type field.
+func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task) error {
+	var payload AlertNotificationPayload
+	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		return apperr.Internal("解析告警通知任务载荷失败", err)
+	}
+
+	if payload.ChannelType == "" {
+		return apperr.Validation("channel_type 不能为空", "")
+	}
+
+	ch, err := buildChannel(payload.ChannelType, payload.ChannelConfig)
+	if err != nil {
+		return apperr.Validation(fmt.Sprintf("构建通道失败: %v", err), "")
+	}
+
+	p := channel.Payload{
+		Title: payload.Title,
+		Body:  payload.Body,
+		URL:   payload.URL,
+		Level: payload.Level,
+	}
+
+	if err := ch.Send(ctx, p); err != nil {
+		h.logger.Error("告警通知发送失败",
+			"channel_type", payload.ChannelType,
+			"error", err,
+		)
+		return err
+	}
+
+	h.logger.Info("告警通知发送成功", "channel_type", payload.ChannelType)
+	return nil
+}
+
+// buildChannel constructs the appropriate Channel adapter from type and raw JSON config.
+func buildChannel(channelType string, cfgJSON []byte) (channel.Channel, error) {
+	switch channelType {
+	case "webhook":
+		var cfg channel.WebhookConfig
+		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("unmarshal webhook config: %w", err)
+		}
+		return channel.NewWebhook(cfg), nil
+	case "wecom":
+		var cfg channel.WecomConfig
+		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("unmarshal wecom config: %w", err)
+		}
+		return channel.NewWecom(cfg), nil
+	case "dingtalk":
+		var cfg channel.DingtalkConfig
+		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("unmarshal dingtalk config: %w", err)
+		}
+		return channel.NewDingtalk(cfg), nil
+	case "feishu":
+		var cfg channel.FeishuConfig
+		if err := json.Unmarshal(cfgJSON, &cfg); err != nil {
+			return nil, fmt.Errorf("unmarshal feishu config: %w", err)
+		}
+		return channel.NewFeishu(cfg), nil
+	default:
+		return nil, fmt.Errorf("unsupported channel type: %s", channelType)
+	}
+}
+
 // GetMux returns a configured ServeMux with all handlers registered.
 func (h *Handlers) GetMux() *asynq.ServeMux {
 	mux := asynq.NewServeMux()
@@ -183,6 +264,7 @@ func (h *Handlers) GetMux() *asynq.ServeMux {
 	mux.HandleFunc(TaskSendVerifyEmail, h.withRetry(h.HandleSendVerifyEmail))
 	mux.HandleFunc(TaskSendWelcome, h.withRetry(h.HandleSendWelcome))
 	mux.HandleFunc(TaskSendResetPassword, h.withRetry(h.HandleSendResetPassword))
+	mux.HandleFunc(TypeAlertNotification, h.withRetry(h.HandleAlertNotification))
 
 	return mux
 }

@@ -16,8 +16,8 @@ import (
 // NodeDiagPool is the minimal pool interface required by NodeDiagnosticsHandler.
 // *pgxpool.Pool satisfies this interface.
 type NodeDiagPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // NodeDiagnosticsHandler handles node diagnostic endpoints.

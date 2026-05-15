@@ -77,7 +77,7 @@ func TestInfoHandler_IP(t *testing.T) {
 				t.Errorf("IP() status = %v, want %v", w.Code, tt.wantStatusCode)
 			}
 
-			var resp map[string]interface{}
+			var resp map[string]any
 			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 				t.Fatalf("failed to decode response: %v", err)
 			}
@@ -126,7 +126,7 @@ func TestInfoHandler_Whois(t *testing.T) {
 				t.Errorf("Whois() status = %v, want %v", w.Code, tt.wantStatusCode)
 			}
 
-			var resp map[string]interface{}
+			var resp map[string]any
 			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 				t.Fatalf("failed to decode response: %v", err)
 			}
@@ -137,7 +137,7 @@ func TestInfoHandler_Whois(t *testing.T) {
 			}
 
 			if !tt.wantError {
-				data, ok := resp["data"].(map[string]interface{})
+				data, ok := resp["data"].(map[string]any)
 				if !ok {
 					t.Fatal("response data is not a map")
 				}
@@ -207,7 +207,7 @@ func TestInfoHandler_DNS(t *testing.T) {
 				t.Errorf("DNS() status = %v, want %v", w.Code, tt.wantStatusCode)
 			}
 
-			var resp map[string]interface{}
+			var resp map[string]any
 			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 				t.Fatalf("failed to decode response: %v", err)
 			}
@@ -303,7 +303,7 @@ func TestInfoHandler_SSL(t *testing.T) {
 				t.Errorf("SSL() status = %v, want %v", w.Code, tt.wantStatusCode)
 			}
 
-			var resp map[string]interface{}
+			var resp map[string]any
 			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 				t.Fatalf("failed to decode response: %v", err)
 			}
@@ -352,7 +352,7 @@ func TestInfoHandler_ICP(t *testing.T) {
 				t.Errorf("ICP() status = %v, want %v", w.Code, tt.wantStatusCode)
 			}
 
-			var resp map[string]interface{}
+			var resp map[string]any
 			if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 				t.Fatalf("failed to decode response: %v", err)
 			}
@@ -363,7 +363,7 @@ func TestInfoHandler_ICP(t *testing.T) {
 			}
 
 			if !tt.wantError {
-				data, ok := resp["data"].(map[string]interface{})
+				data, ok := resp["data"].(map[string]any)
 				if !ok {
 					t.Fatal("response data is not a map")
 				}
@@ -463,18 +463,18 @@ func TestInfoHandler_DNS_CAA(t *testing.T) {
 		t.Errorf("DNS(CAA) status = %v, want %v", w.Code, http.StatusOK)
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
 		t.Fatalf("failed to decode response: %v", err)
 	}
 
-	data, ok := resp["data"].(map[string]interface{})
+	data, ok := resp["data"].(map[string]any)
 	if !ok {
 		t.Fatal("response data is not a map")
 	}
 
 	// CAA should return empty records in S1
-	records, ok := data["records"].([]interface{})
+	records, ok := data["records"].([]any)
 	if !ok {
 		t.Fatal("records is not an array")
 	}

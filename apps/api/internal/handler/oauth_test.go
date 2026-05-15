@@ -296,7 +296,7 @@ func TestFeishuCallback_invalidState(t *testing.T) {
 func TestFeishuCallback_validCode(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/token", func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"code": 0,
 			"msg":  "success",
 			"data": map[string]string{"access_token": "fs_tok"},
@@ -304,7 +304,7 @@ func TestFeishuCallback_validCode(t *testing.T) {
 		_ = json.NewEncoder(w).Encode(resp)
 	})
 	mux.HandleFunc("/user", func(w http.ResponseWriter, r *http.Request) {
-		resp := map[string]interface{}{
+		resp := map[string]any{
 			"code": 0,
 			"msg":  "success",
 			"data": map[string]string{

@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- migrate:up
 
 CREATE TABLE beta_invitations (

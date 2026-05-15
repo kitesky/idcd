@@ -346,9 +346,22 @@ func (h *WSHandler) dispatchPendingCommands(ctx context.Context, nodeID string) 
 	}
 
 	for _, cmd := range rows {
+		// Inject cmd_id into the payload so the agent can echo it back in the ack,
+		// allowing the gateway to identify the exact command that was acknowledged.
+		var payloadMap map[string]json.RawMessage
+		if err := json.Unmarshal(cmd.Payload, &payloadMap); err != nil || payloadMap == nil {
+			payloadMap = make(map[string]json.RawMessage)
+		}
+		cmdIDJSON, _ := json.Marshal(cmd.ID)
+		payloadMap["cmd_id"] = cmdIDJSON
+		enrichedPayload, err := json.Marshal(payloadMap)
+		if err != nil {
+			enrichedPayload = cmd.Payload
+		}
+
 		msg := Message{
 			Type:    cmd.Command,
-			Payload: cmd.Payload,
+			Payload: enrichedPayload,
 		}
 		data, err := json.Marshal(msg)
 		if err != nil {
@@ -406,6 +419,24 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		h.logger.Warn("result received but stream client not configured, dropping", "node_id", c.NodeID)
 		return nil
 	}
+
+	// Verify that the task was assigned to this node, preventing a rogue agent
+	// from submitting results for tasks belonging to other users' monitors.
+	if h.pool != nil && result.TaskID != "" {
+		ctx := context.Background()
+		var assignedNodeID string
+		err := h.pool.QueryRow(ctx,
+			`SELECT node_id FROM scheduler_tasks WHERE id = $1`, result.TaskID,
+		).Scan(&assignedNodeID)
+		if err == nil && assignedNodeID != "" && assignedNodeID != c.NodeID {
+			h.logger.Warn("result rejected: task_id belongs to different node",
+				"node_id", c.NodeID, "task_id", result.TaskID, "assigned_node", assignedNodeID)
+			return apperr.Forbidden("task not assigned to this node")
+		}
+		// If the task is not found (err != nil), allow the result through — the task
+		// may be in a different store or already cleaned up. Deny only on confirmed mismatch.
+	}
+
 	ctx := context.Background()
 	streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, result.Data)
 	if err != nil {
@@ -434,27 +465,39 @@ func (h *WSHandler) handleAck(c *hub.Connection, payload json.RawMessage) error 
 func (h *WSHandler) handleCmdAck(c *hub.Connection, payload json.RawMessage) error {
 	var ack struct {
 		Command string `json:"command"`
+		CmdID   string `json:"cmd_id,omitempty"` // preferred; identifies the exact command
 		Version string `json:"version,omitempty"`
 	}
 	if err := json.Unmarshal(payload, &ack); err != nil {
 		return apperr.Validation("invalid cmd_ack payload", err.Error())
 	}
 
-	h.logger.Info("command acked by node", "node_id", c.NodeID, "command", ack.Command)
+	h.logger.Info("command acked by node", "node_id", c.NodeID, "command", ack.Command, "cmd_id", ack.CmdID)
 
 	if h.pool != nil {
-		// Mark the most-recently-sent command of this type as acked
 		ctx := context.Background()
-		_, _ = h.pool.Exec(ctx, `
-			UPDATE node_commands
-			SET status = 'acked', acked_at = now()
-			WHERE id = (
-				SELECT id FROM node_commands
-				WHERE node_id = $1 AND command = $2 AND status = 'sent'
-				ORDER BY sent_at DESC
-				LIMIT 1
-			)
-		`, c.NodeID, ack.Command)
+		if ack.CmdID != "" {
+			// Preferred path: ack by exact cmd_id so concurrent commands of the
+			// same type do not cross-contaminate each other.
+			_, _ = h.pool.Exec(ctx, `
+				UPDATE node_commands
+				SET status = 'acked', acked_at = now()
+				WHERE id = $1 AND node_id = $2 AND status = 'sent'
+			`, ack.CmdID, c.NodeID)
+		} else {
+			// Legacy fallback: agents that don't send cmd_id fall back to
+			// acking the most-recently-sent command of that type.
+			_, _ = h.pool.Exec(ctx, `
+				UPDATE node_commands
+				SET status = 'acked', acked_at = now()
+				WHERE id = (
+					SELECT id FROM node_commands
+					WHERE node_id = $1 AND command = $2 AND status = 'sent'
+					ORDER BY sent_at DESC
+					LIMIT 1
+				)
+			`, c.NodeID, ack.Command)
+		}
 	}
 	return nil
 }

@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE node_applications (
   id                   TEXT PRIMARY KEY,
   user_id              TEXT NOT NULL,

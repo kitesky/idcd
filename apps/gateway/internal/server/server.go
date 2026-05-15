@@ -63,8 +63,9 @@ func (s *Server) setupRouter() {
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/deep", healthHandler.DeepHealth)
 
-	// Prometheus metrics
-	r.Handle("/metrics", promhttp.Handler())
+	// Prometheus metrics — require Bearer token from config to prevent public exposure.
+	metricsToken := s.config.MetricsToken
+	r.Handle("/metrics", metricsAuthMiddleware(metricsToken, promhttp.Handler()))
 
 	// WebSocket endpoint for agent nodes
 	wsHandler := handler.NewWSHandler(s.hub, nil, s.pgxPool, s.streamCli, s.logger)
@@ -108,4 +109,21 @@ func (s *Server) Shutdown(ctx context.Context) error {
 // Router returns the configured router (useful for testing).
 func (s *Server) Router() chi.Router {
 	return s.router
+}
+
+// metricsAuthMiddleware wraps a handler with optional Bearer token protection.
+// If token is empty (dev mode), requests pass through unauthenticated.
+func metricsAuthMiddleware(token string, next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if token == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer "+token {
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

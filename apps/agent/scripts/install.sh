@@ -107,8 +107,24 @@ KERNEL_VAL=$(uname -r)
 AGENT_VER=$("$TMP_BIN" --version 2>/dev/null | head -1 || echo "unknown")
 NODE_NAME="${AGENT_NODE_NAME:-${HOSTNAME_VAL}}"
 
-ENROLL_JSON=$(printf '{"token":"%s","hostname":"%s","arch":"%s","os":"linux","kernel":"%s","version":"%s","label":"%s"}' \
-  "$IDCD_TOKEN" "$HOSTNAME_VAL" "$ARCH_SLUG" "$KERNEL_VAL" "$AGENT_VER" "$NODE_NAME")
+# Use jq to safely encode all fields — prevents JSON injection if hostname or
+# version strings contain double-quotes, backslashes, or other special characters.
+if command -v jq &>/dev/null; then
+  ENROLL_JSON=$(jq -n \
+    --arg token   "$IDCD_TOKEN" \
+    --arg host    "$HOSTNAME_VAL" \
+    --arg arch    "$ARCH_SLUG" \
+    --arg kernel  "$KERNEL_VAL" \
+    --arg version "$AGENT_VER" \
+    --arg label   "$NODE_NAME" \
+    '{token:$token,hostname:$host,arch:$arch,os:"linux",kernel:$kernel,version:$version,label:$label}')
+else
+  # Fallback: sanitize values by stripping characters unsafe in JSON strings.
+  _sanitize() { printf '%s' "$1" | tr -d '"\\'; }
+  ENROLL_JSON=$(printf '{"token":"%s","hostname":"%s","arch":"%s","os":"linux","kernel":"%s","version":"%s","label":"%s"}' \
+    "$(_sanitize "$IDCD_TOKEN")" "$(_sanitize "$HOSTNAME_VAL")" "$(_sanitize "$ARCH_SLUG")" \
+    "$(_sanitize "$KERNEL_VAL")" "$(_sanitize "$AGENT_VER")" "$(_sanitize "$NODE_NAME")")
+fi
 
 if command -v curl &>/dev/null; then
   ENROLL_RESP=$(curl -fsSL -X POST \
@@ -191,7 +207,7 @@ NoNewPrivileges=true
 PrivateTmp=true
 ProtectSystem=strict
 ProtectHome=true
-ReadWritePaths=${DATA_DIR} ${LOG_DIR}
+ReadWritePaths=${DATA_DIR} ${LOG_DIR} /usr/local/bin
 ProtectKernelTunables=true
 ProtectKernelModules=true
 ProtectControlGroups=true

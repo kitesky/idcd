@@ -41,7 +41,7 @@ func newMockPATPool() *mockPATPool {
 	return &mockPATPool{tokens: make(map[string]*mockPATRow)}
 }
 
-func (m *mockPATPool) QueryRow(_ context.Context, sql string, args ...interface{}) pgx.Row {
+func (m *mockPATPool) QueryRow(_ context.Context, sql string, args ...any) pgx.Row {
 	if m.err != nil {
 		return &patErrRow{err: m.err}
 	}
@@ -88,7 +88,7 @@ func (m *mockPATPool) QueryRow(_ context.Context, sql string, args ...interface{
 	return &patErrRow{err: fmt.Errorf("unexpected QueryRow sql: %s", sql)}
 }
 
-func (m *mockPATPool) Query(_ context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (m *mockPATPool) Query(_ context.Context, sql string, args ...any) (pgx.Rows, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
@@ -105,7 +105,7 @@ func (m *mockPATPool) Query(_ context.Context, sql string, args ...interface{}) 
 	return nil, fmt.Errorf("unexpected Query sql: %s", sql)
 }
 
-func (m *mockPATPool) Exec(_ context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockPATPool) Exec(_ context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	if m.err != nil {
 		return pgconn.NewCommandTag("DELETE 0"), m.err
 	}
@@ -124,11 +124,11 @@ func (m *mockPATPool) Exec(_ context.Context, sql string, args ...interface{}) (
 
 type patErrRow struct{ err error }
 
-func (e *patErrRow) Scan(...interface{}) error { return e.err }
+func (e *patErrRow) Scan(...any) error { return e.err }
 
 type singleStringRow struct{ val string }
 
-func (s *singleStringRow) Scan(dest ...interface{}) error {
+func (s *singleStringRow) Scan(dest ...any) error {
 	if len(dest) < 1 {
 		return fmt.Errorf("expected 1 dest")
 	}
@@ -138,7 +138,7 @@ func (s *singleStringRow) Scan(dest ...interface{}) error {
 
 type patQueryRow struct{ row *mockPATRow }
 
-func (p *patQueryRow) Scan(dest ...interface{}) error {
+func (p *patQueryRow) Scan(dest ...any) error {
 	if len(dest) < 6 {
 		return fmt.Errorf("expected 6 dest, got %d", len(dest))
 	}
@@ -161,7 +161,7 @@ func (r *patRows) Next() bool {
 	return r.idx < len(r.rows)
 }
 
-func (r *patRows) Scan(dest ...interface{}) error {
+func (r *patRows) Scan(dest ...any) error {
 	row := r.rows[r.idx]
 	if len(dest) < 6 {
 		return fmt.Errorf("expected 6 dest, got %d", len(dest))
@@ -179,7 +179,7 @@ func (r *patRows) Close()            {}
 func (r *patRows) Err() error        { return nil }
 func (r *patRows) CommandTag() pgconn.CommandTag { return pgconn.CommandTag{} }
 func (r *patRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
-func (r *patRows) Values() ([]interface{}, error) { return nil, nil }
+func (r *patRows) Values() ([]any, error) { return nil, nil }
 func (r *patRows) RawValues() [][]byte            { return nil }
 func (r *patRows) Conn() *pgx.Conn               { return nil }
 
@@ -266,7 +266,7 @@ func TestPATCreate_withExpiry(t *testing.T) {
 	h := NewPATHandler(pool)
 
 	days := 365
-	bodyObj := map[string]interface{}{
+	bodyObj := map[string]any{
 		"name":         "Expiring Token",
 		"scopes":       []string{"read:monitors"},
 		"expires_days": days,

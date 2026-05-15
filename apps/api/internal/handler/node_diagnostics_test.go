@@ -75,7 +75,7 @@ func TestNodeDiagnostics_ResponseFields(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&wrapper))
 
-	var fields map[string]interface{}
+	var fields map[string]any
 	require.NoError(t, json.Unmarshal(wrapper.Data, &fields))
 
 	assert.Contains(t, fields, "node_id")

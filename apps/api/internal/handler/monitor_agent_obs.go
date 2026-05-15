@@ -20,9 +20,9 @@ import (
 // AgentObsPool is the minimal pgx interface required by AgentObsHandler.
 // *pgxpool.Pool satisfies this.
 type AgentObsPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // AgentObsHandler handles agent observability config and check history endpoints.
@@ -220,7 +220,7 @@ func (h *AgentObsHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var setClauses []string
-	var args []interface{}
+	var args []any
 	argIdx := 1
 
 	if req.ObsType != nil {

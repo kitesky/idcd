@@ -15,26 +15,26 @@ import (
 )
 
 type mockStatusSubPool struct {
-	queryRow func(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	query    func(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-	exec     func(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	queryRow func(ctx context.Context, sql string, args ...any) pgx.Row
+	query    func(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	exec     func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-func (m *mockStatusSubPool) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (m *mockStatusSubPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	if m.queryRow != nil {
 		return m.queryRow(ctx, sql, args...)
 	}
 	return &errRow{err: pgx.ErrNoRows}
 }
 
-func (m *mockStatusSubPool) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (m *mockStatusSubPool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	if m.query != nil {
 		return m.query(ctx, sql, args...)
 	}
 	return &emptyRows{}, nil
 }
 
-func (m *mockStatusSubPool) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockStatusSubPool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	if m.exec != nil {
 		return m.exec(ctx, sql, args...)
 	}
@@ -58,10 +58,10 @@ func newSubRouter(pool StatusSubPool) http.Handler {
 
 func TestStatusSubscription_Subscribe_Email_201_UnverifiedFalse(t *testing.T) {
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
-			return &scanRow{values: []interface{}{"sp_test001"}}
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
+			return &scanRow{values: []any{"sp_test001"}}
 		},
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.CommandTag{}, nil
 		},
 	}
@@ -76,11 +76,11 @@ func TestStatusSubscription_Subscribe_Email_201_UnverifiedFalse(t *testing.T) {
 		t.Errorf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	if data["verified"] != false {
 		t.Errorf("email subscription should be unverified, got verified=%v", data["verified"])
 	}
@@ -91,10 +91,10 @@ func TestStatusSubscription_Subscribe_Email_201_UnverifiedFalse(t *testing.T) {
 
 func TestStatusSubscription_Subscribe_Webhook_201_VerifiedTrue(t *testing.T) {
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
-			return &scanRow{values: []interface{}{"sp_test002"}}
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
+			return &scanRow{values: []any{"sp_test002"}}
 		},
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.CommandTag{}, nil
 		},
 	}
@@ -109,11 +109,11 @@ func TestStatusSubscription_Subscribe_Webhook_201_VerifiedTrue(t *testing.T) {
 		t.Errorf("expected 201, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	if data["verified"] != true {
 		t.Errorf("webhook subscription should be verified, got verified=%v", data["verified"])
 	}
@@ -121,7 +121,7 @@ func TestStatusSubscription_Subscribe_Webhook_201_VerifiedTrue(t *testing.T) {
 
 func TestStatusSubscription_Subscribe_StatusPageNotFound_404(t *testing.T) {
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
 			return &errRow{err: pgx.ErrNoRows}
 		},
 	}
@@ -140,14 +140,14 @@ func TestStatusSubscription_Subscribe_StatusPageNotFound_404(t *testing.T) {
 func TestStatusSubscription_Verify_ValidToken_200_VerifiedTrue(t *testing.T) {
 	scanCalls := 0
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
 			scanCalls++
 			if scanCalls == 1 {
-				return &scanRow{values: []interface{}{"ssub_abc123"}}
+				return &scanRow{values: []any{"ssub_abc123"}}
 			}
 			return &errRow{err: errors.New("unexpected call")}
 		},
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.CommandTag{}, nil
 		},
 	}
@@ -160,11 +160,11 @@ func TestStatusSubscription_Verify_ValidToken_200_VerifiedTrue(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 
-	var resp map[string]interface{}
+	var resp map[string]any
 	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
 		t.Fatalf("unmarshal: %v", err)
 	}
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	if data["verified"] != true {
 		t.Errorf("expected verified=true, got %v", data["verified"])
 	}
@@ -172,7 +172,7 @@ func TestStatusSubscription_Verify_ValidToken_200_VerifiedTrue(t *testing.T) {
 
 func TestStatusSubscription_Verify_InvalidToken_404(t *testing.T) {
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
 			return &errRow{err: pgx.ErrNoRows}
 		},
 	}
@@ -188,10 +188,10 @@ func TestStatusSubscription_Verify_InvalidToken_404(t *testing.T) {
 
 func TestStatusSubscription_Unsubscribe_ValidToken_200(t *testing.T) {
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
-			return &scanRow{values: []interface{}{"ssub_abc456"}}
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
+			return &scanRow{values: []any{"ssub_abc456"}}
 		},
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.CommandTag{}, nil
 		},
 	}
@@ -207,7 +207,7 @@ func TestStatusSubscription_Unsubscribe_ValidToken_200(t *testing.T) {
 
 func TestStatusSubscription_Unsubscribe_InvalidToken_404(t *testing.T) {
 	pool := &mockStatusSubPool{
-		queryRow: func(_ context.Context, _ string, args ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, args ...any) pgx.Row {
 			return &errRow{err: pgx.ErrNoRows}
 		},
 	}

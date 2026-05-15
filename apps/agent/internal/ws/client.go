@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"sync"
 	"time"
@@ -142,16 +143,19 @@ func (c *Client) Run(ctx context.Context) {
 
 // connect establishes the WebSocket connection.
 func (c *Client) connect(ctx context.Context) error {
-	u, err := url.Parse(c.gatewayURL)
+	_, err := url.Parse(c.gatewayURL)
 	if err != nil {
 		return fmt.Errorf("parse gateway URL: %w", err)
 	}
-	q := u.Query()
-	q.Set("api_key", c.secretKey)
-	u.RawQuery = q.Encode()
+
+	// Pass the secret key in a request header, not in the URL, so it is never
+	// written to proxy/access logs.
+	handshakeHeaders := http.Header{}
+	handshakeHeaders.Set("Authorization", "Bearer "+c.secretKey)
+	handshakeHeaders.Set("X-Node-ID", c.nodeID)
 
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	conn, _, err := dialer.DialContext(ctx, u.String(), nil)
+	conn, _, err := dialer.DialContext(ctx, c.gatewayURL, handshakeHeaders)
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}

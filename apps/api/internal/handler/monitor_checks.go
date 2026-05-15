@@ -19,8 +19,8 @@ import (
 // MonitorChecksPool is the minimal pgx interface needed by MonitorChecksHandler.
 // *pgxpool.Pool satisfies this.
 type MonitorChecksPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // MonitorChecksHandler handles the checks history endpoint for a monitor.
@@ -84,9 +84,10 @@ func (h *MonitorChecksHandler) List(w http.ResponseWriter, r *http.Request) {
 
 	resolutionMinutes := 30
 	if rParam := r.URL.Query().Get("resolution"); rParam != "" {
-		if rParam == "30m" {
+		switch rParam {
+		case "30m":
 			resolutionMinutes = 30
-		} else if rParam == "60m" {
+		case "60m":
 			resolutionMinutes = 60
 		}
 	}

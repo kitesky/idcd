@@ -17,6 +17,10 @@ import (
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
+// webhookReplayWindowSecs is the ±tolerance for the X-Webhook-Timestamp header.
+// Events older or newer than this window are rejected to prevent replay attacks.
+const webhookReplayWindowSecs = int64(300) // ±5 minutes
+
 // PaymentHubConfig holds credentials and routing config for the payment platform.
 type PaymentHubConfig struct {
 	BaseURL       string
@@ -157,7 +161,7 @@ func (p *PaymentHubProvider) ParseWebhook(_ context.Context, body []byte, header
 		return nil, fmt.Errorf("billing/payment_hub: ParseWebhook: invalid timestamp: %w", err)
 	}
 	now := time.Now().Unix()
-	if now < ts-300 || now > ts+300 {
+	if now < ts-webhookReplayWindowSecs || now > ts+webhookReplayWindowSecs {
 		return nil, errors.New("billing/payment_hub: ParseWebhook: timestamp expired")
 	}
 

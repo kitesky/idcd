@@ -1,18 +1,14 @@
 import { cache } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
-import { MOCK_STATUS_PAGES } from "./mock-data"
 import { StatusClient } from "./status-client"
+import type { StatusPageData } from "./types"
 
 export const revalidate = 60
 
 interface Props {
   params: Promise<{ slug: string }>
   searchParams: Promise<{ customDomain?: string }>
-}
-
-export function generateStaticParams() {
-  return Object.keys(MOCK_STATUS_PAGES).map(slug => ({ slug }))
 }
 
 const resolveSlugFromCustomDomain = cache(async (customDomain: string): Promise<string | null> => {
@@ -25,12 +21,24 @@ const resolveSlugFromCustomDomain = cache(async (customDomain: string): Promise<
   } catch { return null }
 })
 
+const fetchStatusPage = cache(async (slug: string): Promise<StatusPageData | null> => {
+  const apiBase = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
+  try {
+    const res = await fetch(`${apiBase}/v1/status-pages/${encodeURIComponent(slug)}/public`, {
+      next: { revalidate: 60 },
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as { data?: StatusPageData }
+    return json.data ?? null
+  } catch { return null }
+})
+
 export async function generateMetadata({ params, searchParams }: Props): Promise<Metadata> {
   const { slug: rawSlug } = await params
   const { customDomain } = await searchParams
   let slug = rawSlug
   if (customDomain) { const r = await resolveSlugFromCustomDomain(customDomain); if (r) slug = r }
-  const data = MOCK_STATUS_PAGES[slug]
+  const data = await fetchStatusPage(slug)
   if (!data) return { title: "状态页未找到" }
   return {
     title: `${data.title} — 状态页`,
@@ -48,7 +56,7 @@ export default async function StatusPage({ params, searchParams }: Props) {
     if (resolved) slug = resolved
     else notFound()
   }
-  const data = MOCK_STATUS_PAGES[slug]
+  const data = await fetchStatusPage(slug)
   if (!data) notFound()
   return <StatusClient data={data} />
 }

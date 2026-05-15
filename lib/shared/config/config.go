@@ -211,6 +211,9 @@ func (c *Config) validate() error {
 	if c.JWT.Secret == "" {
 		return fmt.Errorf("jwt.secret is required")
 	}
+	if c.Server.AdminToken == "" {
+		return fmt.Errorf("server.admin_token is required")
+	}
 	return nil
 }
 

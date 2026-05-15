@@ -20,9 +20,9 @@ import (
 )
 
 type PostmortemPool interface {
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 type PostmortemHandler struct {
@@ -356,5 +356,5 @@ func (h *PostmortemHandler) List(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []IncidentListItem{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }

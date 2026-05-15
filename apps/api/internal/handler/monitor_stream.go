@@ -19,7 +19,7 @@ import (
 // MonitorStreamPool is the minimal pgx interface needed by MonitorStreamHandler.
 // *pgxpool.Pool satisfies this.
 type MonitorStreamPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // MonitorStreamHandler serves the SSE stream for a single monitor.

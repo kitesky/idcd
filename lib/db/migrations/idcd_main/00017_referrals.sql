@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE referral_codes (
   id         TEXT PRIMARY KEY,
   user_id    TEXT NOT NULL UNIQUE,

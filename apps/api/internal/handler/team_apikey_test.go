@@ -34,12 +34,6 @@ func withTeamID(r *http.Request, teamID string) *http.Request {
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
-func withTeamAndKeyID(r *http.Request, teamID, keyID string) *http.Request {
-	rctx := chi.NewRouteContext()
-	rctx.URLParams.Add("id", teamID)
-	rctx.URLParams.Add("key_id", keyID)
-	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
-}
 
 func prepTeamReq(r *http.Request, userID, teamID string) *http.Request {
 	ctx := context.WithValue(r.Context(), middleware.UserIDContextKey(), userID)

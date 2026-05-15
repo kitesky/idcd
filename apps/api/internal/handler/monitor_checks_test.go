@@ -17,18 +17,18 @@ import (
 
 // mockChecksPool implements MonitorChecksPool for tests.
 type mockChecksPool struct {
-	queryRow func(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	query    func(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	queryRow func(ctx context.Context, sql string, args ...any) pgx.Row
+	query    func(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-func (m *mockChecksPool) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (m *mockChecksPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	if m.queryRow != nil {
 		return m.queryRow(ctx, sql, args...)
 	}
 	return &errRow{err: errors.New("not implemented")}
 }
 
-func (m *mockChecksPool) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (m *mockChecksPool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	if m.query != nil {
 		return m.query(ctx, sql, args...)
 	}
@@ -43,8 +43,8 @@ func (e *emptyRows) Err() error                                { return nil }
 func (e *emptyRows) CommandTag() pgconn.CommandTag             { return pgconn.CommandTag{} }
 func (e *emptyRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
 func (e *emptyRows) Next() bool                                { return false }
-func (e *emptyRows) Scan(_ ...interface{}) error               { return nil }
-func (e *emptyRows) Values() ([]interface{}, error)            { return nil, nil }
+func (e *emptyRows) Scan(_ ...any) error               { return nil }
+func (e *emptyRows) Values() ([]any, error)            { return nil, nil }
 func (e *emptyRows) RawValues() [][]byte                       { return nil }
 func (e *emptyRows) Conn() *pgx.Conn                           { return nil }
 
@@ -129,7 +129,7 @@ func TestMonitorChecks_success_emptyBuckets(t *testing.T) {
 			MonitorID         string        `json:"monitor_id"`
 			Hours             int           `json:"hours"`
 			ResolutionMinutes int           `json:"resolution_minutes"`
-			Buckets           []interface{} `json:"buckets"`
+			Buckets           []any `json:"buckets"`
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {

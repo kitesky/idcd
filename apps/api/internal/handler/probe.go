@@ -27,7 +27,7 @@ type ProbeHandler struct {
 
 // ProbePool is the interface for database operations.
 type ProbePool interface {
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 }
 
 // NewProbeHandler creates a new ProbeHandler.
@@ -42,7 +42,7 @@ func NewProbeHandler(pool ProbePool, streamClient *stream.Client) *ProbeHandler 
 type ProbeRequest struct {
 	Target string                 `json:"target"`
 	Nodes  []string               `json:"nodes,omitempty"`
-	Params map[string]interface{} `json:"params,omitempty"`
+	Params map[string]any `json:"params,omitempty"`
 }
 
 // ProbeResponse is the response structure for probe endpoints.
@@ -172,7 +172,7 @@ func (h *ProbeHandler) createProbeTask(
 	probeType string,
 	target string,
 	nodes []string,
-	params map[string]interface{},
+	params map[string]any,
 ) (string, error) {
 	taskID := idgen.ProbeTask()
 

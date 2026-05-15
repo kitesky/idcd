@@ -19,7 +19,7 @@ import (
 )
 
 type mockOncallRows struct {
-	rows [][]interface{}
+	rows [][]any
 	idx  int
 	err  error
 }
@@ -29,7 +29,7 @@ func (m *mockOncallRows) Next() bool {
 	return m.idx <= len(m.rows)
 }
 
-func (m *mockOncallRows) Scan(dest ...interface{}) error {
+func (m *mockOncallRows) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -52,11 +52,11 @@ func (m *mockOncallRows) RawValues() [][]byte                           { return
 func (m *mockOncallRows) Conn() *pgx.Conn                               { return nil }
 
 type mockOncallRow struct {
-	values []interface{}
+	values []any
 	err    error
 }
 
-func (m *mockOncallRow) Scan(dest ...interface{}) error {
+func (m *mockOncallRow) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -78,11 +78,11 @@ type mockOncallPool struct {
 	queryErr      error
 }
 
-func (m *mockOncallPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockOncallPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 	return m.execResult, m.execErr
 }
 
-func (m *mockOncallPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *mockOncallPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	if m.queryRowIdx < len(m.queryRowQueue) {
 		row := m.queryRowQueue[m.queryRowIdx]
 		m.queryRowIdx++
@@ -91,7 +91,7 @@ func (m *mockOncallPool) QueryRow(_ context.Context, _ string, _ ...interface{})
 	return &mockOncallRow{err: pgx.ErrNoRows}
 }
 
-func (m *mockOncallPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+func (m *mockOncallPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -117,7 +117,7 @@ func TestOncallHandler_CreateSchedule_Unauthorized(t *testing.T) {
 	pool := &mockOncallPool{}
 	h := NewOncallHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"team_id":       "t_test",
 		"name":          "工程师值班",
 		"rotation_type": "weekly",
@@ -138,7 +138,7 @@ func TestOncallHandler_CreateSchedule_Success(t *testing.T) {
 	}
 	h := NewOncallHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"team_id":       "t_test",
 		"name":          "工程师值班",
 		"rotation_type": "weekly",
@@ -153,9 +153,9 @@ func TestOncallHandler_CreateSchedule_Success(t *testing.T) {
 	h.CreateSchedule(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, "工程师值班", data["name"])
 	assert.Equal(t, "t_test", data["team_id"])
 	assert.Equal(t, "weekly", data["rotation_type"])
@@ -166,7 +166,7 @@ func TestOncallHandler_GetCurrentOnCall_NoParticipants(t *testing.T) {
 	pool := &mockOncallPool{
 		queryRowQueue: []*mockOncallRow{
 			{err: pgx.ErrNoRows},
-			{values: []interface{}{"sch_test", "weekly", 9}},
+			{values: []any{"sch_test", "weekly", 9}},
 		},
 		queryRowsData: &mockOncallRows{rows: nil},
 	}
@@ -181,9 +181,9 @@ func TestOncallHandler_GetCurrentOnCall_NoParticipants(t *testing.T) {
 	h.GetCurrentOnCall(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, "", data["user_id"])
 }
 
@@ -191,9 +191,9 @@ func TestOncallHandler_GetCurrentOnCall_WithParticipants(t *testing.T) {
 	pool := &mockOncallPool{
 		queryRowQueue: []*mockOncallRow{
 			{err: pgx.ErrNoRows},
-			{values: []interface{}{"sch_test", "weekly", 9}},
+			{values: []any{"sch_test", "weekly", 9}},
 		},
-		queryRowsData: &mockOncallRows{rows: [][]interface{}{
+		queryRowsData: &mockOncallRows{rows: [][]any{
 			{"par_1", "sch_test", "u_alice", 0},
 		}},
 	}
@@ -207,9 +207,9 @@ func TestOncallHandler_GetCurrentOnCall_WithParticipants(t *testing.T) {
 	h.GetCurrentOnCall(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, "u_alice", data["user_id"])
 }
 
@@ -217,7 +217,7 @@ func TestOncallHandler_CreateSchedule_InvalidRotationType(t *testing.T) {
 	pool := &mockOncallPool{}
 	h := NewOncallHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"team_id":       "t_test",
 		"name":          "Bad Schedule",
 		"rotation_type": "monthly",

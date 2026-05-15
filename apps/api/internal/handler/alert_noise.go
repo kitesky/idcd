@@ -206,7 +206,7 @@ func (h *AlertNoiseHandler) ListSilences(w http.ResponseWriter, r *http.Request)
 	if items == nil {
 		items = []SilenceResponse{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 // DeleteSilence handles DELETE /v1/alert-silences/{id}.
@@ -452,7 +452,7 @@ func (h *AlertNoiseHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []AlertGroupResponse{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 // ─────────────────────────────────────────────

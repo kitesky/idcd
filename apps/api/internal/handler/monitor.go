@@ -35,15 +35,15 @@ type MonitorQuerier interface {
 // lookups (subscription plan + monitor count).
 // *pgxpool.Pool satisfies this.
 type QuotaPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // BulkPool extends QuotaPool with Exec and Query needed for bulk operations.
 // *pgxpool.Pool satisfies this.
 type BulkPool interface {
 	QuotaPool
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // MonitorHandler handles monitor CRUD endpoints.
@@ -106,7 +106,7 @@ func (h *MonitorHandler) monitorCount(ctx context.Context, userID string) int {
 
 // quotaError writes a 402 Payment Required response for quota exceeded errors.
 // The response body includes an upgrade_url hint for the frontend.
-func quotaError(w http.ResponseWriter, r *http.Request, msg string) {
+func quotaError(w http.ResponseWriter, _ *http.Request, msg string) {
 	type quotaBody struct {
 		Error      string `json:"error"`
 		Message    string `json:"message"`

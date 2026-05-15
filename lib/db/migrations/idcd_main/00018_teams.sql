@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE teams (
   id           TEXT PRIMARY KEY,
   name         TEXT NOT NULL,

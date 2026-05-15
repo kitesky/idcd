@@ -292,11 +292,11 @@ func (s *Server) setupRouter() {
 				r.With(authnMW).Get("/{id}/agent-obs/checks", agentObsH.ListChecks)
 			})
 
-			// Admin billing endpoints
-			// TODO: Add role=admin middleware once users.is_admin column exists.
-			// Until then these routes should be restricted to VPN/internal network only.
+			// Admin billing endpoints — require admin token via Authorization: Bearer header.
 			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool)
+			billingAdminAuthH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
 			r.Route("/admin", func(r chi.Router) {
+				r.Use(billingAdminAuthH.AdminAuthMiddleware)
 				r.Get("/refund-failed", adminBillingH.ListRefundFailed)
 				r.Post("/refund-failed/{id}/retry", adminBillingH.RetryRefund)
 			})
@@ -342,6 +342,10 @@ func (s *Server) setupRouter() {
 				r.Patch("/", statusPageDomainH.SetStatusPageDomain)
 				r.Get("/verify", statusPageDomainH.VerifyStatusPageDomain)
 			})
+
+			// Status page public endpoint (no auth)
+			statusPagePublicH := handler.NewStatusPagePublicHandler(s.pgxPool)
+			r.Get("/status-pages/{slug}/public", statusPagePublicH.Get)
 
 			// Status page subscription endpoints
 			statusSubH := handler.NewStatusSubscriptionHandler(s.pgxPool)

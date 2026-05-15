@@ -15,8 +15,8 @@ import (
 
 // AnchorPool is the minimal pgx interface needed by AnchorHandler.
 type AnchorPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // AnchorHandler handles anchor baseline and deviation endpoints.

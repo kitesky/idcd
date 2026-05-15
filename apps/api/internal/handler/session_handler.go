@@ -15,15 +15,16 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+const sessionKeyPrefix = "session:"
+
 // SessionService is the interface required by SessionHandler.
 type SessionService interface {
 	Get(ctx context.Context, sessionID string) (*session.SessionData, error)
 	Delete(ctx context.Context, sessionID string) error
-}
-
-// redisSessionLister uses a Redis SCAN to enumerate sessions belonging to a user.
-type redisSessionLister struct {
-	redis *redis.Client
+	// SessionIDsForUser lists all session IDs for a user via the user-scoped set.
+	SessionIDsForUser(ctx context.Context, userID string) ([]string, error)
+	// RemoveFromUserSet cleans up a stale entry from the user-sessions set.
+	RemoveFromUserSet(ctx context.Context, userID, sessionID string) error
 }
 
 // sessionEntry is a single session as returned by the list endpoint.
@@ -50,8 +51,8 @@ func NewSessionHandler(svc SessionService, rdb *redis.Client) *SessionHandler {
 }
 
 // ListSessions handles GET /v1/account/sessions.
-// It scans Redis for all session:{id} keys, loads each, and returns only the
-// sessions that belong to the authenticated user.
+// Uses the user-scoped sessions set (user_sessions:{userID}) for O(N_user_sessions)
+// lookup instead of O(N_total_sessions) SCAN.
 func (h *SessionHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 	if userID == "" {
@@ -60,48 +61,52 @@ func (h *SessionHandler) ListSessions(w http.ResponseWriter, r *http.Request) {
 	}
 	currentSessionID := middleware.SessionIDFromContext(r.Context())
 
-	var cursor uint64
-	var entries []sessionEntry
+	// Fetch all session IDs for this user in one SMEMBERS call.
+	sessionIDs, err := h.svc.SessionIDsForUser(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to list sessions", err))
+		return
+	}
 
-	for {
-		keys, nextCursor, err := h.redis.Scan(r.Context(), cursor, "session:*", 100).Result()
+	var entries []sessionEntry
+	var staleIDs []string
+
+	if len(sessionIDs) > 0 {
+		// Batch-fetch all session values with a pipelined MGet — O(1) round-trip.
+		keys := make([]string, len(sessionIDs))
+		for i, sid := range sessionIDs {
+			keys[i] = sessionKeyPrefix + sid
+		}
+		vals, err := h.redis.MGet(r.Context(), keys...).Result()
 		if err != nil {
-			response.Error(w, r, apperr.Internal("failed to scan sessions", err))
+			response.Error(w, r, apperr.Internal("failed to load sessions", err))
 			return
 		}
 
-		for _, key := range keys {
-			// key is "session:<id>" — extract the session ID suffix
-			if len(key) <= len("session:") {
+		for i, val := range vals {
+			if val == nil {
+				// Session expired without an explicit Delete — prune stale set entry.
+				staleIDs = append(staleIDs, sessionIDs[i])
 				continue
 			}
-			sid := key[len("session:"):]
-
-			raw, err := h.redis.Get(r.Context(), key).Result()
-			if err != nil {
-				// Session may have expired between SCAN and GET; skip silently.
+			raw, ok := val.(string)
+			if !ok {
 				continue
 			}
-
 			var data session.SessionData
 			if err := json.Unmarshal([]byte(raw), &data); err != nil {
 				continue
 			}
-
-			if data.UserID != userID {
-				continue
-			}
-
 			entries = append(entries, sessionEntry{
-				ID:        sid,
+				ID:        sessionIDs[i],
 				CreatedAt: data.CreatedAt,
-				IsCurrent: sid == currentSessionID,
+				IsCurrent: sessionIDs[i] == currentSessionID,
 			})
 		}
 
-		cursor = nextCursor
-		if cursor == 0 {
-			break
+		// Lazy cleanup of stale set entries (best-effort, non-blocking).
+		for _, sid := range staleIDs {
+			_ = h.svc.RemoveFromUserSet(r.Context(), userID, sid)
 		}
 	}
 

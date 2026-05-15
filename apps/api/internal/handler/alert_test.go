@@ -24,11 +24,11 @@ import (
 
 // mockAlertRow simulates a pgx.Row with configurable scan values.
 type mockAlertRow struct {
-	values []interface{}
+	values []any
 	err    error
 }
 
-func (m *mockAlertRow) Scan(dest ...interface{}) error {
+func (m *mockAlertRow) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -43,7 +43,7 @@ func (m *mockAlertRow) Scan(dest ...interface{}) error {
 
 // mockAlertRows simulates pgx.Rows with a slice of row data.
 type mockAlertRows struct {
-	rows [][]interface{}
+	rows [][]any
 	idx  int
 	err  error
 }
@@ -53,7 +53,7 @@ func (m *mockAlertRows) Next() bool {
 	return m.idx <= len(m.rows)
 }
 
-func (m *mockAlertRows) Scan(dest ...interface{}) error {
+func (m *mockAlertRows) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -84,11 +84,11 @@ type mockAlertPool struct {
 	queryErr    error
 }
 
-func (m *mockAlertPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockAlertPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 	return m.execResult, m.execErr
 }
 
-func (m *mockAlertPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *mockAlertPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	if m.queryRowVal != nil {
 		return m.queryRowVal
 	}
@@ -96,7 +96,7 @@ func (m *mockAlertPool) QueryRow(_ context.Context, _ string, _ ...interface{}) 
 	return &mockAlertRow{err: pgx.ErrNoRows}
 }
 
-func (m *mockAlertPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+func (m *mockAlertPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -107,7 +107,7 @@ func (m *mockAlertPool) Query(_ context.Context, _ string, _ ...interface{}) (pg
 }
 
 // copyValue is a minimal helper to assign scalar values to dest pointers.
-func copyValue(dest, src interface{}) {
+func copyValue(dest, src any) {
 	switch d := dest.(type) {
 	case *string:
 		if v, ok := src.(string); ok {
@@ -170,7 +170,7 @@ func TestAlertHandler_CreateChannel_Success(t *testing.T) {
 	pool := &mockAlertPool{execResult: pgconn.NewCommandTag("INSERT 0 1")}
 	h := NewAlertHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"name":   "My Webhook",
 		"type":   "webhook",
 		"config": map[string]string{"url": "https://example.com/hook"},
@@ -184,9 +184,9 @@ func TestAlertHandler_CreateChannel_Success(t *testing.T) {
 	h.CreateChannel(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, "My Webhook", data["name"])
 	assert.Equal(t, "webhook", data["type"])
 	assert.Equal(t, false, data["verified"])
@@ -240,10 +240,10 @@ func TestAlertHandler_ListChannels_Empty(t *testing.T) {
 	h.ListChannels(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	items := data["items"].([]interface{})
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
 	assert.Len(t, items, 0)
 }
 
@@ -287,7 +287,7 @@ func TestAlertHandler_DeleteChannel_Success(t *testing.T) {
 func TestAlertHandler_TestChannel_Success(t *testing.T) {
 	pool := &mockAlertPool{
 		queryRowVal: &mockAlertRow{
-			values: []interface{}{"webhook", []byte(`{"url":"https://example.com"}`)},
+			values: []any{"webhook", []byte(`{"url":"https://example.com"}`)},
 		},
 	}
 	h := NewAlertHandler(pool)
@@ -322,7 +322,7 @@ func TestAlertHandler_CreatePolicy_Success(t *testing.T) {
 	pool := &mockAlertPool{execResult: pgconn.NewCommandTag("INSERT 0 1")}
 	h := NewAlertHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"name":        "My Policy",
 		"monitor_id":  "mon_test123",
 		"channel_ids": []string{"ch_abc"},
@@ -336,9 +336,9 @@ func TestAlertHandler_CreatePolicy_Success(t *testing.T) {
 	h.CreatePolicy(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, "My Policy", data["name"])
 	assert.Equal(t, "mon_test123", data["monitor_id"])
 }
@@ -380,10 +380,10 @@ func TestAlertHandler_ListPolicies_Empty(t *testing.T) {
 	h.ListPolicies(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	items := data["items"].([]interface{})
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
 	assert.Len(t, items, 0)
 }
 
@@ -454,10 +454,10 @@ func TestAlertHandler_ListEvents_Empty(t *testing.T) {
 	h.ListEvents(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	items := data["items"].([]interface{})
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
 	assert.Len(t, items, 0)
 }
 
@@ -509,9 +509,9 @@ func TestAlertHandler_AcknowledgeEvent_Success(t *testing.T) {
 	h.AcknowledgeEvent(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, "event acknowledged", data["message"])
 }
 

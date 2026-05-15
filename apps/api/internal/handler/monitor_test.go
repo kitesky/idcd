@@ -436,11 +436,11 @@ func TestMonitorToResponse(t *testing.T) {
 
 // mockQuotaRow is a fake pgx.Row that scans a single pre-configured value.
 type mockQuotaRow struct {
-	val interface{}
+	val any
 	err error
 }
 
-func (m *mockQuotaRow) Scan(dest ...interface{}) error {
+func (m *mockQuotaRow) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -468,7 +468,7 @@ type mockQuotaPool struct {
 	calls    int
 }
 
-func (m *mockQuotaPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *mockQuotaPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	m.calls++
 	if m.calls == 1 {
 		return m.planRow
@@ -494,7 +494,7 @@ func (r *mockBulkRows) Next() bool {
 	return false
 }
 
-func (r *mockBulkRows) Scan(dest ...interface{}) error {
+func (r *mockBulkRows) Scan(dest ...any) error {
 	if r.pos == 0 || r.pos > len(r.ids) {
 		return errors.New("no row")
 	}
@@ -510,7 +510,7 @@ func (r *mockBulkRows) Close()                            {}
 func (r *mockBulkRows) Err() error                        { return nil }
 func (r *mockBulkRows) CommandTag() pgconn.CommandTag     { return pgconn.CommandTag{} }
 func (r *mockBulkRows) FieldDescriptions() []pgconn.FieldDescription { return nil }
-func (r *mockBulkRows) Values() ([]interface{}, error)    { return nil, nil }
+func (r *mockBulkRows) Values() ([]any, error)    { return nil, nil }
 func (r *mockBulkRows) RawValues() [][]byte               { return nil }
 func (r *mockBulkRows) Conn() *pgx.Conn                   { return nil }
 
@@ -523,11 +523,11 @@ type mockBulkPool struct {
 	execSQL  string
 }
 
-func (m *mockBulkPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+func (m *mockBulkPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	return newMockBulkRows(m.ownedIDs), nil
 }
 
-func (m *mockBulkPool) Exec(_ context.Context, sql string, _ ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockBulkPool) Exec(_ context.Context, sql string, _ ...any) (pgconn.CommandTag, error) {
 	m.execSQL = sql
 	return pgconn.CommandTag{}, m.execErr
 }

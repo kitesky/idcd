@@ -49,19 +49,19 @@ func yamlToJSON(yamlData []byte) ([]byte, error) {
 
 func normaliseYAML(v any) any {
 	switch val := v.(type) {
-	case map[interface{}]interface{}:
-		out := make(map[string]interface{}, len(val))
+	case map[any]any:
+		out := make(map[string]any, len(val))
 		for k, vv := range val {
 			key, _ := k.(string)
 			out[key] = normaliseYAML(vv)
 		}
 		return out
-	case map[string]interface{}:
+	case map[string]any:
 		for k, vv := range val {
 			val[k] = normaliseYAML(vv)
 		}
 		return val
-	case []interface{}:
+	case []any:
 		for i, item := range val {
 			val[i] = normaliseYAML(item)
 		}

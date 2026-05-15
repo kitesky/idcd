@@ -69,7 +69,7 @@ type SessionStorer interface {
 
 // MFAPool is the minimal pgx interface needed for MFA checks.
 type MFAPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // AuthHandler implements all auth and account endpoints.
@@ -265,7 +265,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 			response.Error(w, r, apperr.Internal("failed to create mfa session", err))
 			return
 		}
-		response.JSON(w, r, http.StatusOK, map[string]interface{}{
+		response.JSON(w, r, http.StatusOK, map[string]any{
 			"mfa_required": true,
 			"mfa_token":    mfaToken,
 		})

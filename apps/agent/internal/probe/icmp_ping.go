@@ -4,16 +4,26 @@
 package probe
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"fmt"
 	"math"
 	"net"
-	"os"
 	"time"
 
 	"golang.org/x/net/icmp"
 	"golang.org/x/net/ipv4"
 	"golang.org/x/net/ipv6"
 )
+
+// randICMPID returns a random 16-bit ICMP Echo identifier.
+// Using os.Getpid() is shared across all concurrent probes in the same process,
+// causing reply cross-contamination. A random ID is unique per probe invocation.
+func randICMPID() int {
+	var b [2]byte
+	_, _ = rand.Read(b[:])
+	return int(binary.BigEndian.Uint16(b[:]))
+}
 
 // ICMPPingSender sends real ICMP Echo requests.
 // It implements the PingSender interface.
@@ -49,7 +59,7 @@ func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 	}
 	defer conn.Close()
 
-	pid := os.Getpid() & 0xffff
+	probeID := randICMPID()
 	var rtts []time.Duration
 	sent := 0
 	received := 0
@@ -61,7 +71,7 @@ func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 			Type: ipv4.ICMPTypeEcho,
 			Code: 0,
 			Body: &icmp.Echo{
-				ID:   pid,
+				ID:   probeID,
 				Seq:  seq + 1,
 				Data: []byte("idcd-probe"),
 			},
@@ -91,7 +101,7 @@ func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 			continue
 		}
 		if rm.Type == ipv4.ICMPTypeEchoReply {
-			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == pid {
+			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == probeID {
 				rtt := time.Since(start)
 				rtts = append(rtts, rtt)
 				received++
@@ -110,7 +120,7 @@ func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 	}
 	defer conn.Close()
 
-	pid := os.Getpid() & 0xffff
+	probeID := randICMPID()
 	var rtts []time.Duration
 	sent := 0
 	received := 0
@@ -122,7 +132,7 @@ func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 			Type: ipv6.ICMPTypeEchoRequest,
 			Code: 0,
 			Body: &icmp.Echo{
-				ID:   pid,
+				ID:   probeID,
 				Seq:  seq + 1,
 				Data: []byte("idcd-probe"),
 			},
@@ -152,7 +162,7 @@ func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 			continue
 		}
 		if rm.Type == ipv6.ICMPTypeEchoReply {
-			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == pid {
+			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == probeID {
 				rtt := time.Since(start)
 				rtts = append(rtts, rtt)
 				received++

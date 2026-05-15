@@ -45,6 +45,7 @@ func TestQueueUpgrade_Success(t *testing.T) {
 	body, _ := json.Marshal(upgradeRequest{
 		Version:     "v1.2.3",
 		DownloadURL: "https://cdn.idcd.com/agent/v1.2.3/idcd-agent-linux-amd64",
+		Checksum:    "sha256:abc123def456abc123def456abc123def456abc123def456abc123def456abc123",
 	})
 	req := httptest.NewRequest(http.MethodPost, "/internal/admin/nodes/nd_test/upgrade", bytes.NewReader(body))
 	req.Header.Set("X-Admin-Token", enrollTestAdminToken)

@@ -25,7 +25,7 @@ type mockQuotaHandlerPool struct {
 	call      int
 }
 
-func (m *mockQuotaHandlerPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *mockQuotaHandlerPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	if m.call < len(m.responses) {
 		r := m.responses[m.call]
 		m.call++
@@ -34,7 +34,7 @@ func (m *mockQuotaHandlerPool) QueryRow(_ context.Context, _ string, _ ...interf
 	return &mockQuotaRow{err: pgx.ErrNoRows}
 }
 
-func (m *mockQuotaHandlerPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockQuotaHandlerPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 	return pgconn.NewCommandTag(""), nil
 }
 

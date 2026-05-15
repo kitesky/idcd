@@ -4,7 +4,39 @@ import { ArrowLeft, Activity, Clock, Wifi } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
-import type { NodeDiagnosticsData } from "./mock-diagnostics"
+interface NodeLocation {
+  country: string
+  city: string
+  asn: string
+  isp: string
+}
+
+interface LatencyDistribution {
+  p50: number
+  p90: number
+  p95: number
+  p99: number
+  min: number
+  max: number
+}
+
+interface HealthTrendPoint {
+  hour: string
+  success_rate: number
+  avg_latency: number
+}
+
+interface NodeDiagnosticsData {
+  node_id: string
+  name: string
+  location: NodeLocation
+  status: string
+  uptime_24h: number
+  checks_24h: number
+  latency_distribution: LatencyDistribution
+  health_trend: HealthTrendPoint[]
+  last_seen: string | null
+}
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -188,7 +220,7 @@ export default async function NodeDetailPage({ params }: Props) {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-sm font-medium tabular-nums">{formatDate(diag.last_seen)}</p>
+              <p className="text-sm font-medium tabular-nums">{diag.last_seen ? formatDate(diag.last_seen) : "—"}</p>
             </CardContent>
           </Card>
         </div>

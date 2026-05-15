@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE incident_postmortems (
   id             TEXT PRIMARY KEY,
   alert_event_id TEXT NOT NULL UNIQUE,

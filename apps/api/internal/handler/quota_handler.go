@@ -15,7 +15,7 @@ import (
 
 // QuotaHandlerPool is the minimal pgx interface needed by QuotaHandler.
 type QuotaHandlerPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // QuotaRateLimiter is the interface for querying current API usage.

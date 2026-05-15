@@ -70,7 +70,7 @@ func fakeStatusPage(id, userID, slug string, customDomain *string, verified bool
 	return sp
 }
 
-func newDomainRequest(t *testing.T, method, path string, body interface{}) *http.Request {
+func newDomainRequest(t *testing.T, method, path string, body any) *http.Request {
 	t.Helper()
 	var buf bytes.Buffer
 	if body != nil {
@@ -95,9 +95,9 @@ func withChiParam(r *http.Request, key, value string) *http.Request {
 	return r.WithContext(ctx)
 }
 
-func decodeBody(t *testing.T, body []byte) map[string]interface{} {
+func decodeBody(t *testing.T, body []byte) map[string]any {
 	t.Helper()
-	var m map[string]interface{}
+	var m map[string]any
 	if err := json.Unmarshal(body, &m); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestSetStatusPageDomain_Success(t *testing.T) {
 	}
 
 	body := decodeBody(t, rr.Body.Bytes())
-	data, _ := body["data"].(map[string]interface{})
+	data, _ := body["data"].(map[string]any)
 	if data == nil {
 		t.Fatal("expected data field in response")
 	}
@@ -271,7 +271,7 @@ func TestVerifyStatusPageDomain_CNAMECorrect(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 	body := decodeBody(t, rr.Body.Bytes())
-	data, _ := body["data"].(map[string]interface{})
+	data, _ := body["data"].(map[string]any)
 	if data["verified"] != true {
 		t.Errorf("expected verified=true, got %v", data["verified"])
 	}
@@ -300,7 +300,7 @@ func TestVerifyStatusPageDomain_CNAMEWrong(t *testing.T) {
 		t.Errorf("expected 200, got %d", rr.Code)
 	}
 	body := decodeBody(t, rr.Body.Bytes())
-	data, _ := body["data"].(map[string]interface{})
+	data, _ := body["data"].(map[string]any)
 	if data["verified"] == true {
 		t.Error("expected verified=false for wrong CNAME")
 	}

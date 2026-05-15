@@ -35,7 +35,7 @@ func TestAlertNoiseHandler_CreateSilence_Unauthorized(t *testing.T) {
 	pool := &mockAlertPool{}
 	h := NewAlertNoiseHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"reason":     "maintenance",
 		"starts_at":  time.Now().Add(time.Hour).UTC().Format(time.RFC3339),
 		"ends_at":    time.Now().Add(2 * time.Hour).UTC().Format(time.RFC3339),
@@ -54,7 +54,7 @@ func TestAlertNoiseHandler_CreateSilence_EndsBeforeStarts(t *testing.T) {
 	h := NewAlertNoiseHandler(pool)
 
 	now := time.Now().UTC()
-	body := map[string]interface{}{
+	body := map[string]any{
 		"reason":    "maintenance",
 		"starts_at": now.Add(2 * time.Hour).Format(time.RFC3339),
 		"ends_at":   now.Add(time.Hour).Format(time.RFC3339),
@@ -74,7 +74,7 @@ func TestAlertNoiseHandler_CreateSilence_Success(t *testing.T) {
 	h := NewAlertNoiseHandler(pool)
 
 	now := time.Now().UTC()
-	body := map[string]interface{}{
+	body := map[string]any{
 		"reason":    "scheduled maintenance",
 		"starts_at": now.Add(time.Hour).Format(time.RFC3339),
 		"ends_at":   now.Add(2 * time.Hour).Format(time.RFC3339),
@@ -87,9 +87,9 @@ func TestAlertNoiseHandler_CreateSilence_Success(t *testing.T) {
 	h.CreateSilence(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.NotEmpty(t, data["id"])
 	assert.Equal(t, "u_test", data["user_id"])
 	assert.Equal(t, "scheduled maintenance", data["reason"])
@@ -107,7 +107,7 @@ func TestAlertNoiseHandler_ListSilences_OK(t *testing.T) {
 
 	pool := &mockAlertPool{
 		queryRows: &mockAlertRows{
-			rows: [][]interface{}{
+			rows: [][]any{
 				{
 					"sil_abc", "u_test", (*string)(nil),
 					"routine check", startsAt, endsAt, now,
@@ -124,10 +124,10 @@ func TestAlertNoiseHandler_ListSilences_OK(t *testing.T) {
 	h.ListSilences(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	items := data["items"].([]interface{})
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
 	assert.Len(t, items, 1)
 }
 
@@ -169,7 +169,7 @@ func TestAlertNoiseHandler_DeleteSilence_NotFound(t *testing.T) {
 
 func TestAlertNoiseHandler_NoiseReport_OK(t *testing.T) {
 	pool := &mockAlertPool{
-		queryRows: &mockAlertRows{rows: [][]interface{}{}},
+		queryRows: &mockAlertRows{rows: [][]any{}},
 	}
 	h := NewAlertNoiseHandler(pool)
 
@@ -180,10 +180,10 @@ func TestAlertNoiseHandler_NoiseReport_OK(t *testing.T) {
 	h.NoiseReport(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var outer map[string]interface{}
+	var outer map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&outer))
-	data := outer["data"].(map[string]interface{})
-	period := data["period"].(map[string]interface{})
+	data := outer["data"].(map[string]any)
+	period := data["period"].(map[string]any)
 	assert.NotEmpty(t, period["from"])
 	assert.NotEmpty(t, period["to"])
 }
@@ -208,7 +208,7 @@ func TestAlertNoiseHandler_CreateGroup_Success(t *testing.T) {
 	pool := &mockAlertPool{execResult: pgconn.NewCommandTag("INSERT 0 1")}
 	h := NewAlertNoiseHandler(pool)
 
-	body := map[string]interface{}{
+	body := map[string]any{
 		"name":        "Production APIs",
 		"group_by":    "monitor_prefix",
 		"group_value": "api-",
@@ -221,9 +221,9 @@ func TestAlertNoiseHandler_CreateGroup_Success(t *testing.T) {
 	h.CreateGroup(w, req)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
-	var outer map[string]interface{}
+	var outer map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&outer))
-	data := outer["data"].(map[string]interface{})
+	data := outer["data"].(map[string]any)
 	assert.NotEmpty(t, data["id"])
 	assert.Equal(t, float64(60), data["wait_seconds"])
 }
@@ -236,7 +236,7 @@ func TestAlertNoiseHandler_ListGroups_OK(t *testing.T) {
 	now := time.Now().UTC()
 	pool := &mockAlertPool{
 		queryRows: &mockAlertRows{
-			rows: [][]interface{}{
+			rows: [][]any{
 				{"agrp_1", "u_test", "Prod", "monitor_prefix", "api-", 60, now},
 			},
 		},
@@ -250,10 +250,10 @@ func TestAlertNoiseHandler_ListGroups_OK(t *testing.T) {
 	h.ListGroups(w, req)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(w.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	items := data["items"].([]interface{})
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
 	assert.Len(t, items, 1)
 }
 
@@ -268,7 +268,7 @@ type multiQueryPool struct {
 	rowSets   []*mockAlertRows
 }
 
-func (m *multiQueryPool) Query(_ interface{}, _ string, _ ...interface{}) (AlertRows, error) {
+func (m *multiQueryPool) Query(_ any, _ string, _ ...any) (AlertRows, error) {
 	idx := m.calls
 	m.calls++
 	if idx < len(m.rowSets) {
@@ -280,7 +280,7 @@ func (m *multiQueryPool) Query(_ interface{}, _ string, _ ...interface{}) (Alert
 func TestAlertNoiseHandler_NoiseReport_WithData(t *testing.T) {
 	r := chi.NewRouter()
 	pool := &mockAlertPool{
-		queryRows: &mockAlertRows{rows: [][]interface{}{}},
+		queryRows: &mockAlertRows{rows: [][]any{}},
 	}
 	h := NewAlertNoiseHandler(pool)
 	r.Get("/reports/alert-noise", h.NoiseReport)

@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE alert_silences (
   id            TEXT PRIMARY KEY,
   user_id       TEXT NOT NULL,

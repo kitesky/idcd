@@ -16,17 +16,17 @@ import (
 // multiQueryAlertPool allows different QueryRow responses for successive calls.
 type multiQueryAlertPool struct {
 	queryRowCalls int
-	rowValues     [][]interface{}
+	rowValues     [][]any
 	rowErrors     []error
 	queryRows     *mockAlertRows
 	queryErr      error
 }
 
-func (m *multiQueryAlertPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+func (m *multiQueryAlertPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 	return pgconn.CommandTag{}, nil
 }
 
-func (m *multiQueryAlertPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *multiQueryAlertPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	idx := m.queryRowCalls
 	m.queryRowCalls++
 	if idx < len(m.rowErrors) && m.rowErrors[idx] != nil {
@@ -38,7 +38,7 @@ func (m *multiQueryAlertPool) QueryRow(_ context.Context, _ string, _ ...interfa
 	return &mockAlertRow{err: pgx.ErrNoRows}
 }
 
-func (m *multiQueryAlertPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+func (m *multiQueryAlertPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -79,7 +79,7 @@ func TestAlertNotificationHandler_List_ChannelNotFound(t *testing.T) {
 
 func TestAlertNotificationHandler_List_OtherUserChannel(t *testing.T) {
 	pool := &mockAlertPool{
-		queryRowVal: &mockAlertRow{values: []interface{}{"usr_other"}},
+		queryRowVal: &mockAlertRow{values: []any{"usr_other"}},
 	}
 	h := NewAlertNotificationHandler(pool)
 
@@ -95,7 +95,7 @@ func TestAlertNotificationHandler_List_OtherUserChannel(t *testing.T) {
 
 func TestAlertNotificationHandler_List_Success_Empty(t *testing.T) {
 	pool := &multiQueryAlertPool{
-		rowValues: [][]interface{}{
+		rowValues: [][]any{
 			{"usr_test"},
 			{int64(0)},
 		},
@@ -111,17 +111,17 @@ func TestAlertNotificationHandler_List_Success_Empty(t *testing.T) {
 	h.List(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	notifications := data["notifications"].([]interface{})
+	data := resp["data"].(map[string]any)
+	notifications := data["notifications"].([]any)
 	assert.Len(t, notifications, 0)
 	assert.Equal(t, float64(0), data["total"])
 }
 
 func TestAlertNotificationHandler_List_LimitOffset(t *testing.T) {
 	pool := &multiQueryAlertPool{
-		rowValues: [][]interface{}{
+		rowValues: [][]any{
 			{"usr_test"},
 			{int64(42)},
 		},
@@ -137,8 +137,8 @@ func TestAlertNotificationHandler_List_LimitOffset(t *testing.T) {
 	h.List(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, float64(42), data["total"])
 }

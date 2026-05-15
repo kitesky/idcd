@@ -64,7 +64,7 @@ func TestProbeHandler_HTTP(t *testing.T) {
 	reqBody := ProbeRequest{
 		Target: "example.com",
 		Nodes:  []string{"nd_us_nyc_01_vultr"},
-		Params: map[string]interface{}{"method": "GET"},
+		Params: map[string]any{"method": "GET"},
 	}
 	body, _ := json.Marshal(reqBody)
 

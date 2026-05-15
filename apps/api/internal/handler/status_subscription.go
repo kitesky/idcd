@@ -23,9 +23,9 @@ import (
 )
 
 type StatusSubPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 type StatusSubscriptionHandler struct {

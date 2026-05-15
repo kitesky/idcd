@@ -182,9 +182,10 @@ func (h *ReferralHandler) ListRewards(w http.ResponseWriter, r *http.Request) {
 		item.RewardAmount = fmt.Sprintf("%.2f", amount)
 		item.CreditedAt = creditedAt
 		rewards = append(rewards, item)
-		if item.Status == "pending" {
+		switch item.Status {
+		case "pending":
 			totalPending += amount
-		} else if item.Status == "credited" {
+		case "credited":
 			totalCredited += amount
 		}
 	}

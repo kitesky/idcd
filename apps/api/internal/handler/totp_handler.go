@@ -29,8 +29,8 @@ const (
 )
 
 type TOTPPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 type TOTPHandler struct {

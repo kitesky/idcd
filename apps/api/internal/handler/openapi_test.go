@@ -207,29 +207,29 @@ paths:
 }
 
 func TestNormaliseYAML_MapConversion(t *testing.T) {
-	// Simulate what yaml.v2 produces: map[interface{}]interface{}
-	input := map[interface{}]interface{}{
+	// Simulate what yaml.v2 produces: map[any]any
+	input := map[any]any{
 		"key1": "value1",
-		"key2": map[interface{}]interface{}{
+		"key2": map[any]any{
 			"nested": "value",
 		},
-		"arr": []interface{}{
-			map[interface{}]interface{}{"item": 1},
+		"arr": []any{
+			map[any]any{"item": 1},
 		},
 	}
 
 	result := normaliseYAML(input)
 
-	m, ok := result.(map[string]interface{})
+	m, ok := result.(map[string]any)
 	if !ok {
-		t.Fatalf("expected map[string]interface{}, got %T", result)
+		t.Fatalf("expected map[string]any, got %T", result)
 	}
 	if m["key1"] != "value1" {
 		t.Errorf("expected key1=value1, got %v", m["key1"])
 	}
-	nested, ok := m["key2"].(map[string]interface{})
+	nested, ok := m["key2"].(map[string]any)
 	if !ok {
-		t.Fatalf("expected nested to be map[string]interface{}, got %T", m["key2"])
+		t.Fatalf("expected nested to be map[string]any, got %T", m["key2"])
 	}
 	if nested["nested"] != "value" {
 		t.Errorf("expected nested.nested=value, got %v", nested["nested"])

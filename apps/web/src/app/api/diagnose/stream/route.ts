@@ -4,69 +4,106 @@ import type { CheckResult } from "@/lib/diagnose-store"
 
 export const dynamic = "force-dynamic"
 
-interface MockCheck {
+const BASE_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
+
+interface CheckDef {
   key: string
   label: string
-  delayMs: number
-  result: Record<string, unknown>
-  summary: string
+  fetch: (domain: string) => Promise<Response>
+  summarize: (data: unknown) => string
 }
 
-const MOCK_CHECKS: MockCheck[] = [
+const CHECKS: CheckDef[] = [
   {
     key: "dns",
     label: "DNS 解析",
-    delayMs: 500,
-    result: { records: ["104.21.45.67", "172.67.145.99"], type: "A", ttl: 300 },
-    summary: "解析到 2 条 A 记录：104.21.45.67, 172.67.145.99",
+    fetch: (domain) => fetch(`${BASE_URL}/v1/info/dns?q=${encodeURIComponent(domain)}&type=A`),
+    summarize: (data) => {
+      const d = data as { records?: { value: string }[]; type?: string }
+      const count = d.records?.length ?? 0
+      const ips = d.records?.slice(0, 2).map((r) => r.value).join(", ") ?? ""
+      return count > 0 ? `解析到 ${count} 条 ${d.type ?? "A"} 记录：${ips}` : "未解析到记录"
+    },
   },
   {
     key: "http",
     label: "HTTP 可达性",
-    delayMs: 700,
-    result: { statusCode: 200, latencyMs: 142, redirects: 0, protocol: "HTTP/2" },
-    summary: "HTTP 200 OK，响应时延 142ms",
+    fetch: (domain) =>
+      fetch(`${BASE_URL}/v1/probe/http`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: domain }),
+      }),
+    summarize: (data) => {
+      const d = data as { task_id?: string; status?: string }
+      return `探测任务已提交 (task_id: ${d.task_id ?? "-"}, status: ${d.status ?? "-"})`
+    },
   },
   {
     key: "ping",
     label: "Ping 延迟",
-    delayMs: 600,
-    result: { avgRtt: 23.4, minRtt: 18.1, maxRtt: 31.2, lossPercent: 0, packets: 4 },
-    summary: "平均 RTT 23.4ms，丢包率 0%",
+    fetch: (domain) =>
+      fetch(`${BASE_URL}/v1/probe/ping`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: domain }),
+      }),
+    summarize: (data) => {
+      const d = data as { task_id?: string; status?: string }
+      return `探测任务已提交 (task_id: ${d.task_id ?? "-"}, status: ${d.status ?? "-"})`
+    },
   },
   {
     key: "traceroute",
     label: "路由追踪",
-    delayMs: 1400,
-    result: { hops: 8, path: ["10.0.0.1", "192.168.1.1", "203.0.113.1", "..."] },
-    summary: "共 8 跳路由节点",
+    fetch: (domain) =>
+      fetch(`${BASE_URL}/v1/probe/traceroute`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ target: domain }),
+      }),
+    summarize: (data) => {
+      const d = data as { task_id?: string; status?: string }
+      return `探测任务已提交 (task_id: ${d.task_id ?? "-"}, status: ${d.status ?? "-"})`
+    },
   },
   {
     key: "ssl",
     label: "SSL 证书",
-    delayMs: 700,
-    result: { issuer: "Let's Encrypt", daysRemaining: 127, valid: true, version: "TLSv1.3" },
-    summary: "证书有效，Let's Encrypt 颁发，剩余 127 天",
+    fetch: (domain) => fetch(`${BASE_URL}/v1/info/ssl?q=${encodeURIComponent(domain)}`),
+    summarize: (data) => {
+      const d = data as { issuer?: string; days_until_expiry?: number; subject?: string }
+      if (d.days_until_expiry !== undefined) {
+        return `证书有效，${d.issuer ?? "未知 CA"} 颁发，剩余 ${d.days_until_expiry} 天`
+      }
+      return "已获取 SSL 证书信息"
+    },
   },
   {
     key: "icp",
     label: "ICP 备案",
-    delayMs: 900,
-    result: { icpNumber: null, status: "未查询到备案信息", authority: "工业和信息化部" },
-    summary: "未查询到 ICP 备案记录",
+    fetch: (domain) => fetch(`${BASE_URL}/v1/info/icp?q=${encodeURIComponent(domain)}`),
+    summarize: (data) => {
+      const d = data as { icp_number?: string; company?: string; note?: string }
+      if (d.icp_number) {
+        return `ICP 备案号：${d.icp_number}${d.company ? `，${d.company}` : ""}`
+      }
+      return d.note ?? "未查询到 ICP 备案记录"
+    },
   },
   {
     key: "whois",
     label: "WHOIS",
-    delayMs: 600,
-    result: { registrar: "GoDaddy LLC", createdAt: "2015-03-12", expiresAt: "2026-03-12" },
-    summary: "注册商: GoDaddy LLC，到期 2026-03-12",
+    fetch: (domain) => fetch(`${BASE_URL}/v1/info/whois?q=${encodeURIComponent(domain)}`),
+    summarize: (data) => {
+      const d = data as { registrar?: string; expiry_date?: string; creation_date?: string }
+      const parts: string[] = []
+      if (d.registrar) parts.push(`注册商: ${d.registrar}`)
+      if (d.expiry_date) parts.push(`到期 ${d.expiry_date}`)
+      return parts.length > 0 ? parts.join("，") : "已获取 WHOIS 信息"
+    },
   },
 ]
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
-}
 
 export async function GET(req: NextRequest) {
   const domain = req.nextUrl.searchParams.get("domain")?.trim()
@@ -86,23 +123,43 @@ export async function GET(req: NextRequest) {
       const completedChecks: CheckResult[] = []
       let errorCount = 0
 
-      for (const check of MOCK_CHECKS) {
+      const checkPromises = CHECKS.map((check) => {
         send({ type: "check_start", key: check.key })
-        await sleep(check.delayMs)
-        send({
-          type: "check_done",
-          key: check.key,
-          summary: check.summary,
-          detail: check.result,
-        })
-        completedChecks.push({
-          key: check.key,
-          label: check.label,
-          status: "done",
-          summary: check.summary,
-          detail: check.result,
-        })
-      }
+
+        return check
+          .fetch(domain)
+          .then(async (res) => {
+            if (!res.ok) {
+              const text = await res.text().catch(() => res.statusText)
+              throw new Error(`HTTP ${res.status}: ${text}`)
+            }
+            const detail = (await res.json()) as unknown
+            const summary = check.summarize(detail)
+            send({ type: "check_done", key: check.key, summary, detail })
+            completedChecks.push({
+              key: check.key,
+              label: check.label,
+              status: "done",
+              summary,
+              detail: detail as Record<string, unknown>,
+            })
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err)
+            const summary = `检测失败：${message}`
+            send({ type: "check_done", key: check.key, summary, detail: { error: message } })
+            completedChecks.push({
+              key: check.key,
+              label: check.label,
+              status: "error",
+              summary,
+              error: message,
+            })
+            errorCount++
+          })
+      })
+
+      await Promise.allSettled(checkPromises)
 
       saveReport({
         id: reportId,
@@ -122,7 +179,7 @@ export async function GET(req: NextRequest) {
     headers: {
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache, no-transform",
-      "Connection": "keep-alive",
+      Connection: "keep-alive",
       "X-Accel-Buffering": "no",
     },
   })

@@ -17,18 +17,18 @@ import (
 
 // mockAnchorPool implements AnchorPool for tests.
 type mockAnchorPool struct {
-	queryRow func(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	query    func(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	queryRow func(ctx context.Context, sql string, args ...any) pgx.Row
+	query    func(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-func (m *mockAnchorPool) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (m *mockAnchorPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	if m.queryRow != nil {
 		return m.queryRow(ctx, sql, args...)
 	}
 	return &errRow{err: errors.New("not implemented")}
 }
 
-func (m *mockAnchorPool) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (m *mockAnchorPool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	if m.query != nil {
 		return m.query(ctx, sql, args...)
 	}
@@ -40,7 +40,7 @@ type errRow struct {
 	err error
 }
 
-func (e *errRow) Scan(_ ...interface{}) error {
+func (e *errRow) Scan(_ ...any) error {
 	return e.err
 }
 
@@ -87,7 +87,7 @@ func TestAnchorHandler_GetBaseline_noBaseline_404(t *testing.T) {
 		},
 	}
 	pool := &mockAnchorPool{
-		queryRow: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, _ ...any) pgx.Row {
 			return &errRow{err: pgx.ErrNoRows}
 		},
 	}
@@ -112,9 +112,9 @@ func TestAnchorHandler_GetBaseline_success_200(t *testing.T) {
 	p99 := 200.0
 	sr := 0.99
 	pool := &mockAnchorPool{
-		queryRow: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, _ ...any) pgx.Row {
 			return &scanRow{
-				values: []interface{}{
+				values: []any{
 					"bln_xyz", "mon_001", &p50, &p95, &p99, &sr, 500, time.Now(), 168,
 				},
 			}
@@ -149,7 +149,7 @@ func TestAnchorHandler_ListDeviations_success_empty_200(t *testing.T) {
 		},
 	}
 	pool := &mockAnchorPool{
-		query: func(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+		query: func(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 			return &emptyRows{}, nil
 		},
 	}
@@ -182,11 +182,11 @@ func TestAnchorHandler_ListDeviations_wrongOwner_403(t *testing.T) {
 // --- scanRow helper ---
 
 type scanRow struct {
-	values []interface{}
+	values []any
 	err    error
 }
 
-func (s *scanRow) Scan(dest ...interface{}) error {
+func (s *scanRow) Scan(dest ...any) error {
 	if s.err != nil {
 		return s.err
 	}
@@ -222,7 +222,7 @@ func (s *scanRow) Scan(dest ...interface{}) error {
 
 // mockQueryRows wraps a slice of scan values for Query mock.
 type mockQueryRows struct {
-	rows [][]interface{}
+	rows [][]any
 	pos  int
 	err  error
 }
@@ -238,7 +238,7 @@ func (m *mockQueryRows) Next() bool {
 	}
 	return false
 }
-func (m *mockQueryRows) Scan(dest ...interface{}) error {
+func (m *mockQueryRows) Scan(dest ...any) error {
 	row := m.rows[m.pos-1]
 	for i, d := range dest {
 		if i >= len(row) {
@@ -267,6 +267,6 @@ func (m *mockQueryRows) Scan(dest ...interface{}) error {
 	}
 	return nil
 }
-func (m *mockQueryRows) Values() ([]interface{}, error) { return nil, nil }
+func (m *mockQueryRows) Values() ([]any, error) { return nil, nil }
 func (m *mockQueryRows) RawValues() [][]byte            { return nil }
 func (m *mockQueryRows) Conn() *pgx.Conn                { return nil }

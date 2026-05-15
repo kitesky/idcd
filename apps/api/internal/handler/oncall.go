@@ -19,9 +19,9 @@ import (
 )
 
 type OncallPool interface {
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 type OncallHandler struct {
@@ -176,7 +176,7 @@ func (h *OncallHandler) ListSchedules(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []oncallScheduleResponse{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 type scheduleDetailResponse struct {

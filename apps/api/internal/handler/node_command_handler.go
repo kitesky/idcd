@@ -67,6 +67,10 @@ func (h *NodeCommandHandler) QueueUpgrade(w http.ResponseWriter, r *http.Request
 		response.Error(w, r, apperr.Validation("version is required", ""))
 		return
 	}
+	if req.Checksum == "" {
+		response.Error(w, r, apperr.Validation("checksum is required — unsigned upgrades are not permitted", ""))
+		return
+	}
 
 	payload, _ := json.Marshal(req)
 	cmdID, err := h.insertCommand(r.Context(), nodeID, "upgrade", string(payload))

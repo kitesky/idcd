@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE status_page_subscriptions (
   id             TEXT PRIMARY KEY,
   status_page_id TEXT NOT NULL,

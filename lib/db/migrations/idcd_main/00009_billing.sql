@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- 00009_billing.sql
 -- S2 billing tables: subscriptions, invoices, payments, status_pages
 -- D1 rule: NO cross-schema FOREIGN KEY REFERENCES; all joins done at application layer.

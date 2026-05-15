@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- 00008_alerts.sql — Alert channels, policies, events, and notifications
 
 -- alert_channels: 告警通道

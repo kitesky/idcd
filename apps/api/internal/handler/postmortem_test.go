@@ -19,11 +19,11 @@ import (
 )
 
 type mockPMRow struct {
-	values []interface{}
+	values []any
 	err    error
 }
 
-func (m *mockPMRow) Scan(dest ...interface{}) error {
+func (m *mockPMRow) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -37,7 +37,7 @@ func (m *mockPMRow) Scan(dest ...interface{}) error {
 }
 
 type mockPMRows struct {
-	rows [][]interface{}
+	rows [][]any
 	idx  int
 	err  error
 }
@@ -46,7 +46,7 @@ func (m *mockPMRows) Next() bool {
 	m.idx++
 	return m.idx <= len(m.rows)
 }
-func (m *mockPMRows) Scan(dest ...interface{}) error {
+func (m *mockPMRows) Scan(dest ...any) error {
 	if m.err != nil {
 		return m.err
 	}
@@ -76,11 +76,11 @@ type mockPMPool struct {
 	queryErr      error
 }
 
-func (m *mockPMPool) Exec(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockPMPool) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 	return m.execResult, m.execErr
 }
 
-func (m *mockPMPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *mockPMPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	if m.queryRowIdx < len(m.queryRowQueue) {
 		row := m.queryRowQueue[m.queryRowIdx]
 		m.queryRowIdx++
@@ -89,7 +89,7 @@ func (m *mockPMPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx
 	return &mockPMRow{err: pgx.ErrNoRows}
 }
 
-func (m *mockPMPool) Query(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+func (m *mockPMPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	if m.queryErr != nil {
 		return nil, m.queryErr
 	}
@@ -127,8 +127,8 @@ func TestPostmortemHandler_Draft_Success(t *testing.T) {
 	pool := &mockPMPool{
 		execResult: pgconn.NewCommandTag("INSERT 0 1"),
 		queryRowQueue: []*mockPMRow{
-			{values: []interface{}{"mon_1", startedAt, &resolvedAt, []byte("{}")}},
-			{values: []interface{}{"API Gateway", "http"}},
+			{values: []any{"mon_1", startedAt, &resolvedAt, []byte("{}")}},
+			{values: []any{"API Gateway", "http"}},
 		},
 	}
 	h := NewPostmortemHandler(pool)
@@ -141,9 +141,9 @@ func TestPostmortemHandler_Draft_Success(t *testing.T) {
 	h.Draft(rr, req)
 
 	require.Equal(t, http.StatusCreated, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.NotEmpty(t, data["title"])
 	assert.NotEmpty(t, data["severity"])
 	assert.Equal(t, "high", data["severity"])
@@ -167,7 +167,7 @@ func TestPostmortemHandler_Update_Success(t *testing.T) {
 	pool := &mockPMPool{
 		execResult: pgconn.NewCommandTag("UPDATE 1"),
 		queryRowQueue: []*mockPMRow{
-			{values: []interface{}{
+			{values: []any{
 				"pm_abc", "ev_1", "mon_1", "usr_test",
 				"Old Title", "draft", "low", "old impact",
 				[]byte(timelineJSON), "root", "resolution",
@@ -178,7 +178,7 @@ func TestPostmortemHandler_Update_Success(t *testing.T) {
 	h := NewPostmortemHandler(pool)
 
 	newTitle := "New Title"
-	body, _ := json.Marshal(map[string]interface{}{"title": newTitle})
+	body, _ := json.Marshal(map[string]any{"title": newTitle})
 	req := httptest.NewRequest(http.MethodPatch, "/v1/incidents/ev_1/postmortem", bytes.NewReader(body))
 	req = pmWithUserID(req, "usr_test")
 	req = pmWithEventID(req, "ev_1")
@@ -187,9 +187,9 @@ func TestPostmortemHandler_Update_Success(t *testing.T) {
 	h.Update(rr, req)
 
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
+	data := resp["data"].(map[string]any)
 	assert.Equal(t, newTitle, data["title"])
 }
 
@@ -208,9 +208,9 @@ func TestPostmortemHandler_List_Empty(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.List(rr, req)
 	require.Equal(t, http.StatusOK, rr.Code)
-	var resp map[string]interface{}
+	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	data := resp["data"].(map[string]interface{})
-	items := data["items"].([]interface{})
+	data := resp["data"].(map[string]any)
+	items := data["items"].([]any)
 	assert.Len(t, items, 0)
 }

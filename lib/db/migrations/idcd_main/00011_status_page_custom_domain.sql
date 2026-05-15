@@ -1,3 +1,5 @@
+-- +goose Up
+
 -- 00011_status_page_custom_domain.sql
 -- Add custom domain verification and certificate expiry tracking to status_pages.
 -- D1 rule: NO cross-schema FOREIGN KEY REFERENCES.

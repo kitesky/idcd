@@ -101,7 +101,7 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, tier string) ([]
 		FROM node
 		WHERE status = $1
 	`
-	args := []interface{}{"active"}
+	args := []any{"active"}
 	argIdx := 2
 
 	// Add country filter

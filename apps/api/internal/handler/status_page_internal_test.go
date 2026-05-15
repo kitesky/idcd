@@ -47,7 +47,7 @@ func TestByDomain_VerifiedDomain(t *testing.T) {
 		t.Errorf("expected 200, got %d: %s", rr.Code, rr.Body.String())
 	}
 	body := decodeBody(t, rr.Body.Bytes())
-	data, _ := body["data"].(map[string]interface{})
+	data, _ := body["data"].(map[string]any)
 	if data["slug"] != "my-status" {
 		t.Errorf("expected slug=my-status, got %v", data["slug"])
 	}

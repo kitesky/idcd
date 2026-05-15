@@ -42,7 +42,9 @@ func withSessionCtx(r *http.Request, userID, sessionID string) *http.Request {
 	return r.WithContext(ctx)
 }
 
-// storeTestSession writes a session directly to miniredis.
+// storeTestSession writes a session to miniredis and registers it in the user-scoped set.
+// It mirrors what session.Service.Store() does so that ListSessions (which reads the set)
+// returns the session correctly.
 func storeTestSession(t *testing.T, rdb *redis.Client, sid, userID string, ttl time.Duration) {
 	t.Helper()
 	data := session.SessionData{
@@ -52,7 +54,10 @@ func storeTestSession(t *testing.T, rdb *redis.Client, sid, userID string, ttl t
 	}
 	b, err := json.Marshal(data)
 	require.NoError(t, err)
-	require.NoError(t, rdb.Set(context.Background(), "session:"+sid, string(b), ttl).Err())
+	ctx := context.Background()
+	require.NoError(t, rdb.Set(ctx, "session:"+sid, string(b), ttl).Err())
+	// Mirror session.Service.Store: add to user-scoped sessions set.
+	require.NoError(t, rdb.SAdd(ctx, "user_sessions:"+userID, sid).Err())
 }
 
 // ── List sessions ─────────────────────────────────────────────────────────────

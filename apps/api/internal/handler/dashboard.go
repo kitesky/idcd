@@ -16,7 +16,7 @@ import (
 // DashboardPool is the minimal pgx interface needed by DashboardHandler.
 // *pgxpool.Pool satisfies this.
 type DashboardPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // DashboardHandler handles dashboard endpoints.

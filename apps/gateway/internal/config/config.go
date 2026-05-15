@@ -45,7 +45,10 @@ type Config struct {
 	HeartbeatTimeout time.Duration                    `yaml:"heartbeat_timeout"`
 	MaxConnections   int                              `yaml:"max_connections"`
 	Env              string                           `yaml:"env"`
-	Observability    sharedconfig.ObservabilityConfig `yaml:"observability"`
+	// MetricsToken protects the /metrics endpoint. Requests must supply
+	// Authorization: Bearer <token>. Leave empty in dev to skip the check.
+	MetricsToken  string                           `yaml:"metrics_token"`
+	Observability sharedconfig.ObservabilityConfig `yaml:"observability"`
 }
 
 // Default returns a Config with sensible defaults for development.

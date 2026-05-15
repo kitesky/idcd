@@ -27,9 +27,9 @@ const (
 
 // PATPool is the minimal pgx interface needed by PATHandler.
 type PATPool interface {
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-	Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
 // PATHandler implements /v1/account/tokens endpoints.

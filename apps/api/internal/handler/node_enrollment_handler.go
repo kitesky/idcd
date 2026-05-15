@@ -21,6 +21,7 @@ import (
 type NodeEnrollmentPool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+	Begin(ctx context.Context) (pgx.Tx, error)
 }
 
 // NodeEnrollmentHandler handles agent enrollment token issuance and node registration.
@@ -62,10 +63,18 @@ type enrollResponse struct {
 	GatewayURL string `json:"gateway_url"`
 }
 
+// isAdmin returns true if the request carries a valid admin token.
+func (h *NodeEnrollmentHandler) isAdmin(r *http.Request) bool {
+	return subtle.ConstantTimeCompare(
+		[]byte(r.Header.Get("X-Admin-Token")),
+		[]byte(h.adminToken),
+	) == 1
+}
+
 // CreateEnrollmentToken issues a one-time enrollment token.
 // POST /internal/admin/nodes/enrollment-tokens
 func (h *NodeEnrollmentHandler) CreateEnrollmentToken(w http.ResponseWriter, r *http.Request) {
-	if subtle.ConstantTimeCompare([]byte(r.Header.Get("X-Admin-Token")), []byte(h.adminToken)) != 1 {
+	if !h.isAdmin(r) {
 		response.Error(w, r, apperr.Unauthorized("invalid admin token"))
 		return
 	}
@@ -131,10 +140,28 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 
 	tokenHash := idgen.SHA256Hex(req.Token)
 
-	// Atomically claim the token: SET used_at only if not yet used and not expired.
-	// This is a single UPDATE RETURNING — no separate SELECT needed, no TOCTOU window.
+	// Generate node credentials before the transaction so they are ready.
+	nodeID := idgen.New("nd_")
+	secretKey, err := idgen.RawSecret()
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to generate credentials", err))
+		return
+	}
+	secretHash := idgen.SHA256Hex(secretKey)
+	clientIP := middleware.ClientIP(r)
+	nodeRecordID := idgen.New("en_")
+
+	// Execute token claim + node registration atomically so a transient INSERT
+	// failure cannot permanently consume the token without creating a node record.
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to begin transaction", err))
+		return
+	}
+	defer tx.Rollback(r.Context()) //nolint:errcheck
+
 	var tokenID string
-	err := h.pool.QueryRow(r.Context(), `
+	err = tx.QueryRow(r.Context(), `
 		UPDATE node_enrollment_tokens
 		SET used_at = now()
 		WHERE token_hash = $1
@@ -151,21 +178,7 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate node credentials
-	nodeID := idgen.New("nd_")
-	secretKey, err := idgen.RawSecret()
-	if err != nil {
-		response.Error(w, r, apperr.Internal("failed to generate credentials", err))
-		return
-	}
-	secretHash := idgen.SHA256Hex(secretKey)
-
-	// Capture client IP (uses trusted-proxy-aware logic from middleware)
-	clientIP := middleware.ClientIP(r)
-
-	// Insert enrolled node
-	nodeRecordID := idgen.New("en_")
-	_, err = h.pool.Exec(r.Context(), `
+	_, err = tx.Exec(r.Context(), `
 		INSERT INTO enrolled_nodes
 		  (id, node_id, secret_hash, hostname, arch, os, kernel, ip_address, agent_version, status)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'pending')
@@ -175,10 +188,14 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Record which node consumed the token (non-fatal — node is already registered).
-	_, _ = h.pool.Exec(r.Context(), `
+	_, _ = tx.Exec(r.Context(), `
 		UPDATE node_enrollment_tokens SET used_by = $1 WHERE id = $2
 	`, nodeID, tokenID)
+
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, r, apperr.Internal("failed to commit enrollment", err))
+		return
+	}
 
 	response.JSON(w, r, http.StatusCreated, enrollResponse{
 		NodeID:     nodeID,

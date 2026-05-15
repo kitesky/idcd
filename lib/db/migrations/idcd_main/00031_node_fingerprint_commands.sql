@@ -22,8 +22,12 @@ CREATE TABLE node_commands (
 CREATE INDEX idx_node_commands_pending ON node_commands (node_id, status)
     WHERE status = 'pending';
 
+-- full-coverage index for command history queries (status != 'pending', e.g. audit log)
+CREATE INDEX idx_node_commands_node_id ON node_commands (node_id, created_at DESC);
+
 -- +goose Down
 
+DROP INDEX IF EXISTS idx_node_commands_node_id;
 DROP INDEX IF EXISTS idx_node_commands_pending;
 DROP TABLE  IF EXISTS node_commands;
 ALTER TABLE enrolled_nodes

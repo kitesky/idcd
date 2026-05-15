@@ -1,3 +1,5 @@
+-- +goose Up
+
 CREATE TABLE oncall_schedules (
   id            TEXT PRIMARY KEY,
   team_id       TEXT NOT NULL,

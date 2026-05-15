@@ -23,7 +23,6 @@ import (
 const (
 	apiKeyLivePrefix = "sk_live_"
 	apiKeyTestPrefix = "sk_test_"
-	apiKeyPrefix     = apiKeyLivePrefix
 	apiKeyRawBytes   = 32
 	apiKeyPrefixLen  = 8 // characters from raw key used as prefix (after sk_live_ / sk_test_)
 	apiKeyOwnerType  = "user"

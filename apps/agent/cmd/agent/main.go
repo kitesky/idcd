@@ -11,6 +11,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"os/signal"
@@ -195,9 +196,21 @@ func (a *Agent) runMainLoop(ctx context.Context) {
 // ── control message handlers ─────────────────────────────────────────────────
 
 type upgradeCmd struct {
+	CmdID       string `json:"cmd_id"`       // echoed back in the ack for precise gateway-side update
 	Version     string `json:"version"`
 	DownloadURL string `json:"download_url"`
 	Checksum    string `json:"checksum"` // "sha256:<hex>"
+}
+
+// upgradeAckFlushDelay is how long the agent waits after sending the OTA ack
+// before triggering SIGTERM — enough time for the WebSocket frame to be flushed.
+const upgradeAckFlushDelay = 500 * time.Millisecond
+
+// upgradeAllowedHosts is the set of hostnames permitted as OTA download sources.
+var upgradeAllowedHosts = map[string]bool{
+	"releases.idcd.com": true,
+	"github.com":        true,
+	"objects.githubusercontent.com": true,
 }
 
 func (a *Agent) handleUpgrade(payload json.RawMessage) error {
@@ -207,6 +220,21 @@ func (a *Agent) handleUpgrade(payload json.RawMessage) error {
 	}
 	if cmd.DownloadURL == "" {
 		return fmt.Errorf("upgrade: download_url is required")
+	}
+	if cmd.Checksum == "" {
+		return fmt.Errorf("upgrade: checksum is required — refusing unsigned upgrade")
+	}
+
+	// Validate download URL against allowed hosts to prevent SSRF/supply-chain attacks.
+	parsedURL, err := url.Parse(cmd.DownloadURL)
+	if err != nil {
+		return fmt.Errorf("upgrade: invalid download_url: %w", err)
+	}
+	if parsedURL.Scheme != "https" {
+		return fmt.Errorf("upgrade: download_url must use https, got %q", parsedURL.Scheme)
+	}
+	if !upgradeAllowedHosts[parsedURL.Hostname()] {
+		return fmt.Errorf("upgrade: download host %q is not in the allowed list", parsedURL.Hostname())
 	}
 
 	a.logger.Info("OTA upgrade initiated", "version", cmd.Version, "url", cmd.DownloadURL)
@@ -224,13 +252,11 @@ func (a *Agent) handleUpgrade(payload json.RawMessage) error {
 	}
 	defer os.Remove(tmpPath) // clean up if we abort
 
-	// 2. Verify SHA-256 checksum if provided
-	if cmd.Checksum != "" {
-		if err := verifySHA256(tmpPath, cmd.Checksum); err != nil {
-			return fmt.Errorf("upgrade: checksum mismatch: %w", err)
-		}
-		a.logger.Info("upgrade: checksum verified")
+	// 2. Verify SHA-256 checksum (mandatory).
+	if err := verifySHA256(tmpPath, cmd.Checksum); err != nil {
+		return fmt.Errorf("upgrade: checksum mismatch: %w", err)
 	}
+	a.logger.Info("upgrade: checksum verified")
 
 	// 3. Make executable
 	if err := os.Chmod(tmpPath, 0755); err != nil {
@@ -245,19 +271,27 @@ func (a *Agent) handleUpgrade(payload json.RawMessage) error {
 	a.logger.Info("upgrade: binary replaced, sending ack then restarting",
 		"version", cmd.Version, "path", selfPath)
 
-	// 5. Ack before exit so gateway marks command as acked
-	_ = a.ws.Send("cmd_ack", map[string]string{"command": "upgrade", "version": cmd.Version})
+	// 5. Ack before exit so gateway marks command as acked.
+	// cmd_id allows the gateway to update the exact command row, not just the latest of its type.
+	_ = a.ws.Send("cmd_ack", map[string]string{"command": "upgrade", "cmd_id": cmd.CmdID, "version": cmd.Version})
 
 	// Give the ack time to be flushed, then SIGTERM ourselves.
 	// systemd's Restart=always will start the new binary.
-	time.AfterFunc(500*time.Millisecond, func() {
+	time.AfterFunc(upgradeAckFlushDelay, func() {
 		p, _ := os.FindProcess(os.Getpid())
 		p.Signal(syscall.SIGTERM)
 	})
 	return nil
 }
 
+type reloadConfigCmd struct {
+	CmdID string `json:"cmd_id"`
+}
+
 func (a *Agent) handleReloadConfig(payload json.RawMessage) error {
+	var cmd reloadConfigCmd
+	_ = json.Unmarshal(payload, &cmd)
+
 	a.logger.Info("config hot-reload requested")
 
 	newCfg, err := config.Load(a.cfgPath)
@@ -276,7 +310,7 @@ func (a *Agent) handleReloadConfig(payload json.RawMessage) error {
 		"poll_interval", newCfg.PollInterval,
 		"batch_size", newCfg.BatchSize)
 
-	_ = a.ws.Send("cmd_ack", map[string]string{"command": "reload_config"})
+	_ = a.ws.Send("cmd_ack", map[string]string{"command": "reload_config", "cmd_id": cmd.CmdID})
 	return nil
 }
 
@@ -406,7 +440,9 @@ func startHealthServer(nodeID string) {
 		w.WriteHeader(http.StatusOK)
 	})
 	srv := &http.Server{
-		Addr:        ":" + port,
+		// Bind to loopback only — the health endpoint is for local tools (idcd-agent-ctl)
+		// and should not be reachable from other hosts on the network.
+		Addr:        "127.0.0.1:" + port,
 		Handler:     mux,
 		ReadTimeout: 5 * time.Second,
 	}

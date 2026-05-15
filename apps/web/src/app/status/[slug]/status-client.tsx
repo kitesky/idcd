@@ -4,8 +4,7 @@ import { useMemo, useState } from "react"
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { cn } from "@/lib/utils"
-import type { StatusPageData, ServiceStatus } from "./mock-data"
-import { generateUptimeHistory } from "./mock-data"
+import type { StatusPageData, ServiceStatus, MonitorHistory } from "./types"
 
 // ── Status badge (needs "success"/"warning" variants not in base shadcn) ──────
 
@@ -53,8 +52,27 @@ function uptimeDayColor(status: ServiceStatus) {
   return colors[status]
 }
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("zh-CN", { year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", timeZone: "UTC", timeZoneName: "short" })
+function buildAggregateHistory(groups: StatusPageData["groups"]): MonitorHistory[] {
+  if (groups.length === 0 || groups[0].monitors.length === 0) {
+    const now = new Date()
+    return Array.from({ length: 30 }, (_, i) => {
+      const d = new Date(now); d.setDate(d.getDate() - (29 - i))
+      return { date: d.toISOString().slice(0, 10), status: "operational" as ServiceStatus, uptime: 100 }
+    })
+  }
+  const allMonitors = groups.flatMap(g => g.monitors)
+  if (allMonitors.length === 0) return []
+  const refHistory = allMonitors[0].history
+  return refHistory.map((day, i) => {
+    const dayStatuses = allMonitors.map(m => m.history[i]?.status ?? "operational")
+    let worst: ServiceStatus = "operational"
+    for (const s of dayStatuses) {
+      if (s === "outage") { worst = "outage"; break }
+      if (s === "degraded") worst = "degraded"
+    }
+    const avgUptime = allMonitors.reduce((sum, m) => sum + (m.history[i]?.uptime ?? 100), 0) / allMonitors.length
+    return { date: day.date, status: worst, uptime: avgUptime }
+  })
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
@@ -65,8 +83,8 @@ export function StatusClient({ data }: { data: StatusPageData }) {
   const [subStatus,      setSubStatus]       = useState<"idle" | "loading" | "success" | "error">("idle")
   const [subError,       setSubError]        = useState("")
 
-  const statusCfg = overallStatusConfig(data.overallStatus)
-  const uptimeHistory = useMemo(() => generateUptimeHistory(99.5), [])
+  const statusCfg = overallStatusConfig(data.overall_status)
+  const aggregateHistory = useMemo(() => buildAggregateHistory(data.groups), [data.groups])
 
   function toggleGroup(id: string) {
     setExpandedGroups(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -81,7 +99,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel_type: "email", endpoint: email.trim(), events: ["incident", "recovery"] }),
       })
-      if (!res.ok) { const j = await res.json().catch(() => ({})); setSubError((j as any)?.error?.message ?? "订阅失败"); setSubStatus("error"); return }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setSubError((j as { error?: { message?: string } })?.error?.message ?? "订阅失败"); setSubStatus("error"); return }
       setSubStatus("success"); setEmail("")
     } catch { setSubError("网络错误，请重试"); setSubStatus("error") }
   }
@@ -116,7 +134,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
                       <div key={monitor.id} className="flex items-center justify-between px-5 py-3" data-testid={`monitor-row-${monitor.id}`}>
                         <span className="text-sm">{monitor.name}</span>
                         <div className="flex items-center gap-2">
-                          <span className="text-xs text-muted-foreground">{monitor.uptimePercent.toFixed(2)}%</span>
+                          <span className="text-xs text-muted-foreground">{monitor.uptime_percent.toFixed(2)}%</span>
                           {monitorDot(monitor.status)}
                         </div>
                       </div>
@@ -128,19 +146,19 @@ export function StatusClient({ data }: { data: StatusPageData }) {
           })}
         </div>
 
-        {/* 90-Day Uptime */}
+        {/* 30-Day Uptime */}
         <div className="mb-10" data-testid="uptime-history">
-          <h2 className="mb-4 text-lg font-semibold">历史可用率（过去 90 天）</h2>
+          <h2 className="mb-4 text-lg font-semibold">历史可用率（过去 30 天）</h2>
           <Card className="p-5">
-            <div className="grid gap-0.5" style={{ gridTemplateColumns: "repeat(90, 1fr)" }} aria-label="90天可用率方块图" data-testid="uptime-grid">
-              {uptimeHistory.map((day, i) => (
+            <div className="grid gap-0.5" style={{ gridTemplateColumns: "repeat(30, 1fr)" }} aria-label="30天可用率方块图" data-testid="uptime-grid">
+              {aggregateHistory.map((day, i) => (
                 <div key={i} title={`${day.date}: ${day.uptime.toFixed(1)}%`}
                   aria-label={`${day.date} 可用率 ${day.uptime.toFixed(1)}%，状态：${STATUS_LABEL_ZH[day.status]}`}
                   className={cn("h-5 w-full rounded-sm", uptimeDayColor(day.status))} />
               ))}
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span>90 天前</span>
+              <span>30 天前</span>
               <div className="flex items-center gap-3">
                 {[{ cls: "bg-green-600", label: "正常" }, { cls: "bg-yellow-500", label: "降级" }, { cls: "bg-red-600", label: "中断" }].map(({ cls, label }) => (
                   <span key={label} className="flex items-center gap-1">
@@ -156,28 +174,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
         {/* Recent Events */}
         <div className="mb-10" data-testid="recent-events">
           <h2 className="mb-4 text-lg font-semibold">最近事件公告</h2>
-          {data.events.length === 0 ? (
-            <Card className="px-5 py-8 text-center text-sm text-muted-foreground">最近 90 天内无事件记录</Card>
-          ) : (
-            <div className="space-y-3">
-              {data.events.map(evt => (
-                <Card key={evt.id} className="px-5 py-4">
-                  <div className="mb-2 flex items-start justify-between gap-4">
-                    <h3 className="text-sm font-medium">{evt.title}</h3>
-                    <StatusBadge variant={evt.status === "resolved" ? "success" : "warning"}>
-                      {evt.status === "resolved" ? "已解决" : "处理中"}
-                    </StatusBadge>
-                  </div>
-                  <p className="mb-3 text-xs leading-relaxed text-muted-foreground">{evt.description}</p>
-                  <div className="space-y-1 text-xs text-muted-foreground">
-                    <div>发生时间：{formatDate(evt.createdAt)}</div>
-                    {evt.resolvedAt && <div>解决时间：{formatDate(evt.resolvedAt)}</div>}
-                    <div>影响服务：{evt.affectedServices.join("、")}</div>
-                  </div>
-                </Card>
-              ))}
-            </div>
-          )}
+          <Card className="px-5 py-8 text-center text-sm text-muted-foreground">最近 30 天内无事件记录</Card>
         </div>
 
         {/* Subscribe */}
@@ -203,7 +200,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
         </div>
 
         {/* Footer */}
-        {data.showBranding && (
+        {data.branding && (
           <footer className="text-center" data-testid="powered-by">
             <a href="https://idcd.com" target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">

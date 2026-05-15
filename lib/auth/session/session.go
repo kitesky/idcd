@@ -63,7 +63,16 @@ func (s *Service) Store(ctx context.Context, sessionID, userID string, ttl time.
 		return apperr.Internal("failed to marshal session data", err)
 	}
 
-	if err := s.redis.Set(ctx, key, data, ttl).Err(); err != nil {
+	// Use a pipeline: write the session key AND add the session ID to the
+	// user-scoped sessions set in a single round-trip. The set enables O(1)
+	// per-user listing instead of O(N) SCAN across all sessions.
+	pipe := s.redis.Pipeline()
+	pipe.Set(ctx, key, data, ttl)
+	pipe.SAdd(ctx, s.userSessionsKey(userID), sessionID)
+	// The set TTL is a generous upper bound; individual session expiry still governs.
+	// We extend the set TTL on every Store so it outlives the most-recently-created session.
+	pipe.Expire(ctx, s.userSessionsKey(userID), ttl+time.Hour)
+	if _, err := pipe.Exec(ctx); err != nil {
 		return apperr.Internal("failed to store session", err)
 	}
 
@@ -148,13 +157,29 @@ func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Durati
 	return nil
 }
 
-// Delete removes a session by session ID.
+// Delete removes a session by session ID and cleans up the user-sessions set.
 func (s *Service) Delete(ctx context.Context, sessionID string) error {
 	if sessionID == "" {
 		return apperr.Validation("session ID is required", "")
 	}
 
 	key := s.sessionKey(sessionID)
+
+	// Load the session first to get the userID for set cleanup.
+	raw, err := s.redis.Get(ctx, key).Result()
+	if err == redis.Nil {
+		return apperr.NotFound("session not found")
+	}
+	if err != nil {
+		return apperr.Internal("failed to get session", err)
+	}
+
+	var data SessionData
+	if jsonErr := json.Unmarshal([]byte(raw), &data); jsonErr == nil && data.UserID != "" {
+		// Best-effort: remove from the user-sessions set.
+		_ = s.redis.SRem(ctx, s.userSessionsKey(data.UserID), sessionID).Err()
+	}
+
 	deleted, err := s.redis.Del(ctx, key).Result()
 	if err != nil {
 		return apperr.Internal("failed to delete session", err)
@@ -170,4 +195,27 @@ func (s *Service) Delete(ctx context.Context, sessionID string) error {
 // sessionKey returns the Redis key for a given session ID.
 func (s *Service) sessionKey(sessionID string) string {
 	return fmt.Sprintf("session:%s", sessionID)
+}
+
+// userSessionsKey returns the Redis Set key that lists all session IDs for a user.
+func (s *Service) userSessionsKey(userID string) string {
+	return fmt.Sprintf("user_sessions:%s", userID)
+}
+
+// SessionIDsForUser returns all active session IDs belonging to userID.
+// Uses the user-scoped set — O(N_user_sessions), not O(N_total_sessions).
+// Stale entries (from sessions that expired without an explicit Delete) are
+// pruned lazily: callers should remove IDs that no longer have a matching session key.
+func (s *Service) SessionIDsForUser(ctx context.Context, userID string) ([]string, error) {
+	ids, err := s.redis.SMembers(ctx, s.userSessionsKey(userID)).Result()
+	if err != nil {
+		return nil, apperr.Internal("failed to list user sessions", err)
+	}
+	return ids, nil
+}
+
+// RemoveFromUserSet removes a session ID from the user-scoped sessions set.
+// Called after a session is deleted to keep the set clean.
+func (s *Service) RemoveFromUserSet(ctx context.Context, userID, sessionID string) error {
+	return s.redis.SRem(ctx, s.userSessionsKey(userID), sessionID).Err()
 }

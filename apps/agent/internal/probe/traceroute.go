@@ -3,7 +3,6 @@ package probe
 import (
 	"fmt"
 	"net"
-	"os"
 	"time"
 
 	"golang.org/x/net/icmp"
@@ -52,7 +51,7 @@ func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options 
 }
 
 // runTraceroute executes a real ICMP-based traceroute by incrementing TTL.
-func runTraceroute(dst net.IP, maxHops int, _ time.Duration) ([]TracerouteHop, error) {
+func runTraceroute(dst net.IP, maxHops int, timeout time.Duration) ([]TracerouteHop, error) {
 	recv, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
 	if err != nil {
 		return nil, fmt.Errorf("open recv socket: %w", err)
@@ -65,11 +64,20 @@ func runTraceroute(dst net.IP, maxHops int, _ time.Duration) ([]TracerouteHop, e
 	}
 	defer send.Close()
 
-	pid := os.Getpid() & 0xffff
+	// Derive per-hop timeout from total timeout; floor at 500ms per hop.
+	perHop := hopTimeout
+	if timeout > 0 && maxHops > 0 {
+		derived := timeout / time.Duration(maxHops)
+		if derived > 500*time.Millisecond {
+			perHop = derived
+		}
+	}
+
+	probeID := randICMPID()
 	var hops []TracerouteHop
 
 	for ttl := 1; ttl <= maxHops; ttl++ {
-		hop := probeHop(send, recv, dst, ttl, pid)
+		hop := probeHop(send, recv, dst, ttl, probeID, perHop)
 		hops = append(hops, hop)
 
 		// Stop when we reach the destination
@@ -83,7 +91,7 @@ func runTraceroute(dst net.IP, maxHops int, _ time.Duration) ([]TracerouteHop, e
 
 // probeHop sends probesPerHop ICMP Echo packets at a given TTL and returns
 // the responding router IP and average RTT.
-func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, pid int) TracerouteHop {
+func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, probeID int, perHopTimeout time.Duration) TracerouteHop {
 	hop := TracerouteHop{Hop: ttl, Timeout: true}
 
 	if err := send.IPv4PacketConn().SetTTL(ttl); err != nil {
@@ -98,7 +106,7 @@ func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, pid int) TracerouteH
 		msg := &icmp.Message{
 			Type: ipv4.ICMPTypeEcho,
 			Code: 0,
-			Body: &icmp.Echo{ID: pid, Seq: seq, Data: []byte("idcd-trace")},
+			Body: &icmp.Echo{ID: probeID, Seq: seq, Data: []byte("idcd-trace")},
 		}
 		b, err := msg.Marshal(nil)
 		if err != nil {
@@ -110,7 +118,7 @@ func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, pid int) TracerouteH
 			continue
 		}
 
-		recv.SetReadDeadline(time.Now().Add(hopTimeout))
+		recv.SetReadDeadline(time.Now().Add(perHopTimeout))
 		reply := make([]byte, 1500)
 		n, peer, err := recv.ReadFrom(reply)
 		if err != nil {
@@ -130,7 +138,7 @@ func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, pid int) TracerouteH
 			}
 			rtts = append(rtts, rtt)
 		case ipv4.ICMPTypeEchoReply:
-			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == pid {
+			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == probeID {
 				if peerAddr, ok := peer.(*net.IPAddr); ok {
 					hopIP = peerAddr.IP.String()
 				}

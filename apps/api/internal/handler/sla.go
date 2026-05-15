@@ -17,7 +17,7 @@ import (
 // SLAPool is the minimal pgx interface needed by SLAHandler.
 // *pgxpool.Pool satisfies this.
 type SLAPool interface {
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // SLAHandler handles SLA report endpoints.

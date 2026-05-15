@@ -24,9 +24,9 @@ import (
 // pgxpool.Pool satisfies this interface — the *pgx.Rows / pgx.Row return
 // types are the same concrete interfaces that pgxpool uses.
 type AlertPool interface {
-	Exec(ctx context.Context, sql string, arguments ...interface{}) (pgconn.CommandTag, error)
-	QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
+	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
 // AlertRow is an alias so tests can implement the pgx.Row scan interface.
@@ -231,7 +231,7 @@ func (h *AlertHandler) ListChannels(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []AlertChannelResponse{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 // DeleteChannel handles DELETE /v1/alert-channels/:id.
@@ -428,7 +428,7 @@ func (h *AlertHandler) ListPolicies(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []AlertPolicyResponse{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 // UpdatePolicy handles PATCH /v1/alert-policies/:id.
@@ -577,7 +577,7 @@ func (h *AlertHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 			SELECT 1 FROM alert_policies ap
 			WHERE ap.id = ae.policy_id AND ap.user_id = $1
 		)`
-	args := []interface{}{userID}
+	args := []any{userID}
 	argIdx := 2
 
 	if monitorID != "" {
@@ -636,7 +636,7 @@ func (h *AlertHandler) ListEvents(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []AlertEventResponse{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]interface{}{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
 // AcknowledgeEvent handles POST /v1/alert-events/:id/ack.

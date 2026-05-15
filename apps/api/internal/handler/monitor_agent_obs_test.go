@@ -18,26 +18,26 @@ import (
 
 // mockAgentObsPool implements AgentObsPool for tests.
 type mockAgentObsPool struct {
-	queryRow func(ctx context.Context, sql string, args ...interface{}) pgx.Row
-	query    func(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error)
-	exec     func(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error)
+	queryRow func(ctx context.Context, sql string, args ...any) pgx.Row
+	query    func(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	exec     func(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-func (m *mockAgentObsPool) QueryRow(ctx context.Context, sql string, args ...interface{}) pgx.Row {
+func (m *mockAgentObsPool) QueryRow(ctx context.Context, sql string, args ...any) pgx.Row {
 	if m.queryRow != nil {
 		return m.queryRow(ctx, sql, args...)
 	}
 	return &errRow{err: errors.New("not found")}
 }
 
-func (m *mockAgentObsPool) Query(ctx context.Context, sql string, args ...interface{}) (pgx.Rows, error) {
+func (m *mockAgentObsPool) Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
 	if m.query != nil {
 		return m.query(ctx, sql, args...)
 	}
 	return &emptyRows{}, nil
 }
 
-func (m *mockAgentObsPool) Exec(ctx context.Context, sql string, args ...interface{}) (pgconn.CommandTag, error) {
+func (m *mockAgentObsPool) Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
 	if m.exec != nil {
 		return m.exec(ctx, sql, args...)
 	}
@@ -55,7 +55,7 @@ func newAgentObsRouter(mq MonitorQuerier, pool AgentObsPool) http.Handler {
 	return r
 }
 
-func ownerMQ(id, userID string) *mockMonitorQuerier {
+func ownerMQ(_, userID string) *mockMonitorQuerier {
 	return &mockMonitorQuerier{
 		getByID: func(_ context.Context, mid string) (idcdmain.Monitor, error) {
 			return fakeMonitor(mid, userID), nil
@@ -67,7 +67,7 @@ func ownerMQ(id, userID string) *mockMonitorQuerier {
 
 func TestAgentObs_PostConfig_noAuth(t *testing.T) {
 	h := newAgentObsRouter(&mockMonitorQuerier{}, &mockAgentObsPool{})
-	body, _ := json.Marshal(map[string]interface{}{
+	body, _ := json.Marshal(map[string]any{
 		"obs_type":     "llm_endpoint",
 		"endpoint_url": "https://api.openai.com/v1/chat",
 	})
@@ -83,23 +83,23 @@ func TestAgentObs_PostConfig_success(t *testing.T) {
 	mq := ownerMQ("mon_001", "u_alice")
 
 	configRow := &mockRow{
-		scanFn: func(dest ...interface{}) error {
+		scanFn: func(dest ...any) error {
 			*(dest[0].(*string)) = "llm_endpoint"
 			*(dest[1].(*string)) = "https://api.openai.com/v1/chat"
 			return nil
 		},
 	}
 	pool := &mockAgentObsPool{
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.NewCommandTag("INSERT 0 1"), nil
 		},
-		queryRow: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, _ ...any) pgx.Row {
 			return configRow
 		},
 	}
 
 	h := newAgentObsRouter(mq, pool)
-	body, _ := json.Marshal(map[string]interface{}{
+	body, _ := json.Marshal(map[string]any{
 		"obs_type":     "llm_endpoint",
 		"endpoint_url": "https://api.openai.com/v1/chat",
 	})
@@ -117,7 +117,7 @@ func TestAgentObs_PostConfig_success(t *testing.T) {
 func TestAgentObs_GetConfig_notFound(t *testing.T) {
 	mq := ownerMQ("mon_001", "u_alice")
 	pool := &mockAgentObsPool{
-		queryRow: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, _ ...any) pgx.Row {
 			return &errRow{err: errors.New("no rows")}
 		},
 	}
@@ -134,9 +134,9 @@ func TestAgentObs_GetConfig_notFound(t *testing.T) {
 func TestAgentObs_GetConfig_success(t *testing.T) {
 	mq := ownerMQ("mon_001", "u_alice")
 	pool := &mockAgentObsPool{
-		queryRow: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, _ ...any) pgx.Row {
 			return &mockRow{
-				scanFn: func(dest ...interface{}) error {
+				scanFn: func(dest ...any) error {
 					*(dest[0].(*string)) = "tool_api"
 					*(dest[1].(*string)) = "https://tool.example.com"
 					return nil
@@ -159,12 +159,12 @@ func TestAgentObs_GetConfig_success(t *testing.T) {
 func TestAgentObs_PatchConfig_success(t *testing.T) {
 	mq := ownerMQ("mon_001", "u_alice")
 	pool := &mockAgentObsPool{
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.NewCommandTag("UPDATE 1"), nil
 		},
-		queryRow: func(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+		queryRow: func(_ context.Context, _ string, _ ...any) pgx.Row {
 			return &mockRow{
-				scanFn: func(dest ...interface{}) error {
+				scanFn: func(dest ...any) error {
 					*(dest[0].(*string)) = "llm_endpoint"
 					*(dest[1].(*string)) = "https://new.example.com"
 					return nil
@@ -173,7 +173,7 @@ func TestAgentObs_PatchConfig_success(t *testing.T) {
 		},
 	}
 	h := newAgentObsRouter(mq, pool)
-	body, _ := json.Marshal(map[string]interface{}{
+	body, _ := json.Marshal(map[string]any{
 		"endpoint_url": "https://new.example.com",
 	})
 	req := httptest.NewRequest(http.MethodPatch, "/mon_001/agent-obs", bytes.NewReader(body))
@@ -190,7 +190,7 @@ func TestAgentObs_PatchConfig_success(t *testing.T) {
 func TestAgentObs_DeleteConfig_success(t *testing.T) {
 	mq := ownerMQ("mon_001", "u_alice")
 	pool := &mockAgentObsPool{
-		exec: func(_ context.Context, _ string, _ ...interface{}) (pgconn.CommandTag, error) {
+		exec: func(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
 			return pgconn.NewCommandTag("DELETE 1"), nil
 		},
 	}
@@ -209,7 +209,7 @@ func TestAgentObs_DeleteConfig_success(t *testing.T) {
 func TestAgentObs_ListChecks_success(t *testing.T) {
 	mq := ownerMQ("mon_001", "u_alice")
 	pool := &mockAgentObsPool{
-		query: func(_ context.Context, _ string, _ ...interface{}) (pgx.Rows, error) {
+		query: func(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 			return &emptyRows{}, nil
 		},
 	}
@@ -234,10 +234,10 @@ func TestAgentObs_ListChecks_success(t *testing.T) {
 
 // mockRow is a pgx.Row backed by a scan function.
 type mockRow struct {
-	scanFn func(dest ...interface{}) error
+	scanFn func(dest ...any) error
 }
 
-func (m *mockRow) Scan(dest ...interface{}) error {
+func (m *mockRow) Scan(dest ...any) error {
 	if m.scanFn != nil {
 		return m.scanFn(dest...)
 	}

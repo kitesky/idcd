@@ -19,7 +19,7 @@ type mockStreamPool struct {
 	row pgx.Row
 }
 
-func (m *mockStreamPool) QueryRow(_ context.Context, _ string, _ ...interface{}) pgx.Row {
+func (m *mockStreamPool) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row {
 	return m.row
 }
 

@@ -101,6 +101,9 @@ func TestEnroll_Success(t *testing.T) {
 	tokenVal := "ent_" + "a" + "b"
 	tokenHash := idgen.SHA256Hex(tokenVal)
 
+	// Enroll now runs inside a transaction.
+	mockPool.ExpectBegin()
+
 	// Atomic UPDATE RETURNING — claims the token in one shot
 	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
@@ -125,6 +128,8 @@ func TestEnroll_Success(t *testing.T) {
 	mockPool.ExpectExec(`UPDATE node_enrollment_tokens SET used_by`).
 		WithArgs(pgxmock.AnyArg(), "et_001").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	mockPool.ExpectCommit()
 
 	body, _ := json.Marshal(enrollRequest{
 		Token:    tokenVal,
@@ -164,10 +169,12 @@ func TestEnroll_InvalidToken(t *testing.T) {
 	defer mockPool.Close()
 
 	tokenHash := idgen.SHA256Hex("ent_badtoken")
+	mockPool.ExpectBegin()
 	// Atomic UPDATE finds nothing (token not found / expired / already used)
 	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
 		WillReturnError(pgx.ErrNoRows)
+	mockPool.ExpectRollback()
 
 	body, _ := json.Marshal(enrollRequest{Token: "ent_badtoken", Hostname: "h", Arch: "amd64", OS: "linux"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/agent/enroll", bytes.NewReader(body))
@@ -185,10 +192,12 @@ func TestEnroll_AlreadyUsedToken(t *testing.T) {
 	defer mockPool.Close()
 
 	tokenHash := idgen.SHA256Hex("ent_usedtoken")
+	mockPool.ExpectBegin()
 	// Token is already used: WHERE used_at IS NULL fails → ErrNoRows
 	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
 		WillReturnError(pgx.ErrNoRows)
+	mockPool.ExpectRollback()
 
 	body, _ := json.Marshal(enrollRequest{Token: "ent_usedtoken", Hostname: "h", Arch: "amd64", OS: "linux"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/agent/enroll", bytes.NewReader(body))
@@ -206,10 +215,12 @@ func TestEnroll_ExpiredToken(t *testing.T) {
 	defer mockPool.Close()
 
 	tokenHash := idgen.SHA256Hex("ent_expiredtoken")
+	mockPool.ExpectBegin()
 	// Token is expired: WHERE expires_at > now() fails → ErrNoRows
 	mockPool.ExpectQuery(`UPDATE node_enrollment_tokens`).
 		WithArgs(tokenHash).
 		WillReturnError(pgx.ErrNoRows)
+	mockPool.ExpectRollback()
 
 	body, _ := json.Marshal(enrollRequest{Token: "ent_expiredtoken", Hostname: "h", Arch: "amd64", OS: "linux"})
 	req := httptest.NewRequest(http.MethodPost, "/v1/agent/enroll", bytes.NewReader(body))

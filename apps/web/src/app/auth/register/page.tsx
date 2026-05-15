@@ -63,7 +63,7 @@ export default function RegisterPage() {
         }),
       })
 
-      router.push("/app/dashboard" as any)
+      router.push(`/auth/verify-email?email=${encodeURIComponent(values.email)}` as any)
     } catch (err) {
       setError(err instanceof Error ? err.message : "注册失败，请稍后重试")
     } finally {

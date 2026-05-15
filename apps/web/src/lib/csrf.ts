@@ -17,9 +17,11 @@ export function getCSRFToken(): string | null {
 
   const cookies = document.cookie.split(';')
   for (const cookie of cookies) {
-    const [name, value] = cookie.trim().split('=')
+    const parts = cookie.trim().split('=')
+    const name = parts[0]
+    const value = parts[1]
     if (name === CSRF_COOKIE_NAME) {
-      return value
+      return value ?? null
     }
   }
   return null

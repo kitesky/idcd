@@ -15,13 +15,13 @@ describe("leaderboard-data — CDN entries", () => {
 
   it("CDN 数据按 globalP50 升序排列后，首项最小", () => {
     const sorted = [...CDN_DATA].sort((a, b) => a.globalP50 - b.globalP50)
-    expect(sorted[0].globalP50).toBeLessThanOrEqual(sorted[1].globalP50)
+    expect(sorted[0]!.globalP50).toBeLessThanOrEqual(sorted[1]!.globalP50)
   })
 
   it("CDN 数据按 globalP50 升序排列后，末项最大", () => {
     const sorted = [...CDN_DATA].sort((a, b) => a.globalP50 - b.globalP50)
     const last = sorted.length - 1
-    expect(sorted[last].globalP50).toBeGreaterThanOrEqual(sorted[last - 1].globalP50)
+    expect(sorted[last]!.globalP50).toBeGreaterThanOrEqual(sorted[last - 1]!.globalP50)
   })
 
   it("所有 CDN 条目 rank > 0、非空 name、trend 长度为 7", () => {
@@ -73,8 +73,8 @@ describe("leaderboard-data — ISP Availability entries", () => {
 
   it("ISP 按 rank 升序排列", () => {
     for (let i = 1; i < ISP_AVAILABILITY_DATA.length; i++) {
-      expect(ISP_AVAILABILITY_DATA[i].rank).toBeGreaterThan(
-        ISP_AVAILABILITY_DATA[i - 1].rank
+      expect(ISP_AVAILABILITY_DATA[i]!.rank).toBeGreaterThan(
+        ISP_AVAILABILITY_DATA[i - 1]!.rank
       )
     }
   })

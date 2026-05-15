@@ -630,8 +630,8 @@ describe('User-Agent 解析', () => {
 describe('词频统计', () => {
   it('英文词频', () => {
     const r = getTextFreqStats('hello world hello foo world world')
-    expect(r.topWords[0][0]).toBe('world')
-    expect(r.topWords[0][1]).toBe(3)
+    expect(r.topWords[0]![0]).toBe('world')
+    expect(r.topWords[0]![1]).toBe(3)
     expect(r.totalWords).toBe(6)
   })
 
@@ -677,7 +677,7 @@ describe('CSV 解析', () => {
 
   it('处理引号', () => {
     const result = parseCSV('"hello, world",foo,bar')
-    expect(result[0][0]).toBe('hello, world')
+    expect(result[0]![0]).toBe('hello, world')
   })
 
   it('自定义分隔符', () => {

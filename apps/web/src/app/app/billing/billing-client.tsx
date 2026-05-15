@@ -194,7 +194,7 @@ export function BillingClient() {
 
   const currentPlanId =
     subscription?.status === "active" ? subscription.plan : "free"
-  const currentPlan = PLANS.find((p) => p.id === currentPlanId) ?? PLANS[0]
+  const currentPlan = PLANS.find((p) => p.id === currentPlanId) ?? PLANS[0]!
   const isActivePaid =
     subscription?.status === "active" && subscription?.plan !== "free"
 
@@ -317,7 +317,7 @@ export function BillingClient() {
                   size="lg"
                   className="sm:w-auto"
                   data-testid="upgrade-button"
-                  onClick={() => handleUpgrade(PLANS[1])}
+                  onClick={() => handleUpgrade(PLANS[1]!)}
                 >
                   升级到 Pro
                 </Button>

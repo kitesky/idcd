@@ -123,7 +123,7 @@ function isPublicDomain(domain: string): boolean {
   if (!labels.every((l) => l.length > 0 && LABEL_RE.test(l))) return false
   // Reject well-known internal/loopback names
   const blocklist = ["localhost", "local", "internal", "intranet", "localdomain"]
-  if (blocklist.includes(labels[labels.length - 1].toLowerCase())) return false
+  if (blocklist.includes(labels[labels.length - 1]!.toLowerCase())) return false
   return true
 }
 

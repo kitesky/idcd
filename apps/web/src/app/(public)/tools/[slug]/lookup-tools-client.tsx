@@ -317,7 +317,7 @@ export function Ipv6CheckClient() {
         <Card>
           <CardHeader><CardTitle>检测结果</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {rows.map(([label, value]) => (
+            {(rows as [string, string][]).map(([label, value]) => (
               <div key={label} className="flex gap-4 py-2 border-b last:border-0 text-sm">
                 <span className="text-muted-foreground w-24 shrink-0">{label}</span>
                 <code className="font-mono flex-1">{value}</code>
@@ -347,7 +347,7 @@ export function HttpStatusClient() {
 
   const groups = filtered.reduce((acc, s) => {
     if (!acc[s.category]) acc[s.category] = []
-    acc[s.category].push(s)
+    acc[s.category]!.push(s)
     return acc
   }, {} as Record<string, typeof HTTP_STATUS_CODES>)
 
@@ -461,7 +461,7 @@ export function TimezoneClient() {
 
 // ── 日期计算 ─────────────────────────────────────────────────────────────────
 export function DateCalcClient() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toISOString().split('T')[0]!
   const [date1, setDate1] = useState(today)
   const [date2, setDate2] = useState(today)
   const [addInput, setAddInput] = useState(today)
@@ -595,7 +595,7 @@ export function CsvFormatterClient() {
             <table className="w-full text-sm border-collapse">
               <thead>
                 <tr className="border-b">
-                  {table[0].map((cell, i) => (
+                  {table[0]!.map((cell, i) => (
                     <th key={i} className="text-left py-2 px-3 font-medium bg-muted/30">{cell}</th>
                   ))}
                 </tr>
@@ -610,7 +610,7 @@ export function CsvFormatterClient() {
                 ))}
               </tbody>
             </table>
-            <p className="text-muted-foreground text-xs mt-2">{table.length - 1} 行数据，{table[0].length} 列</p>
+            <p className="text-muted-foreground text-xs mt-2">{table.length - 1} 行数据，{table[0]!.length} 列</p>
           </CardContent>
         </Card>
       )}

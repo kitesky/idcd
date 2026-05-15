@@ -24,7 +24,7 @@ describe('JWT Decoder Tool', () => {
   it('decodes a sample JWT', () => {
     render(<JwtDecoderPage />)
     const inputs = screen.getAllByRole('textbox')
-    fireEvent.change(inputs[0], { target: { value: SAMPLE_JWT } })
+    fireEvent.change(inputs[0]!, { target: { value: SAMPLE_JWT } })
     expect(inputs[0]).toBeTruthy()
   })
 })

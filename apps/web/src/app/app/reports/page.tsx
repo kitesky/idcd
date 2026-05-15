@@ -181,7 +181,7 @@ interface SLAQuarterEntry {
 
 function toQuarterLabel(month: string): string {
   // month is "YYYY-MM"
-  const [year, mm] = month.split("-")
+  const [year, mm] = month.split("-") as [string, string]
   const q = Math.ceil(parseInt(mm, 10) / 3)
   return `${year}-Q${q}`
 }

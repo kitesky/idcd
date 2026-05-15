@@ -186,7 +186,7 @@ export function TeamClient() {
       .then((json) => {
         const teams = json.data?.teams ?? []
         if (teams.length > 0) {
-          const t = teams[0]
+          const t = teams[0]!
           setTeam(t)
           setTeamPlan(t.plan)
           loadTeamDetails(t.id)

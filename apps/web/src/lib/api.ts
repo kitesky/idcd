@@ -4,7 +4,7 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:808
 function getCsrfToken(): string {
   if (typeof document === "undefined") return ""
   const match = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
-  return match ? decodeURIComponent(match[1]) : ""
+  return match ? decodeURIComponent(match[1]!) : ""
 }
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"])

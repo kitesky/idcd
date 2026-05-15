@@ -61,7 +61,7 @@ export function decodeJWT(token: string): JWTDecoded {
   const parts = token.trim().split('.')
   if (parts.length !== 3) throw new Error('无效的 JWT 格式，需要 3 个部分（Header.Payload.Signature）')
 
-  const [headerB64, payloadB64, signature] = parts
+  const [headerB64, payloadB64, signature] = parts as [string, string, string]
 
   let header: Record<string, unknown>
   let payload: Record<string, unknown>
@@ -99,7 +99,7 @@ export function parseCIDR(cidr: string): CIDRInfo {
   const parts = cidr.trim().split('/')
   if (parts.length !== 2) throw new Error('格式应为 IP/前缀，如 192.168.1.0/24')
 
-  const [ip, prefixStr] = parts
+  const [ip, prefixStr] = parts as [string, string]
   const prefix = parseInt(prefixStr, 10)
 
   if (isNaN(prefix) || prefix < 0 || prefix > 32) {
@@ -463,7 +463,7 @@ export function addDays(date: string, days: number): string {
   const d = new Date(date)
   if (isNaN(d.getTime())) throw new Error('无效的日期格式')
   d.setDate(d.getDate() + days)
-  return d.toISOString().split('T')[0]
+  return d.toISOString().split('T')[0]!
 }
 
 // ── 数字格式化 ────────────────────────────────────────────────────────────────
@@ -572,9 +572,9 @@ export function parseChmod(octal: string): ChmodPerms {
   })
 
   return {
-    owner: toBool(digits[0]),
-    group: toBool(digits[1]),
-    others: toBool(digits[2]),
+    owner: toBool(digits[0]!),
+    group: toBool(digits[1]!),
+    others: toBool(digits[2]!),
   }
 }
 
@@ -836,7 +836,7 @@ export function generateLorem(paragraphs: number, sentencesPerParagraph = 4): st
   for (let i = 0; i < paragraphs; i++) {
     const sentences: string[] = []
     for (let j = 0; j < sentencesPerParagraph; j++) {
-      sentences.push(LOREM_SENTENCES[(i * sentencesPerParagraph + j) % LOREM_SENTENCES.length])
+      sentences.push(LOREM_SENTENCES[(i * sentencesPerParagraph + j) % LOREM_SENTENCES.length]!)
     }
     result.push(sentences.join(' '))
   }

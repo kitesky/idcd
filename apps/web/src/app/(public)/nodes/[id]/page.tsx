@@ -133,7 +133,7 @@ export default async function NodeDetailPage({ params }: Props) {
 
   const diag = result.data
 
-  const statusInfo = STATUS_MAP[diag.status] ?? STATUS_MAP["unknown"]
+  const statusInfo = STATUS_MAP[diag.status] ?? STATUS_MAP["unknown"]!
   const dist = diag.latency_distribution
   const maxLatency = dist.max || 1
   const trend = diag.health_trend.slice().reverse()

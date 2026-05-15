@@ -205,7 +205,7 @@ export function TextCaseClient() {
         <Card>
           <CardHeader><CardTitle>转换结果</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {results.map(([label, value]) => (
+            {(results as [string, string][]).map(([label, value]) => (
               <div key={label} className="flex items-center justify-between gap-4 py-2 border-b last:border-0">
                 <span className="text-muted-foreground text-sm w-36 shrink-0">{label}</span>
                 <code className="flex-1 font-mono text-sm break-all">{value}</code>
@@ -404,15 +404,15 @@ function computeDiff(a: string, b: string): DiffLine[] {
   for (let i = 0; i < max; i++) {
     if (i < lines1.length && i < lines2.length) {
       if (lines1[i] === lines2[i]) {
-        result.push({ type: 'same', line: lines1[i] })
+        result.push({ type: 'same', line: lines1[i]! })
       } else {
-        result.push({ type: 'removed', line: lines1[i] })
-        result.push({ type: 'added', line: lines2[i] })
+        result.push({ type: 'removed', line: lines1[i]! })
+        result.push({ type: 'added', line: lines2[i]! })
       }
     } else if (i < lines1.length) {
-      result.push({ type: 'removed', line: lines1[i] })
+      result.push({ type: 'removed', line: lines1[i]! })
     } else {
-      result.push({ type: 'added', line: lines2[i] })
+      result.push({ type: 'added', line: lines2[i]! })
     }
   }
 

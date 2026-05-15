@@ -65,7 +65,7 @@ function setupDefaultMocks() {
       return { data: { channel: newCh } }
     }
     if (path.startsWith("/v1/alert-channels/") && path.includes("/notifications") && method === "GET") {
-      const channelId = path.split("/")[3]
+      const channelId = path.split("/")[3]!
       return { data: { notifications: MOCK_API_NOTIFICATIONS[channelId] ?? [] } }
     }
     if (path.startsWith("/v1/alert-channels/") && method === "DELETE") {
@@ -87,9 +87,9 @@ function setupDefaultMocks() {
       return { data: { policy: newPol } }
     }
     if (path.startsWith("/v1/alert-policies/") && method === "PATCH") {
-      const id = path.split("/")[3]
+      const id = path.split("/")[3]!
       const body = JSON.parse(options?.body as string)
-      const existing = MOCK_ALERT_POLICIES.find((p) => p.id === id) ?? MOCK_ALERT_POLICIES[0]
+      const existing = MOCK_ALERT_POLICIES.find((p) => p.id === id) ?? MOCK_ALERT_POLICIES[0]!
       return { data: { policy: { ...existing, ...body } } }
     }
     if (path.startsWith("/v1/alert-policies/") && method === "DELETE") {
@@ -285,9 +285,9 @@ describe("AlertsClient — 告警通道 Tab", () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
     await waitFor(() =>
-      expect(screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0].id}`)).toBeInTheDocument()
+      expect(screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0]!.id}`)).toBeInTheDocument()
     )
-    const deleteBtn = screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0].id}`)
+    const deleteBtn = screen.getByTestId(`delete-channel-btn-${MOCK_ALERT_CHANNELS[0]!.id}`)
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
     expect(screen.getByText("删除通道")).toBeInTheDocument()
@@ -306,7 +306,7 @@ describe("AlertsClient — 告警通道 Tab", () => {
   it("点击交付记录按钮后展开显示通知列表", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-channels"))
-    const firstCh = MOCK_ALERT_CHANNELS[0]
+    const firstCh = MOCK_ALERT_CHANNELS[0]!
     await waitFor(() =>
       expect(screen.getByTestId(`delivery-history-toggle-${firstCh.id}`)).toBeInTheDocument()
     )
@@ -386,7 +386,7 @@ describe("AlertsClient — 告警策略 Tab", () => {
   it("点击 Toggle 切换策略启用状态", async () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
-    const firstPol = MOCK_ALERT_POLICIES[0]
+    const firstPol = MOCK_ALERT_POLICIES[0]!
     await waitFor(() =>
       expect(screen.getByTestId(`policy-toggle-${firstPol.id}`)).toBeInTheDocument()
     )
@@ -401,9 +401,9 @@ describe("AlertsClient — 告警策略 Tab", () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     await waitFor(() =>
-      expect(screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)).toBeInTheDocument()
+      expect(screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0]!.id}`)).toBeInTheDocument()
     )
-    const editBtn = screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)
+    const editBtn = screen.getByTestId(`edit-policy-btn-${MOCK_ALERT_POLICIES[0]!.id}`)
     fireEvent.click(editBtn)
     expect(screen.getByTestId("side-sheet")).toBeInTheDocument()
     expect(screen.getByText("编辑告警策略")).toBeInTheDocument()
@@ -422,9 +422,9 @@ describe("AlertsClient — 告警策略 Tab", () => {
     render(<AlertsClient />)
     fireEvent.mouseDown(screen.getByTestId("tab-policies"))
     await waitFor(() =>
-      expect(screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)).toBeInTheDocument()
+      expect(screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0]!.id}`)).toBeInTheDocument()
     )
-    const deleteBtn = screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0].id}`)
+    const deleteBtn = screen.getByTestId(`delete-policy-btn-${MOCK_ALERT_POLICIES[0]!.id}`)
     fireEvent.click(deleteBtn)
     expect(screen.getByTestId("confirm-dialog")).toBeInTheDocument()
     expect(screen.getByText("删除策略")).toBeInTheDocument()

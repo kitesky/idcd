@@ -361,7 +361,7 @@ export function JsonToYamlClient() {
         const obj: Record<string, unknown> = {}
         for (const line of lines) {
           const match = line.match(/^(\w[\w-]*)\s*:\s*(.+)$/)
-          if (match) obj[match[1]] = isNaN(Number(match[2])) ? match[2] : Number(match[2])
+          if (match) obj[match[1]!] = isNaN(Number(match[2])) ? match[2]! : Number(match[2])
         }
         setOutput(JSON.stringify(obj, null, 2))
       }
@@ -654,7 +654,7 @@ export function NumberFormatClient() {
         <Card>
           <CardHeader><CardTitle>格式化结果</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {formats.map(([label, value]) => (
+            {(formats as [string, string][]).map(([label, value]) => (
               <div key={label} className="flex items-center justify-between py-2 border-b last:border-0">
                 <span className="text-muted-foreground text-sm">{label}</span>
                 <div className="flex items-center gap-2">

@@ -22,9 +22,9 @@ describe('CIDR Calculator Tool', () => {
   it('calculates 192.168.1.0/24', () => {
     render(<CidrCalculatorPage />)
     const inputs = screen.getAllByRole('textbox')
-    fireEvent.change(inputs[0], { target: { value: '192.168.1.0/24' } })
+    fireEvent.change(inputs[0]!, { target: { value: '192.168.1.0/24' } })
     const buttons = screen.getAllByRole('button')
-    if (buttons.length > 0) fireEvent.click(buttons[0])
+    if (buttons.length > 0) fireEvent.click(buttons[0]!)
     // Just verify no crash
     expect(inputs[0]).toBeTruthy()
   })
@@ -32,9 +32,9 @@ describe('CIDR Calculator Tool', () => {
   it('shows host count for /24', () => {
     render(<CidrCalculatorPage />)
     const inputs = screen.getAllByRole('textbox')
-    fireEvent.change(inputs[0], { target: { value: '192.168.1.0/24' } })
+    fireEvent.change(inputs[0]!, { target: { value: '192.168.1.0/24' } })
     const buttons = screen.getAllByRole('button')
-    if (buttons.length > 0) fireEvent.click(buttons[0])
+    if (buttons.length > 0) fireEvent.click(buttons[0]!)
     expect(document.body.textContent).toContain('254')
   })
 })

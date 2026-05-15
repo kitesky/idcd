@@ -45,7 +45,7 @@ function md5(input: string): string {
     const nWords = ((nBytes + 8) >> 6) + 1
     const words = new Array(nWords * 16).fill(0)
     for (let i = 0; i < nBytes; i++) {
-      words[i >> 2] |= bytes[i] << ((i % 4) * 8)
+      words[i >> 2] |= bytes[i]! << ((i % 4) * 8)
     }
     words[nBytes >> 2] |= 0x80 << ((nBytes % 4) * 8)
     words[nWords * 16 - 2] = nBytes * 8

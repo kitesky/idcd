@@ -166,7 +166,7 @@ describe("GET /api/diagnose/stream", () => {
     await res.text()
 
     expect(mockSaveReport).toHaveBeenCalledOnce()
-    const saved = mockSaveReport.mock.calls[0][0] as {
+    const saved = mockSaveReport.mock.calls[0]![0] as {
       domain: string
       checks: unknown[]
       doneCount: number
@@ -196,7 +196,7 @@ describe("GET /api/diagnose/stream", () => {
     await res.text()
 
     expect(mockSaveReport).toHaveBeenCalledOnce()
-    const saved = mockSaveReport.mock.calls[0][0] as {
+    const saved = mockSaveReport.mock.calls[0]![0] as {
       errorCount: number
       doneCount: number
       checks: { key: string; status: string }[]

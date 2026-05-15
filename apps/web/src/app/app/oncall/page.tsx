@@ -110,7 +110,7 @@ function get7DayPreview(
     const elapsed = day.getTime() - epoch.getTime()
     const periodIndex = Math.floor(elapsed / ms)
     const idx = ((periodIndex % sorted.length) + sorted.length) % sorted.length
-    days.push({ date: day, participant: sorted[idx] })
+    days.push({ date: day, participant: sorted[idx]! })
   }
   return days
 }
@@ -506,7 +506,7 @@ export default function OncallPage() {
         setParticipants([])
         return
       }
-      const first = schedules[0]
+      const first = schedules[0]!
       setSchedule(first)
 
       const partRes = await apiRequest<{ data: { participants: Participant[] } }>(

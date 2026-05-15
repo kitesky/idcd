@@ -21,7 +21,7 @@ export default function JwtDecoderPage() {
       throw new Error('无效的 JWT 格式，应包含 3 个部分（Header.Payload.Signature）')
     }
 
-    const [headerB64, payloadB64, signature] = parts
+    const [headerB64, payloadB64, signature] = parts as [string, string, string]
 
     // Decode header
     let header: any

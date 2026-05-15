@@ -44,7 +44,7 @@ describe("countryCoords", () => {
   })
 
   it("坐标格式应该正确", () => {
-    const [lng, lat] = countryCoords["CN"]
+    const [lng, lat] = countryCoords["CN"]!
     expect(typeof lng).toBe("number")
     expect(typeof lat).toBe("number")
     expect(lng).toBeGreaterThan(-180)

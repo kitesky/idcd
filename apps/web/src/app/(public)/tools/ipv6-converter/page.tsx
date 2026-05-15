@@ -20,7 +20,7 @@ export default function IPv6ConverterPage() {
 
   const expandIPv6 = (ipv6: string): string => {
     // Remove prefix if present
-    const addr = ipv6.includes('/') ? ipv6.split('/')[0] : ipv6
+    const addr = ipv6.includes('/') ? ipv6.split('/')[0]! : ipv6
 
     // Handle :: notation
     let expanded = addr
@@ -170,7 +170,7 @@ export default function IPv6ConverterPage() {
   const validateIPv6 = (ipv6: string): boolean => {
     try {
       // Remove prefix if present
-      const addr = ipv6.includes('/') ? ipv6.split('/')[0] : ipv6
+      const addr = ipv6.includes('/') ? ipv6.split('/')[0]! : ipv6
 
       // Basic pattern check
       const ipv6Pattern = /^([0-9a-fA-F]{1,4}:){7}[0-9a-fA-F]{1,4}$|^([0-9a-fA-F]{1,4}:)*::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$|^::([0-9a-fA-F]{1,4}:)*[0-9a-fA-F]{1,4}$|^([0-9a-fA-F]{1,4}:)+::$|^::$/
@@ -206,7 +206,7 @@ export default function IPv6ConverterPage() {
         return
       }
 
-      const addr = trimmed.includes('/') ? trimmed.split('/')[0] : trimmed
+      const addr = trimmed.includes('/') ? trimmed.split('/')[0]! : trimmed
       const prefixLength = trimmed.includes('/') ? trimmed.split('/')[1] : undefined
 
       const fullExpanded = expandIPv6(addr)

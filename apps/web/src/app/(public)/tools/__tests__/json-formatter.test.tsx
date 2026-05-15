@@ -28,9 +28,9 @@ describe('JSON Formatter Tool', () => {
   it('formats valid JSON', async () => {
     render(<JsonFormatterPage />)
     const inputs = screen.getAllByRole('textbox')
-    fireEvent.change(inputs[0], { target: { value: '{"a":1}' } })
+    fireEvent.change(inputs[0]!, { target: { value: '{"a":1}' } })
     const buttons = screen.getAllByRole('button')
-    fireEvent.click(buttons[0])
+    fireEvent.click(buttons[0]!)
     // After formatting, at least one textarea should have content
     const updatedInputs = screen.getAllByRole('textbox')
     expect(updatedInputs.some((t) => (t as HTMLTextAreaElement).value.length > 0)).toBeTruthy()

@@ -126,7 +126,7 @@ export default function CronParserPage() {
       return weekday.split(',').map(d => weekdays[parseInt(d)] || d).join('、')
     }
     if (weekday.includes('-')) {
-      const [start, end] = weekday.split('-')
+      const [start, end] = weekday.split('-') as [string, string]
       return `${weekdays[parseInt(start)]}-${weekdays[parseInt(end)]}`
     }
     return weekdays[parseInt(weekday)] || weekday

@@ -212,12 +212,12 @@ export function NewMonitorClient() {
 
       const planMatch = message.match(/您的\s+(\S+)\s+档/)
       if (planMatch) {
-        const planKey = planMatch[1].toLowerCase()
+        const planKey = planMatch[1]!.toLowerCase()
         const usedMatch = message.match(/(\d+)\s+个监控项/)
-        const usedCount = usedMatch ? parseInt(usedMatch[1], 10) : 0
+        const usedCount = usedMatch ? parseInt(usedMatch[1]!, 10) : 0
         const limitMatch = message.match(/上限\s+(\d+)/)
         const limitCount = limitMatch
-          ? parseInt(limitMatch[1], 10)
+          ? parseInt(limitMatch[1]!, 10)
           : PLAN_MONITOR_LIMITS[planKey] ?? 3
 
         setQuotaExceeded({ currentPlan: planKey, usedCount, limitCount })

@@ -153,7 +153,7 @@ describe("MonitorsClient — 列表渲染", () => {
     render(<MonitorsClient />)
     await screen.findByText("idcd.com 主站")
     const pauseButtons = screen.getAllByTitle("暂停检测")
-    fireEvent.click(pauseButtons[0])
+    fireEvent.click(pauseButtons[0]!)
     await waitFor(() =>
       expect(screen.getAllByTitle("恢复检测").length).toBeGreaterThan(0)
     )
@@ -175,7 +175,7 @@ describe("MonitorsClient — 列表渲染", () => {
     await screen.findByText("idcd.com 主站")
     // Open dropdown menu for first monitor via pointerDown (Radix DropdownMenu event)
     const moreButtons = screen.getAllByLabelText("更多操作")
-    fireEvent.pointerDown(moreButtons[0], {
+    fireEvent.pointerDown(moreButtons[0]!, {
       button: 0,
       ctrlKey: false,
       pointerId: 1,
@@ -213,7 +213,7 @@ describe("MonitorsClient — 列表渲染", () => {
     render(<MonitorsClient />)
     await screen.findByText("idcd.com 主站")
     const checkboxes = screen.getAllByRole("checkbox")
-    const rowCheckbox = checkboxes[1]
+    const rowCheckbox = checkboxes[1]!
     fireEvent.click(rowCheckbox)
     expect(screen.getByTestId("bulk-selection-count")).toBeInTheDocument()
   })
@@ -222,7 +222,7 @@ describe("MonitorsClient — 列表渲染", () => {
     render(<MonitorsClient />)
     await screen.findByText("idcd.com 主站")
     const checkboxes = screen.getAllByRole("checkbox")
-    const selectAllCheckbox = checkboxes[0]
+    const selectAllCheckbox = checkboxes[0]!
     fireEvent.click(selectAllCheckbox)
     expect(screen.getByTestId("bulk-selection-count")).toBeInTheDocument()
   })
@@ -243,7 +243,7 @@ describe("MonitorsClient — 列表渲染", () => {
 // ─── MonitorDetailClient tests ────────────────────────────────────────────────
 
 describe("MonitorDetailClient — 详情页渲染", () => {
-  const upMonitor = MOCK_MONITORS[0] // mon-001 UP
+  const upMonitor = MOCK_MONITORS[0]! // mon-001 UP
 
   it("渲染监控名称", () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
@@ -364,7 +364,7 @@ describe("MonitorDetailClient — 详情页渲染", () => {
   })
 
   it("DOWN 监控：可用率显示 94.2%", () => {
-    const downMonitor = MOCK_MONITORS[1] // mon-002 DOWN
+    const downMonitor = MOCK_MONITORS[1]! // mon-002 DOWN
     render(<MonitorDetailClient monitor={downMonitor} monitorId={downMonitor.id} />)
     expect(screen.getByText("94.2%")).toBeInTheDocument()
   })

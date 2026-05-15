@@ -53,7 +53,7 @@ function uptimeDayColor(status: ServiceStatus) {
 }
 
 function buildAggregateHistory(groups: StatusPageData["groups"]): MonitorHistory[] {
-  if (groups.length === 0 || groups[0].monitors.length === 0) {
+  if (groups.length === 0 || groups[0]!.monitors.length === 0) {
     const now = new Date()
     return Array.from({ length: 30 }, (_, i) => {
       const d = new Date(now); d.setDate(d.getDate() - (29 - i))
@@ -62,7 +62,7 @@ function buildAggregateHistory(groups: StatusPageData["groups"]): MonitorHistory
   }
   const allMonitors = groups.flatMap(g => g.monitors)
   if (allMonitors.length === 0) return []
-  const refHistory = allMonitors[0].history
+  const refHistory = allMonitors[0]!.history
   return refHistory.map((day, i) => {
     const dayStatuses = allMonitors.map(m => m.history[i]?.status ?? "operational")
     let worst: ServiceStatus = "operational"

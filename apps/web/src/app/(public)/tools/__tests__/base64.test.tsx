@@ -17,7 +17,7 @@ describe('Base64 Tool', () => {
   it('encodes text to Base64', async () => {
     render(<Base64Page />)
     const inputs = screen.getAllByRole('textbox')
-    fireEvent.change(inputs[0], { target: { value: 'Hello World!' } })
+    fireEvent.change(inputs[0]!, { target: { value: 'Hello World!' } })
     const buttons = screen.getAllByRole('button')
     expect(buttons.length).toBeGreaterThan(0)
   })

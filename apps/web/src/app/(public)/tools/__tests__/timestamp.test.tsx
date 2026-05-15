@@ -28,7 +28,7 @@ describe('Timestamp Tool', () => {
   it('accepts a known unix timestamp', () => {
     render(<TimestampPage />)
     const inputs = screen.getAllByRole('textbox')
-    fireEvent.change(inputs[0], { target: { value: '1000000000' } })
+    fireEvent.change(inputs[0]!, { target: { value: '1000000000' } })
     // Just verify it doesn't throw
     expect(inputs[0]).toBeTruthy()
   })

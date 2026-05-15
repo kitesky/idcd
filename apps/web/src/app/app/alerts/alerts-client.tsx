@@ -202,7 +202,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
         setMonitors(list)
         // If no initial monitor name is set, default to the first option
         if (!initial?.monitorName && list.length > 0) {
-          setMonitorName(list[0].name)
+          setMonitorName(list[0]!.name)
         }
       })
       .catch(() => {
@@ -299,7 +299,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
           max={60}
           step={1}
           value={[delay]}
-          onValueChange={([v]) => setDelay(v)}
+          onValueChange={([v]) => setDelay(v!)}
           aria-label="延迟告警分钟数"
         />
         <div className="flex justify-between text-xs text-muted-foreground">

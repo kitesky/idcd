@@ -114,7 +114,7 @@ describe("filterNodes", () => {
   it("filters by carrier", () => {
     const result = filterNodes(sampleNodes, { carrier: "IIJ" })
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe("n4")
+    expect(result[0]!.id).toBe("n4")
   })
 
   it("returns all when carrier is 'all'", () => {
@@ -130,25 +130,25 @@ describe("filterNodes", () => {
   it("filters by offline status", () => {
     const result = filterNodes(sampleNodes, { status: "offline" })
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe("n3")
+    expect(result[0]!.id).toBe("n3")
   })
 
   it("searches by region", () => {
     const result = filterNodes(sampleNodes, { search: "东京" })
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe("n4")
+    expect(result[0]!.id).toBe("n4")
   })
 
   it("searches by ASN (case-insensitive)", () => {
     const result = filterNodes(sampleNodes, { search: "as4134" })
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe("n1")
+    expect(result[0]!.id).toBe("n1")
   })
 
   it("searches by exit IP", () => {
     const result = filterNodes(sampleNodes, { search: "5.6.7.8" })
     expect(result).toHaveLength(1)
-    expect(result[0].id).toBe("n5")
+    expect(result[0]!.id).toBe("n5")
   })
 
   it("combines country and status filters", () => {

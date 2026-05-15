@@ -24,7 +24,7 @@ export default function CIDRCalculatorPage() {
 
   const ipToInt = (ip: string): number => {
     const parts = ip.split('.').map(Number)
-    return (parts[0] << 24) | (parts[1] << 16) | (parts[2] << 8) | parts[3]
+    return (parts[0]! << 24) | (parts[1]! << 16) | (parts[2]! << 8) | parts[3]!
   }
 
   const intToIp = (int: number): string => {
@@ -87,7 +87,7 @@ export default function CIDRCalculatorPage() {
     const totalHosts = Math.pow(2, hostBits)
     const usableHosts = Math.max(0, totalHosts - 2) // Subtract network and broadcast
 
-    const firstOctet = parseInt(ipStr.split('.')[0])
+    const firstOctet = parseInt(ipStr.split('.')[0]!)
     const ipClass = getIPClass(firstOctet)
 
     return {

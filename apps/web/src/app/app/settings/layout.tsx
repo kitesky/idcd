@@ -13,8 +13,8 @@ const NAV_ITEMS = [
 
 export default function SettingsLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col" data-testid="settings-layout">
-      <div className="container max-w-5xl flex-1 flex flex-col py-8 gap-8 lg:flex-row">
+    <div className="flex flex-col" data-testid="settings-layout">
+      <div className="flex-1 flex flex-col gap-8 lg:flex-row">
         {/* ── Sidebar nav ──────────────────────────────────────────── */}
         <nav
           className="flex flex-row gap-1 lg:flex-col lg:w-48 shrink-0"

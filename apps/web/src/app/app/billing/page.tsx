@@ -9,18 +9,16 @@ export const metadata: Metadata = {
 
 export default function BillingPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">计费</h1>
-          <p className="mt-2 text-muted-foreground">
-            管理您的订阅方案、查看用量和下载发票
-          </p>
-        </div>
-        <Suspense>
-          <BillingClient />
-        </Suspense>
+    <>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">计费</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          管理您的订阅方案、查看用量和下载发票
+        </p>
       </div>
-    </div>
+      <Suspense>
+        <BillingClient />
+      </Suspense>
+    </>
   )
 }

@@ -148,7 +148,7 @@ func (h *OncallHandler) ListSchedules(w http.ResponseWriter, r *http.Request) {
 		SELECT os.id, os.team_id, os.name, os.rotation_type, os.handoff_hour, os.created_at, os.updated_at
 		FROM oncall_schedules os
 		WHERE os.team_id IN (
-			SELECT team_id FROM team_members WHERE user_id = $1
+			SELECT team_id FROM team_memberships WHERE user_id = $1
 		)
 		ORDER BY os.created_at DESC`, userID)
 	if err != nil {

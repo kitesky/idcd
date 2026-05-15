@@ -6,7 +6,7 @@ export const metadata = {
 
 export default function TokensPage() {
   return (
-    <main className="flex-1 container max-w-4xl py-8">
+    <main className="flex-1 container max-w-4xl">
       <TokensClient />
     </main>
   )

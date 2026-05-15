@@ -92,17 +92,16 @@ export default function IncidentsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background" data-testid="incidents-page">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center gap-3">
-          <FileWarning className="h-7 w-7 text-muted-foreground" />
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">故障记录</h1>
-            <p className="mt-1 text-muted-foreground">
-              查看历史告警事件，自动生成事故复盘草稿
-            </p>
-          </div>
+    <div data-testid="incidents-page">
+      <div className="mb-6 flex items-center gap-3">
+        <FileWarning className="h-6 w-6 text-muted-foreground" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">故障记录</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            查看历史告警事件，自动生成事故复盘草稿
+          </p>
         </div>
+      </div>
 
         {error && (
           <Alert variant="destructive" className="mb-6" data-testid="incidents-error-alert">
@@ -181,7 +180,6 @@ export default function IncidentsPage() {
             )}
           </CardContent>
         </Card>
-      </div>
     </div>
   )
 }

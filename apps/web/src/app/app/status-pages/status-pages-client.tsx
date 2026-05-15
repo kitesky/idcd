@@ -29,6 +29,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
@@ -102,51 +103,52 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
   }
 
   return (
-    <div className="space-y-4 mt-4">
-      {error && (
-        <Alert variant="destructive" data-testid="create-sp-error">
-          <AlertCircle className="h-4 w-4" />
-          <AlertDescription>{error}</AlertDescription>
-        </Alert>
-      )}
-      <div className="space-y-1.5">
-        <Label htmlFor="sp-name">页面名称</Label>
-        <Input
-          id="sp-name"
-          placeholder="例：acme.com 服务状态"
-          value={name}
-          onChange={(e) => handleNameChange(e.target.value)}
-          data-testid="sp-name-input"
-        />
-      </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="sp-slug">Slug（访问路径）</Label>
-        <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground shrink-0">
-            .status.idcd.com/
-          </span>
+    <>
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-4">
+        {error && (
+          <Alert variant="destructive" data-testid="create-sp-error">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="space-y-1.5">
+          <Label htmlFor="sp-name">页面名称</Label>
           <Input
-            id="sp-slug"
-            placeholder="acme"
-            value={slug}
-            onChange={(e) => setSlug(e.target.value)}
-            data-testid="sp-slug-input"
+            id="sp-name"
+            placeholder="例：acme.com 服务状态"
+            value={name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            data-testid="sp-name-input"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sp-slug">Slug（访问路径）</Label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground shrink-0">
+              .status.idcd.com/
+            </span>
+            <Input
+              id="sp-slug"
+              placeholder="acme"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+              data-testid="sp-slug-input"
+            />
+          </div>
+        </div>
+        <div className="space-y-1.5">
+          <Label htmlFor="sp-desc">描述（可选）</Label>
+          <Textarea
+            id="sp-desc"
+            placeholder="简短说明该状态页用途..."
+            value={desc}
+            onChange={(e) => setDesc(e.target.value)}
+            rows={3}
+            data-testid="sp-desc-input"
           />
         </div>
       </div>
-      <div className="space-y-1.5">
-        <Label htmlFor="sp-desc">描述（可选）</Label>
-        <Textarea
-          id="sp-desc"
-          placeholder="简短说明该状态页用途..."
-          value={desc}
-          onChange={(e) => setDesc(e.target.value)}
-          rows={3}
-          data-testid="sp-desc-input"
-        />
-      </div>
-      <Separator />
-      <div className="flex gap-2">
+      <SheetFooter className="shrink-0 border-t px-6 py-4 flex-row gap-3 mt-0">
         <Button
           className="flex-1"
           onClick={handleCreate}
@@ -158,8 +160,8 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
         <Button variant="outline" onClick={onClose} disabled={submitting} data-testid="cancel-sp-button">
           取消
         </Button>
-      </div>
-    </div>
+      </SheetFooter>
+    </>
   )
 }
 
@@ -345,8 +347,8 @@ export function StatusPagesClient() {
 
       {/* Create sheet */}
       <Sheet open={showCreateSheet} onOpenChange={(open) => !open && setShowCreateSheet(false)}>
-        <SheetContent data-testid="create-sheet">
-          <SheetHeader>
+        <SheetContent className="flex flex-col gap-0 p-0 overflow-hidden" data-testid="create-sheet">
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>新建状态页</SheetTitle>
           </SheetHeader>
           <CreateSheetContent

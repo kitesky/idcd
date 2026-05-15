@@ -202,7 +202,7 @@ export default function ProfilePage() {
   }
 
   return (
-    <main className="flex-1 container max-w-3xl py-8">
+    <main className="flex-1 container max-w-3xl">
       <Card>
         <CardHeader>
           <CardTitle>个人资料</CardTitle>

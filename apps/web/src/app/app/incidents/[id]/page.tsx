@@ -51,26 +51,22 @@ const severityVariant: Record<string, "destructive" | "secondary" | "outline" | 
 
 function PostmortemSkeleton() {
   return (
-    <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
-      <div className="container mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-6 space-y-2">
-          <Skeleton className="h-5 w-16" />
-          <Skeleton className="h-8 w-3/4" />
-          <Skeleton className="h-4 w-1/2" />
-        </div>
-        <div className="space-y-4">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Card key={i}>
-              <CardHeader>
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-16 w-full" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+    <div className="max-w-3xl space-y-4" data-testid="postmortem-detail-page">
+      <div className="mb-6 space-y-2">
+        <Skeleton className="h-5 w-16" />
+        <Skeleton className="h-8 w-3/4" />
+        <Skeleton className="h-4 w-1/2" />
       </div>
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Card key={i}>
+          <CardHeader>
+            <Skeleton className="h-4 w-24" />
+          </CardHeader>
+          <CardContent>
+            <Skeleton className="h-16 w-full" />
+          </CardContent>
+        </Card>
+      ))}
     </div>
   )
 }
@@ -125,15 +121,13 @@ export default function PostmortemDetailPage() {
   // ── 404 ──
   if (error === "NOT_FOUND") {
     return (
-      <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
-        <div className="container mx-auto max-w-3xl px-4 py-8">
-          <Alert variant="destructive" data-testid="postmortem-not-found">
-            <AlertTitle>未找到复盘记录</AlertTitle>
-            <AlertDescription>
-              该故障的复盘记录不存在或尚未生成，请返回故障列表。
-            </AlertDescription>
-          </Alert>
-        </div>
+      <div className="max-w-3xl" data-testid="postmortem-detail-page">
+        <Alert variant="destructive" data-testid="postmortem-not-found">
+          <AlertTitle>未找到复盘记录</AlertTitle>
+          <AlertDescription>
+            该故障的复盘记录不存在或尚未生成，请返回故障列表。
+          </AlertDescription>
+        </Alert>
       </div>
     )
   }
@@ -141,13 +135,11 @@ export default function PostmortemDetailPage() {
   // ── Generic error ──
   if (error) {
     return (
-      <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
-        <div className="container mx-auto max-w-3xl px-4 py-8">
-          <Alert variant="destructive" data-testid="postmortem-error">
-            <AlertTitle>加载失败</AlertTitle>
-            <AlertDescription>{error}</AlertDescription>
-          </Alert>
-        </div>
+      <div className="max-w-3xl" data-testid="postmortem-detail-page">
+        <Alert variant="destructive" data-testid="postmortem-error">
+          <AlertTitle>加载失败</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
       </div>
     )
   }
@@ -155,9 +147,8 @@ export default function PostmortemDetailPage() {
   if (!pm) return null
 
   return (
-    <div className="min-h-screen bg-background" data-testid="postmortem-detail-page">
-      <div className="container mx-auto max-w-3xl px-4 py-8">
-        <div className="mb-6">
+    <div className="max-w-3xl space-y-4" data-testid="postmortem-detail-page">
+      <div className="mb-2">
           <Badge variant={severityVariant[pm.severity] ?? "outline"} className="mb-2">
             {pm.severity}
           </Badge>
@@ -232,7 +223,6 @@ export default function PostmortemDetailPage() {
             </CardContent>
           </Card>
         </div>
-      </div>
     </div>
   )
 }

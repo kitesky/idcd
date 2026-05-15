@@ -252,16 +252,15 @@ export default function ReportsPage() {
   const periodColumnLabel = granularity === "quarterly" ? "季度" : "月份"
 
   return (
-    <div className="min-h-screen bg-background" data-testid="reports-page">
+    <div data-testid="reports-page">
       <GlobalPrintStyle />
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8 flex items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold tracking-tight">SLA 月报</h1>
-            <p className="mt-2 text-muted-foreground">
-              查看每个监控在过去几个月的可用率统计
-            </p>
-          </div>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">SLA 月报</h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            查看每个监控在过去几个月的可用率统计
+          </p>
+        </div>
           <div className="no-print flex items-center gap-2">
             <Button
               variant="outline"
@@ -378,7 +377,6 @@ export default function ReportsPage() {
             ))}
           </div>
         )}
-      </div>
     </div>
   )
 }

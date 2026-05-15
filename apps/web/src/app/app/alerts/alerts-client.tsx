@@ -36,6 +36,7 @@ import {
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
@@ -123,7 +124,7 @@ function AddChannelForm({ onSave, onCancel }: AddChannelFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form id="add-channel-form" onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
         <Label htmlFor="channel-type">通道类型</Label>
         <Select value={type} onValueChange={(v) => setType(v as ChannelType)}>
@@ -161,13 +162,6 @@ function AddChannelForm({ onSave, onCancel }: AddChannelFormProps) {
           required
         />
       </div>
-
-      <div className="flex gap-3 pt-2">
-        <Button type="submit" className="flex-1">保存</Button>
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
-          取消
-        </Button>
-      </div>
     </form>
   )
 }
@@ -198,7 +192,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
     apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
       .then((res) => {
         if (cancelled) return
-        const list = res.data.monitors
+        const list = res.data.monitors ?? []
         setMonitors(list)
         // If no initial monitor name is set, default to the first option
         if (!initial?.monitorName && list.length > 0) {
@@ -236,7 +230,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
   }
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <form id="policy-form" onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
         <Label htmlFor="policy-name">策略名称</Label>
         <Input
@@ -338,14 +332,6 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
         <Label htmlFor="policy-enabled" className="cursor-pointer text-sm">启用策略</Label>
       </div>
 
-      <div className="flex gap-3 pt-2">
-        <Button type="submit" className="flex-1">
-          {initial ? "保存更改" : "创建策略"}
-        </Button>
-        <Button type="button" variant="outline" className="flex-1" onClick={onCancel}>
-          取消
-        </Button>
-      </div>
     </form>
   )
 }
@@ -792,7 +778,7 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
     let cancelled = false
     setMonitorsLoading(true)
     apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
-      .then((res) => { if (!cancelled) setMonitors(res.data.monitors) })
+      .then((res) => { if (!cancelled) setMonitors(res.data.monitors ?? []) })
       .catch(() => { if (!cancelled) setMonitors([]) })
       .finally(() => { if (!cancelled) setMonitorsLoading(false) })
     return () => { cancelled = true }
@@ -1021,7 +1007,7 @@ export function AlertsClient() {
     setEventsError(null)
     try {
       const res = await apiRequest<EventsResponse>("/v1/alert-events")
-      setEvents(res.data.events)
+      setEvents(res.data.events ?? [])
     } catch (err) {
       setEventsError(err instanceof Error ? err.message : "加载失败")
     } finally {
@@ -1036,7 +1022,7 @@ export function AlertsClient() {
     setChannelsError(null)
     try {
       const res = await apiRequest<ChannelsResponse>("/v1/alert-channels")
-      setChannels(res.data.channels)
+      setChannels(res.data.channels ?? [])
     } catch (err) {
       setChannelsError(err instanceof Error ? err.message : "加载失败")
     } finally {
@@ -1051,7 +1037,7 @@ export function AlertsClient() {
     setPoliciesError(null)
     try {
       const res = await apiRequest<PoliciesResponse>("/v1/alert-policies")
-      setPolicies(res.data.policies)
+      setPolicies(res.data.policies ?? [])
     } catch (err) {
       setPoliciesError(err instanceof Error ? err.message : "加载失败")
     } finally {
@@ -1354,8 +1340,8 @@ export function AlertsClient() {
 
       {/* Side sheet */}
       <Sheet open={sheet.open} onOpenChange={(open) => !open && setSheet((p) => ({ ...p, open: false }))}>
-        <SheetContent data-testid="side-sheet">
-          <SheetHeader>
+        <SheetContent className="flex flex-col gap-0 p-0 overflow-hidden" data-testid="side-sheet">
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>
               {sheet.mode === "add-channel"
                 ? "添加告警通道"
@@ -1364,7 +1350,7 @@ export function AlertsClient() {
                 : "新建告警策略"}
             </SheetTitle>
           </SheetHeader>
-          <div className="mt-4 overflow-y-auto">
+          <div className="flex-1 overflow-y-auto px-6 py-6">
             {sheet.mode === "add-channel" && (
               <AddChannelForm
                 onSave={handleSaveChannel}
@@ -1380,6 +1366,23 @@ export function AlertsClient() {
               />
             )}
           </div>
+          <SheetFooter className="shrink-0 border-t px-6 py-4 flex-row gap-3 mt-0">
+            <Button
+              type="submit"
+              form={sheet.mode === "add-channel" ? "add-channel-form" : "policy-form"}
+              className="flex-1"
+            >
+              {sheet.mode === "edit-policy" ? "保存更改" : sheet.mode === "add-policy" ? "创建策略" : "保存"}
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="flex-1"
+              onClick={() => setSheet((p) => ({ ...p, open: false }))}
+            >
+              取消
+            </Button>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
 

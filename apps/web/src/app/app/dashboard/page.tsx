@@ -21,6 +21,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import {
   Sheet,
   SheetContent,
+  SheetFooter,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
@@ -186,16 +187,15 @@ export default function DashboardPage() {
   const statusPages = summary?.status_pages ?? 0
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">总览</h1>
-          <p className="mt-2 text-muted-foreground">
-            监控健康状态与关键指标一览
-          </p>
-        </div>
+    <>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">总览</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          监控健康状态与关键指标一览
+        </p>
+      </div>
 
-        <div className="space-y-8">
+      <div className="space-y-6">
           <div
             className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4"
             data-testid="stat-cards"
@@ -359,14 +359,13 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-      </div>
 
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
-        <SheetContent data-testid="pin-sheet">
-          <SheetHeader>
+        <SheetContent className="flex flex-col gap-0 p-0 overflow-hidden" data-testid="pin-sheet">
+          <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>选择置顶监控（最多 6 个）</SheetTitle>
           </SheetHeader>
-          <div className="mt-4 space-y-2">
+          <div className="flex-1 overflow-y-auto px-6 py-6 space-y-2">
             {monitors.length === 0 ? (
               <p className="text-sm text-muted-foreground">暂无监控项</p>
             ) : (
@@ -389,16 +388,16 @@ export default function DashboardPage() {
               ))
             )}
           </div>
-          <div className="mt-6 flex justify-end gap-2">
-            <Button variant="outline" onClick={() => setSheetOpen(false)}>
+          <SheetFooter className="shrink-0 border-t px-6 py-4 flex-row gap-3 mt-0">
+            <Button variant="outline" className="flex-1" onClick={() => setSheetOpen(false)}>
               取消
             </Button>
-            <Button onClick={savePins} data-testid="save-pins">
+            <Button className="flex-1" onClick={savePins} data-testid="save-pins">
               保存
             </Button>
-          </div>
+          </SheetFooter>
         </SheetContent>
       </Sheet>
-    </div>
+    </>
   )
 }

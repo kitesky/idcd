@@ -6,7 +6,7 @@ export const metadata = {
 
 export default function AccountPage() {
   return (
-    <main className="flex-1 container max-w-3xl py-8">
+    <main className="flex-1 container max-w-3xl">
       <AccountClient />
     </main>
   )

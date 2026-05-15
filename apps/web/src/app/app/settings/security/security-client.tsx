@@ -62,7 +62,7 @@ export function SecurityClient() {
   useEffect(() => {
     setPasskeyLoading(true)
     apiRequest<{ data: { passkeys: PasskeyItem[] } }>("/v1/account/passkeys")
-      .then((res) => setPasskeys(res.data.passkeys))
+      .then((res) => setPasskeys(res.data.passkeys ?? []))
       .catch(() => {
         // Silently ignore — leave empty list; server may be unavailable during dev/test
       })

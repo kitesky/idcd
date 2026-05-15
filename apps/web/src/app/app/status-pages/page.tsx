@@ -8,16 +8,14 @@ export const metadata: Metadata = {
 
 export default function StatusPagesPage() {
   return (
-    <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">状态页管理</h1>
-          <p className="mt-2 text-muted-foreground">
-            创建和管理对外公开的服务状态页
-          </p>
-        </div>
-        <StatusPagesClient />
+    <>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight">状态页管理</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          创建和管理对外公开的服务状态页
+        </p>
       </div>
-    </div>
+      <StatusPagesClient />
+    </>
   )
 }

@@ -21,7 +21,8 @@ import { apiRequest } from "@/lib/api"
 
 interface ReferralCode {
   code: string
-  referral_url: string
+  uses_count: number
+  url: string
 }
 
 interface Reward {
@@ -48,7 +49,7 @@ export default function ReferralPage() {
       setError(null)
       try {
         const [codeRes, rewardsRes] = await Promise.all([
-          apiRequest<{ data: ReferralCode }>("/v1/referral/code"),
+          apiRequest<{ data: ReferralCode }>("/v1/referral/code", { method: "POST" }),
           apiRequest<{ data: { rewards: Reward[] } }>("/v1/referral/rewards"),
         ])
         setCodeData(codeRes.data)
@@ -67,7 +68,7 @@ export default function ReferralPage() {
 
   function handleCopy() {
     if (!codeData) return
-    navigator.clipboard.writeText(codeData.referral_url).then(() => {
+    navigator.clipboard.writeText(codeData.url).then(() => {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     })

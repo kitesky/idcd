@@ -60,12 +60,13 @@ type UpdatePostmortemRequest struct {
 }
 
 type IncidentListItem struct {
-	EventID    string  `json:"event_id"`
-	MonitorID  string  `json:"monitor_id"`
-	Status     string  `json:"status"`
-	StartedAt  string  `json:"started_at"`
-	ResolvedAt *string `json:"resolved_at,omitempty"`
-	HasDraft   bool    `json:"has_draft"`
+	EventID     string  `json:"event_id"`
+	MonitorID   string  `json:"monitor_id"`
+	MonitorName string  `json:"monitor_name"`
+	Status      string  `json:"status"`
+	StartedAt   string  `json:"started_at"`
+	ResolvedAt  *string `json:"resolved_at,omitempty"`
+	HasDraft    bool    `json:"has_draft"`
 }
 
 func (h *PostmortemHandler) Draft(w http.ResponseWriter, r *http.Request) {
@@ -316,9 +317,10 @@ func (h *PostmortemHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	rows, err := h.pool.Query(ctx, `
-		SELECT ae.id, ae.monitor_id, ae.status, ae.started_at, ae.resolved_at,
+		SELECT ae.id, ae.monitor_id, COALESCE(m.name, ae.monitor_id), ae.status, ae.started_at, ae.resolved_at,
 		       (EXISTS (SELECT 1 FROM incident_postmortems pm WHERE pm.alert_event_id = ae.id)) AS has_draft
 		FROM alert_events ae
+		LEFT JOIN monitors m ON m.id = ae.monitor_id
 		WHERE EXISTS (
 		    SELECT 1 FROM alert_policies ap
 		    WHERE ap.id = ae.policy_id AND ap.user_id = $1
@@ -336,7 +338,7 @@ func (h *PostmortemHandler) List(w http.ResponseWriter, r *http.Request) {
 		var item IncidentListItem
 		var startedAt time.Time
 		var resolvedAt *time.Time
-		if err := rows.Scan(&item.EventID, &item.MonitorID, &item.Status,
+		if err := rows.Scan(&item.EventID, &item.MonitorID, &item.MonitorName, &item.Status,
 			&startedAt, &resolvedAt, &item.HasDraft); err != nil {
 			response.Error(w, r, apperr.Internal("failed to scan incident", err))
 			return
@@ -356,5 +358,5 @@ func (h *PostmortemHandler) List(w http.ResponseWriter, r *http.Request) {
 	if items == nil {
 		items = []IncidentListItem{}
 	}
-	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
+	response.JSON(w, r, http.StatusOK, map[string]any{"incidents": items})
 }

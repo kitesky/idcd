@@ -27,24 +27,22 @@ vi.mock("next/link", () => ({
 
 const mockIncidents = [
   {
-    alert_event_id: "ev_001",
+    event_id: "ev_001",
     monitor_id: "m1",
     monitor_name: "API Gateway",
     status: "resolved",
-    severity: "high",
     started_at: "2026-05-13T14:23:00Z",
     resolved_at: "2026-05-13T15:10:00Z",
-    has_postmortem: true,
+    has_draft: true,
   },
   {
-    alert_event_id: "ev_002",
+    event_id: "ev_002",
     monitor_id: "m2",
     monitor_name: "Payment Service",
     status: "resolved",
-    severity: "critical",
     started_at: "2026-05-12T09:11:00Z",
     resolved_at: null,
-    has_postmortem: false,
+    has_draft: false,
   },
 ]
 
@@ -98,11 +96,11 @@ describe("IncidentsPage", () => {
     })
   })
 
-  it("renders severity badges for each incident", async () => {
+  it("renders postmortem status badges for each incident", async () => {
     mockedApiRequest.mockResolvedValueOnce({ data: { incidents: mockIncidents } })
     render(<IncidentsPage />)
     await waitFor(() => {
-      const badges = screen.getAllByTestId(/^severity-badge-/)
+      const badges = screen.getAllByTestId(/^postmortem-status-/)
       expect(badges.length).toBeGreaterThan(0)
     })
   })

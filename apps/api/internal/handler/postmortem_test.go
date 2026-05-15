@@ -211,6 +211,37 @@ func TestPostmortemHandler_List_Empty(t *testing.T) {
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
 	data := resp["data"].(map[string]any)
-	items := data["items"].([]any)
+	items := data["incidents"].([]any)
 	assert.Len(t, items, 0)
+}
+
+func TestPostmortemHandler_List_WithMonitorName(t *testing.T) {
+	startedAt := time.Now().Add(-2 * time.Hour)
+	resolvedAt := time.Now().Add(-1 * time.Hour)
+	pool := &mockPMPool{
+		queryRowsData: &mockPMRows{
+			rows: [][]any{
+				{"ev_001", "mon_1", "API Gateway", "resolved", startedAt, &resolvedAt, true},
+				{"ev_002", "mon_2", "mon_2", "firing", time.Now().Add(-30 * time.Minute), (*time.Time)(nil), false},
+			},
+		},
+	}
+	h := NewPostmortemHandler(pool)
+	req := httptest.NewRequest(http.MethodGet, "/v1/incidents", nil)
+	req = pmWithUserID(req, "usr_test")
+	rr := httptest.NewRecorder()
+	h.List(rr, req)
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	data := resp["data"].(map[string]any)
+	items := data["incidents"].([]any)
+	require.Len(t, items, 2)
+	first := items[0].(map[string]any)
+	assert.Equal(t, "ev_001", first["event_id"])
+	assert.Equal(t, "API Gateway", first["monitor_name"])
+	assert.Equal(t, true, first["has_draft"])
+	second := items[1].(map[string]any)
+	assert.Equal(t, "mon_2", second["monitor_name"])
+	assert.Equal(t, false, second["has_draft"])
 }

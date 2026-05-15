@@ -19,28 +19,13 @@ import {
 import { apiRequest } from "@/lib/api"
 
 interface Incident {
-  alert_event_id: string
+  event_id: string
   monitor_id: string
   monitor_name: string
   status: string
-  severity: string
   started_at: string
   resolved_at: string | null
-  has_postmortem: boolean
-}
-
-const severityVariant: Record<string, "destructive" | "secondary" | "outline" | "default"> = {
-  critical: "destructive",
-  high: "destructive",
-  medium: "secondary",
-  low: "outline",
-}
-
-const severityLabel: Record<string, string> = {
-  critical: "严重",
-  high: "高",
-  medium: "中",
-  low: "低",
+  has_draft: boolean
 }
 
 function formatDate(isoString: string | null): string {
@@ -81,7 +66,7 @@ export default function IncidentsPage() {
       setLoading(true)
       setError(null)
       try {
-        const res = await apiRequest<{ data: { incidents: Incident[] } }>("/v1/reports/incidents")
+        const res = await apiRequest<{ data: { incidents: Incident[] } }>("/v1/incidents")
         setIncidents(res.data.incidents ?? [])
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载失败，请刷新重试")
@@ -92,13 +77,12 @@ export default function IncidentsPage() {
     fetchIncidents()
   }, [])
 
-  async function handleGenerate(alertEventId: string) {
-    setGenerating(alertEventId)
+  async function handleGenerate(eventId: string) {
+    setGenerating(eventId)
     setGenerateError(null)
     try {
-      const res = await apiRequest<{ data: { id: string; title: string } }>("/v1/postmortems/draft", {
+      const res = await apiRequest<{ data: { id: string; title: string } }>(`/v1/incidents/${eventId}/draft`, {
         method: "POST",
-        body: JSON.stringify({ alert_event_id: alertEventId }),
       })
       router.push(`/app/incidents/${res.data.id}`)
     } catch (err) {
@@ -153,14 +137,13 @@ export default function IncidentsPage() {
                   <TableRow>
                     <TableHead>监控名</TableHead>
                     <TableHead>开始时间</TableHead>
-                    <TableHead>严重程度</TableHead>
                     <TableHead>复盘状态</TableHead>
                     <TableHead>操作</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {incidents.map((incident) => (
-                    <TableRow key={incident.alert_event_id} data-testid={`incident-row-${incident.alert_event_id}`}>
+                    <TableRow key={incident.event_id} data-testid={`incident-row-${incident.event_id}`}>
                       <TableCell className="font-medium">{incident.monitor_name}</TableCell>
                       <TableCell>
                         <span className="flex items-center gap-1 text-sm text-muted-foreground">
@@ -169,20 +152,12 @@ export default function IncidentsPage() {
                         </span>
                       </TableCell>
                       <TableCell>
-                        <Badge
-                          variant={severityVariant[incident.severity] ?? "outline"}
-                          data-testid={`severity-badge-${incident.alert_event_id}`}
-                        >
-                          {severityLabel[incident.severity] ?? incident.severity}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        {incident.has_postmortem ? (
-                          <Badge variant="secondary" data-testid={`postmortem-status-${incident.alert_event_id}`}>
+                        {incident.has_draft ? (
+                          <Badge variant="secondary" data-testid={`postmortem-status-${incident.event_id}`}>
                             已生成
                           </Badge>
                         ) : (
-                          <Badge variant="outline" data-testid={`postmortem-status-${incident.alert_event_id}`}>
+                          <Badge variant="outline" data-testid={`postmortem-status-${incident.event_id}`}>
                             未生成
                           </Badge>
                         )}
@@ -191,12 +166,12 @@ export default function IncidentsPage() {
                         <Button
                           size="sm"
                           variant="outline"
-                          onClick={() => handleGenerate(incident.alert_event_id)}
-                          disabled={generating === incident.alert_event_id}
-                          data-testid={`generate-btn-${incident.alert_event_id}`}
+                          onClick={() => handleGenerate(incident.event_id)}
+                          disabled={generating === incident.event_id}
+                          data-testid={`generate-btn-${incident.event_id}`}
                         >
                           <Zap className="mr-1 h-3 w-3" />
-                          {generating === incident.alert_event_id ? "生成中..." : "生成复盘"}
+                          {generating === incident.event_id ? "生成中..." : "生成复盘"}
                         </Button>
                       </TableCell>
                     </TableRow>

@@ -6,6 +6,8 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import {
+  Alert,
+  AlertDescription,
   Avatar,
   AvatarImage,
   AvatarFallback,
@@ -333,25 +335,27 @@ export default function ProfilePage() {
             </p>
 
             {showDeleteConfirm ? (
-              <div className="space-y-3 p-4 border border-destructive rounded-md">
-                <p className="text-sm font-medium">确定要删除账号吗？此操作无法撤销（30 天冷静期后）。</p>
-                <div className="flex gap-3">
-                  <Button
-                    variant="destructive"
-                    onClick={handleDeleteAccount}
-                    disabled={isDeleting}
-                  >
-                    {isDeleting ? "删除中..." : "确认删除"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={() => setShowDeleteConfirm(false)}
-                    disabled={isDeleting}
-                  >
-                    取消
-                  </Button>
-                </div>
-              </div>
+              <Alert variant="destructive">
+                <AlertDescription className="space-y-3">
+                  <p className="font-medium">确定要删除账号吗？此操作无法撤销（30 天冷静期后）。</p>
+                  <div className="flex gap-3">
+                    <Button
+                      variant="destructive"
+                      onClick={handleDeleteAccount}
+                      disabled={isDeleting}
+                    >
+                      {isDeleting ? "删除中..." : "确认删除"}
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowDeleteConfirm(false)}
+                      disabled={isDeleting}
+                    >
+                      取消
+                    </Button>
+                  </div>
+                </AlertDescription>
+              </Alert>
             ) : (
               <Button variant="destructive" onClick={handleDeleteAccount}>
                 删除账号

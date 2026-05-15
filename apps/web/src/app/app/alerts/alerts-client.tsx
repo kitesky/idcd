@@ -266,7 +266,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
 
       <div className="space-y-2">
         <Label>告警通道</Label>
-        <div className="space-y-2 rounded-md border p-3">
+        <Card><CardContent className="space-y-2 p-3">
           {channels.length === 0 && (
             <p className="text-sm text-muted-foreground">暂无通道，请先添加</p>
           )}
@@ -283,7 +283,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
               </span>
             </label>
           ))}
-        </div>
+        </CardContent></Card>
       </div>
 
       <div className="space-y-2">
@@ -707,7 +707,7 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
       {silences.length === 0 ? (
         <p className="text-center text-muted-foreground py-8 text-sm">暂无静默规则</p>
       ) : (
-        <div className="overflow-x-auto rounded-md border">
+        <Card className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
@@ -744,7 +744,7 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
               ))}
             </TableBody>
           </Table>
-        </div>
+        </Card>
       )}
     </div>
   )

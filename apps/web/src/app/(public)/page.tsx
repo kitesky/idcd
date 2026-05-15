@@ -1,22 +1,16 @@
 "use client"
 
-import { useState } from "react"
-import { useRouter } from "next/navigation"
-import Link from "next/link"
 import {
-  Globe,
-  Zap,
-  Shield,
   Globe2,
   Activity,
   Clock,
   TrendingUp,
-  Network,
-  Search,
-  Route,
-  Lock
+  Globe,
+  Zap,
+  Shield,
 } from "lucide-react"
-import { Button, Input, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge } from "@/components/ui"
+import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge } from "@/components/ui"
+import { HeroSearch } from "@/components/hero-search"
 
 const features = [
   {
@@ -93,69 +87,10 @@ const tools = [
 ]
 
 export default function HomePage() {
-  const [input, setInput] = useState("")
-  const router = useRouter()
-
-  const handleDiagnose = () => {
-    if (input.trim()) {
-      router.push(`/tools/diagnose?q=${encodeURIComponent(input.trim())}` as any)
-    }
-  }
-
-  const handleKeyPress = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") {
-      handleDiagnose()
-    }
-  }
-
   return (
     <main className="flex-1">
-      {/* Hero Section */}
-      <section className="relative py-20 lg:py-32">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h1 className="text-4xl font-bold tracking-tight text-foreground sm:text-6xl">
-              多地网络诊断，秒级定位问题
-            </h1>
-            <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-              覆盖全球 100+ 节点，HTTP/Ping/DNS/SSL/路由追踪一键诊断
-            </p>
-
-            {/* Diagnosis Input */}
-            <div className="mx-auto mt-10 max-w-md">
-              <div className="flex gap-2">
-                <Input
-                  type="text"
-                  placeholder="输入域名或 IP，如 github.com"
-                  value={input}
-                  onChange={(e) => setInput(e.target.value)}
-                  onKeyPress={handleKeyPress}
-                  className="flex-1"
-                />
-                <Button onClick={handleDiagnose} disabled={!input.trim()}>
-                  一键诊断
-                </Button>
-              </div>
-
-              {/* Quick Links */}
-              <div className="mt-4 flex flex-wrap justify-center gap-2">
-                <Badge variant="secondary">
-                  <a href="/tools/http" className="hover:underline">HTTP 测试</a>
-                </Badge>
-                <Badge variant="secondary">
-                  <a href="/tools/ping" className="hover:underline">Ping</a>
-                </Badge>
-                <Badge variant="secondary">
-                  <a href="/tools/dns" className="hover:underline">DNS</a>
-                </Badge>
-                <Badge variant="secondary">
-                  <a href="/tools/ssl" className="hover:underline">SSL</a>
-                </Badge>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+      {/* Hero Section — HeroSearch 独立组件 */}
+      <HeroSearch />
 
       {/* Features Section */}
       <section className="py-20 lg:py-32">

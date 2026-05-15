@@ -18,14 +18,28 @@ export interface DiagnoseReport {
   errorCount: number
 }
 
-// Module-level store — shared within same Node.js process (dev/single-instance).
-// Replace with Redis for multi-instance production.
-const store = new Map<string, DiagnoseReport>()
+const INTERNAL_API = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 
-export function saveReport(report: DiagnoseReport): void {
-  store.set(report.id, report)
+export async function saveReport(report: DiagnoseReport): Promise<void> {
+  try {
+    await fetch(`${INTERNAL_API}/v1/diagnose/reports`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(report),
+    })
+  } catch {
+    // Best-effort: if API is unavailable, silently skip
+  }
 }
 
-export function getReport(id: string): DiagnoseReport | undefined {
-  return store.get(id)
+export async function getReport(id: string): Promise<DiagnoseReport | null> {
+  try {
+    const res = await fetch(`${INTERNAL_API}/v1/diagnose/reports/${id}`, {
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    return res.json() as Promise<DiagnoseReport>
+  } catch {
+    return null
+  }
 }

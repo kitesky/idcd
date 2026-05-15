@@ -249,7 +249,7 @@ export async function GET(req: NextRequest) {
 
       await Promise.allSettled(checkPromises)
 
-      saveReport({
+      await saveReport({
         id: reportId,
         domain,
         createdAt: new Date().toISOString(),

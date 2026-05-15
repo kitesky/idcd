@@ -317,6 +317,10 @@ func (s *Server) setupRouter() {
 				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)
+			// Diagnose report storage (Redis-backed, no auth — called server-side by Next.js)
+			diagReportH := handler.NewDiagnoseReportHandler(s.redis)
+			r.Post("/diagnose/reports", diagReportH.SaveReport)
+			r.Get("/diagnose/reports/{id}", diagReportH.GetReport)
 			// Node directory endpoint
 			nodesH := handler.NewNodesHandler(s.pgxPool)
 			r.Get("/nodes", nodesH.List)

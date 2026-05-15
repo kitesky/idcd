@@ -13,7 +13,7 @@ type Props = {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
-  const report = getReport(id)
+  const report = await getReport(id)
   const domain = report?.domain ?? "未知域名"
   const date = report
     ? new Date(report.createdAt).toLocaleDateString("zh-CN")
@@ -32,7 +32,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function ReportPage({ params }: Props) {
   const { id } = await params
-  const report = getReport(id)
+  const report = await getReport(id)
 
   if (!report) {
     notFound()

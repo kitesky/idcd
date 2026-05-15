@@ -366,7 +366,6 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         <CardHeader>
           <CardTitle className="text-base">最近检测记录</CardTitle>
         </CardHeader>
-        <div className="overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -426,7 +425,6 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             )}
           </TableBody>
         </Table>
-        </div>
       </Card>
     </div>
   )

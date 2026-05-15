@@ -319,7 +319,7 @@ export function TeamClient() {
             <Skeleton className="h-5 w-40" data-testid="skeleton-team-name" />
             <Skeleton className="h-4 w-64 mt-1" />
           </CardHeader>
-          <CardContent className="overflow-x-auto overflow-x-auto">
+          <CardContent className="overflow-x-auto">
             <Table
             <Table>
               <TableHeader>
@@ -417,7 +417,7 @@ export function TeamClient() {
           </Button>
         </CardHeader>
 
-        <CardContent className="overflow-x-auto overflow-x-auto">
+        <CardContent className="overflow-x-auto">
           <Table
           <Table data-testid="members-table">
             <TableHeader>
@@ -477,7 +477,7 @@ export function TeamClient() {
           <CardHeader>
             <CardTitle className="text-base">待处理邀请</CardTitle>
           </CardHeader>
-          <CardContent className="overflow-x-auto overflow-x-auto">
+          <CardContent className="overflow-x-auto">
             <Table
             <Table data-testid="invitations-table">
               <TableHeader>
@@ -527,7 +527,7 @@ export function TeamClient() {
             添加 Key
           </Button>
         </CardHeader>
-        <CardContent className="overflow-x-auto overflow-x-auto">
+        <CardContent className="overflow-x-auto">
           <Table
           <Table data-testid="team-keys-table">
             <TableHeader>

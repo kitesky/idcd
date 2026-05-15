@@ -358,8 +358,7 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
         </Alert>
       )}
 
-      <Card className="overflow-x-auto">
-        <Table>
+      <Table>
           <TableHeader>
             <TableRow>
               <TableHead>监控名</TableHead>
@@ -595,8 +594,7 @@ function PoliciesTab({
         </Button>
       </div>
 
-      <Card className="overflow-x-auto">
-        <Table>
+      <Table>
           <TableHeader>
             <TableRow>
               <TableHead>策略名</TableHead>
@@ -707,8 +705,7 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
       {silences.length === 0 ? (
         <p className="text-center text-muted-foreground py-8 text-sm">暂无静默规则</p>
       ) : (
-        <Card className="overflow-x-auto">
-          <Table>
+        <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>监控</TableHead>
@@ -743,8 +740,7 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
                 </TableRow>
               ))}
             </TableBody>
-          </Table>
-        </Card>
+        </Table>
       )}
     </div>
   )

@@ -71,3 +71,5 @@ export {
   SidebarMenuSubButton, SidebarMenuSubItem, SidebarProvider, SidebarRail,
   SidebarSeparator, SidebarTrigger, useSidebar,
 } from './sidebar'
+export { DataTable } from './data-table'
+export type { DataTablePagination, DataTableSort } from './data-table'

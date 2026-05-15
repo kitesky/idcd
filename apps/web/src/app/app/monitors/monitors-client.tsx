@@ -45,6 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
+import { ChevronLeft, ChevronRight } from "lucide-react"
 import { type MonitorType, TYPE_LABELS } from "./types"
 
 // ── Backend API types ────────────────────────────────────────────────────────
@@ -133,6 +134,8 @@ function formatRelativeTime(iso: string): string {
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
+const PAGE_SIZE = 20
+
 export function MonitorsClient() {
   const router = useRouter()
   const [monitors, setMonitors] = useState<Monitor[]>([])
@@ -143,23 +146,26 @@ export function MonitorsClient() {
   const [pendingBulkAction, setPendingBulkAction] = useState<
     "pause" | "resume" | "delete" | null
   >(null)
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
-  const fetchMonitors = useCallback(async () => {
+  const fetchMonitors = useCallback(async (p = page) => {
     setLoading(true)
     setError(null)
     try {
       const res = await apiRequest<{ data: { monitors: ApiMonitor[]; total: number } }>(
-        "/v1/monitors"
+        `/v1/monitors?page=${p}&limit=${PAGE_SIZE}`
       )
       setMonitors((res.data?.monitors ?? []).map(fromApi))
+      setTotal(res.data?.total ?? 0)
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败")
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [page])
 
   useEffect(() => {
     fetchMonitors()
@@ -375,8 +381,7 @@ export function MonitorsClient() {
       </div>
 
       {/* 监控列表表格 */}
-      <Card className="overflow-x-auto">
-        <Table>
+      <Table>
           <TableHeader>
             <TableRow>
               <TableHead className="w-10">
@@ -525,7 +530,30 @@ export function MonitorsClient() {
             )}
           </TableBody>
         </Table>
-      </Card>
+
+      {/* 分页 */}
+      {total > PAGE_SIZE && (
+        <div className="flex items-center justify-between text-sm text-muted-foreground">
+          <span>共 {total} 个监控</span>
+          <div className="flex items-center gap-1.5">
+            <Button
+              variant="outline" size="icon" className="h-7 w-7"
+              disabled={page <= 1 || loading}
+              onClick={() => { setPage(p => p - 1); fetchMonitors(page - 1) }}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="px-2 tabular-nums">{page} / {Math.ceil(total / PAGE_SIZE)}</span>
+            <Button
+              variant="outline" size="icon" className="h-7 w-7"
+              disabled={page >= Math.ceil(total / PAGE_SIZE) || loading}
+              onClick={() => { setPage(p => p + 1); fetchMonitors(page + 1) }}
+            >
+              <ChevronRight className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      )}
 
       {/* 批量操作浮动栏 */}
       {selectedIds.size > 0 && (

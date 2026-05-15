@@ -232,7 +232,6 @@ export function TokensClient() {
               暂无 Token，点击"生成新 Token"开始使用
             </p>
           ) : (
-            <div className="overflow-x-auto">
             <Table data-testid="tokens-table">
               <TableHeader>
                 <TableRow>

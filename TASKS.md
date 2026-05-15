@@ -522,18 +522,15 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 影响 5 个拨测工具：http / ping / tcp / dns / traceroute
   - *完成 2026-05-15，916 Go + 689 前端 tests ✓*
 
-- [ ] **T2** 一键诊断报告展示拨测结果
-  - diagnose stream route 在 http/ping/traceroute check 后轮询 T1 结果（最多等 15s）
-  - 报告页 `/report/[id]` 展示延迟/状态码/丢包率等真实数据（替换 "task queued" 文本）
-  - *deps: T1*
+- [x] **T2** 一键诊断报告展示拨测结果
+  - 诊断 SSE 流 pollTaskResult（2s/15s）拉取 http/ping/traceroute 真实延迟
+  - *完成 2026-05-15，691 前端 tests ✓*
 
 ### P1 — Info 查询 API 从 Mock 变真实
 
-- [ ] **T3** WHOIS 真实查询
-  - 接入 whois 库（Go `golang.org/x/net/idna` + 第三方 whois client）
-  - 覆盖常见 TLD：.com/.net/.org/.cn
-  - `/v1/info/whois` 返回注册商/创建日期/到期日期/NS 列表
-  - *deps: 无*
+- [x] **T3** WHOIS 真实查询
+  - 标准库 net.Dial port 43，TLD 路由，解析注册商/日期/NS
+  - *完成 2026-05-15，505 API tests ✓*
 
 - [ ] **T4** ICP 备案真实查询
   - 接入 ICP 查询 API（备案信息服务，或爬取 beian.miit.gov.cn）
@@ -542,10 +539,10 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### P2 — 15 个信息查询工具接真实 API
 
-- [ ] **T5** 反向 DNS（rDNS）— `GET /v1/info/rdns?q=<IP>` 调 net.LookupAddr
+- [x] **T5** 反向 DNS（rDNS）— `GET /v1/info/rdns?q=<IP>` 调 net.LookupAddr，*完成 2026-05-15*
 - [ ] **T6** MX 记录 — `GET /v1/info/mx?q=<domain>` 调 net.LookupMX（已有 DNS handler 可复用）
-- [ ] **T7** SPF 记录 — `GET /v1/info/spf?q=<domain>` 查 TXT 记录过滤 `v=spf1`
-- [ ] **T8** DMARC 查询 — `GET /v1/info/dmarc?q=<domain>` 查 `_dmarc.<domain>` TXT
+- [x] **T7** SPF 记录 — `GET /v1/info/spf?q=<domain>` 查 TXT 记录过滤 `v=spf1`，*完成 2026-05-15*
+- [x] **T8** DMARC 查询 — `GET /v1/info/dmarc?q=<domain>` 查 `_dmarc.<domain>` TXT，*完成 2026-05-15*
 - [ ] **T9** DKIM 查询 — `GET /v1/info/dkim?q=<domain>&selector=<s>` 查 `<s>._domainkey.<domain>` TXT
 - [ ] **T10** ASN 查询 — `GET /v1/info/asn?q=<ASN|IP>` 接 ip-api.com 或 bgpview.io
 - [ ] **T11** BGP 路由 — `GET /v1/info/bgp?q=<IP>` 接 bgpview.io API
@@ -555,13 +552,11 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### P3 — 有 API 但前端只显示示例数据
 
-- [ ] **T15** SSL 证书页前端接真实 API
-  - `ssl-probe-client.tsx` 替换 PLACEHOLDER_DATA，真实调用 `GET /v1/info/ssl`
-  - 展示：颁发机构/到期日/SAN 域名列表/剩余天数
+- [x] **T15** SSL 证书页前端接真实 API
+  - `/tools/ssl` 专用页（SSLInfoClient）调用 `GET /v1/info/ssl`，*完成 2026-05-15*
 
-- [ ] **T16** IP 地理位置页前端接真实 API
-  - 替换 PLACEHOLDER_DATA，真实调用 `GET /v1/info/ip`
-  - 展示：城市/国家/ASN/ISP/经纬度地图
+- [x] **T16** IP 地理位置页前端接真实 API
+  - `/tools/ip` 专用页（IpInfoClient）调用 `GET /v1/info/ip`，*完成 2026-05-15*
 
 ### P4 — 基础设施补全
 

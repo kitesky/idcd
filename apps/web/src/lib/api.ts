@@ -147,3 +147,66 @@ export async function getSSLInfo(domain: string): Promise<SSLInfo> {
 export async function getWhoisInfo(domain: string): Promise<WhoisInfo> {
   return apiRequest<WhoisInfo>(`/v1/info/whois?q=${encodeURIComponent(domain)}`)
 }
+
+// Billing API
+export interface Subscription {
+  id: string
+  plan: string
+  status: "pending" | "active" | "cancelled" | "past_due"
+  provider: string
+  ext_sub_id?: string
+  current_period_start?: string
+  current_period_end?: string
+  cancel_at?: string
+  created_at: string
+}
+
+export interface Invoice {
+  id: string
+  subscription_id?: string
+  amount_cents: number
+  currency: string
+  status: "paid" | "refunded" | "refund_failed"
+  provider: string
+  ext_invoice_id?: string
+  paid_at?: string
+  created_at: string
+}
+
+export interface InvoicesResponse {
+  invoices: Invoice[]
+  total: number
+  page: number
+  page_size: number
+}
+
+export interface SubscribeResponse {
+  subscription_id: string
+  pay_url: string
+  expires_at: string
+}
+
+export async function getSubscription(): Promise<Subscription | null> {
+  try {
+    return await apiRequest<Subscription>("/v1/billing/subscription")
+  } catch {
+    return null
+  }
+}
+
+export async function getInvoices(page = 1, pageSize = 20): Promise<InvoicesResponse> {
+  return apiRequest<InvoicesResponse>(
+    `/v1/billing/invoices?page=${page}&page_size=${pageSize}`
+  )
+}
+
+export async function subscribePlan(plan: string, channel?: string): Promise<SubscribeResponse> {
+  return apiRequest<SubscribeResponse>("/v1/billing/subscribe", {
+    method: "POST",
+    body: JSON.stringify({ plan, ...(channel ? { channel } : {}) }),
+  })
+}
+
+export async function cancelSubscription(): Promise<void> {
+  await apiRequest("/v1/billing/cancel", { method: "POST" })
+}

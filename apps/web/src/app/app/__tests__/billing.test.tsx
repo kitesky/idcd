@@ -1,16 +1,189 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import { BillingClient } from "../billing/billing-client"
 import { UsageClient } from "../usage/usage-client"
 import { StatusPagesClient } from "../status-pages/status-pages-client"
 
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+  useSearchParams: () => ({ get: () => null }),
+}))
+
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), info: vi.fn() },
+}))
+
 vi.mock("@/lib/api", () => ({
   apiRequest: vi.fn(),
   API_BASE: "http://localhost:8080",
+  getSubscription: vi.fn(),
+  getInvoices: vi.fn(),
+  subscribePlan: vi.fn(),
+  cancelSubscription: vi.fn(),
 }))
 
-import { apiRequest } from "@/lib/api"
+import { apiRequest, getSubscription, getInvoices } from "@/lib/api"
 const mockApiRequest = vi.mocked(apiRequest)
+const mockGetSubscription = vi.mocked(getSubscription)
+const mockGetInvoices = vi.mocked(getInvoices)
+
+const emptyInvoices = { invoices: [], total: 0, page: 1, page_size: 20 }
+
+// ── BillingClient tests ────────────────────────────────────────────────────────
+
+describe("BillingClient", () => {
+  beforeEach(() => {
+    mockGetSubscription.mockResolvedValue(null) // no subscription = free
+    mockGetInvoices.mockResolvedValue(emptyInvoices)
+  })
+
+  it("renders the billing page container", () => {
+    render(<BillingClient />)
+    expect(screen.getByTestId("billing-page")).toBeInTheDocument()
+  })
+
+  it("shows loading skeletons while fetching subscription", () => {
+    mockGetSubscription.mockImplementation(() => new Promise(() => {}))
+    render(<BillingClient />)
+    expect(screen.getByTestId("current-plan-card")).toBeInTheDocument()
+  })
+
+  it("shows Free badge after subscription loads (no active subscription)", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      const badge = screen.getByTestId("current-plan-badge")
+      expect(badge.textContent).toBe("Free")
+    })
+  })
+
+  it("shows upgrade button for free users", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("upgrade-button")).toBeInTheDocument()
+    })
+  })
+
+  it("upgrade button text says '升级到 Pro'", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("upgrade-button").textContent).toContain("升级到 Pro")
+    })
+  })
+
+  it("pricing table renders 4 plan columns", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("pricing-table")).toBeInTheDocument()
+      expect(screen.getByTestId("plan-button-free")).toBeInTheDocument()
+      expect(screen.getByTestId("plan-button-pro")).toBeInTheDocument()
+      expect(screen.getByTestId("plan-button-team")).toBeInTheDocument()
+      expect(screen.getByTestId("plan-button-business")).toBeInTheDocument()
+    })
+  })
+
+  it("Free plan button is disabled (current plan for free user)", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-button-free")).toBeDisabled()
+    })
+  })
+
+  it("non-free plan buttons are enabled for free user", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("plan-button-pro")).not.toBeDisabled()
+      expect(screen.getByTestId("plan-button-team")).not.toBeDisabled()
+      expect(screen.getByTestId("plan-button-business")).not.toBeDisabled()
+    })
+  })
+
+  it("shows empty invoice section", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("invoice-section")).toBeInTheDocument()
+      expect(screen.getByTestId("empty-invoice-text")).toBeInTheDocument()
+    })
+  })
+
+  it("pricing table shows custom domain row", async () => {
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByText("自定义域名")).toBeInTheDocument()
+    })
+  })
+
+  it("upgrade button opens payment channel dialog", async () => {
+    render(<BillingClient />)
+    const btn = await screen.findByTestId("upgrade-button")
+    fireEvent.click(btn)
+    await screen.findByTestId("upgrade-dialog")
+    expect(screen.getByTestId("upgrade-dialog")).toBeInTheDocument()
+  })
+
+  it("dialog shows alipay and wechat_pay options", async () => {
+    render(<BillingClient />)
+    const btn = await screen.findByTestId("upgrade-button")
+    fireEvent.click(btn)
+    await screen.findByText("支付宝")
+    expect(screen.getByText("微信支付")).toBeInTheDocument()
+  })
+
+  it("shows Pro badge and cancel button when active on Pro plan", async () => {
+    mockGetSubscription.mockResolvedValue({
+      id: "sub_001",
+      plan: "pro",
+      status: "active",
+      provider: "payment_hub",
+      current_period_end: "2026-06-15T00:00:00Z",
+      created_at: "2026-05-15T00:00:00Z",
+    })
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("current-plan-badge").textContent).toBe("Pro")
+      expect(screen.getByTestId("cancel-button")).toBeInTheDocument()
+    })
+  })
+
+  it("shows invoice rows when invoices are returned", async () => {
+    mockGetInvoices.mockResolvedValue({
+      invoices: [
+        {
+          id: "inv_001",
+          amount_cents: 9900,
+          currency: "CNY",
+          status: "paid",
+          provider: "payment_hub",
+          paid_at: "2026-05-15T10:00:00Z",
+          created_at: "2026-05-15T10:00:00Z",
+        },
+      ],
+      total: 1,
+      page: 1,
+      page_size: 20,
+    })
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("invoice-row-inv_001")).toBeInTheDocument()
+      expect(screen.getByText("¥99.00")).toBeInTheDocument()
+    })
+  })
+
+  it("shows past_due alert when subscription is overdue", async () => {
+    mockGetSubscription.mockResolvedValue({
+      id: "sub_002",
+      plan: "pro",
+      status: "past_due",
+      provider: "payment_hub",
+      created_at: "2026-04-01T00:00:00Z",
+    })
+    render(<BillingClient />)
+    await waitFor(() => {
+      expect(screen.getByTestId("past-due-alert")).toBeInTheDocument()
+    })
+  })
+})
+
+// ── UsageClient tests ──────────────────────────────────────────────────────────
 
 const mockQuotaData = {
   data: {
@@ -23,72 +196,6 @@ const mockQuotaData = {
     max_nodes: 1,
   },
 }
-
-// ── BillingClient tests ────────────────────────────────────────────────────────
-
-describe("BillingClient", () => {
-  it("renders the billing page container", () => {
-    render(<BillingClient />)
-    expect(screen.getByTestId("billing-page")).toBeInTheDocument()
-  })
-
-  it("shows Free badge on current plan card", () => {
-    render(<BillingClient />)
-    const badge = screen.getByTestId("current-plan-badge")
-    expect(badge).toBeInTheDocument()
-    expect(badge.textContent).toBe("Free")
-  })
-
-  it("renders upgrade to Pro button", () => {
-    render(<BillingClient />)
-    const btn = screen.getByTestId("upgrade-button")
-    expect(btn).toBeInTheDocument()
-    expect(btn.textContent).toContain("升级到 Pro")
-  })
-
-  it("pricing table renders 4 plan columns (Free, Pro, Team, Business)", () => {
-    render(<BillingClient />)
-    const table = screen.getByTestId("pricing-table")
-    expect(table).toBeInTheDocument()
-    // 4 plan-button-* elements: one per plan
-    expect(screen.getByTestId("plan-button-free")).toBeInTheDocument()
-    expect(screen.getByTestId("plan-button-pro")).toBeInTheDocument()
-    expect(screen.getByTestId("plan-button-team")).toBeInTheDocument()
-    expect(screen.getByTestId("plan-button-business")).toBeInTheDocument()
-  })
-
-  it("Free plan button is disabled (current plan)", () => {
-    render(<BillingClient />)
-    const freeBtn = screen.getByTestId("plan-button-free")
-    expect(freeBtn).toBeDisabled()
-  })
-
-  it("non-free plan buttons are not disabled", () => {
-    render(<BillingClient />)
-    expect(screen.getByTestId("plan-button-pro")).not.toBeDisabled()
-    expect(screen.getByTestId("plan-button-team")).not.toBeDisabled()
-    expect(screen.getByTestId("plan-button-business")).not.toBeDisabled()
-  })
-
-  it("shows Paddle placeholder notice", () => {
-    render(<BillingClient />)
-    expect(screen.getByTestId("paddle-notice")).toBeInTheDocument()
-    expect(screen.getByText("支付功能即将上线")).toBeInTheDocument()
-  })
-
-  it("shows empty invoice section", () => {
-    render(<BillingClient />)
-    expect(screen.getByTestId("invoice-section")).toBeInTheDocument()
-    expect(screen.getByText("暂无发票记录")).toBeInTheDocument()
-  })
-
-  it("pricing table contains custom domain row with checkmarks and crosses", () => {
-    render(<BillingClient />)
-    expect(screen.getByText("自定义域名")).toBeInTheDocument()
-  })
-})
-
-// ── UsageClient tests ──────────────────────────────────────────────────────────
 
 describe("UsageClient", () => {
   beforeEach(() => {

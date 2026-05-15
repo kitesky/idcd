@@ -1,3 +1,4 @@
+import { Suspense } from "react"
 import type { Metadata } from "next"
 import { BillingClient } from "./billing-client"
 
@@ -16,7 +17,9 @@ export default function BillingPage() {
             管理您的订阅方案、查看用量和下载发票
           </p>
         </div>
-        <BillingClient />
+        <Suspense>
+          <BillingClient />
+        </Suspense>
       </div>
     </div>
   )

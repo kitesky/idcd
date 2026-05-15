@@ -254,14 +254,14 @@ export default function ReportsPage() {
   return (
     <div data-testid="reports-page">
       <GlobalPrintStyle />
-      <div className="mb-6 flex items-center justify-between gap-4">
+      <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">SLA 月报</h1>
           <p className="mt-1 text-sm text-muted-foreground">
             查看每个监控在过去几个月的可用率统计
           </p>
         </div>
-          <div className="no-print flex items-center gap-2">
+          <div className="no-print flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -345,7 +345,7 @@ export default function ReportsPage() {
                     {uptimeBadge(monitor.avg_uptime_pct)}
                   </div>
                 </CardHeader>
-                <CardContent>
+                <CardContent className="overflow-x-auto">
                   <Table>
                     <TableHeader>
                       <TableRow>

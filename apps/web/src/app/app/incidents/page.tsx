@@ -123,7 +123,7 @@ export default function IncidentsPage() {
           <CardHeader>
             <CardTitle>告警事件</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="overflow-x-auto">
             {loading ? (
               <IncidentsTableSkeleton />
             ) : incidents.length === 0 ? (

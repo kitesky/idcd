@@ -402,7 +402,7 @@ export function SecurityClient() {
                   请将以下备用码保存在安全的地方。每个备用码只能使用一次，丢失后无法恢复。
                 </DialogDescription>
               </DialogHeader>
-              <div className="grid grid-cols-2 gap-2 py-2" data-testid="backup-codes-grid">
+              <div className="grid grid-cols-1 gap-2 py-2 sm:grid-cols-2" data-testid="backup-codes-grid">
                 {backupCodes.map((c) => (
                   <code
                     key={c}

@@ -447,6 +447,7 @@ function AlertEventsTab() {
   }
 
   return (
+    <div className="overflow-x-auto">
     <Table data-testid="alert-events-table">
       <TableHeader>
         <TableRow>
@@ -482,6 +483,7 @@ function AlertEventsTab() {
         ))}
       </TableBody>
     </Table>
+    </div>
   )
 }
 

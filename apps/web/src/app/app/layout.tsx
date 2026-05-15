@@ -129,7 +129,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* 主内容区 */}
-        <main className="flex flex-1 flex-col gap-6 p-6" data-testid="app-main">
+        <main className="flex flex-1 flex-col gap-4 p-4 sm:gap-6 sm:p-6" data-testid="app-main">
           {children}
         </main>
       </SidebarInset>

@@ -230,7 +230,7 @@ export default function ReferralPage() {
         <CardHeader>
           <CardTitle className="text-base">奖励记录</CardTitle>
         </CardHeader>
-        <CardContent className="p-0">
+        <CardContent className="p-0 overflow-x-auto">
           {rewards.length === 0 ? (
             <p className="px-6 py-4 text-sm text-muted-foreground" data-testid="no-rewards">
               暂无奖励记录

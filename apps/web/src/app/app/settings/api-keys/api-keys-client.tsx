@@ -218,6 +218,7 @@ export function APIKeysClient() {
               暂无 API Key，点击"创建 API Key"开始使用
             </p>
           ) : (
+            <div className="overflow-x-auto">
             <Table data-testid="api-keys-table">
               <TableHeader>
                 <TableRow>
@@ -295,6 +296,7 @@ export function APIKeysClient() {
                 ))}
               </TableBody>
             </Table>
+            </div>
           )}
         </CardContent>
       </Card>

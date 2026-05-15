@@ -17,7 +17,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
       <div className="flex-1 flex flex-col gap-8 lg:flex-row">
         {/* ── Sidebar nav ──────────────────────────────────────────── */}
         <nav
-          className="flex flex-row gap-1 lg:flex-col lg:w-48 shrink-0"
+          className="flex flex-row flex-wrap gap-1 lg:flex-col lg:flex-nowrap lg:w-48 shrink-0"
           data-testid="settings-nav"
           aria-label="设置导航"
         >

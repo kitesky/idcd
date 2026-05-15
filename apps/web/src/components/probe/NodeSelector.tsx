@@ -18,8 +18,8 @@ export default function NodeSelector({ selectedNodes, onNodesChange }: NodeSelec
     async function loadNodes() {
       try {
         setLoading(true)
-        const response = await getNodes()
-        setNodes(response.data || [])
+        const nodes = await getNodes()
+        setNodes(nodes)
         setError("")
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载节点列表失败")

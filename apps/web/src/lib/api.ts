@@ -107,8 +107,9 @@ export interface ProbeTaskResult {
 }
 
 // Nodes API
-export async function getNodes(): Promise<{ data: Node[] }> {
-  return apiRequest<{ data: Node[] }>("/v1/nodes")
+export async function getNodes(): Promise<Node[]> {
+  const res = await apiRequest<{ data: { nodes: Node[]; total: number } }>("/v1/nodes")
+  return res.data?.nodes ?? []
 }
 
 // Probe API — shared POST helper

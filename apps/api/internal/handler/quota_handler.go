@@ -21,6 +21,7 @@ type QuotaHandlerPool interface {
 // QuotaRateLimiter is the interface for querying current API usage.
 type QuotaRateLimiter interface {
 	CurrentUsage(ctx context.Context, userID string) (used int, err error)
+	DailyTrend(ctx context.Context, userID string) ([]quota.DayCount, error)
 }
 
 // QuotaHandler handles quota-related API endpoints.
@@ -53,13 +54,14 @@ type QuotaAPIUsageItem struct {
 
 // QuotaStatusResponse is the response body for GET /v1/account/quota.
 type QuotaStatusResponse struct {
-	Plan         string            `json:"plan"`
-	Monitors     QuotaUsageItem    `json:"monitors"`
-	Channels     QuotaUsageItem    `json:"channels"`
-	StatusPages  QuotaUsageItem    `json:"status_pages"`
-	APICalls     QuotaAPIUsageItem `json:"api_calls"`
-	MinIntervalS int               `json:"min_interval_s"`
-	MaxNodes     int               `json:"max_nodes"`
+	Plan            string            `json:"plan"`
+	Monitors        QuotaUsageItem    `json:"monitors"`
+	Channels        QuotaUsageItem    `json:"channels"`
+	StatusPages     QuotaUsageItem    `json:"status_pages"`
+	APICalls        QuotaAPIUsageItem `json:"api_calls"`
+	APICallsTrend   []quota.DayCount  `json:"api_calls_trend"`
+	MinIntervalS    int               `json:"min_interval_s"`
+	MaxNodes        int               `json:"max_nodes"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -85,12 +87,16 @@ func (h *QuotaHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 	chanCount := h.countChannels(ctx, userID)
 	spCount := h.countStatusPages(ctx, userID)
 
-	// Fetch daily API usage
+	// Fetch daily API usage and 7-day trend.
 	apiUsed := 0
+	var trend []quota.DayCount
 	if h.rateLim != nil {
 		used, err := h.rateLim.CurrentUsage(ctx, userID)
 		if err == nil {
 			apiUsed = used
+		}
+		if t, err := h.rateLim.DailyTrend(ctx, userID); err == nil {
+			trend = t
 		}
 	}
 
@@ -116,8 +122,9 @@ func (h *QuotaHandler) GetQuota(w http.ResponseWriter, r *http.Request) {
 			Limit:   limits.MaxAPIDailyReqs,
 			ResetAt: resetAt,
 		},
-		MinIntervalS: limits.MinIntervalS,
-		MaxNodes:     limits.MaxNodes,
+		APICallsTrend: trend,
+		MinIntervalS:  limits.MinIntervalS,
+		MaxNodes:      limits.MaxNodes,
 	}
 
 	response.JSON(w, r, http.StatusOK, resp)

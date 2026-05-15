@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/middleware"
+	"github.com/kite365/idcd/apps/api/internal/quota"
 )
 
 // ─────────────────────────────────────────────
@@ -38,7 +39,7 @@ func (m *mockQuotaHandlerPool) Exec(_ context.Context, _ string, _ ...any) (pgco
 	return pgconn.NewCommandTag(""), nil
 }
 
-// mockQuotaRateLimiter simulates the CurrentUsage call.
+// mockQuotaRateLimiter simulates the CurrentUsage and DailyTrend calls.
 type mockQuotaRateLimiter struct {
 	used int
 	err  error
@@ -46,6 +47,10 @@ type mockQuotaRateLimiter struct {
 
 func (m *mockQuotaRateLimiter) CurrentUsage(_ context.Context, _ string) (int, error) {
 	return m.used, m.err
+}
+
+func (m *mockQuotaRateLimiter) DailyTrend(_ context.Context, _ string) ([]quota.DayCount, error) {
+	return nil, m.err
 }
 
 // quotaHandlerInjectUserID adds a user ID to the request context.

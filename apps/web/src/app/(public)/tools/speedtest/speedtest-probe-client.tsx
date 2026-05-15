@@ -3,7 +3,7 @@
 import { useState } from "react"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
-import { probeSpeedtest, getProbeTask } from "@/lib/api"
+import { probeSpeedtest } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label, Badge } from "@/components/ui"
 import { useProbePolling } from "@/hooks/useProbePolling"
 
@@ -14,7 +14,7 @@ export default function SpeedtestProbeClient() {
   const [submitError, setSubmitError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const { result: taskResult } = useProbePolling(taskId)
+  const { taskResult } = useProbePolling(taskId)
 
   const downloadMbps = taskResult?.result
     ? (taskResult.result as Record<string, unknown>)["download_mbps"] as number | undefined

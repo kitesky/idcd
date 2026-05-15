@@ -42,12 +42,18 @@ interface QuotaAPIUsageItem {
   reset_at: number
 }
 
+interface DayCount {
+  date: string
+  count: number
+}
+
 interface QuotaData {
   plan: string
   monitors: QuotaUsageItem
   channels: QuotaUsageItem
   status_pages: QuotaUsageItem
   api_calls: QuotaAPIUsageItem
+  api_calls_trend: DayCount[]
   min_interval_s: number
   max_nodes: number
 }
@@ -72,18 +78,11 @@ function progressColor(used: number, limit: number): string {
   return ""
 }
 
-// 过去 7 天 API 调用趋势（演示数据）
-const API_TREND = [
-  { day: "周一", count: 32 },
-  { day: "周二", count: 58 },
-  { day: "周三", count: 41 },
-  { day: "周四", count: 75 },
-  { day: "周五", count: 89 },
-  { day: "周六", count: 23 },
-  { day: "今天", count: 47 },
-]
-
-const MAX_TREND = Math.max(...API_TREND.map((d) => d.count))
+function formatTrendLabel(date: string, isLast: boolean): string {
+  if (isLast) return "今天"
+  const d = new Date(date + "T00:00:00Z")
+  return ["日", "一", "二", "三", "四", "五", "六"][d.getUTCDay()]!
+}
 
 const REDEEM_OPTIONS = [
   { value: "api_calls", label: "1000 次 API 调用额度（500 积分）", points: 500 },
@@ -418,34 +417,41 @@ export function UsageClient() {
       <Card data-testid="api-trend-card">
         <CardHeader>
           <CardTitle className="text-base">API 调用趋势（过去 7 天）</CardTitle>
-          <CardDescription>每日 API 请求次数统计（演示数据）</CardDescription>
+          <CardDescription>每日 API 请求次数统计</CardDescription>
         </CardHeader>
         <CardContent>
-          <div
-            className="flex items-end gap-2 h-36"
-            data-testid="api-trend-chart"
-          >
-            {API_TREND.map((d) => {
-              const heightPct = MAX_TREND > 0 ? (d.count / MAX_TREND) * 100 : 0
-              return (
-                <div
-                  key={d.day}
-                  className="flex flex-1 flex-col items-center gap-1"
-                >
-                  <span className="text-xs text-muted-foreground tabular-nums">
-                    {d.count}
-                  </span>
-                  <div
-                    className="w-full rounded-t-sm bg-primary/70 transition-all"
-                    style={{ height: `${heightPct}%` }}
-                    title={`${d.day}: ${d.count} 次`}
-                    data-testid={`bar-${d.day}`}
-                  />
-                  <span className="text-xs text-muted-foreground">{d.day}</span>
+          {loading ? (
+            <div className="flex items-end gap-2 h-36" data-testid="api-trend-chart">
+              {Array.from({ length: 7 }).map((_, i) => (
+                <div key={i} className="flex flex-1 flex-col items-center gap-1">
+                  <Skeleton className="w-full h-20" />
+                  <Skeleton className="w-4 h-3" />
                 </div>
-              )
-            })}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="flex items-end gap-2 h-36" data-testid="api-trend-chart">
+              {(data?.api_calls_trend ?? []).map((d, i, arr) => {
+                const max = Math.max(...arr.map((x) => x.count), 1)
+                const heightPct = (d.count / max) * 100
+                const label = formatTrendLabel(d.date, i === arr.length - 1)
+                return (
+                  <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
+                    <span className="text-xs text-muted-foreground tabular-nums">
+                      {d.count}
+                    </span>
+                    <div
+                      className="w-full rounded-t-sm bg-primary/70 transition-all"
+                      style={{ height: `${heightPct}%` }}
+                      title={`${d.date}: ${d.count} 次`}
+                      data-testid={`bar-${d.date}`}
+                    />
+                    <span className="text-xs text-muted-foreground">{label}</span>
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </CardContent>
       </Card>
 

@@ -129,6 +129,14 @@ export const ALL_TOOLS: ToolDef[] = [
     metaTitle: 'BGP 路由查询 - IP 前缀路由信息 | idcd',
     metaDescription: '查询 IP 地址或网络前缀的 BGP 路由路径和 AS 路径信息。',
   },
+  {
+    slug: 'speedtest',
+    name: '网速测试',
+    description: '测试网络下载和上传带宽速度',
+    category: 'probe',
+    metaTitle: '网速测试 - 下载上传带宽测试 | idcd',
+    metaDescription: '通过多节点 HTTP 大包测速，测量网络下载和上传带宽（Mbps）。',
+  },
 
   // ── 辅助工具（35 个）────────────────────────────────────────────────
   {

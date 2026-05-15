@@ -159,7 +159,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                   max={100}
                   step={1}
                   value={[form.rollout_pct]}
-                  onValueChange={([v]) => setForm(p => ({ ...p, rollout_pct: v }))}
+                  onValueChange={([v]) => setForm(p => ({ ...p, rollout_pct: v ?? p.rollout_pct }))}
                 />
                 <div className="flex justify-between text-xs text-muted-foreground">
                   <span>1%</span>

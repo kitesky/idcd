@@ -192,6 +192,15 @@ const mockQuotaData = {
     channels: { used: 1, limit: 1 },
     status_pages: { used: 0, limit: 0 },
     api_calls: { used: 47, limit: 100, reset_at: 9999999999 },
+    api_calls_trend: [
+      { date: "2026-05-09", count: 32 },
+      { date: "2026-05-10", count: 58 },
+      { date: "2026-05-11", count: 41 },
+      { date: "2026-05-12", count: 75 },
+      { date: "2026-05-13", count: 89 },
+      { date: "2026-05-14", count: 23 },
+      { date: "2026-05-15", count: 47 },
+    ],
     min_interval_s: 300,
     max_nodes: 1,
   },
@@ -254,12 +263,11 @@ describe("UsageClient", () => {
     })
   })
 
-  it("API trend chart renders 7 bars", () => {
+  it("API trend chart renders 7 bars", async () => {
     render(<UsageClient />)
-    const chart = screen.getByTestId("api-trend-chart")
-    expect(chart).toBeInTheDocument()
-    expect(screen.getByTestId("bar-今天")).toBeInTheDocument()
-    expect(screen.getByTestId("bar-周一")).toBeInTheDocument()
+    await waitFor(() => expect(screen.getByTestId("bar-2026-05-15")).toBeInTheDocument())
+    expect(screen.getByTestId("api-trend-chart")).toBeInTheDocument()
+    expect(screen.getByTestId("bar-2026-05-09")).toBeInTheDocument()
   })
 })
 

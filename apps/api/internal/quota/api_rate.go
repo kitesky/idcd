@@ -14,6 +14,13 @@ type RedisIncrClient interface {
 	Incr(ctx context.Context, key string) *redis.IntCmd
 	Expire(ctx context.Context, key string, expiration time.Duration) *redis.BoolCmd
 	Get(ctx context.Context, key string) *redis.StringCmd
+	MGet(ctx context.Context, keys ...string) *redis.SliceCmd
+}
+
+// DayCount holds the API call count for a single calendar day.
+type DayCount struct {
+	Date  string `json:"date"`  // YYYY-MM-DD
+	Count int    `json:"count"`
 }
 
 // APIRateLimiter enforces per-user daily API call limits using a Redis INCR
@@ -95,6 +102,32 @@ func (r *APIRateLimiter) CurrentUsage(ctx context.Context, userID string) (used 
 		return 0, fmt.Errorf("quota: redis get failed: %w", err)
 	}
 	return val, nil
+}
+
+// DailyTrend returns the API call counts for the past 7 days (including today),
+// oldest day first. Missing keys (no activity that day) return count=0.
+func (r *APIRateLimiter) DailyTrend(ctx context.Context, userID string) ([]DayCount, error) {
+	now := r.now().UTC()
+	keys := make([]string, 7)
+	dates := make([]string, 7)
+	for i := range 7 {
+		d := now.AddDate(0, 0, -(6 - i))
+		dates[i] = d.Format("2006-01-02")
+		keys[i] = fmt.Sprintf("quota:api:%s:%s", userID, dates[i])
+	}
+	vals, err := r.rdb.MGet(ctx, keys...).Result()
+	if err != nil {
+		return nil, fmt.Errorf("quota: mget failed: %w", err)
+	}
+	out := make([]DayCount, 7)
+	for i, v := range vals {
+		count := 0
+		if s, ok := v.(string); ok && s != "" {
+			_, _ = fmt.Sscanf(s, "%d", &count)
+		}
+		out[i] = DayCount{Date: dates[i], Count: count}
+	}
+	return out, nil
 }
 
 func (r *APIRateLimiter) now() time.Time {

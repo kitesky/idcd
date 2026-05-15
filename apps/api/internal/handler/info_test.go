@@ -793,3 +793,156 @@ func TestLinkLocalDetection(t *testing.T) {
 		t.Error("fe80::1 should be link-local unicast")
 	}
 }
+
+// --- WHOIS handler tests (real implementation) ---
+
+func TestInfoHandler_Whois_query(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/whois?q=example.com", nil)
+	w := httptest.NewRecorder()
+
+	h.Whois(w, req)
+
+	// WHOIS may succeed or return a note on network failure; both are 200.
+	if w.Code != http.StatusOK {
+		t.Errorf("Whois() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("Whois() unexpected error: %v", resp["error"])
+	}
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("response data is not a map")
+	}
+	if domain, ok := data["domain"].(string); !ok || domain != "example.com" {
+		t.Errorf("Whois() domain = %v, want example.com", domain)
+	}
+}
+
+// --- rDNS handler tests ---
+
+func TestInfoHandler_RDNS_validIP(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/rdns?q=8.8.8.8", nil)
+	w := httptest.NewRecorder()
+
+	h.RDNS(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("RDNS() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("RDNS() unexpected error: %v", resp["error"])
+	}
+}
+
+func TestInfoHandler_RDNS_invalidIP(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/rdns?q=not-an-ip", nil)
+	w := httptest.NewRecorder()
+
+	h.RDNS(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("RDNS(invalid) status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+// --- SPF handler tests ---
+
+func TestInfoHandler_SPF_missingParam(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/spf", nil)
+	w := httptest.NewRecorder()
+
+	h.SPF(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("SPF() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestInfoHandler_SPF_query(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/spf?q=example.com", nil)
+	w := httptest.NewRecorder()
+
+	h.SPF(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("SPF() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("SPF() unexpected error: %v", resp["error"])
+	}
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("response data is not a map")
+	}
+	if domain, ok := data["domain"].(string); !ok || domain != "example.com" {
+		t.Errorf("SPF() domain = %v, want example.com", domain)
+	}
+}
+
+// --- DMARC handler tests ---
+
+func TestInfoHandler_DMARC_missingParam(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/dmarc", nil)
+	w := httptest.NewRecorder()
+
+	h.DMARC(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("DMARC() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+}
+
+func TestInfoHandler_DMARC_query(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/dmarc?q=example.com", nil)
+	w := httptest.NewRecorder()
+
+	h.DMARC(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("DMARC() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("DMARC() unexpected error: %v", resp["error"])
+	}
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("response data is not a map")
+	}
+	if domain, ok := data["domain"].(string); !ok || domain != "example.com" {
+		t.Errorf("DMARC() domain = %v, want example.com", domain)
+	}
+}

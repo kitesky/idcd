@@ -48,10 +48,31 @@ type IPInfoResponse struct {
 // WhoisResponse represents WHOIS domain information.
 type WhoisResponse struct {
 	Domain       string   `json:"domain"`
-	Registrar    string   `json:"registrar"`
-	CreationDate string   `json:"creation_date"`
-	ExpiryDate   string   `json:"expiry_date"`
-	NameServers  []string `json:"name_servers"`
+	Registrar    string   `json:"registrar,omitempty"`
+	CreationDate string   `json:"creation_date,omitempty"`
+	ExpiryDate   string   `json:"expiry_date,omitempty"`
+	NameServers  []string `json:"name_servers,omitempty"`
+	Note         string   `json:"note,omitempty"`
+}
+
+// RDNSResponse represents reverse DNS lookup results.
+type RDNSResponse struct {
+	IP        string   `json:"ip"`
+	Hostnames []string `json:"hostnames"`
+}
+
+// SPFResponse represents SPF record query results.
+type SPFResponse struct {
+	Domain string `json:"domain"`
+	Record string `json:"record,omitempty"`
+	Found  bool   `json:"found"`
+}
+
+// DMARCResponse represents DMARC record query results.
+type DMARCResponse struct {
+	Domain string `json:"domain"`
+	Record string `json:"record,omitempty"`
+	Found  bool   `json:"found"`
 }
 
 // DNSResponse represents DNS query results.
@@ -176,17 +197,172 @@ func (h *InfoHandler) Whois(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// S1 implementation: return mock data structure
-	// Real implementation requires whois library or exec call
-	result := WhoisResponse{
-		Domain:       query,
-		Registrar:    "Mock Registrar (WHOIS will be implemented in S2)",
-		CreationDate: "",
-		ExpiryDate:   "",
-		NameServers:  []string{},
+	// Normalize: remove protocol prefix and path.
+	query = strings.TrimPrefix(query, "https://")
+	query = strings.TrimPrefix(query, "http://")
+	if idx := strings.IndexByte(query, '/'); idx != -1 {
+		query = query[:idx]
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+
+	server := whoisServer(query)
+	result := queryWhois(r.Context(), query, server)
+	response.JSON(w, r, http.StatusOK, result)
+}
+
+// whoisServer returns the appropriate WHOIS server for the given domain.
+func whoisServer(domain string) string {
+	parts := strings.Split(domain, ".")
+	if len(parts) < 2 {
+		return "whois.iana.org"
+	}
+	tld := parts[len(parts)-1]
+	switch tld {
+	case "com", "net":
+		return "whois.verisign-grs.com"
+	case "org":
+		return "whois.pir.org"
+	case "cn":
+		return "whois.cnnic.cn"
+	case "io":
+		return "whois.iana.org"
+	default:
+		return "whois.iana.org"
+	}
+}
+
+// queryWhois performs a TCP WHOIS query against the given server.
+func queryWhois(ctx context.Context, domain, server string) WhoisResponse {
+	d := net.Dialer{Timeout: 10 * time.Second}
+	conn, err := d.DialContext(ctx, "tcp", server+":43")
+	if err != nil {
+		return WhoisResponse{Domain: domain, Note: "WHOIS query unavailable: " + err.Error()}
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
+
+	fmt.Fprintf(conn, "%s\r\n", domain)
+
+	lr := io.LimitReader(conn, 65536)
+	raw, err := io.ReadAll(lr)
+	if err != nil && len(raw) == 0 {
+		return WhoisResponse{Domain: domain, Note: "WHOIS read error: " + err.Error()}
 	}
 
-	response.JSON(w, r, http.StatusOK, result)
+	return parseWhoisResponse(domain, string(raw))
+}
+
+// parseWhoisResponse parses a raw WHOIS response text into a WhoisResponse.
+func parseWhoisResponse(domain, raw string) WhoisResponse {
+	result := WhoisResponse{Domain: domain}
+	var nameServers []string
+
+	for _, line := range strings.Split(raw, "\n") {
+		lower := strings.ToLower(line)
+		if strings.Contains(lower, "registrar:") && result.Registrar == "" {
+			result.Registrar = extractWhoisField(line)
+		}
+		if (strings.Contains(lower, "creation date:") || strings.Contains(lower, "registered:")) && result.CreationDate == "" {
+			result.CreationDate = extractWhoisField(line)
+		}
+		if (strings.Contains(lower, "registry expiry date:") || strings.Contains(lower, "expiry date:") || strings.Contains(lower, "expires:")) && result.ExpiryDate == "" {
+			result.ExpiryDate = extractWhoisField(line)
+		}
+		if strings.Contains(lower, "name server:") {
+			if ns := extractWhoisField(line); ns != "" {
+				nameServers = append(nameServers, strings.ToLower(ns))
+			}
+		}
+	}
+	result.NameServers = nameServers
+	return result
+}
+
+// extractWhoisField extracts the value after the first colon in a WHOIS line.
+func extractWhoisField(line string) string {
+	idx := strings.IndexByte(line, ':')
+	if idx < 0 {
+		return ""
+	}
+	return strings.TrimSpace(line[idx+1:])
+}
+
+// --- rDNS Query Handler ---
+
+// RDNS handles GET /v1/info/rdns?q=<IP> — reverse DNS lookup.
+func (h *InfoHandler) RDNS(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	if net.ParseIP(query) == nil {
+		response.Error(w, r, apperr.Validation("Invalid IP address", ""))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	hostnames, err := net.DefaultResolver.LookupAddr(ctx, query)
+	if err != nil {
+		// DNS lookup failures (NXDOMAIN, timeout) → empty list, not error
+		hostnames = []string{}
+	}
+	response.JSON(w, r, http.StatusOK, RDNSResponse{IP: query, Hostnames: hostnames})
+}
+
+// --- SPF Query Handler ---
+
+// SPF handles GET /v1/info/spf?q=<domain> — SPF record query.
+func (h *InfoHandler) SPF(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	txts, err := net.DefaultResolver.LookupTXT(ctx, query)
+	if err != nil {
+		response.JSON(w, r, http.StatusOK, SPFResponse{Domain: query, Found: false})
+		return
+	}
+	for _, txt := range txts {
+		if strings.HasPrefix(txt, "v=spf1") {
+			response.JSON(w, r, http.StatusOK, SPFResponse{Domain: query, Record: txt, Found: true})
+			return
+		}
+	}
+	response.JSON(w, r, http.StatusOK, SPFResponse{Domain: query, Found: false})
+}
+
+// --- DMARC Query Handler ---
+
+// DMARC handles GET /v1/info/dmarc?q=<domain> — DMARC record query.
+func (h *InfoHandler) DMARC(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	dmarcDomain := "_dmarc." + strings.TrimPrefix(query, "_dmarc.")
+	txts, err := net.DefaultResolver.LookupTXT(ctx, dmarcDomain)
+	if err != nil {
+		response.JSON(w, r, http.StatusOK, DMARCResponse{Domain: query, Found: false})
+		return
+	}
+	for _, txt := range txts {
+		if strings.HasPrefix(txt, "v=DMARC1") {
+			response.JSON(w, r, http.StatusOK, DMARCResponse{Domain: query, Record: txt, Found: true})
+			return
+		}
+	}
+	response.JSON(w, r, http.StatusOK, DMARCResponse{Domain: query, Found: false})
 }
 
 // --- DNS Query Handler ---

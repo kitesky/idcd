@@ -294,6 +294,9 @@ func (s *Server) setupRouter() {
 				r.Get("/dns", infoH.DNS)
 				r.Get("/ssl", infoH.SSL)
 				r.Get("/icp", infoH.ICP)
+				r.Get("/rdns", infoH.RDNS)
+				r.Get("/spf", infoH.SPF)
+				r.Get("/dmarc", infoH.DMARC)
 			})
 			// Probe endpoints
 			streamClient := stream.New(s.redis)

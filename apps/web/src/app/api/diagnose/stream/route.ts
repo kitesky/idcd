@@ -6,6 +6,46 @@ export const dynamic = "force-dynamic"
 
 const BASE_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 
+// Allow tests to override via env so polling doesn't slow down the test suite.
+const POLL_INTERVAL_MS = Number(process.env.PROBE_POLL_INTERVAL_MS ?? 2_000)
+const POLL_TIMEOUT_MS = Number(process.env.PROBE_POLL_TIMEOUT_MS ?? 15_000)
+
+interface TaskResult {
+  task_id: string
+  status: string
+  result?: {
+    success?: boolean
+    duration_ms?: number
+    error?: string
+    [key: string]: unknown
+  }
+}
+
+async function pollTaskResult(taskId: string): Promise<TaskResult | null> {
+  const deadline = Date.now() + POLL_TIMEOUT_MS
+  while (Date.now() < deadline) {
+    try {
+      const res = await fetch(`${BASE_URL}/v1/probe/tasks/${taskId}`)
+      if (res.ok) {
+        const data = (await res.json()) as TaskResult
+        if (
+          data.status === "completed" ||
+          data.status === "failed" ||
+          data.status === "cancelled"
+        ) {
+          return data
+        }
+      }
+    } catch {
+      // continue polling on network error
+    }
+    if (POLL_INTERVAL_MS > 0) {
+      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+    }
+  }
+  return null
+}
+
 interface CheckDef {
   key: string
   label: string
@@ -35,8 +75,13 @@ const CHECKS: CheckDef[] = [
         body: JSON.stringify({ target: domain }),
       }),
     summarize: (data) => {
-      const d = data as { task_id?: string; status?: string }
-      return `探测任务已提交 (task_id: ${d.task_id ?? "-"}, status: ${d.status ?? "-"})`
+      const d = data as { task_id?: string; _result?: TaskResult }
+      if (d._result?.result) {
+        const r = d._result.result
+        const ms = r.duration_ms != null ? `${r.duration_ms} ms` : "-"
+        return r.success ? `可达，响应时间 ${ms}` : `不可达${r.error ? `：${r.error}` : ""}`
+      }
+      return `任务已提交 (${d.task_id ?? "-"})`
     },
   },
   {
@@ -49,8 +94,13 @@ const CHECKS: CheckDef[] = [
         body: JSON.stringify({ target: domain }),
       }),
     summarize: (data) => {
-      const d = data as { task_id?: string; status?: string }
-      return `探测任务已提交 (task_id: ${d.task_id ?? "-"}, status: ${d.status ?? "-"})`
+      const d = data as { task_id?: string; _result?: TaskResult }
+      if (d._result?.result) {
+        const r = d._result.result
+        const ms = r.duration_ms != null ? `${r.duration_ms} ms` : "-"
+        return r.success ? `延迟 ${ms}` : `Ping 失败${r.error ? `：${r.error}` : ""}`
+      }
+      return `任务已提交 (${d.task_id ?? "-"})`
     },
   },
   {
@@ -63,8 +113,12 @@ const CHECKS: CheckDef[] = [
         body: JSON.stringify({ target: domain }),
       }),
     summarize: (data) => {
-      const d = data as { task_id?: string; status?: string }
-      return `探测任务已提交 (task_id: ${d.task_id ?? "-"}, status: ${d.status ?? "-"})`
+      const d = data as { task_id?: string; _result?: TaskResult }
+      if (d._result?.result) {
+        const r = d._result.result
+        return r.success ? `路由追踪完成` : `追踪失败${r.error ? `：${r.error}` : ""}`
+      }
+      return `任务已提交 (${d.task_id ?? "-"})`
     },
   },
   {
@@ -158,7 +212,16 @@ export async function GET(req: NextRequest) {
               const text = await res.text().catch(() => res.statusText)
               throw new Error(`HTTP ${res.status}: ${text}`)
             }
-            const detail = (await res.json()) as unknown
+            let detail = (await res.json()) as Record<string, unknown>
+
+            // For probe tasks, poll until we have a real result.
+            if (typeof detail.task_id === "string" && detail.status === "queued") {
+              const taskResult = await pollTaskResult(detail.task_id)
+              if (taskResult) {
+                detail = { ...detail, _result: taskResult }
+              }
+            }
+
             const summary = check.summarize(detail)
             send({ type: "check_done", key: check.key, summary, detail })
             completedChecks.push({

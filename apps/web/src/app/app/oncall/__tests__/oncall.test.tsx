@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 
 vi.mock("next/navigation", () => ({
@@ -28,6 +28,7 @@ const MOCK_SCHEDULES = [
     id: "sch_001",
     name: "工程师值班",
     rotation_type: "weekly",
+    rotation_days: 7,
     start_date: "2024-01-01T09:00:00Z",
     team_id: "t_demo",
   },
@@ -39,7 +40,31 @@ const MOCK_PARTICIPANTS = [
   { id: "p3", schedule_id: "sch_001", user_id: "u_carol", email: "carol@idcd.com", order_index: 2 },
 ]
 
+const MOCK_ALERT_EVENTS = [
+  {
+    id: "evt_001",
+    monitor_name: "API Health",
+    status: "firing",
+    fired_at: new Date(Date.now() - 10 * 60 * 1000).toISOString(),
+    resolved_at: undefined,
+  },
+  {
+    id: "evt_002",
+    monitor_name: "DB Latency",
+    status: "resolved",
+    fired_at: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(),
+    resolved_at: new Date(Date.now() - 90 * 60 * 1000).toISOString(),
+  },
+]
+
 function mockFetch(path: string) {
+  if (path.includes("/alert-events")) {
+    // Handled via override in individual tests; default to empty
+    return Promise.resolve({
+      ok: true,
+      json: () => Promise.resolve({ data: { events: [] } }),
+    })
+  }
   if (path.includes("/participants")) {
     return Promise.resolve({
       ok: true,
@@ -115,5 +140,55 @@ describe("OncallPage", () => {
   it("schedule preview card is present", () => {
     render(<OncallPage />)
     expect(screen.getByTestId("schedule-preview-card")).toBeInTheDocument()
+  })
+
+  // ── New tests ──────────────────────────────────────────────────────────────
+
+  it("告警记录 Tab trigger exists", () => {
+    render(<OncallPage />)
+    expect(screen.getByTestId("alerts-tab-trigger")).toBeInTheDocument()
+  })
+
+  it("clicking 告警记录 Tab shows 暂无告警记录 when API returns empty array", async () => {
+    // Default mockFetch returns empty events
+    render(<OncallPage />)
+    // Click the alerts tab trigger to make that panel active
+    fireEvent.mouseDown(screen.getByTestId("alerts-tab-trigger"))
+    // Wait for async API call to resolve and component to render
+    await waitFor(() => {
+      expect(screen.getByTestId("no-alert-events")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("no-alert-events")).toHaveTextContent("暂无告警记录")
+  })
+
+  it("clicking 告警记录 Tab shows alert-events-table when API returns events", async () => {
+    vi.stubGlobal("fetch", vi.fn((input: string | URL | Request) => {
+      const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url
+      if (url.includes("/alert-events")) {
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { events: MOCK_ALERT_EVENTS } }),
+        })
+      }
+      return mockFetch(url)
+    }))
+
+    render(<OncallPage />)
+    fireEvent.mouseDown(screen.getByTestId("alerts-tab-trigger"))
+    await waitFor(() => {
+      expect(screen.getByTestId("alert-events-table")).toBeInTheDocument()
+    })
+    expect(screen.getByText("API Health")).toBeInTheDocument()
+    expect(screen.getByText("DB Latency")).toBeInTheDocument()
+  })
+
+  it("oncall-stats-card renders when schedule and participants are loaded", async () => {
+    render(<OncallPage />)
+    // Wait for data to load
+    await waitFor(() => {
+      expect(screen.getByTestId("current-oncall-name")).toBeInTheDocument()
+    })
+    // Stats card should be visible in the schedules tab (default tab)
+    expect(screen.getByTestId("oncall-stats-card")).toBeInTheDocument()
   })
 })

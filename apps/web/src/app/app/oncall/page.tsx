@@ -29,6 +29,15 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
 import { apiRequest } from "@/lib/api"
 
 // ── API types ──────────────────────────────────────────────────────────────
@@ -37,6 +46,7 @@ interface Schedule {
   id: string
   name: string
   rotation_type: "weekly" | "daily"
+  rotation_days: number
   start_date: string
   team_id?: string
 }
@@ -47,6 +57,14 @@ interface Participant {
   user_id: string
   email: string
   order_index: number
+}
+
+interface AlertEvent {
+  id: string
+  monitor_name: string
+  status: "firing" | "resolved"
+  fired_at: string
+  resolved_at?: string
 }
 
 // ── Rotation helpers ───────────────────────────────────────────────────────
@@ -99,6 +117,32 @@ function get7DayPreview(
 
 function formatDate(d: Date): string {
   return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric", weekday: "short" })
+}
+
+// ── Relative time helper ──────────────────────────────────────────────────
+
+function formatRelativeTime(isoString: string): string {
+  const now = Date.now()
+  const then = new Date(isoString).getTime()
+  const diffMs = now - then
+  const diffMinutes = Math.floor(diffMs / (60 * 1000))
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000))
+  const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000))
+  if (diffMinutes < 1) return "刚刚"
+  if (diffMinutes < 60) return `${diffMinutes} 分钟前`
+  if (diffHours < 24) return `${diffHours} 小时前`
+  return `${diffDays} 天前`
+}
+
+function formatDuration(firedAt: string, resolvedAt?: string): string {
+  if (!resolvedAt) return "进行中"
+  const start = new Date(firedAt).getTime()
+  const end = new Date(resolvedAt).getTime()
+  const diffMs = end - start
+  const diffMinutes = Math.floor(diffMs / (60 * 1000))
+  const diffHours = Math.floor(diffMs / (60 * 60 * 1000))
+  if (diffMinutes < 60) return `${diffMinutes} 分钟`
+  return `${diffHours} 小时 ${diffMinutes % 60} 分钟`
 }
 
 // ── Create Schedule Dialog ─────────────────────────────────────────────────
@@ -306,6 +350,141 @@ function OverrideDialog({ scheduleId, participants }: OverrideDialogProps) {
   )
 }
 
+// ── Oncall Stats Card ──────────────────────────────────────────────────────
+
+interface OncallStatsCardProps {
+  schedule: Schedule
+  participants: Participant[]
+}
+
+function OncallStatsCard({ schedule, participants }: OncallStatsCardProps) {
+  if (participants.length === 0) return null
+
+  const rotationDays = schedule.rotation_days ?? (schedule.rotation_type === "weekly" ? 7 : 1)
+
+  return (
+    <Card className="mt-6" data-testid="oncall-stats-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">值班统计</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-2">
+          {participants.map((p) => {
+            const timesPerMonth = Math.round(
+              (30 / rotationDays / participants.length) * 10,
+            ) / 10
+            return (
+              <div
+                key={p.user_id}
+                className="flex items-center justify-between text-sm"
+                data-testid={`stats-row-${p.user_id}`}
+              >
+                <span className="text-muted-foreground">{p.email}</span>
+                <Badge variant="outline" className="text-xs">
+                  约 {timesPerMonth} 次/月
+                </Badge>
+              </div>
+            )
+          })}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
+// ── Alert Events Tab ───────────────────────────────────────────────────────
+
+function AlertEventsTab() {
+  const [events, setEvents] = useState<AlertEvent[]>([])
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [loaded, setLoaded] = useState(false)
+
+  useEffect(() => {
+    if (loaded) return
+    setLoaded(true)
+    setLoading(true)
+    setError(null)
+    apiRequest<{ data: { events: AlertEvent[] } }>("/v1/alert-events?limit=20")
+      .then((res) => {
+        setEvents(res?.data?.events ?? [])
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "加载失败")
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [loaded])
+
+  if (loading) {
+    return (
+      <div className="space-y-3">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <Skeleton key={i} className="h-10 w-full" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
+
+  if (events.length === 0) {
+    return (
+      <p
+        className="py-8 text-center text-sm text-muted-foreground"
+        data-testid="no-alert-events"
+      >
+        暂无告警记录
+      </p>
+    )
+  }
+
+  return (
+    <Table data-testid="alert-events-table">
+      <TableHeader>
+        <TableRow>
+          <TableHead>监控名</TableHead>
+          <TableHead>状态</TableHead>
+          <TableHead>触发时间</TableHead>
+          <TableHead>持续时长</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {events.map((event) => (
+          <TableRow key={event.id}>
+            <TableCell className="font-medium">{event.monitor_name}</TableCell>
+            <TableCell>
+              {event.status === "firing" ? (
+                <Badge variant="destructive">FIRING</Badge>
+              ) : (
+                <Badge
+                  variant="outline"
+                  className="border-green-500 text-green-600 dark:text-green-400"
+                >
+                  RESOLVED
+                </Badge>
+              )}
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {formatRelativeTime(event.fired_at)}
+            </TableCell>
+            <TableCell className="text-muted-foreground">
+              {formatDuration(event.fired_at, event.resolved_at)}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  )
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function OncallPage() {
@@ -387,7 +566,7 @@ export default function OncallPage() {
         </Alert>
       )}
 
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="mb-6 grid gap-6 md:grid-cols-2">
         <Card data-testid="current-oncall-card">
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
@@ -483,6 +662,65 @@ export default function OncallPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Tabs defaultValue="schedules">
+        <TabsList>
+          <TabsTrigger value="schedules">排班管理</TabsTrigger>
+          <TabsTrigger value="alerts" data-testid="alerts-tab-trigger">告警记录</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="schedules" className="mt-4">
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <Skeleton key={i} className="h-12 w-full" />
+              ))}
+            </div>
+          ) : schedule ? (
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between text-base">
+                  <span>{schedule.name}</span>
+                  <Badge variant="secondary">
+                    {schedule.rotation_type === "weekly" ? "每周轮换" : "每日轮换"}
+                  </Badge>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-1">
+                  {participants.map((p, i) => (
+                    <div
+                      key={p.user_id}
+                      className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+                      data-testid={`schedule-participant-${p.user_id}`}
+                    >
+                      <span className="text-muted-foreground w-6 text-right shrink-0">
+                        {i + 1}.
+                      </span>
+                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary shrink-0">
+                        {p.email.charAt(0).toUpperCase()}
+                      </div>
+                      <span>{p.email}</span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : (
+            <p className="py-8 text-center text-sm text-muted-foreground">
+              暂无排班，点击右上角「创建排班」开始
+            </p>
+          )}
+
+          {schedule && participants.length > 0 && (
+            <OncallStatsCard schedule={schedule} participants={participants} />
+          )}
+        </TabsContent>
+
+        <TabsContent value="alerts" className="mt-4">
+          <AlertEventsTab />
+        </TabsContent>
+      </Tabs>
     </div>
   )
 }

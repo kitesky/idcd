@@ -1,10 +1,17 @@
 "use client"
 
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { Copy, Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { ProbeResult } from "@/lib/api"
+import dynamic from "next/dynamic"
+import type { MapNode } from "@/components/probe/ProbeMap"
+
+const ProbeMap = dynamic(
+  () => import("@/components/probe/ProbeMap").then(m => ({ default: m.ProbeMap })),
+  { ssr: false, loading: () => <div className="w-full h-52 bg-muted/30 animate-pulse rounded" /> }
+)
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -202,13 +209,21 @@ function StackedBarChart({ rows }: { rows: ResultRow[] }) {
 
 // ── SummaryTab ────────────────────────────────────────────────────────────────
 
-function SummaryTab({ rows, isHttp }: { rows: ResultRow[]; isHttp: boolean }) {
+function SummaryTab({ rows, isHttp, isChinaOnly }: { rows: ResultRow[]; isHttp: boolean; isChinaOnly: boolean }) {
   const sorted = [...rows].sort((a, b) => (a.latency_ms ?? Infinity) - (b.latency_ms ?? Infinity))
   const avg = rows.filter(r => r.latency_ms !== undefined).reduce((s, r, _, a) => s + r.latency_ms! / a.length, 0)
 
+  // Build MapNode list for the map
+  const mapNodes: MapNode[] = sorted.map(r => ({
+    name: r.node_name,
+    lat: 0,
+    lng: 0,
+    latency_ms: r.latency_ms,
+  }))
+
   return (
     <div className="space-y-4">
-      {/* 检测结果卡片 */}
+      {/* 检测结果卡片 — 左地图 + 右排名 */}
       <div className="rounded-lg border bg-background overflow-hidden">
         <div className="flex items-center justify-between px-5 py-3 border-b">
           <span className="text-sm font-medium">检测结果</span>
@@ -218,51 +233,53 @@ function SummaryTab({ rows, isHttp }: { rows: ResultRow[]; isHttp: boolean }) {
           </div>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/30">
-                <th className="text-left px-5 py-2.5 font-medium text-muted-foreground w-8">#</th>
-                <th className="text-left px-5 py-2.5 font-medium text-muted-foreground">节点</th>
-                <th className="text-left px-5 py-2.5 font-medium text-muted-foreground">平均时间</th>
-                {isHttp && <th className="text-left px-5 py-2.5 font-medium text-muted-foreground">状态码</th>}
-                <th className="text-left px-5 py-2.5 font-medium text-muted-foreground">结果</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((row, i) => (
-                <tr key={row.node_id} className="border-b hover:bg-muted/20 transition-colors">
-                  <td className="px-5 py-3">
-                    <span className={cn(
-                      "inline-flex h-5 w-5 items-center justify-center rounded text-xs font-bold text-white",
-                      i === 0 ? "bg-green-500" : i === 1 ? "bg-green-400" : i === 2 ? "bg-yellow-500" : "bg-muted text-muted-foreground"
-                    )}>
-                      {i + 1}
-                    </span>
-                  </td>
-                  <td className="px-5 py-3 font-medium">{row.node_name}</td>
-                  <td className={cn("px-5 py-3 font-medium", latencyColor(row.latency_ms))}>
-                    {fmtMs(row.latency_ms)}
-                  </td>
-                  {isHttp && (
-                    <td className="px-5 py-3 text-muted-foreground">
-                      {row.status_code ?? "-"}
-                    </td>
-                  )}
-                  <td className="px-5 py-3">
-                    <span className={cn(
-                      "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
-                      row.success
-                        ? "bg-green-500/10 text-green-600"
-                        : "bg-destructive/10 text-destructive"
-                    )}>
-                      {row.success ? "成功" : (row.error ?? "失败")}
-                    </span>
-                  </td>
+        <div className="flex min-h-[320px]">
+          {/* 左侧地图 */}
+          <div className="w-[420px] flex-shrink-0 border-r p-4 flex flex-col justify-between bg-zinc-950/40">
+            <ProbeMap nodes={mapNodes} isChinaOnly={isChinaOnly} />
+          </div>
+
+          {/* 右侧排名表 */}
+          <div className="flex-1 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="sticky top-0">
+                <tr className="border-b bg-muted/30">
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground w-8">#</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">节点</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">平均时间</th>
+                  <th className="text-left px-4 py-2.5 font-medium text-muted-foreground">结果</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {sorted.map((row, i) => (
+                  <tr key={row.node_id} className="border-b hover:bg-muted/20 transition-colors">
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        "inline-flex h-5 w-5 items-center justify-center rounded text-xs font-bold text-white",
+                        i === 0 ? "bg-green-500" : i === 1 ? "bg-green-400" : i === 2 ? "bg-yellow-500" : "bg-muted text-muted-foreground"
+                      )}>
+                        {i + 1}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 font-medium">{row.node_name}</td>
+                    <td className={cn("px-4 py-3 font-medium tabular-nums", latencyColor(row.latency_ms))}>
+                      {fmtMs(row.latency_ms)}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span className={cn(
+                        "inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium",
+                        row.success
+                          ? "bg-green-500/10 text-green-600"
+                          : "bg-destructive/10 text-destructive"
+                      )}>
+                        {row.success ? "成功" : (row.error ?? "失败")}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -386,6 +403,13 @@ interface ProbeResultPanelProps {
 
 export function ProbeResultPanel({ result, target, probeType = "http", isLoading }: ProbeResultPanelProps) {
   const [activeTab, setActiveTab] = useState<"summary" | "detail">("summary")
+  // Client-only values to avoid hydration mismatch
+  const [timestamp, setTimestamp] = useState("")
+  const [shareUrl, setShareUrl] = useState("")
+  useEffect(() => {
+    setTimestamp(new Date().toLocaleString("zh-CN", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }))
+    setShareUrl(window.location.href)
+  }, [])
 
   const rows = useMemo(
     () => (result.results ?? []).map(parseRow),
@@ -393,9 +417,8 @@ export function ProbeResultPanel({ result, target, probeType = "http", isLoading
   )
 
   const isHttp = probeType === "http"
+  const isChinaOnly = rows.every(r => /[一-龥]/.test(r.node_name))
   const resolvedIps = [...new Set(rows.flatMap(r => r.resolved_ip ? [r.resolved_ip] : []))]
-  const shareUrl = typeof window !== "undefined" ? window.location.href : ""
-  const timestamp = new Date().toLocaleString("zh-CN", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" })
 
   return (
     <div className="mx-auto max-w-screen-xl px-6 py-6">
@@ -457,7 +480,7 @@ export function ProbeResultPanel({ result, target, probeType = "http", isLoading
         <p className="text-sm text-muted-foreground">暂无结果</p>
       ) : rows.length > 0 ? (
         activeTab === "summary"
-          ? <SummaryTab rows={rows} isHttp={isHttp} />
+          ? <SummaryTab rows={rows} isHttp={isHttp} isChinaOnly={isChinaOnly} />
           : <DetailTab rows={rows} isHttp={isHttp} />
       ) : null}
     </div>

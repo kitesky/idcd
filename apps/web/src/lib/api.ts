@@ -1,5 +1,8 @@
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
+/** Default request timeout (30 s). Override per-call via AbortSignal in options. */
+const DEFAULT_TIMEOUT_MS = 30_000
+
 /** Read the non-HttpOnly csrf_token cookie set by the server on GET requests. */
 function getCsrfToken(): string {
   if (typeof document === "undefined") return ""
@@ -23,25 +26,36 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
   const csrfHeaders: HeadersInit =
     MUTATING.has(method) ? { "X-CSRF-Token": getCsrfToken() } : {}
 
-  const res = await fetch(API_BASE + path, {
-    ...options,
-    // credentials: "include" sends the HttpOnly access_token cookie automatically.
-    credentials: "include",
-    headers: { ...defaultHeaders, ...csrfHeaders, ...options?.headers },
-  })
+  // Apply a default timeout unless the caller already provided a signal.
+  const ownController = options?.signal ? null : new AbortController()
+  const timeoutId = ownController
+    ? setTimeout(() => ownController.abort(), DEFAULT_TIMEOUT_MS)
+    : null
 
-  if (!res.ok) {
-    let errorMessage = "Request failed"
-    try {
-      const err = await res.json()
-      errorMessage = err?.error?.message || err?.message || errorMessage
-    } catch {
-      errorMessage = res.statusText || errorMessage
+  try {
+    const res = await fetch(API_BASE + path, {
+      ...options,
+      // credentials: "include" sends the HttpOnly access_token cookie automatically.
+      credentials: "include",
+      headers: { ...defaultHeaders, ...csrfHeaders, ...options?.headers },
+      signal: options?.signal ?? ownController!.signal,
+    })
+
+    if (!res.ok) {
+      let errorMessage = "Request failed"
+      try {
+        const err = await res.json()
+        errorMessage = err?.error?.message || err?.message || errorMessage
+      } catch {
+        errorMessage = res.statusText || errorMessage
+      }
+      throw new Error(errorMessage)
     }
-    throw new Error(errorMessage)
-  }
 
-  return res.json()
+    return res.json()
+  } finally {
+    if (timeoutId !== null) clearTimeout(timeoutId)
+  }
 }
 
 export interface Node {
@@ -60,7 +74,8 @@ export interface Node {
 export interface ProbeParams {
   target: string
   node_ids?: string[]
-  [key: string]: any
+  /** Probe-type-specific extra fields (e.g. method, count, record_type). */
+  [key: string]: unknown
 }
 
 export interface ProbeResult {
@@ -96,62 +111,22 @@ export async function getNodes(): Promise<{ data: Node[] }> {
   return apiRequest<{ data: Node[] }>("/v1/nodes")
 }
 
-// Probe API
-export async function probeHttp(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/http", {
+// Probe API — shared POST helper
+function probePost(endpoint: string, params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>(`/v1/probe/${endpoint}`, {
     method: "POST",
-    body: JSON.stringify(params)
+    body: JSON.stringify(params),
   })
 }
 
-export async function probePing(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/ping", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
-
-export async function probeTcp(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/tcping", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
-
-export async function probeDns(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/dns", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
-
-export async function probeTraceroute(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/traceroute", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
-
-export async function probeSmtp(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/smtp", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
-
-export async function probeNtp(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/ntp", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
-
-export async function probeMtr(params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>("/v1/probe/mtr", {
-    method: "POST",
-    body: JSON.stringify(params)
-  })
-}
+export const probeHttp      = (p: ProbeParams) => probePost("http",       p)
+export const probePing      = (p: ProbeParams) => probePost("ping",       p)
+export const probeTcp       = (p: ProbeParams) => probePost("tcping",     p)
+export const probeDns       = (p: ProbeParams) => probePost("dns",        p)
+export const probeTraceroute = (p: ProbeParams) => probePost("traceroute", p)
+export const probeSmtp      = (p: ProbeParams) => probePost("smtp",       p)
+export const probeNtp       = (p: ProbeParams) => probePost("ntp",        p)
+export const probeMtr       = (p: ProbeParams) => probePost("mtr",        p)
 
 export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
   return apiRequest<ProbeTaskResult>(`/v1/probe/tasks/${taskId}`)

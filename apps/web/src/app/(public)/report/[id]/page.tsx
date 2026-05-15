@@ -104,41 +104,43 @@ function CheckCard({ check }: { check: CheckResult }) {
   const isSuccess = check.status === "done"
 
   return (
-    <div className="flex items-start gap-3 p-3 rounded-lg border bg-card">
-      <div className="mt-0.5 shrink-0">
-        {isSuccess ? (
-          <CheckCircle2 className="h-5 w-5 text-green-500" />
-        ) : (
-          <XCircle className="h-5 w-5 text-red-500" />
-        )}
-      </div>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium">{check.label}</span>
-          <Badge
-            variant={isSuccess ? "success" : "destructive"}
-            className="ml-auto text-xs"
-          >
-            {isSuccess ? "通过" : "失败"}
-          </Badge>
+    <Card>
+      <CardContent className="pt-4 flex items-start gap-3">
+        <div className="mt-0.5 shrink-0">
+          {isSuccess ? (
+            <CheckCircle2 className="h-5 w-5 text-green-500" />
+          ) : (
+            <XCircle className="h-5 w-5 text-red-500" />
+          )}
         </div>
-        {check.summary && (
-          <p className="text-sm text-muted-foreground mt-1">{check.summary}</p>
-        )}
-        {check.detail && Object.keys(check.detail).length > 0 && (
-          <details className="mt-2">
-            <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
-              查看详细数据
-            </summary>
-            <pre className="text-xs bg-muted rounded-md p-2 mt-1 overflow-x-auto whitespace-pre-wrap break-all">
-              {JSON.stringify(check.detail, null, 2)}
-            </pre>
-          </details>
-        )}
-        {check.error && (
-          <p className="text-sm text-red-500 mt-1">{check.error}</p>
-        )}
-      </div>
-    </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-medium">{check.label}</span>
+            <Badge
+              variant={isSuccess ? "success" : "destructive"}
+              className="ml-auto text-xs"
+            >
+              {isSuccess ? "通过" : "失败"}
+            </Badge>
+          </div>
+          {check.summary && (
+            <p className="text-sm text-muted-foreground mt-1">{check.summary}</p>
+          )}
+          {check.detail && Object.keys(check.detail).length > 0 && (
+            <details className="mt-2">
+              <summary className="text-xs text-muted-foreground cursor-pointer hover:text-foreground select-none">
+                查看详细数据
+              </summary>
+              <pre className="text-xs bg-muted rounded-md p-2 mt-1 overflow-x-auto whitespace-pre-wrap break-all">
+                {JSON.stringify(check.detail, null, 2)}
+              </pre>
+            </details>
+          )}
+          {check.error && (
+            <p className="text-sm text-red-500 mt-1">{check.error}</p>
+          )}
+        </div>
+      </CardContent>
+    </Card>
   )
 }

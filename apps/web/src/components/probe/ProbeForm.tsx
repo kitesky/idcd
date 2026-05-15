@@ -1,13 +1,17 @@
 "use client"
 
 import { useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Input, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui"
+import {
+  Card, CardContent, CardHeader, CardTitle,
+  Input, Button, Label, Checkbox,
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui"
 
 export type ProbeType = "http" | "ping" | "tcp" | "dns" | "traceroute" | "mtr"
 
 interface ProbeFormProps {
   type: ProbeType
-  onSubmit: (target: string, params: Record<string, any>) => void
+  onSubmit: (target: string, params: Record<string, unknown>) => void
   loading?: boolean
 }
 
@@ -58,7 +62,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
     e.preventDefault()
     if (!validate() || loading) return
 
-    const params: Record<string, any> = {}
+    const params: Record<string, unknown> = {}
 
     if (type === "http") {
       params.method = method
@@ -84,7 +88,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
       <CardContent>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">目标地址</label>
+            <Label>目标地址</Label>
             <Input
               type="text"
               placeholder={getPlaceholder()}
@@ -97,7 +101,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
           {type === "http" && (
             <>
               <div className="space-y-2">
-                <label className="text-sm font-medium">请求方法</label>
+                <Label>请求方法</Label>
                 <Select value={method} onValueChange={setMethod} disabled={loading}>
                   <SelectTrigger>
                     <SelectValue />
@@ -110,24 +114,22 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
                 </Select>
               </div>
               <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
+                <Checkbox
                   id="followRedirect"
                   checked={followRedirect}
-                  onChange={(e) => setFollowRedirect(e.target.checked)}
+                  onCheckedChange={(v) => setFollowRedirect(v === true)}
                   disabled={loading}
-                  className="w-4 h-4"
                 />
-                <label htmlFor="followRedirect" className="text-sm cursor-pointer">
+                <Label htmlFor="followRedirect" className="cursor-pointer font-normal">
                   跟随重定向
-                </label>
+                </Label>
               </div>
             </>
           )}
 
           {type === "ping" && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">发送次数</label>
+              <Label>发送次数</Label>
               <Select value={count} onValueChange={setCount} disabled={loading}>
                 <SelectTrigger>
                   <SelectValue />
@@ -143,7 +145,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
 
           {type === "dns" && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">记录类型</label>
+              <Label>记录类型</Label>
               <Select value={recordType} onValueChange={setRecordType} disabled={loading}>
                 <SelectTrigger>
                   <SelectValue />

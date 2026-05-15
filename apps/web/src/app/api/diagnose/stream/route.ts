@@ -9,6 +9,8 @@ const BASE_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 // Allow tests to override via env so polling doesn't slow down the test suite.
 const POLL_INTERVAL_MS = Number(process.env.PROBE_POLL_INTERVAL_MS ?? 2_000)
 const POLL_TIMEOUT_MS = Number(process.env.PROBE_POLL_TIMEOUT_MS ?? 15_000)
+// Hard cap on total SSE stream lifetime (60 s); prevents dangling connections.
+const STREAM_TIMEOUT_MS = Number(process.env.DIAGNOSE_STREAM_TIMEOUT_MS ?? 60_000)
 
 interface TaskResult {
   task_id: string
@@ -193,73 +195,98 @@ export async function GET(req: NextRequest) {
   const encoder = new TextEncoder()
   const reportId = crypto.randomUUID()
 
+  // Race all checks against a hard stream timeout so the connection is always closed.
+  const streamController = new AbortController()
+  const streamTimeoutId = STREAM_TIMEOUT_MS > 0
+    ? setTimeout(() => streamController.abort(), STREAM_TIMEOUT_MS)
+    : null
+
   const stream = new ReadableStream({
     async start(controller) {
       const send = (data: object) => {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        try {
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`))
+        } catch {
+          // Controller already closed (client disconnected); safe to ignore.
+        }
       }
 
       const completedChecks: CheckResult[] = []
       let errorCount = 0
 
-      const checkPromises = CHECKS.map((check) => {
-        send({ type: "check_start", key: check.key })
+      try {
+        const checkPromises = CHECKS.map((check) => {
+          send({ type: "check_start", key: check.key })
 
-        return check
-          .fetch(domain)
-          .then(async (res) => {
-            if (!res.ok) {
-              const text = await res.text().catch(() => res.statusText)
-              throw new Error(`HTTP ${res.status}: ${text}`)
-            }
-            let detail = (await res.json()) as Record<string, unknown>
-
-            // For probe tasks, poll until we have a real result.
-            if (typeof detail.task_id === "string" && detail.status === "queued") {
-              const taskResult = await pollTaskResult(detail.task_id)
-              if (taskResult) {
-                detail = { ...detail, _result: taskResult }
+          return check
+            .fetch(domain)
+            .then(async (res) => {
+              if (!res.ok) {
+                const text = await res.text().catch(() => res.statusText)
+                throw new Error(`HTTP ${res.status}: ${text}`)
               }
-            }
+              let detail = (await res.json()) as Record<string, unknown>
 
-            const summary = check.summarize(detail)
-            send({ type: "check_done", key: check.key, summary, detail })
-            completedChecks.push({
-              key: check.key,
-              label: check.label,
-              status: "done",
-              summary,
-              detail: detail as Record<string, unknown>,
+              // For probe tasks, poll until we have a real result.
+              if (typeof detail.task_id === "string" && detail.status === "queued") {
+                const taskResult = await pollTaskResult(detail.task_id)
+                if (taskResult) {
+                  detail = { ...detail, _result: taskResult }
+                }
+              }
+
+              const summary = check.summarize(detail)
+              send({ type: "check_done", key: check.key, summary, detail })
+              completedChecks.push({
+                key: check.key,
+                label: check.label,
+                status: "done",
+                summary,
+                detail: detail as Record<string, unknown>,
+              })
             })
-          })
-          .catch((err: unknown) => {
-            const message = err instanceof Error ? err.message : String(err)
-            const summary = `检测失败：${message}`
-            send({ type: "check_done", key: check.key, summary, detail: { error: message } })
-            completedChecks.push({
-              key: check.key,
-              label: check.label,
-              status: "error",
-              summary,
-              error: message,
+            .catch((err: unknown) => {
+              const message = err instanceof Error ? err.message : String(err)
+              const summary = `检测失败：${message}`
+              send({ type: "check_done", key: check.key, summary, detail: { error: message } })
+              completedChecks.push({
+                key: check.key,
+                label: check.label,
+                status: "error",
+                summary,
+                error: message,
+              })
+              errorCount++
             })
-            errorCount++
-          })
-      })
+        })
 
-      await Promise.allSettled(checkPromises)
+        // Race against stream timeout abort signal.
+        await Promise.race([
+          Promise.allSettled(checkPromises),
+          new Promise<void>((_, reject) =>
+            streamController.signal.addEventListener("abort", () =>
+              reject(new Error("stream timeout"))
+            )
+          ),
+        ])
 
-      await saveReport({
-        id: reportId,
-        domain,
-        createdAt: new Date().toISOString(),
-        checks: completedChecks,
-        doneCount: completedChecks.length - errorCount,
-        errorCount,
-      })
+        await saveReport({
+          id: reportId,
+          domain,
+          createdAt: new Date().toISOString(),
+          checks: completedChecks,
+          doneCount: completedChecks.length - errorCount,
+          errorCount,
+        })
 
-      send({ type: "complete", reportId })
-      controller.close()
+        send({ type: "complete", reportId })
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err)
+        send({ type: "error", message })
+      } finally {
+        if (streamTimeoutId !== null) clearTimeout(streamTimeoutId)
+        controller.close()
+      }
     },
   })
 

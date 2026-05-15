@@ -54,7 +54,7 @@ export default function ProbeResults({
   const { taskResult, isPolling, error: pollError } = useProbePolling(taskId ?? null)
 
   const isLoading = loading || isPolling
-  const error = externalError ?? pollError
+  const error = externalError || pollError
 
   const displayItems = buildDisplayItems(result, taskResult)
   const successCount = displayItems.filter(r => r.success).length

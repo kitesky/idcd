@@ -122,7 +122,7 @@ export default function LoginPage() {
       }
     >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
           {error && (
             <Alert variant="destructive">
               <AlertDescription>{error}</AlertDescription>
@@ -175,7 +175,7 @@ export default function LoginPage() {
 
       <Button
         variant="outline"
-        className="w-full mt-2"
+        className="w-full mt-4"
         data-testid="btn-passkey-login"
         disabled={passkeyLoading}
         onClick={async () => {
@@ -193,9 +193,9 @@ export default function LoginPage() {
         {passkeyLoading ? "验证中..." : "使用 Passkey 登录"}
       </Button>
 
-      <div className="relative my-4">
+      <div className="relative my-6">
         <Separator />
-        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-background px-2 text-xs text-muted-foreground">
+        <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
           或使用第三方登录
         </span>
       </div>

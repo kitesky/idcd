@@ -85,7 +85,7 @@ export default function RegisterPage() {
       }
     >
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
           {error && (
             <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
               {error}

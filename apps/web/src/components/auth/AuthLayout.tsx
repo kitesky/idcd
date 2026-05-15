@@ -18,11 +18,11 @@ export function AuthLayout({ children, title, description, footer }: AuthLayoutP
           </Link>
         </div>
         <Card>
-          <CardHeader className="space-y-1">
+          <CardHeader className="space-y-1 pb-4 pt-6 px-6">
             <CardTitle className="text-2xl">{title}</CardTitle>
-            {description && <CardDescription>{description}</CardDescription>}
+            {description && <CardDescription className="mt-1">{description}</CardDescription>}
           </CardHeader>
-          <CardContent>
+          <CardContent className="px-6 pb-6">
             {children}
           </CardContent>
         </Card>

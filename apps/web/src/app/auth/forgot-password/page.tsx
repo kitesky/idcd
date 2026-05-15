@@ -68,7 +68,7 @@ export default function ForgotPasswordPage() {
       }
     >
       {success ? (
-        <div className="space-y-4">
+        <div className="space-y-5">
           <div className="bg-green-500/15 text-green-600 dark:text-green-400 text-sm p-3 rounded-md">
             重置链接已发送！请检查您的邮箱并按照说明操作。
           </div>
@@ -78,7 +78,7 @@ export default function ForgotPasswordPage() {
         </div>
       ) : (
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
             {error && (
               <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
                 {error}

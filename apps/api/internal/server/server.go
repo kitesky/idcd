@@ -91,9 +91,40 @@ func (s *Server) setupMetrics() {
 	}
 }
 
+// redisBlocklistAdapter adapts *redis.Client to the IPBlocklistStore and BlocklistStore interfaces.
+type redisBlocklistAdapter struct {
+	client *redis.Client
+}
+
+func (a *redisBlocklistAdapter) SIsMember(ctx context.Context, key, member string) (bool, error) {
+	return a.client.SIsMember(ctx, key, member).Result()
+}
+
+func (a *redisBlocklistAdapter) SAdd(ctx context.Context, key string, members ...string) error {
+	args := make([]any, len(members))
+	for i, m := range members {
+		args[i] = m
+	}
+	return a.client.SAdd(ctx, key, args...).Err()
+}
+
+func (a *redisBlocklistAdapter) SRem(ctx context.Context, key string, members ...string) error {
+	args := make([]any, len(members))
+	for i, m := range members {
+		args[i] = m
+	}
+	return a.client.SRem(ctx, key, args...).Err()
+}
+
 // setupRouter configures the chi router with middleware and routes.
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
+
+	// IP blocklist adapter — wraps *redis.Client; nil-safe (middleware is fail-open when redis is nil).
+	var blocklistAdapter middleware.IPBlocklistStore
+	if s.redis != nil {
+		blocklistAdapter = &redisBlocklistAdapter{client: s.redis}
+	}
 
 	// Middleware chain: Recover → TraceMiddleware → RequestID → Logger → SecurityHeaders → CORS → CSRF
 	r.Use(middleware.Recover(s.logger))
@@ -105,6 +136,9 @@ func (s *Server) setupRouter() {
 
 	// Add CSRF protection (with exemptions for auth, probe, info endpoints)
 	r.Use(middleware.CSRF())
+
+	// IP blocklist check — runs before rate limiting so banned IPs are rejected early.
+	r.Use(middleware.IPBlocklist(blocklistAdapter))
 
 	// Add metrics middleware
 	r.Use(s.metricsMiddleware())
@@ -484,11 +518,18 @@ func (s *Server) setupRouter() {
 
 		// Admin management endpoints (token-protected, VPN-only in production).
 		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		var blocklistHandlerStore handler.BlocklistStore
+		if s.redis != nil {
+			blocklistHandlerStore = &redisBlocklistAdapter{client: s.redis}
+		}
+		blocklistH := handler.NewAdminBlocklistHandler(blocklistHandlerStore)
 		r.Route("/internal/admin", func(r chi.Router) {
 			r.Use(adminH.AdminAuthMiddleware)
 			r.Get("/metrics", adminH.AdminMetrics)
 			r.Get("/users", adminH.AdminUsers)
 			r.Get("/users/{id}", adminH.AdminUserDetail)
+			r.Post("/block-ip", blocklistH.BlockIP)
+			r.Delete("/block-ip", blocklistH.UnblockIP)
 		})
 
 		// Community node application and points endpoints.

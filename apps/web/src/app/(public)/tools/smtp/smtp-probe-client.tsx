@@ -4,10 +4,20 @@ import { useState } from "react"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
 import { probeSmtp } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
-import { Button } from "@/components/ui"
-import { Input } from "@/components/ui"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+  Button,
+  Input,
+  Label,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui"
 
 export default function SmtpProbeClient() {
   const [target, setTarget] = useState("")
@@ -56,8 +66,9 @@ export default function SmtpProbeClient() {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">邮件服务器地址</label>
+                  <Label htmlFor="smtp-target">邮件服务器地址</Label>
                   <Input
+                    id="smtp-target"
                     value={target}
                     onChange={(e) => setTarget(e.target.value)}
                     placeholder="mail.example.com"
@@ -65,9 +76,9 @@ export default function SmtpProbeClient() {
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">端口</label>
+                  <Label htmlFor="smtp-port">端口</Label>
                   <Select value={port} onValueChange={setPort}>
-                    <SelectTrigger>
+                    <SelectTrigger id="smtp-port">
                       <SelectValue placeholder="选择端口" />
                     </SelectTrigger>
                     <SelectContent>

@@ -4,9 +4,7 @@ import { useState } from "react"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
 import { probeNtp } from "@/lib/api"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
-import { Button } from "@/components/ui"
-import { Input } from "@/components/ui"
+import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui"
 
 export default function NtpProbeClient() {
   const [target, setTarget] = useState("")
@@ -53,8 +51,9 @@ export default function NtpProbeClient() {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium">NTP 服务器地址</label>
+                  <Label htmlFor="ntp-target">NTP 服务器地址</Label>
                   <Input
+                    id="ntp-target"
                     value={target}
                     onChange={(e) => setTarget(e.target.value)}
                     placeholder="pool.ntp.org 或 time.cloudflare.com"

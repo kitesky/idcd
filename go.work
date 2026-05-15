@@ -13,8 +13,8 @@ use (
 	./lib/db
 	./lib/ratelimit
 	./lib/shared
-	./packages/sdk-go
 	./packages/payment-go-sdk
+	./packages/sdk-go
 )
 
 replace github.com/wangzheng/payment-go-sdk v0.0.0 => ./packages/payment-go-sdk

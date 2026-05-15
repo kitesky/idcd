@@ -176,7 +176,7 @@ describe("AccountClient", () => {
 
   it("calls DELETE /v1/account when confirmed with correct email", async () => {
     const mockPush = vi.fn()
-    vi.mocked(await import("next/navigation")).useRouter = () => ({ push: mockPush } as any)
+    vi.mocked(await import("next/navigation")).useRouter = vi.fn().mockReturnValue({ push: mockPush })
     render(<AccountClient />)
     await waitFor(() => expect(screen.getByTestId("btn-delete-account")).toBeInTheDocument())
     fireEvent.click(screen.getByTestId("btn-delete-account"))

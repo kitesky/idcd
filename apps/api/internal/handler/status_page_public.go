@@ -74,9 +74,20 @@ func (h *StatusPagePublicHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pre-fetch current statuses for all monitors in a single query to avoid N+1.
+	monitorIDs := make([]string, len(monitors))
+	for i, m := range monitors {
+		monitorIDs[i] = m.ID
+	}
+	currentStatuses, err := h.batchCurrentStatuses(ctx, monitorIDs)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to query monitor statuses", err))
+		return
+	}
+
 	pubMonitors := make([]publicMonitor, 0, len(monitors))
 	for _, m := range monitors {
-		pm, err := h.buildPublicMonitor(ctx, m)
+		pm, err := h.buildPublicMonitor(ctx, m, currentStatuses[m.ID])
 		if err != nil {
 			response.Error(w, r, apperr.Internal("failed to build monitor data", err))
 			return
@@ -157,7 +168,9 @@ type dayCheckRow struct {
 	success int64
 }
 
-func (h *StatusPagePublicHandler) buildPublicMonitor(ctx context.Context, m idcdmain.Monitor) (publicMonitor, error) {
+// buildPublicMonitor assembles monitor display data using a currentStatus pre-fetched
+// by the caller (batchCurrentStatuses) to avoid an N+1 round-trip per monitor.
+func (h *StatusPagePublicHandler) buildPublicMonitor(ctx context.Context, m idcdmain.Monitor, currentStatus string) (publicMonitor, error) {
 	since := time.Now().UTC().Add(-30 * 24 * time.Hour)
 
 	rows, err := h.pool.Query(ctx,
@@ -189,7 +202,6 @@ func (h *StatusPagePublicHandler) buildPublicMonitor(ctx context.Context, m idcd
 
 	history := buildHistory(dayRows, since)
 	uptimePct := computeUptimePercent(dayRows)
-	currentStatus := h.computeCurrentStatus(ctx, m.ID)
 
 	return publicMonitor{
 		ID:            m.ID,
@@ -200,6 +212,8 @@ func (h *StatusPagePublicHandler) buildPublicMonitor(ctx context.Context, m idcd
 	}, nil
 }
 
+// buildHistory produces a 30-day window oldest-first (since+0 … since+29).
+// Days with no check data are treated as 100% uptime / operational.
 func buildHistory(dayRows []dayCheckRow, since time.Time) []publicMonitorHistory {
 	type totals struct{ total, success int64 }
 	byDate := make(map[string]totals, len(dayRows))
@@ -207,8 +221,9 @@ func buildHistory(dayRows []dayCheckRow, since time.Time) []publicMonitorHistory
 		byDate[dr.date] = totals{dr.total, dr.success}
 	}
 
+	// Build oldest-first directly (i=0 is since, i=29 is ~today).
 	history := make([]publicMonitorHistory, 0, 30)
-	for i := 29; i >= 0; i-- {
+	for i := 0; i < 30; i++ {
 		d := since.AddDate(0, 0, i)
 		dateStr := d.Format("2006-01-02")
 		if row, ok := byDate[dateStr]; ok {
@@ -222,12 +237,7 @@ func buildHistory(dayRows []dayCheckRow, since time.Time) []publicMonitorHistory
 			history = append(history, publicMonitorHistory{Date: dateStr, Status: "operational", Uptime: 100.0})
 		}
 	}
-
-	reversed := make([]publicMonitorHistory, len(history))
-	for i, entry := range history {
-		reversed[len(history)-1-i] = entry
-	}
-	return reversed
+	return history
 }
 
 func dayStatus(total, success int64) string {
@@ -252,42 +262,60 @@ func computeUptimePercent(dayRows []dayCheckRow) float64 {
 	return math.Round(float64(successChecks)/float64(totalChecks)*10000) / 100
 }
 
-func (h *StatusPagePublicHandler) computeCurrentStatus(ctx context.Context, monitorID string) string {
-	rows, err := h.pool.Query(ctx,
-		`SELECT status FROM monitor_checks WHERE monitor_id = $1 ORDER BY check_at DESC LIMIT 3`,
-		monitorID,
-	)
+// batchCurrentStatuses fetches the 3 most-recent check statuses for every
+// monitor in a single LATERAL JOIN, eliminating the N+1 round-trip.
+func (h *StatusPagePublicHandler) batchCurrentStatuses(ctx context.Context, monitorIDs []string) (map[string]string, error) {
+	result := make(map[string]string, len(monitorIDs))
+	for _, id := range monitorIDs {
+		result[id] = "operational"
+	}
+	if len(monitorIDs) == 0 {
+		return result, nil
+	}
+
+	rows, err := h.pool.Query(ctx, `
+		SELECT mc.monitor_id, mc.status
+		FROM UNNEST($1::text[]) AS ids(monitor_id)
+		CROSS JOIN LATERAL (
+			SELECT monitor_id, status
+			FROM monitor_checks
+			WHERE monitor_id = ids.monitor_id
+			ORDER BY check_at DESC
+			LIMIT 3
+		) mc
+	`, monitorIDs)
 	if err != nil {
-		return "operational"
+		return result, nil // fail open: default to operational
 	}
 	defer rows.Close()
 
-	var statuses []string
+	statusMap := make(map[string][]string, len(monitorIDs))
 	for rows.Next() {
-		var s string
-		if err := rows.Scan(&s); err != nil {
-			break
+		var monID, st string
+		if err := rows.Scan(&monID, &st); err != nil {
+			continue
 		}
-		statuses = append(statuses, s)
+		statusMap[monID] = append(statusMap[monID], st)
 	}
+	_ = rows.Err() // best-effort; defaults already set
 
-	if len(statuses) == 0 {
-		return "operational"
-	}
-
-	failures := 0
-	for _, s := range statuses {
-		if s != "up" {
-			failures++
+	for id, statuses := range statusMap {
+		failures := 0
+		for _, s := range statuses {
+			if s != "up" {
+				failures++
+			}
+		}
+		switch {
+		case failures == 0:
+			result[id] = "operational"
+		case failures == len(statuses):
+			result[id] = "outage"
+		default:
+			result[id] = "degraded"
 		}
 	}
-	if failures == 0 {
-		return "operational"
-	}
-	if failures == len(statuses) {
-		return "outage"
-	}
-	return "degraded"
+	return result, nil
 }
 
 func overallStatus(monitors []publicMonitor) string {

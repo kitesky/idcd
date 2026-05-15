@@ -4,9 +4,11 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -94,11 +96,19 @@ func NewWSHandler(h *hub.Hub, q *idcdmain.Queries, pool NodeAuthPool, streamCli 
 }
 
 // ServeWS handles WebSocket upgrade requests from agent nodes.
-// GET /agent/ws?api_key=xxx
+// Accepts the secret key via the Authorization header (preferred: "Bearer <key>")
+// or, for backward compatibility, via the api_key query parameter.
 func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	apiKey := r.URL.Query().Get("api_key")
+	// Prefer Authorization header so the key never appears in proxy/access logs.
+	apiKey := ""
+	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+		apiKey = strings.TrimPrefix(auth, "Bearer ")
+	} else {
+		// Fallback: query param supported for backward compatibility.
+		apiKey = r.URL.Query().Get("api_key")
+	}
 	if apiKey == "" {
 		http.Error(w, "missing api_key", http.StatusUnauthorized)
 		return
@@ -117,7 +127,6 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Mark node active on connect
 	if h.pool != nil {
 		_, _ = h.pool.Exec(ctx, `
 			UPDATE enrolled_nodes
@@ -135,6 +144,7 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 
 // ── auth ──────────────────────────────────────────────────────────────────────
 
+
 func (h *WSHandler) verifyAPIKey(ctx context.Context, key string) (string, error) {
 	if len(key) < 16 {
 		return "", apperr.Unauthorized("invalid api_key format")
@@ -150,7 +160,7 @@ func (h *WSHandler) verifyAPIKey(ctx context.Context, key string) (string, error
 		  AND status IN ('pending', 'active')
 	`, secretHash).Scan(&nodeID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			return "", apperr.Unauthorized("invalid or revoked api_key")
 		}
 		return "", fmt.Errorf("gateway: db lookup: %w", err)
@@ -276,7 +286,6 @@ func (h *WSHandler) handleHeartbeat(c *hub.Connection, payload json.RawMessage) 
 
 	ctx := context.Background()
 
-	// Update last_seen_at and process fingerprint
 	if h.pool != nil {
 		h.processFingerprint(ctx, c.NodeID, hb.Fingerprint)
 		h.dispatchPendingCommands(ctx, c.NodeID)
@@ -300,7 +309,6 @@ func (h *WSHandler) processFingerprint(ctx context.Context, nodeID string, fp *n
 		return
 	}
 
-	// Load previously stored fingerprint in one round-trip
 	var stored []byte
 	row := h.pool.QueryRow(ctx,
 		`SELECT fingerprint FROM enrolled_nodes WHERE node_id = $1`, nodeID)
@@ -320,7 +328,6 @@ func (h *WSHandler) processFingerprint(ctx context.Context, nodeID string, fp *n
 		}
 	}
 
-	// Update fingerprint + last_seen_at
 	_, _ = h.pool.Exec(ctx, `
 		UPDATE enrolled_nodes
 		SET last_seen_at           = now(),
@@ -339,7 +346,6 @@ type pendingCmd struct {
 
 // dispatchPendingCommands fetches undelivered commands for this node and sends them.
 func (h *WSHandler) dispatchPendingCommands(ctx context.Context, nodeID string) {
-	// Fetch up to 5 pending commands (avoid overwhelming the agent)
 	rows, err := queryPendingCommands(ctx, h.pool, nodeID)
 	if err != nil || len(rows) == 0 {
 		return
@@ -378,10 +384,9 @@ func (h *WSHandler) dispatchPendingCommands(ctx context.Context, nodeID string) 
 	}
 }
 
+// queryPendingCommands uses json_agg to return multi-row results through the
+// NodeAuthPool interface, which only exposes QueryRow (no Query method).
 func queryPendingCommands(ctx context.Context, pool NodeAuthPool, nodeID string) ([]pendingCmd, error) {
-	// Use QueryRow repeatedly is impractical; we need multi-row.
-	// NodeAuthPool only exposes QueryRow/Exec.
-	// Workaround: fetch IDs one at a time via a LIMIT 5 trick using a JSON aggregate.
 	var raw []byte
 	err := pool.QueryRow(ctx, `
 		SELECT COALESCE(json_agg(row_to_json(t)), '[]'::json)

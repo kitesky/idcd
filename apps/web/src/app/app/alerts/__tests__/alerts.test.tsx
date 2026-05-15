@@ -390,10 +390,11 @@ describe("AlertsClient — 告警策略 Tab", () => {
     await waitFor(() =>
       expect(screen.getByTestId(`policy-toggle-${firstPol.id}`)).toBeInTheDocument()
     )
-    const toggle = screen.getByTestId(`policy-toggle-${firstPol.id}`) as HTMLInputElement
-    const initialChecked = toggle.checked
+    const toggle = screen.getByTestId(`policy-toggle-${firstPol.id}`)
+    // shadcn Switch renders as <button role="switch" aria-checked=...>
+    const initialChecked = toggle.getAttribute("aria-checked") === "true"
     fireEvent.click(toggle)
-    expect(toggle.checked).toBe(!initialChecked)
+    expect(toggle.getAttribute("aria-checked")).toBe(String(!initialChecked))
   })
 
   it("点击编辑按钮打开侧滑 Sheet（编辑模式）", async () => {

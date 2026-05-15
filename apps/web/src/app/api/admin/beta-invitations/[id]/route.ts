@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
+import { verifyAdminToken } from "@/lib/admin-auth"
 
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ""
@@ -7,6 +8,9 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  if (!verifyAdminToken(req)) {
+    return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 })
+  }
   const { id } = await params
   try {
     const body = await req.json()

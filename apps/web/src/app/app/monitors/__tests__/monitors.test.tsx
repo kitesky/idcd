@@ -246,28 +246,28 @@ describe("MonitorDetailClient — 详情页渲染", () => {
   const upMonitor = MOCK_MONITORS[0] // mon-001 UP
 
   it("渲染监控名称", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByText("idcd.com 主站")).toBeInTheDocument()
   })
 
   it("渲染 UP 状态 Badge", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getAllByText("UP").length).toBeGreaterThan(0)
   })
 
   it("渲染 24h 可用率 99.8%", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByText("99.8%")).toBeInTheDocument()
   })
 
   it("渲染 48 个趋势块（空数据时显示 48 个灰色方块）", async () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     const blocksContainer = await screen.findByTestId("trend-blocks")
     expect(blocksContainer.children.length).toBe(48)
   })
 
   it("加载中时显示 Skeleton", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByTestId("trend-blocks-loading")).toBeInTheDocument()
   })
 
@@ -291,14 +291,14 @@ describe("MonitorDetailClient — 详情页渲染", () => {
         },
       }),
     } as Response)
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     const blocksContainer = await screen.findByTestId("trend-blocks")
     expect(blocksContainer.children.length).toBe(5)
   })
 
   it("fetch 失败时渲染 48 个空方块", async () => {
     global.fetch = vi.fn().mockRejectedValue(new Error("network error"))
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     await waitFor(() => {
       expect(screen.queryByTestId("trend-blocks-loading")).not.toBeInTheDocument()
     })
@@ -307,7 +307,7 @@ describe("MonitorDetailClient — 详情页渲染", () => {
   })
 
   it("渲染检测记录表格和表头", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByText("最近检测记录")).toBeInTheDocument()
     expect(screen.getByText("时间")).toBeInTheDocument()
     expect(screen.getByText("延迟")).toBeInTheDocument()
@@ -334,7 +334,7 @@ describe("MonitorDetailClient — 详情页渲染", () => {
         },
       }),
     } as Response)
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     // Wait for loading to finish and UP badges to appear in the table
     await waitFor(() => {
       expect(screen.queryByText("加载中…")).not.toBeInTheDocument()
@@ -351,38 +351,38 @@ describe("MonitorDetailClient — 详情页渲染", () => {
         data: { monitor_id: "mon-001", hours: 24, resolution_minutes: 30, buckets: [] },
       }),
     } as Response)
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     await waitFor(() => {
       expect(screen.getByText("暂无检测记录")).toBeInTheDocument()
     })
   })
 
   it("渲染 SSE 实时更新区域", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByText("实时更新中")).toBeInTheDocument()
     expect(screen.getByTestId("sse-live-check")).toBeInTheDocument()
   })
 
   it("DOWN 监控：可用率显示 94.2%", () => {
     const downMonitor = MOCK_MONITORS[1] // mon-002 DOWN
-    render(<MonitorDetailClient monitor={downMonitor} />)
+    render(<MonitorDetailClient monitor={downMonitor} monitorId={downMonitor.id} />)
     expect(screen.getByText("94.2%")).toBeInTheDocument()
   })
 
   it("暂停按钮点击后变为恢复按钮", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     const pauseBtn = screen.getByRole("button", { name: /暂停/ })
     fireEvent.click(pauseBtn)
     expect(screen.getByRole("button", { name: /恢复/ })).toBeInTheDocument()
   })
 
   it("监控目标地址显示在页面上", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByText("https://idcd.com")).toBeInTheDocument()
   })
 
   it("类型 Badge 渲染", () => {
-    render(<MonitorDetailClient monitor={upMonitor} />)
+    render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     expect(screen.getByText("HTTP")).toBeInTheDocument()
   })
 })

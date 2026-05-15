@@ -7,6 +7,8 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import Link from "next/link"
 import {
+  Alert,
+  AlertDescription,
   Button,
   Input,
   Form,
@@ -32,6 +34,7 @@ async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
       challenge: Uint8Array.from(atob(data.options.challenge.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)),
       allowCredentials: (data.options.allowCredentials || []).map((c: { id: string; type: string }) => ({
         ...c,
+        type: "public-key" as const,
         id: Uint8Array.from(atob(c.id.replace(/-/g, "+").replace(/_/g, "/")), ch => ch.charCodeAt(0)),
       })),
     },
@@ -121,9 +124,9 @@ export default function LoginPage() {
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           {error && (
-            <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
-              {error}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           <FormField

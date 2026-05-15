@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/subtle"
 	"log/slog"
 	"net/http"
 	"time"
@@ -47,18 +48,15 @@ func New(cfg *config.Config, h *hub.Hub, rdb *redis.Client, pool handler.NodeAut
 	return s
 }
 
-// setupRouter configures the HTTP router.
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
 
-	// Middleware chain
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
 
-	// Health checks
 	healthHandler := handler.NewHealthHandler(s.hub, s.redis, s.logger)
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/deep", healthHandler.DeepHealth)
@@ -74,13 +72,10 @@ func (s *Server) setupRouter() {
 	s.router = r
 }
 
-// setupHTTPServer configures the HTTP server.
 func (s *Server) setupHTTPServer() {
 	s.httpServer = &http.Server{
-		Addr:    s.config.ListenAddr,
-		Handler: s.router,
-
-		// Timeouts
+		Addr:              s.config.ListenAddr,
+		Handler:           s.router,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
@@ -106,7 +101,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
 }
 
-// Router returns the configured router (useful for testing).
+// Router returns the configured chi router (used in tests to mount test handlers).
 func (s *Server) Router() chi.Router {
 	return s.router
 }
@@ -120,7 +115,8 @@ func metricsAuthMiddleware(token string, next http.Handler) http.Handler {
 			return
 		}
 		auth := r.Header.Get("Authorization")
-		if auth != "Bearer "+token {
+		expected := "Bearer " + token
+		if subtle.ConstantTimeCompare([]byte(auth), []byte(expected)) != 1 {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}

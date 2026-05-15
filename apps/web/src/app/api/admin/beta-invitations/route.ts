@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from "next/server"
+import { verifyAdminToken } from "@/lib/admin-auth"
 
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ""
 
 export async function GET(req: NextRequest) {
+  if (!verifyAdminToken(req)) {
+    return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 })
+  }
   try {
     const { searchParams } = req.nextUrl
     const res = await fetch(
@@ -21,6 +25,9 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  if (!verifyAdminToken(req)) {
+    return NextResponse.json({ error: { message: "Unauthorized" } }, { status: 401 })
+  }
   try {
     const body = await req.json()
     const res = await fetch(`${INTERNAL_API_URL}/v1/admin/beta-invitations`, {

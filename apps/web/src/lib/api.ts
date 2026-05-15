@@ -9,7 +9,7 @@ function getCsrfToken(): string {
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"])
 
-export async function apiRequest<T = any>(path: string, options?: RequestInit): Promise<T> {
+export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
   const method = (options?.method ?? "GET").toUpperCase()
 
   // Do not set a default Content-Type when the body is FormData — the browser
@@ -36,7 +36,6 @@ export async function apiRequest<T = any>(path: string, options?: RequestInit): 
       const err = await res.json()
       errorMessage = err?.error?.message || err?.message || errorMessage
     } catch {
-      // If response is not JSON, use status text
       errorMessage = res.statusText || errorMessage
     }
     throw new Error(errorMessage)
@@ -45,7 +44,6 @@ export async function apiRequest<T = any>(path: string, options?: RequestInit): 
   return res.json()
 }
 
-// Types
 export interface Node {
   id: string
   name: string

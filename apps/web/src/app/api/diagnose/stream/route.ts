@@ -105,10 +105,35 @@ const CHECKS: CheckDef[] = [
   },
 ]
 
+// Compiled once at module load — reused on every isPublicDomain call.
+const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/
+// Each DNS label: starts and ends with alnum, optionally has hyphens in the middle.
+const LABEL_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i
+
+// Block internal/reserved hostnames to prevent SSRF via the diagnose endpoint.
+// Only allows public domain names (labels separated by dots, no IPs, no localhost).
+function isPublicDomain(domain: string): boolean {
+  // Reject anything that looks like an IP address (v4 or v6)
+  if (IPV4_RE.test(domain)) return false
+  if (domain.includes(":")) return false // IPv6 or port-qualified host
+  // Must look like a valid public hostname: labels of [a-z0-9-] separated by dots,
+  // at least two labels, no leading/trailing hyphens per label.
+  const labels = domain.split(".")
+  if (labels.length < 2) return false
+  if (!labels.every((l) => l.length > 0 && LABEL_RE.test(l))) return false
+  // Reject well-known internal/loopback names
+  const blocklist = ["localhost", "local", "internal", "intranet", "localdomain"]
+  if (blocklist.includes(labels[labels.length - 1].toLowerCase())) return false
+  return true
+}
+
 export async function GET(req: NextRequest) {
   const domain = req.nextUrl.searchParams.get("domain")?.trim()
   if (!domain) {
     return new Response("Missing domain parameter", { status: 400 })
+  }
+  if (!isPublicDomain(domain)) {
+    return new Response("Invalid domain parameter", { status: 400 })
   }
 
   const encoder = new TextEncoder()

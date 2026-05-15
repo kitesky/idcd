@@ -41,7 +41,7 @@ export function UsersClient({
     if (nextPage > 1) params.set("page", String(nextPage))
     if (nextQ) params.set("q", nextQ)
     const qs = params.toString()
-    router.push(qs ? `${pathname}?${qs}` : pathname)
+    router.push((qs ? `${pathname}?${qs}` : pathname) as never)
   }
 
   return (

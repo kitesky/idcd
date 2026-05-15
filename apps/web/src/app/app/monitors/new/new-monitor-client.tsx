@@ -391,9 +391,10 @@ export function NewMonitorClient() {
             </p>
           </div>
 
-          <button
+          <Button
             type="button"
-            className="flex w-full items-center justify-between rounded-md border p-4 text-sm font-medium hover:bg-muted/50 transition-colors"
+            variant="outline"
+            className="w-full justify-between"
             onClick={() => setShowAdvanced((v) => !v)}
           >
             <span>展开高级配置</span>
@@ -403,7 +404,7 @@ export function NewMonitorClient() {
                 showAdvanced ? "rotate-180" : "",
               ].join(" ")}
             />
-          </button>
+          </Button>
 
           {showAdvanced && (
             <Card>

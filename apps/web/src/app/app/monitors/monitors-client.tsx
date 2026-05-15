@@ -244,17 +244,19 @@ export function MonitorsClient() {
     setSelectedIds(new Set())
     setPendingBulkAction(null)
 
-    // Optimistic UI update
+    // Optimistic UI update — use the captured `ids` snapshot, not `selectedIds`
+    // which was already cleared on line above.
+    const idSet = new Set(ids)
     if (action === "pause") {
       setMonitors((prev) =>
-        prev.map((m) => (selectedIds.has(m.id) ? { ...m, status: "PAUSED" as const } : m))
+        prev.map((m) => (idSet.has(m.id) ? { ...m, status: "PAUSED" as const } : m))
       )
     } else if (action === "resume") {
       setMonitors((prev) =>
-        prev.map((m) => (selectedIds.has(m.id) ? { ...m, status: "UP" as const } : m))
+        prev.map((m) => (idSet.has(m.id) ? { ...m, status: "UP" as const } : m))
       )
     } else {
-      setMonitors((prev) => prev.filter((m) => !selectedIds.has(m.id)))
+      setMonitors((prev) => prev.filter((m) => !idSet.has(m.id)))
     }
 
     try {

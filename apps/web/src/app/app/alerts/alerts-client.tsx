@@ -54,6 +54,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog"
 import { Textarea } from "@/components/ui/textarea"
+import { Switch } from "@/components/ui/switch"
 import {
   Table,
   TableBody,
@@ -62,6 +63,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { toast } from "sonner"
 import {
   type AlertEvent,
   type AlertChannel,
@@ -75,8 +77,6 @@ import {
   truncateConfig,
 } from "./types"
 import { apiRequest } from "@/lib/api"
-
-// ─── Types ───────────────────────────────────────────────────────────────────
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -98,45 +98,6 @@ function notifStatusBadge(status: AlertNotification["status"]) {
   if (status === "sent") return <Badge variant="success">成功</Badge>
   if (status === "failed") return <Badge variant="destructive">失败</Badge>
   return <Badge variant="secondary">待发</Badge>
-}
-
-// ─── Toast (simple in-page notification) ─────────────────────────────────────
-
-interface ToastMsg {
-  id: number
-  message: string
-}
-
-function useToast() {
-  const [toasts, setToasts] = useState<ToastMsg[]>([])
-  const counterRef = useRef(0)
-
-  const toast = (message: string) => {
-    const id = ++counterRef.current
-    setToasts((prev) => [...prev, { id, message }])
-    setTimeout(() => {
-      setToasts((prev) => prev.filter((t) => t.id !== id))
-    }, 3000)
-  }
-
-  return { toasts, toast }
-}
-
-function ToastContainer({ toasts }: { toasts: ToastMsg[] }) {
-  if (toasts.length === 0) return null
-  return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2" role="status" aria-live="polite">
-      {toasts.map((t) => (
-        <div
-          key={t.id}
-          className="rounded-md border bg-background px-4 py-3 shadow-md text-sm"
-          data-testid="toast"
-        >
-          {t.message}
-        </div>
-      ))}
-    </div>
-  )
 }
 
 // ─── Add Channel Form (inside Sheet) ─────────────────────────────────────────
@@ -689,20 +650,17 @@ function PoliciesTab({
                     : "—"}
                 </TableCell>
                 <TableCell>
-                  <label className="flex cursor-pointer items-center gap-2">
-                    <input
-                      type="checkbox"
-                      role="switch"
-                      className="h-4 w-4 accent-primary"
+                  <div className="flex items-center gap-2">
+                    <Switch
                       checked={pol.enabled}
-                      onChange={() => onToggle(pol.id)}
+                      onCheckedChange={() => onToggle(pol.id)}
                       aria-label={`策略 ${pol.name} ${pol.enabled ? "已启用" : "已关闭"}`}
                       data-testid={`policy-toggle-${pol.id}`}
                     />
                     <span className="text-xs text-muted-foreground">
                       {pol.enabled ? "启用" : "关闭"}
                     </span>
-                  </label>
+                  </div>
                 </TableCell>
                 <TableCell>
                   <div className="flex items-center gap-1">
@@ -831,11 +789,13 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
 
   useEffect(() => {
     if (!open) return
+    let cancelled = false
     setMonitorsLoading(true)
     apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
-      .then((res) => setMonitors(res.data.monitors))
-      .catch(() => setMonitors([]))
-      .finally(() => setMonitorsLoading(false))
+      .then((res) => { if (!cancelled) setMonitors(res.data.monitors) })
+      .catch(() => { if (!cancelled) setMonitors([]) })
+      .finally(() => { if (!cancelled) setMonitorsLoading(false) })
+    return () => { cancelled = true }
   }, [open])
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1036,9 +996,6 @@ export function AlertsClient() {
 
   // Silence dialog state
   const [showAddSilence, setShowAddSilence] = useState(false)
-
-  // Toast
-  const { toasts, toast } = useToast()
 
   // Confirm dialog state
   const [confirm, setConfirm] = useState<{
@@ -1436,8 +1393,6 @@ export function AlertsClient() {
         }}
       />
 
-      {/* Toast notifications */}
-      <ToastContainer toasts={toasts} />
     </div>
   )
 }

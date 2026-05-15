@@ -4,6 +4,7 @@ package session
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"time"
 
@@ -88,7 +89,7 @@ func (s *Service) Get(ctx context.Context, sessionID string) (*SessionData, erro
 	key := s.sessionKey(sessionID)
 	data, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			return nil, apperr.NotFound("session not found")
 		}
 		return nil, apperr.Internal("failed to get session", err)
@@ -167,7 +168,7 @@ func (s *Service) Delete(ctx context.Context, sessionID string) error {
 
 	// Load the session first to get the userID for set cleanup.
 	raw, err := s.redis.Get(ctx, key).Result()
-	if err == redis.Nil {
+	if errors.Is(err, redis.Nil) {
 		return apperr.NotFound("session not found")
 	}
 	if err != nil {

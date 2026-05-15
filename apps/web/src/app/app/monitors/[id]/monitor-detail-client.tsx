@@ -111,7 +111,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   const [bucketLoading, setBucketLoading] = useState(true)
 
   useEffect(() => {
-    const url = `${API_BASE}/v1/monitors/${monitor.id}/stream`
+    const url = `${API_BASE}/v1/monitors/${id}/stream`
     const es = new EventSource(url, { withCredentials: true })
     es.addEventListener("check", (e: MessageEvent) => {
       try {
@@ -124,12 +124,12 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
     es.addEventListener("error", () => {
     })
     return () => es.close()
-  }, [monitor.id])
+  }, [id])
 
   useEffect(() => {
     setBucketLoading(true)
     apiRequest<{ data: { buckets: CheckBucket[] } }>(
-      `/v1/monitors/${monitor.id}/checks?hours=24`
+      `/v1/monitors/${id}/checks?hours=24`
     )
       .then((json) => {
         const buckets: CheckBucket[] = json?.data?.buckets ?? []
@@ -141,13 +141,13 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       .finally(() => {
         setBucketLoading(false)
       })
-  }, [monitor.id])
+  }, [id])
 
   function togglePause() {
-    setCurrentMonitor((prev) => ({
-      ...prev,
-      status: prev.status === "PAUSED" ? "UP" : "PAUSED",
-    }))
+    setCurrentMonitor((prev) => {
+      if (!prev) return null
+      return { ...prev, status: prev.status === "PAUSED" ? "UP" : "PAUSED" }
+    })
   }
 
   if (!currentMonitor) {

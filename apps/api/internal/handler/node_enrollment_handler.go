@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -170,7 +171,7 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		RETURNING id
 	`, tokenHash).Scan(&tokenID)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			response.Error(w, r, apperr.Unauthorized("invalid or expired enrollment token"))
 		} else {
 			response.Error(w, r, apperr.Internal("token claim failed", err))

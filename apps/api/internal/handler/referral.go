@@ -189,6 +189,10 @@ func (h *ReferralHandler) ListRewards(w http.ResponseWriter, r *http.Request) {
 			totalCredited += amount
 		}
 	}
+	if err := rows.Err(); err != nil {
+		response.Error(w, r, apperr.Internal("failed to iterate rewards", err))
+		return
+	}
 
 	response.JSON(w, r, http.StatusOK, referralRewardsResponse{
 		Rewards:       rewards,

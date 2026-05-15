@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogDescription,
   DialogFooter,
+  Skeleton,
 } from "@/components/ui"
 import { apiRequest } from "@/lib/api"
 
@@ -50,7 +51,6 @@ export function SecurityClient() {
   const [passkeyAdding, setPasskeyAdding] = useState(false)
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
-  // Load 2FA status on mount
   useEffect(() => {
     apiRequest<{ enabled: boolean }>("/v1/account/2fa/status")
       .then((res) => setEnabled(res.enabled))
@@ -59,7 +59,6 @@ export function SecurityClient() {
       })
   }, [])
 
-  // Load passkeys on mount
   useEffect(() => {
     setPasskeyLoading(true)
     apiRequest<{ data: { passkeys: PasskeyItem[] } }>("/v1/account/passkeys")
@@ -161,7 +160,7 @@ export function SecurityClient() {
             ...data.options.user,
             id: Uint8Array.from(atob(data.options.user.id.replace(/-/g, "+").replace(/_/g, "/")), c => c.charCodeAt(0)),
           },
-        },
+        } as unknown as PublicKeyCredentialCreationOptions,
       }) as PublicKeyCredential | null
 
       if (!credential) throw new Error("注册被取消")
@@ -282,15 +281,12 @@ export function SecurityClient() {
           {passkeyLoading && (
             <div className="space-y-2" data-testid="passkey-loading">
               {[1, 2].map((i) => (
-                <div
-                  key={i}
-                  className="flex items-center justify-between rounded border px-3 py-2 animate-pulse"
-                >
+                <div key={i} className="flex items-center justify-between py-2">
                   <div className="space-y-1.5">
-                    <div className="h-3 w-36 rounded bg-muted" />
-                    <div className="h-2 w-24 rounded bg-muted" />
+                    <Skeleton className="h-3 w-36" />
+                    <Skeleton className="h-2 w-24" />
                   </div>
-                  <div className="h-8 w-12 rounded bg-muted" />
+                  <Skeleton className="h-8 w-12" />
                 </div>
               ))}
             </div>
@@ -298,26 +294,24 @@ export function SecurityClient() {
           {!passkeyLoading && passkeys.length > 0 && (
             <div className="space-y-2" data-testid="passkey-list">
               {passkeys.map((pk) => (
-                <div
-                  key={pk.id}
-                  className="flex items-center justify-between rounded border px-3 py-2"
-                  data-testid={`passkey-item-${pk.id}`}
-                >
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-medium">{pk.device_name}</p>
-                    <p className="text-xs text-muted-foreground">
-                      添加于 {new Date(pk.created_at).toLocaleDateString("zh-CN")}
-                    </p>
-                  </div>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    data-testid={`btn-delete-passkey-${pk.id}`}
-                    onClick={() => handleDeletePasskey(pk.id)}
-                  >
-                    删除
-                  </Button>
-                </div>
+                <Card key={pk.id} data-testid={`passkey-item-${pk.id}`}>
+                  <CardContent className="flex items-center justify-between py-3 px-4">
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">{pk.device_name}</p>
+                      <p className="text-xs text-muted-foreground">
+                        添加于 {new Date(pk.created_at).toLocaleDateString("zh-CN")}
+                      </p>
+                    </div>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      data-testid={`btn-delete-passkey-${pk.id}`}
+                      onClick={() => handleDeletePasskey(pk.id)}
+                    >
+                      删除
+                    </Button>
+                  </CardContent>
+                </Card>
               ))}
             </div>
           )}

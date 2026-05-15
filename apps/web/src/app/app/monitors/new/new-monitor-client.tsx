@@ -2,6 +2,8 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { apiRequest } from "@/lib/api"
 import {
   ArrowLeft,
   ArrowRight,
@@ -187,13 +189,11 @@ export function NewMonitorClient() {
   }
 
   async function handleCreate() {
-    // Clear any previous quota error.
     setQuotaExceeded(null)
 
     try {
-      const res = await fetch("/api/v1/monitors", {
+      await apiRequest("/v1/monitors", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: form.name,
           type: form.type,
@@ -203,14 +203,16 @@ export function NewMonitorClient() {
         }),
       })
 
-      if (res.status === 402) {
-        // Quota exceeded — parse the plan information from the response.
-        const data = await res.json().catch(() => ({}))
-        const message: string = data.message ?? ""
-        // Attempt to parse plan/used/limit from the error message.
-        // Fallback: show generic "free" exceeded message.
-        const planMatch = message.match(/您的\s+(\S+)\s+档/)
-        const planKey = planMatch ? planMatch[1].toLowerCase() : "free"
+      setSaved(true)
+      setTimeout(() => {
+        router.push("/app/monitors")
+      }, 1500)
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "创建失败，请稍后重试"
+
+      const planMatch = message.match(/您的\s+(\S+)\s+档/)
+      if (planMatch) {
+        const planKey = planMatch[1].toLowerCase()
         const usedMatch = message.match(/(\d+)\s+个监控项/)
         const usedCount = usedMatch ? parseInt(usedMatch[1], 10) : 0
         const limitMatch = message.match(/上限\s+(\d+)/)
@@ -218,25 +220,11 @@ export function NewMonitorClient() {
           ? parseInt(limitMatch[1], 10)
           : PLAN_MONITOR_LIMITS[planKey] ?? 3
 
-        setQuotaExceeded({
-          currentPlan: planKey,
-          usedCount,
-          limitCount,
-        })
+        setQuotaExceeded({ currentPlan: planKey, usedCount, limitCount })
         return
       }
 
-      if (!res.ok) {
-        // Non-quota error — handle generically (could be extended).
-        return
-      }
-
-      setSaved(true)
-      setTimeout(() => {
-        router.push("/app/monitors")
-      }, 1500)
-    } catch {
-      // Network error — silent fail in this stub implementation.
+      toast.error("创建失败：" + message)
     }
   }
 

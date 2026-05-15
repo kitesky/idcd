@@ -106,6 +106,8 @@ func (h *NodeDiagnosticsHandler) buildDiagnostics(ctx context.Context, id string
 		return nil, apperr.NotFound("node not found")
 	}
 
+	uptime, checks, latDist := h.buildStats(ctx, nodeID)
+
 	now := time.Now().UTC()
 	diag := &NodeDiagnosticsResponse{
 		NodeID: nodeID,
@@ -116,22 +118,72 @@ func (h *NodeDiagnosticsHandler) buildDiagnostics(ctx context.Context, id string
 			ASN:     asn,
 			ISP:     isp,
 		},
-		Status:    status,
-		Uptime24h: 99.9,
-		Checks24h: 1440,
-		LatencyDistribution: LatencyDistribution{
-			P50: 32.5,
-			P90: 45.2,
-			P95: 58.1,
-			P99: 124.7,
-			Min: 18.2,
-			Max: 312.5,
-		},
-		HealthTrend: h.buildHealthTrend(ctx, nodeID),
-		LastSeen:    &now,
+		Status:              status,
+		Uptime24h:           uptime,
+		Checks24h:           checks,
+		LatencyDistribution: latDist,
+		HealthTrend:         h.buildHealthTrend(ctx, nodeID),
+		LastSeen:            &now,
 	}
 
 	return diag, nil
+}
+
+// buildStats queries monitor_checks for the past 24 hours and returns uptime percentage,
+// check count, and latency percentiles. All values are zero when no data exists.
+func (h *NodeDiagnosticsHandler) buildStats(ctx context.Context, nodeID string) (uptime float64, checks int, dist LatencyDistribution) {
+	var (
+		total   *int
+		up      *int
+		p50     *float64
+		p90     *float64
+		p95     *float64
+		p99     *float64
+		minLat  *float64
+		maxLat  *float64
+	)
+	err := h.pool.QueryRow(ctx, `
+		SELECT
+			COUNT(*)::int,
+			COUNT(*) FILTER (WHERE status = 'up')::int,
+			percentile_cont(0.50) WITHIN GROUP (ORDER BY latency_ms),
+			percentile_cont(0.90) WITHIN GROUP (ORDER BY latency_ms),
+			percentile_cont(0.95) WITHIN GROUP (ORDER BY latency_ms),
+			percentile_cont(0.99) WITHIN GROUP (ORDER BY latency_ms),
+			MIN(latency_ms)::float8,
+			MAX(latency_ms)::float8
+		FROM monitor_checks
+		WHERE node_id = $1
+		  AND check_at >= NOW() - INTERVAL '24 hours'
+	`, nodeID).Scan(&total, &up, &p50, &p90, &p95, &p99, &minLat, &maxLat)
+	if err != nil || total == nil || *total == 0 {
+		return 0, 0, LatencyDistribution{}
+	}
+
+	if up != nil && *total > 0 {
+		uptime = float64(*up) / float64(*total) * 100
+	}
+	checks = *total
+
+	if p50 != nil {
+		dist.P50 = *p50
+	}
+	if p90 != nil {
+		dist.P90 = *p90
+	}
+	if p95 != nil {
+		dist.P95 = *p95
+	}
+	if p99 != nil {
+		dist.P99 = *p99
+	}
+	if minLat != nil {
+		dist.Min = *minLat
+	}
+	if maxLat != nil {
+		dist.Max = *maxLat
+	}
+	return uptime, checks, dist
 }
 
 // buildHealthTrend queries monitor_checks for 24h of health data.

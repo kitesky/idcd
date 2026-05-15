@@ -43,8 +43,6 @@ interface StatusPage {
   created_at: string
 }
 
-const IS_FREE_PLAN = true
-
 function StatusPageSkeleton() {
   return (
     <div className="space-y-3" data-testid="status-pages-skeleton">
@@ -173,6 +171,8 @@ export function StatusPagesClient() {
   const [showCreateSheet, setShowCreateSheet] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [isFreePlan, setIsFreePlan] = useState(false)
+  const [quotaLoading, setQuotaLoading] = useState(true)
 
   const fetchStatusPages = useCallback(async () => {
     setLoading(true)
@@ -191,8 +191,21 @@ export function StatusPagesClient() {
     fetchStatusPages()
   }, [fetchStatusPages])
 
+  useEffect(() => {
+    apiRequest<{ data: { plan: string } }>("/v1/account/quota")
+      .then((res) => {
+        setIsFreePlan(res.data.plan === "free")
+      })
+      .catch(() => {
+        setIsFreePlan(false)
+      })
+      .finally(() => {
+        setQuotaLoading(false)
+      })
+  }, [])
+
   function handleNewPage() {
-    if (IS_FREE_PLAN) {
+    if (isFreePlan) {
       setShowUpgradeDialog(true)
     } else {
       setShowCreateSheet(true)
@@ -214,7 +227,7 @@ export function StatusPagesClient() {
 
   return (
     <div className="space-y-6" data-testid="status-pages-page">
-      {IS_FREE_PLAN && (
+      {!quotaLoading && isFreePlan && (
         <Alert data-testid="free-plan-notice">
           <AlertTitle className="flex items-center gap-2">
             Free 档限制
@@ -238,7 +251,7 @@ export function StatusPagesClient() {
 
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold">状态页列表</h2>
-        <Button onClick={handleNewPage} data-testid="new-page-button">
+        <Button onClick={handleNewPage} disabled={quotaLoading} data-testid="new-page-button">
           <Plus className="mr-2 h-4 w-4" />
           新建状态页
         </Button>

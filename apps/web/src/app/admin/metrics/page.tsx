@@ -1,6 +1,3 @@
-"use client"
-
-import { useEffect, useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
@@ -15,8 +12,22 @@ interface Metrics {
   mrr_estimate_cny: number
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
-const ADMIN_TOKEN = process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? ""
+const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
+const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ""
+
+async function fetchMetrics(): Promise<Metrics | null> {
+  try {
+    const res = await fetch(`${INTERNAL_API_URL}/internal/admin/metrics`, {
+      headers: { "X-Admin-Token": ADMIN_TOKEN },
+      cache: "no-store",
+    })
+    if (!res.ok) return null
+    const j = await res.json()
+    return j.data ?? null
+  } catch {
+    return null
+  }
+}
 
 function StatCard({ title, value, sub }: { title: string; value: string | number; sub?: string }) {
   return (
@@ -47,21 +58,10 @@ function PlanBar({ label, count, total }: { label: string; count: number; total:
   )
 }
 
-export default function MetricsPage() {
-  const [metrics, setMetrics] = useState<Metrics | null>(null)
-  const [error, setError] = useState<string | null>(null)
+export default async function MetricsPage() {
+  const metrics = await fetchMetrics()
 
-  useEffect(() => {
-    fetch(`${API_BASE}/internal/admin/metrics`, {
-      headers: { Authorization: `Bearer ${ADMIN_TOKEN}` },
-    })
-      .then(r => { if (!r.ok) throw new Error(`HTTP ${r.status}`); return r.json() })
-      .then(j => setMetrics(j.data))
-      .catch(e => setError(e.message))
-  }, [])
-
-  if (error) return <p className="text-destructive">加载失败：{error}</p>
-  if (!metrics) return <p className="text-muted-foreground">加载中…</p>
+  if (!metrics) return <p className="text-destructive">加载失败，请稍后重试</p>
 
   const totalSubs =
     metrics.subscriptions.free + metrics.subscriptions.pro +

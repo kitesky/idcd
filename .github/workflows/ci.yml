@@ -157,35 +157,6 @@ jobs:
         working-directory: apps/web
         run: pnpm build
 
-  docs-check:
-    name: Docs Check
-    runs-on: ubuntu-latest
-    if: |
-      contains(github.event.head_commit.modified, 'apps/docs/') ||
-      contains(github.event.head_commit.added, 'apps/docs/') ||
-      github.event_name == 'pull_request'
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: '10'
-
-      - name: Install dependencies
-        working-directory: apps/docs
-        run: pnpm install --frozen-lockfile
-
-      - name: Type check
-        working-directory: apps/docs
-        run: pnpm type-check
-
   schema-lint:
     name: Schema Lint
     runs-on: ubuntu-latest

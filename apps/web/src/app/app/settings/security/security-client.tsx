@@ -145,12 +145,9 @@ export function SecurityClient() {
     setPasskeyAdding(true)
     setPasskeyError(null)
     try {
-      const beginRes = await fetch("/api/v1/account/passkeys/register/begin", {
+      const { data } = await apiRequest<{ data: { options: { challenge: string; user: { id: string; [key: string]: unknown }; [key: string]: unknown }; challenge_id: string; [key: string]: unknown } }>("/v1/account/passkeys/register/begin", {
         method: "POST",
-        credentials: "include",
       })
-      if (!beginRes.ok) throw new Error("无法获取注册选项")
-      const { data } = await beginRes.json()
 
       if (typeof window === "undefined" || !window.PublicKeyCredential) {
         throw new Error("此浏览器不支持 Passkey")
@@ -170,10 +167,8 @@ export function SecurityClient() {
       if (!credential) throw new Error("注册被取消")
 
       const response = credential.response as AuthenticatorAttestationResponse
-      const completeRes = await fetch("/api/v1/account/passkeys/register/complete", {
+      const { data: result } = await apiRequest<{ data: { credential_id: string; device_name: string } }>("/v1/account/passkeys/register/complete", {
         method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           challenge: data.challenge_id,
           response: {
@@ -187,8 +182,6 @@ export function SecurityClient() {
           device_name: "My Passkey",
         }),
       })
-      if (!completeRes.ok) throw new Error("注册失败")
-      const { data: result } = await completeRes.json()
       setPasskeys(prev => [...prev, {
         id: result.credential_id,
         device_name: result.device_name,

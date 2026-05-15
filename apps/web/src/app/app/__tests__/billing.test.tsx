@@ -175,7 +175,10 @@ const mockStatusPageApiData = {
 
 describe("StatusPagesClient", () => {
   beforeEach(() => {
-    mockApiRequest.mockImplementation(() => Promise.resolve(mockStatusPageApiData))
+    mockApiRequest.mockImplementation((url: string) => {
+      if (url === "/v1/account/quota") return Promise.resolve({ data: { plan: "free" } })
+      return Promise.resolve(mockStatusPageApiData)
+    })
   })
 
   it("renders status pages page container", () => {
@@ -183,9 +186,11 @@ describe("StatusPagesClient", () => {
     expect(screen.getByTestId("status-pages-page")).toBeInTheDocument()
   })
 
-  it("shows free plan upgrade notice", () => {
+  it("shows free plan upgrade notice for free users", async () => {
     render(<StatusPagesClient />)
-    expect(screen.getByTestId("free-plan-notice")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByTestId("free-plan-notice")).toBeInTheDocument()
+    })
   })
 
   it("renders status pages list after load", async () => {

@@ -90,12 +90,23 @@ func TestNodeDiagnostics_FoundInDB(t *testing.T) {
 	require.NoError(t, err)
 	defer mockPool.Close()
 
-	cols := []string{"id", "country", "city", "asn_org", "asn_org2", "status"}
+	nodeCols := []string{"id", "country", "city", "asn_org", "asn_org2", "status"}
 	mockPool.ExpectQuery(`SELECT id`).
 		WithArgs("jp-tok-ntt-01").
-		WillReturnRows(pgxmock.NewRows(cols).AddRow(
+		WillReturnRows(pgxmock.NewRows(nodeCols).AddRow(
 			"jp-tok-ntt-01", "JP", "Tokyo", "AS2914", "NTT", "active",
 		))
+
+	statsCols := []string{"total", "up", "p50", "p90", "p95", "p99", "min", "max"}
+	total, up := 120, 118
+	p50, p90, p95, p99 := 28.5, 42.1, 55.3, 110.6
+	minLat, maxLat := 15.0, 290.0
+	mockPool.ExpectQuery(`SELECT`).
+		WithArgs("jp-tok-ntt-01").
+		WillReturnRows(pgxmock.NewRows(statsCols).AddRow(
+			&total, &up, &p50, &p90, &p95, &p99, &minLat, &maxLat,
+		))
+
 	mockPool.ExpectQuery(`SELECT`).
 		WithArgs("jp-tok-ntt-01").
 		WillReturnError(errors.New("no data"))
@@ -118,7 +129,10 @@ func TestNodeDiagnostics_FoundInDB(t *testing.T) {
 	assert.Equal(t, "jp-tok-ntt-01", diag.NodeID)
 	assert.Equal(t, "JP", diag.Location.Country)
 	assert.Equal(t, "active", diag.Status)
-	assert.Equal(t, 32.5, diag.LatencyDistribution.P50)
+	assert.InDelta(t, 98.33, diag.Uptime24h, 0.01)
+	assert.Equal(t, 120, diag.Checks24h)
+	assert.Equal(t, 28.5, diag.LatencyDistribution.P50)
+	assert.Equal(t, 110.6, diag.LatencyDistribution.P99)
 	assert.NotNil(t, diag.HealthTrend)
 }
 

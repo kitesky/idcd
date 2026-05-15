@@ -47,6 +47,14 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog"
+import { Textarea } from "@/components/ui/textarea"
+import {
   Table,
   TableBody,
   TableCell,
@@ -210,11 +218,6 @@ interface PolicyFormProps {
   initial?: AlertPolicy
   onSave: (policy: Omit<AlertPolicy, "id">) => void
   onCancel: () => void
-}
-
-interface MonitorOption {
-  id: string
-  name: string
 }
 
 function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
@@ -803,6 +806,149 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
   )
 }
 
+// ─── Add Silence Dialog ───────────────────────────────────────────────────────
+
+interface AddSilenceDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreated: (silence: AlertSilence) => void
+}
+
+interface MonitorOption {
+  id: string
+  name: string
+}
+
+function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogProps) {
+  const [monitors, setMonitors] = useState<MonitorOption[]>([])
+  const [monitorsLoading, setMonitorsLoading] = useState(true)
+  const [monitorId, setMonitorId] = useState<string>("__global__")
+  const [reason, setReason] = useState("")
+  const [startsAt, setStartsAt] = useState("")
+  const [endsAt, setEndsAt] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!open) return
+    setMonitorsLoading(true)
+    apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
+      .then((res) => setMonitors(res.data.monitors))
+      .catch(() => setMonitors([]))
+      .finally(() => setMonitorsLoading(false))
+  }, [open])
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!reason.trim() || !startsAt || !endsAt) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      const body: Record<string, unknown> = {
+        reason: reason.trim(),
+        starts_at: new Date(startsAt).toISOString(),
+        ends_at: new Date(endsAt).toISOString(),
+      }
+      if (monitorId !== "__global__") body.monitor_id = monitorId
+      const res = await apiRequest<{ data: { silence: AlertSilence } }>("/v1/alert-silences", {
+        method: "POST",
+        body: JSON.stringify(body),
+      })
+      onCreated(res.data.silence)
+      onOpenChange(false)
+      setReason("")
+      setStartsAt("")
+      setEndsAt("")
+      setMonitorId("__global__")
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "创建失败，请重试")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="add-silence-dialog">
+        <DialogHeader>
+          <DialogTitle>添加静默规则</DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 mt-2">
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
+          <div className="space-y-2">
+            <Label htmlFor="silence-monitor">绑定监控（可选）</Label>
+            <Select value={monitorId} onValueChange={setMonitorId} disabled={monitorsLoading}>
+              <SelectTrigger id="silence-monitor">
+                <SelectValue placeholder={monitorsLoading ? "加载中..." : "全局静默"} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="__global__">全局静默</SelectItem>
+                {monitors.map((m) => (
+                  <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="silence-reason">原因</Label>
+            <Textarea
+              id="silence-reason"
+              placeholder="如：计划维护窗口"
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              required
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-2">
+              <Label htmlFor="silence-starts">开始时间</Label>
+              <Input
+                id="silence-starts"
+                type="datetime-local"
+                value={startsAt}
+                onChange={(e) => setStartsAt(e.target.value)}
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="silence-ends">结束时间</Label>
+              <Input
+                id="silence-ends"
+                type="datetime-local"
+                value={endsAt}
+                onChange={(e) => setEndsAt(e.target.value)}
+                required
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
+              取消
+            </Button>
+            <Button
+              type="submit"
+              disabled={submitting || !reason.trim() || !startsAt || !endsAt}
+            >
+              {submitting ? "创建中..." : "创建静默"}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ─── API response shapes ──────────────────────────────────────────────────────
 
 interface EventsResponse {
@@ -882,9 +1028,14 @@ export function AlertsClient() {
   const [channelsError, setChannelsError] = useState<string | null>(null)
   const [policiesLoading, setPoliciesLoading] = useState(false)
   const [policiesError, setPoliciesError] = useState<string | null>(null)
+  const [silencesLoading, setSilencesLoading] = useState(false)
+  const [silencesError, setSilencesError] = useState<string | null>(null)
 
   // Track which tabs have been fetched
-  const fetchedRef = useRef<Record<string, boolean>>({ events: false, channels: false, policies: false })
+  const fetchedRef = useRef<Record<string, boolean>>({ events: false, channels: false, policies: false, silences: false })
+
+  // Silence dialog state
+  const [showAddSilence, setShowAddSilence] = useState(false)
 
   // Toast
   const { toasts, toast } = useToast()
@@ -951,6 +1102,21 @@ export function AlertsClient() {
     }
   }, [])
 
+  const fetchSilences = useCallback(async () => {
+    if (fetchedRef.current.silences) return
+    fetchedRef.current.silences = true
+    setSilencesLoading(true)
+    setSilencesError(null)
+    try {
+      const res = await apiRequest<{ data: { silences: AlertSilence[] } }>("/v1/alert-silences")
+      setSilences(res.data.silences ?? [])
+    } catch (err) {
+      setSilencesError(err instanceof Error ? err.message : "加载失败")
+    } finally {
+      setSilencesLoading(false)
+    }
+  }, [])
+
   // Fetch events on mount (default tab)
   useEffect(() => {
     void fetchEvents()
@@ -961,6 +1127,7 @@ export function AlertsClient() {
   const handleTabChange = (value: string) => {
     if (value === "channels") void fetchChannels()
     if (value === "policies") void fetchPolicies()
+    if (value === "silences") void fetchSilences()
   }
 
   // ── Event handlers ──
@@ -981,9 +1148,14 @@ export function AlertsClient() {
     }
   }
 
-  const handleTestChannel = (id: string) => {
+  const handleTestChannel = async (id: string) => {
     const ch = channels.find((c) => c.id === id)
-    toast(`测试消息已发送至 ${ch?.name ?? id}`)
+    try {
+      await apiRequest(`/v1/alert-channels/${id}/test`, { method: "POST" })
+      toast(`测试消息已发送至 ${ch?.name ?? id}`)
+    } catch (err) {
+      toast(`发送失败: ${err instanceof Error ? err.message : "请重试"}`)
+    }
   }
 
   const handleDeleteChannel = (id: string) => {
@@ -1172,14 +1344,35 @@ export function AlertsClient() {
           )}
         </TabsContent>
         <TabsContent value="silences">
-          <SilencesTab
-            silences={silences}
-            onDelete={(id) => {
-              setSilences((prev) => prev.filter((s) => s.id !== id))
-              toast("静默规则已提前结束")
-            }}
-            onAdd={() => toast("添加静默功能即将上线")}
-          />
+          {silencesLoading ? (
+            <div className="space-y-4" data-testid="silences-skeleton">
+              <div className="flex justify-between">
+                <Skeleton className="h-5 w-24 rounded" />
+                <Skeleton className="h-8 w-24 rounded" />
+              </div>
+              <Skeleton className="h-32 w-full rounded" />
+            </div>
+          ) : silencesError ? (
+            <Alert variant="destructive" data-testid="silences-error">
+              <AlertCircle className="h-4 w-4" />
+              <AlertTitle>加载失败</AlertTitle>
+              <AlertDescription>{silencesError}</AlertDescription>
+            </Alert>
+          ) : (
+            <SilencesTab
+              silences={silences}
+              onDelete={async (id) => {
+                try {
+                  await apiRequest(`/v1/alert-silences/${id}`, { method: "DELETE" })
+                  setSilences((prev) => prev.filter((s) => s.id !== id))
+                  toast("静默规则已提前结束")
+                } catch (err) {
+                  toast(`删除失败: ${err instanceof Error ? err.message : "请重试"}`)
+                }
+              }}
+              onAdd={() => setShowAddSilence(true)}
+            />
+          )}
         </TabsContent>
       </Tabs>
 
@@ -1232,6 +1425,16 @@ export function AlertsClient() {
           </div>
         </SheetContent>
       </Sheet>
+
+      {/* Add silence dialog */}
+      <AddSilenceDialog
+        open={showAddSilence}
+        onOpenChange={setShowAddSilence}
+        onCreated={(silence) => {
+          setSilences((prev) => [...prev, silence])
+          toast("静默规则已创建")
+        }}
+      />
 
       {/* Toast notifications */}
       <ToastContainer toasts={toasts} />

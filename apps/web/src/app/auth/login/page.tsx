@@ -21,13 +21,10 @@ import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
 async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
-  const beginRes = await fetch("/api/v1/auth/passkeys/begin", {
+  const { data } = await apiRequest<{ data: { options: { challenge: string; allowCredentials?: { id: string; type: string }[]; [key: string]: unknown }; challenge_id: string } }>("/v1/auth/passkeys/begin", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({}),
   })
-  if (!beginRes.ok) throw new Error("无法获取认证选项")
-  const { data } = await beginRes.json()
 
   const credential = await navigator.credentials.get({
     publicKey: {
@@ -43,9 +40,8 @@ async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
   if (!credential) throw new Error("认证被取消")
 
   const response = credential.response as AuthenticatorAssertionResponse
-  const completeRes = await fetch("/api/v1/auth/passkeys/complete", {
+  await apiRequest("/v1/auth/passkeys/complete", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       challenge: data.challenge_id,
       response: {
@@ -59,7 +55,6 @@ async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
       },
     }),
   })
-  if (!completeRes.ok) throw new Error("Passkey 认证失败")
   router.push("/app/dashboard" as never)
 }
 

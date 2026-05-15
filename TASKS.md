@@ -546,7 +546,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **T9** DKIM 查询 — `GET /v1/info/dkim?q=<domain>&selector=<s>`，*完成 2026-05-15*
 - [x] **T10** ASN 查询 — `GET /v1/info/asn?q=<ASN|IP>` 接 ip-api.com，*完成 2026-05-15*
 - [x] **T11** BGP 路由 — `GET /v1/info/bgp?q=<IP>` 接 bgpview.io，*完成 2026-05-15*
-- [ ] **T12** MTR 路由测试 — `POST /v1/probe/mtr` agent 执行（mtr binary，复用 traceroute executor）
+- [x] **T12** MTR 路由测试 — 纯 Go TracerouteProbe+per-hop ping，*完成 2026-05-15*
 - [x] **T13** SMTP 邮件测试 — TCP banner+EHLO 探针，Agent+API+前端，*完成 2026-05-15*
 - [x] **T14** NTP 服务测试 — UDP NTP 查询探针，Agent+API+前端，*完成 2026-05-15*
 
@@ -565,7 +565,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 配置 `config/dev.env.yaml` + `config/prod.env.yaml` 的 Resend SMTP relay
   - *deps: Resend 账号 [👤]*
 
-- [ ] **T18** aggregator 消费 probe.results stream，写回 probe_task 表
+- [x] **T18** aggregator 消费 probe.results stream，写回 probe_task 表，*完成 2026-05-15*
   - 当前 aggregator 只处理 monitor_checks，probe_task.result 字段从未写入
   - 添加 `ProbeResultConsumer`：读 `probe.results` stream → UPDATE probe_task SET result=$1,status='done'
   - *deps: T1 依赖此*

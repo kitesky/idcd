@@ -317,7 +317,7 @@ func TestProbeHandler_Diagnose(t *testing.T) {
 	defer mockPool.Close()
 
 	// Expect 5 inserts (one for each probe type)
-	for i := 0; i < 5; i++ {
+	for range 5 {
 		mockPool.ExpectExec("INSERT INTO probe_task").
 			WithArgs(
 				pgxmock.AnyArg(),

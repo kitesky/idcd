@@ -40,31 +40,6 @@ func NewExecutor(secretKey []byte) *Executor {
 
 // Execute runs the given task and returns a signed result.
 func (e *Executor) Execute(task Task) *probe.Result {
-	// Validate task type
-	if !IsValidTaskType(task.Type) {
-		timestamp := time.Now()
-		result := &probe.Result{
-			TaskID:     task.ID,
-			NodeID:     task.NodeID,
-			Type:       task.Type,
-			Target:     task.Target,
-			Success:    false,
-			Error:      fmt.Sprintf("unsupported task type: %s", task.Type),
-			Data:       map[string]any{},
-			Timestamp:  timestamp,
-			DurationMs: 0,
-		}
-		// Generate watermark even for invalid tasks
-		result.Watermark = watermark.Sign(
-			task.NodeID,
-			task.ID,
-			task.Target,
-			timestamp,
-			e.secretKey,
-		)
-		return result
-	}
-
 	// Set default timeout if not specified
 	timeout := task.Timeout
 	if timeout <= 0 {
@@ -93,7 +68,7 @@ func (e *Executor) Execute(task Task) *probe.Result {
 		result = e.mtrProbe.Execute(task.Target, timeout, task.Options)
 	default:
 		timestamp := time.Now()
-		result := &probe.Result{
+		result = &probe.Result{
 			TaskID:     task.ID,
 			NodeID:     task.NodeID,
 			Type:       task.Type,
@@ -104,7 +79,6 @@ func (e *Executor) Execute(task Task) *probe.Result {
 			Timestamp:  timestamp,
 			DurationMs: 0,
 		}
-		// Generate watermark even for unsupported tasks
 		result.Watermark = watermark.Sign(
 			task.NodeID,
 			task.ID,

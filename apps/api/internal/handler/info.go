@@ -503,7 +503,7 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 	// Normalise: strip protocol prefix and path.
 	query = strings.TrimPrefix(query, "https://")
 	query = strings.TrimPrefix(query, "http://")
-	if idx := strings.Index(query, "/"); idx != -1 {
+	if idx := strings.IndexByte(query, '/'); idx != -1 {
 		query = query[:idx]
 	}
 

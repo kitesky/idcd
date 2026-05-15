@@ -62,12 +62,14 @@ func (p *NTPProbe) Execute(target string, timeout time.Duration, options map[str
 	}
 
 	// Transmit timestamp is at bytes 40-47
+	now := time.Now()
+	durationMs := now.Sub(start).Milliseconds()
+
 	secs := binary.BigEndian.Uint32(resp[40:44])
 	unixSecs := int64(secs) - ntpDelta
 	serverTime := time.Unix(unixSecs, 0).UTC()
 
-	durationMs := time.Since(start).Milliseconds()
-	offsetMs := serverTime.UnixMilli() - time.Now().UnixMilli()
+	offsetMs := serverTime.UnixMilli() - now.UnixMilli()
 
 	return &Result{
 		Type:    TaskNTP,
@@ -78,6 +80,6 @@ func (p *NTPProbe) Execute(target string, timeout time.Duration, options map[str
 			"offset_ms":   offsetMs,
 		},
 		DurationMs: durationMs,
-		Timestamp:  time.Now(),
+		Timestamp:  now,
 	}
 }

@@ -3,6 +3,7 @@ package handler
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -62,7 +63,7 @@ func (h *DiagnoseReportHandler) GetReport(w http.ResponseWriter, r *http.Request
 	key := "diagnose:report:" + id
 	data, err := h.redis.Get(r.Context(), key).Bytes()
 	if err != nil {
-		if err == redis.Nil {
+		if errors.Is(err, redis.Nil) {
 			response.Error(w, r, apperr.NotFound("report not found"))
 			return
 		}

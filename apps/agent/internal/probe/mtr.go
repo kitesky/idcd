@@ -1,6 +1,7 @@
 package probe
 
 import (
+	"context"
 	"net"
 	"time"
 )
@@ -28,11 +29,9 @@ type MTRHop struct {
 func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[string]any) *Result {
 	start := time.Now()
 
-	// Step 1: run traceroute to discover hops.
 	tr := &TracerouteProbe{}
 	trResult := tr.Execute(target, timeout, options)
 
-	// trResult.Data["hops"] is []TracerouteHop (set directly in traceroute.go).
 	hops, _ := trResult.Data["hops"].([]TracerouteHop)
 	if len(hops) == 0 {
 		return &Result{
@@ -46,8 +45,8 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 		}
 	}
 
-	// Step 2: ping each hop 3 packets, 2s timeout per hop.
 	const pingsPerHop = 3
+	const rdnsTimeout = 1 * time.Second
 	pingTimeout := 2 * time.Second
 
 	mtrHops := make([]MTRHop, 0, len(hops))
@@ -61,17 +60,19 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 
 		if h.Timeout || h.IP == "" || h.IP == "*" {
 			mh.SentPkts = pingsPerHop
-			mh.RecvPkts = 0
 			mh.Loss = 100.0
 			mtrHops = append(mtrHops, mh)
 			continue
 		}
 
-		// Try reverse DNS for hostname (skip if traceroute already found one).
 		if h.Hostname != "" {
 			mh.Hostname = h.Hostname
-		} else if names, err := net.LookupAddr(h.IP); err == nil && len(names) > 0 {
-			mh.Hostname = names[0]
+		} else {
+			ctx, cancel := context.WithTimeout(context.Background(), rdnsTimeout)
+			if names, err := net.DefaultResolver.LookupAddr(ctx, h.IP); err == nil && len(names) > 0 {
+				mh.Hostname = names[0]
+			}
+			cancel()
 		}
 
 		mh.SentPkts = pingsPerHop
@@ -85,13 +86,10 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 				mh.MinRTTMs = msFloat(stats.MinRTT)
 				mh.MaxRTTMs = msFloat(stats.MaxRTT)
 			} else {
-				mh.RecvPkts = 0
 				mh.Loss = 100.0
 			}
 		} else {
-			// No ping sender available: approximate from traceroute RTT.
 			mh.RecvPkts = 1
-			mh.Loss = 0
 			rttMs := msFloat(h.RTT)
 			mh.AvgRTTMs = rttMs
 			mh.MinRTTMs = rttMs
@@ -106,9 +104,9 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 		Target:  target,
 		Success: true,
 		Data: map[string]any{
-			"hops":            mtrHops,
-			"total_hops":      len(mtrHops),
-			"target_reached":  trResult.Success,
+			"hops":           mtrHops,
+			"total_hops":     len(mtrHops),
+			"target_reached": trResult.Success,
 		},
 		DurationMs: time.Since(start).Milliseconds(),
 		Timestamp:  time.Now(),

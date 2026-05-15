@@ -58,15 +58,25 @@ func (p *SMTPProbe) Execute(target string, timeout time.Duration, options map[st
 	banner = strings.TrimSpace(banner)
 
 	// Send EHLO
-	fmt.Fprintf(conn, "EHLO idcd-probe\r\n")
+	if _, err := fmt.Fprintf(conn, "EHLO idcd-probe\r\n"); err != nil {
+		return &Result{
+			Type:       TaskSMTP,
+			Target:     target,
+			Success:    false,
+			Error:      "failed to send EHLO: " + err.Error(),
+			Data:       map[string]any{"port": port},
+			DurationMs: time.Since(start).Milliseconds(),
+			Timestamp:  time.Now(),
+		}
+	}
 	ehloResp, err := reader.ReadString('\n')
 	if err != nil {
 		ehloResp = ""
 	}
 	ehloResp = strings.TrimSpace(ehloResp)
 
-	// Send QUIT
-	fmt.Fprintf(conn, "QUIT\r\n")
+	// Send QUIT — best-effort, ignore errors
+	_, _ = fmt.Fprintf(conn, "QUIT\r\n")
 
 	durationMs := time.Since(start).Milliseconds()
 	success := strings.HasPrefix(banner, "220")

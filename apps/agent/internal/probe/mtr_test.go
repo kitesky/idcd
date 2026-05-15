@@ -152,7 +152,7 @@ func buildMTRResult(target string, hops []TracerouteHop, targetReached bool) *Re
 			Success:   false,
 			Error:     "traceroute returned no hops",
 			Data:      map[string]any{"hops": []MTRHop{}},
-			Timestamp: nowTime(),
+			Timestamp: time.Now(),
 		}
 	}
 	return buildMTRResultWithSender(target, hops, targetReached, nil)
@@ -213,8 +213,6 @@ func buildMTRResultWithSender(target string, hops []TracerouteHop, targetReached
 			"total_hops":     len(mtrHops),
 			"target_reached": targetReached,
 		},
-		Timestamp: nowTime(),
+		Timestamp: time.Now(),
 	}
 }
-
-func nowTime() time.Time { return time.Now() }

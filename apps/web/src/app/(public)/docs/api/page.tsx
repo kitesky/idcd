@@ -31,7 +31,7 @@ export default function APIReferencePage() {
     <div className="flex min-h-screen flex-col">
       {/* Page header */}
       <div className="border-b bg-background/95 py-10">
-        <div className="container max-w-6xl">
+        <div className="w-full mx-auto max-w-screen-xl px-6">
           <h1 className="text-3xl font-bold tracking-tight">API 参考</h1>
           <p className="mt-2 text-muted-foreground">
             idcd 全球网络诊断 API 完整参考文档。Base URL：{" "}
@@ -56,7 +56,7 @@ export default function APIReferencePage() {
         </div>
       </div>
 
-      <div className="container max-w-6xl flex-1 py-8">
+      <div className="w-full mx-auto max-w-screen-xl px-6 flex-1 py-12 md:py-16">
         <div className="flex gap-8">
           {/* Left sidebar navigation */}
           <aside className="hidden w-52 shrink-0 lg:block">

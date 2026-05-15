@@ -1,5 +1,6 @@
 export interface NodeEntry {
   id: string
+  name: string
   asn: string
   carrier: string
   region: string

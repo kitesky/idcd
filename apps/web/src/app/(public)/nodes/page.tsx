@@ -11,6 +11,7 @@ export const metadata: Metadata = {
 function mapApiNode(n: Node): NodeEntry {
   return {
     id: n.id,
+    name: n.name || n.city || n.region || n.country_code || "",
     asn: n.asn ?? "",
     carrier: n.isp ?? "",
     region: n.city || n.region || "",
@@ -42,10 +43,10 @@ export default async function NodesPage() {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8">
+      <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 py-12 md:py-16">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold tracking-tight">全球监控节点</h1>
-          <p className="mt-2 text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">全球监控节点</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             idcd 在全球部署了多个监控节点，提供高质量的网络探测服务
           </p>
         </div>

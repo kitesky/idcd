@@ -1,7 +1,13 @@
 "use client"
 
 import { useState, useMemo } from "react"
+import dynamic from "next/dynamic"
 import { Search, Globe, Wifi, WifiOff, Server } from "lucide-react"
+
+const NodesWorldMap = dynamic(
+  () => import("@/components/nodes/NodesWorldMap").then(m => m.NodesWorldMap),
+  { ssr: false, loading: () => <div className="h-56 sm:h-72 bg-muted/30 rounded-md animate-pulse" /> }
+)
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -136,19 +142,25 @@ export function NodesClient({ nodes }: NodesClientProps) {
         </Card>
       </div>
 
-      {/* 地图占位区域 */}
+      {/* 节点分布地图 */}
       <Card>
-        <CardHeader>
-          <CardTitle className="text-base">节点分布地图</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex h-48 items-center justify-center rounded-md border border-dashed bg-muted/30 sm:h-64">
-            <div className="text-center text-muted-foreground">
-              <Globe className="mx-auto mb-2 h-10 w-10 opacity-30" />
-              <p className="text-sm">交互地图即将上线</p>
-              <p className="mt-1 text-xs">将在后续迭代中集成全球节点可视化地图</p>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">节点分布地图</CardTitle>
+            <div className="flex items-center gap-4 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                在线节点
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block h-2 w-2 rounded-full bg-slate-500" />
+                离线节点
+              </span>
             </div>
           </div>
+        </CardHeader>
+        <CardContent className="p-0 pb-0">
+          <NodesWorldMap nodes={nodes} />
         </CardContent>
       </Card>
 
@@ -197,7 +209,7 @@ export function NodesClient({ nodes }: NodesClientProps) {
           </Select>
         </div>
 
-        <div className="relative sm:w-64">
+        <div className="relative w-full sm:w-64">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder="搜索节点、ASN、IP..."
@@ -217,17 +229,17 @@ export function NodesClient({ nodes }: NodesClientProps) {
       </p>
 
       {/* 节点表格 */}
-      <Card>
-        <Table>
+      <div className="overflow-x-auto rounded-lg border border-border">
+        <Table className="w-full min-w-[640px]">
           <TableHeader>
             <TableRow>
-              <TableHead>节点 ID</TableHead>
-              <TableHead>ASN</TableHead>
-              <TableHead>运营商</TableHead>
-              <TableHead>地区</TableHead>
-              <TableHead>出口 IP</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>国家/地区</TableHead>
+              <TableHead className="whitespace-nowrap w-48">节点 ID</TableHead>
+              <TableHead className="whitespace-nowrap w-28">ASN</TableHead>
+              <TableHead className="whitespace-nowrap">运营商</TableHead>
+              <TableHead className="whitespace-nowrap">地区</TableHead>
+              <TableHead className="whitespace-nowrap w-36">出口 IP</TableHead>
+              <TableHead className="whitespace-nowrap w-24">状态</TableHead>
+              <TableHead className="whitespace-nowrap w-28">国家/地区</TableHead>
               <TableHead className="w-20" />
             </TableRow>
           </TableHeader>
@@ -253,9 +265,11 @@ export function NodesClient({ nodes }: NodesClientProps) {
                       {formatIP(node.exitIp)}
                     </TableCell>
                     <TableCell>
-                      <Badge variant={variant}>{label}</Badge>
+                      <Badge variant={variant} className="whitespace-nowrap">{label}</Badge>
                     </TableCell>
-                    <TableCell>{COUNTRY_NAMES[node.country] ?? node.country}</TableCell>
+                    <TableCell>
+                      {COUNTRY_NAMES[node.country] ?? node.country}
+                    </TableCell>
                     <TableCell>
                       <a
                         href={`/nodes/${node.id}`}
@@ -270,7 +284,7 @@ export function NodesClient({ nodes }: NodesClientProps) {
             )}
           </TableBody>
         </Table>
-      </Card>
+      </div>
     </div>
   )
 }

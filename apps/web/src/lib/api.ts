@@ -62,11 +62,11 @@ export interface Node {
   id: string
   name: string
   country_code: string
-  region: string
-  city: string
-  asn: string
-  isp: string
-  tier: string
+  region?: string
+  city?: string
+  asn?: string
+  isp?: string
+  tier?: string
   status: string
   is_active: boolean
 }
@@ -108,8 +108,8 @@ export interface ProbeTaskResult {
 
 // Nodes API
 export async function getNodes(): Promise<Node[]> {
-  const res = await apiRequest<{ data: { nodes: Node[]; total: number } }>("/v1/nodes")
-  return res.data?.nodes ?? []
+  const res = await apiRequest<{ data: { nodes: Array<Omit<Node, "is_active">>; total: number } }>("/v1/nodes")
+  return (res.data?.nodes ?? []).map(n => ({ ...n, is_active: n.status === "active" }))
 }
 
 // Probe API — shared POST helper

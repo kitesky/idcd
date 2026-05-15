@@ -1,34 +1,20 @@
 import { Metadata } from "next"
 import { NodesClient } from "./nodes-client"
 import type { NodeEntry } from "@/lib/nodes-utils"
+import type { Node } from "@/lib/api"
 
 export const metadata: Metadata = {
   title: "全球监控节点 - idcd",
   description: "idcd 全球分布的监控节点，覆盖中国大陆、香港、日本、新加坡、美国等地区",
 }
 
-interface ApiNode {
-  id: string
-  name: string
-  tier?: string
-  country_code?: string
-  region?: string
-  city?: string
-  isp?: string
-  ip?: string
-  status: "active" | "inactive" | "degraded"
-  uptime_percent?: number
-  latency_ms?: number
-  last_seen_at?: string
-}
-
-function mapApiNode(n: ApiNode): NodeEntry {
+function mapApiNode(n: Node): NodeEntry {
   return {
     id: n.id,
-    asn: "",
+    asn: n.asn ?? "",
     carrier: n.isp ?? "",
     region: n.city || n.region || "",
-    exitIp: n.ip ?? "",
+    exitIp: "",
     status: n.status === "active" ? "online" : n.status === "degraded" ? "degraded" : "offline",
     country: n.country_code ?? "",
   }
@@ -44,7 +30,7 @@ async function fetchNodes(): Promise<{ nodes: NodeEntry[]; error?: string }> {
       return { nodes: [], error: `获取节点数据失败（HTTP ${res.status}）` }
     }
     const json = await res.json()
-    const apiNodes: ApiNode[] = json?.data?.nodes ?? []
+    const apiNodes: Node[] = json?.data?.nodes ?? []
     return { nodes: apiNodes.map(mapApiNode) }
   } catch {
     return { nodes: [], error: "无法连接到后端服务，请稍后重试" }

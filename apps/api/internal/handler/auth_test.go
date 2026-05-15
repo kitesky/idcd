@@ -11,6 +11,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/lib/auth/password"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/db/repository"
@@ -166,6 +167,24 @@ type mockSession struct{}
 
 func (m *mockSession) Store(_ context.Context, _, _ string, _ time.Duration) error { return nil }
 func (m *mockSession) Delete(_ context.Context, _ string) error                    { return nil }
+
+// mockEnqueuer captures enqueued tasks for assertion in tests.
+type mockEnqueuer struct {
+	tasks []struct {
+		taskType string
+		payload  []byte
+		queue    string
+	}
+}
+
+func (m *mockEnqueuer) EnqueueTask(_ context.Context, taskType string, payload []byte, queue string) error {
+	m.tasks = append(m.tasks, struct {
+		taskType string
+		payload  []byte
+		queue    string
+	}{taskType: taskType, payload: payload, queue: queue})
+	return nil
+}
 
 // helper
 
@@ -376,6 +395,129 @@ func TestGenerateOTP(t *testing.T) {
 				t.Errorf("OTP contains non-digit: %q", code)
 			}
 		}
+	}
+}
+
+func TestRegister_enqueuesVerifyEmail(t *testing.T) {
+	eq := &mockEnqueuer{}
+	h := newTestAuthHandler().WithEnqueuer(eq)
+
+	body := `{"email":"enqueue@example.com","password":"Password123"}`
+	req := httptest.NewRequest("POST", "/v1/auth/register", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(eq.tasks) != 1 {
+		t.Fatalf("expected 1 enqueued task, got %d", len(eq.tasks))
+	}
+	if eq.tasks[0].taskType != taskSendVerifyEmail {
+		t.Errorf("expected task type %q, got %q", taskSendVerifyEmail, eq.tasks[0].taskType)
+	}
+	if eq.tasks[0].queue != "email" {
+		t.Errorf("expected queue %q, got %q", "email", eq.tasks[0].queue)
+	}
+}
+
+func TestForgotPassword_enqueuesResetEmail(t *testing.T) {
+	q := newMockAuthQuerier()
+	hash, _ := hashPassword("OldPassword1")
+	q.users["user@example.com"] = idcdmain.User{
+		ID:           "usr_001",
+		Email:        "user@example.com",
+		PasswordHash: &hash,
+		Status:       "active",
+		Locale:       "zh-CN",
+		Timezone:     "Asia/Shanghai",
+	}
+
+	eq := &mockEnqueuer{}
+	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!").
+		WithEnqueuer(eq)
+
+	body := `{"email":"user@example.com"}`
+	req := httptest.NewRequest("POST", "/v1/auth/forgot-password", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	h.ForgotPassword(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(eq.tasks) != 1 {
+		t.Fatalf("expected 1 enqueued task, got %d", len(eq.tasks))
+	}
+	if eq.tasks[0].taskType != taskSendResetPassword {
+		t.Errorf("expected task type %q, got %q", taskSendResetPassword, eq.tasks[0].taskType)
+	}
+}
+
+func TestResendVerifyEmail_notVerified(t *testing.T) {
+	q := newMockAuthQuerier()
+	q.users["user@example.com"] = idcdmain.User{
+		ID:     "usr_001",
+		Email:  "user@example.com",
+		Status: "active",
+		Locale: "zh-CN",
+	}
+
+	eq := &mockEnqueuer{}
+	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!").
+		WithEnqueuer(eq)
+
+	req := httptest.NewRequest("POST", "/v1/auth/resend-verify", nil)
+	// Inject user ID into context as authnMW would.
+	ctx := context.WithValue(req.Context(), middleware.UserIDContextKey(), "usr_001")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	h.ResendVerifyEmail(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(eq.tasks) != 1 {
+		t.Fatalf("expected 1 enqueued task, got %d", len(eq.tasks))
+	}
+	if eq.tasks[0].taskType != taskSendVerifyEmail {
+		t.Errorf("expected task type %q, got %q", taskSendVerifyEmail, eq.tasks[0].taskType)
+	}
+}
+
+func TestResendVerifyEmail_alreadyVerified(t *testing.T) {
+	q := newMockAuthQuerier()
+	now := pgtype.Timestamptz{}
+	_ = now.Scan(time.Now())
+	q.users["user@example.com"] = idcdmain.User{
+		ID:              "usr_001",
+		Email:           "user@example.com",
+		Status:          "active",
+		Locale:          "zh-CN",
+		EmailVerifiedAt: now,
+	}
+
+	eq := &mockEnqueuer{}
+	h := NewAuthHandler(q, &mockJWT{token: "t"}, &mockSession{}, "test-otp-secret-32bytes-minimum!!").
+		WithEnqueuer(eq)
+
+	req := httptest.NewRequest("POST", "/v1/auth/resend-verify", nil)
+	ctx := context.WithValue(req.Context(), middleware.UserIDContextKey(), "usr_001")
+	req = req.WithContext(ctx)
+	rr := httptest.NewRecorder()
+
+	h.ResendVerifyEmail(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	// No email should be enqueued when already verified.
+	if len(eq.tasks) != 0 {
+		t.Errorf("expected 0 enqueued tasks for already-verified user, got %d", len(eq.tasks))
 	}
 }
 

@@ -40,6 +40,19 @@ const (
 	otpMaxAttempts = 5
 )
 
+// AuthEnqueuer enqueues async notification tasks without exposing asynq types.
+type AuthEnqueuer interface {
+	// EnqueueTask enqueues taskType with JSON payload into the named queue.
+	// Implementations must be safe to call concurrently.
+	EnqueueTask(ctx context.Context, taskType string, payload []byte, queue string) error
+}
+
+// task type constants — must match the notifier worker's task registry.
+const (
+	taskSendVerifyEmail   = "task:send_verify_email"
+	taskSendResetPassword = "task:send_reset_password"
+)
+
 // AuthQuerier is the subset of sqlc Queries used by AuthHandler.
 type AuthQuerier interface {
 	CreateUser(ctx context.Context, arg idcdmain.CreateUserParams) (idcdmain.User, error)
@@ -82,6 +95,8 @@ type AuthHandler struct {
 	mfaPool      MFAPool
 	mfaRedis     *redis.Client
 	fieldCipher  *aesenc.Cipher
+	enqueuer     AuthEnqueuer // optional: nil disables async email dispatch
+	appBaseURL   string       // e.g. "https://app.idcd.com", used to build reset links
 }
 
 // NewAuthHandler creates an AuthHandler wired to the given services.
@@ -106,6 +121,20 @@ func (h *AuthHandler) WithMFA(pool MFAPool, rdb *redis.Client) *AuthHandler {
 // WithFieldCipher wires the AES-256-GCM cipher used to decrypt stored TOTP secrets.
 func (h *AuthHandler) WithFieldCipher(cipher *aesenc.Cipher) *AuthHandler {
 	h.fieldCipher = cipher
+	return h
+}
+
+// WithEnqueuer wires the async task enqueuer for email dispatch.
+// When enqueuer is nil (default), email tasks are silently skipped (fail-open).
+func (h *AuthHandler) WithEnqueuer(enqueuer AuthEnqueuer) *AuthHandler {
+	h.enqueuer = enqueuer
+	return h
+}
+
+// WithAppBaseURL sets the frontend base URL used to construct password-reset deep-links.
+// Example: "https://app.idcd.com"
+func (h *AuthHandler) WithAppBaseURL(baseURL string) *AuthHandler {
+	h.appBaseURL = baseURL
 	return h
 }
 
@@ -173,6 +202,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	if req.ReferralCode != "" && h.referralPool != nil {
 		h.recordReferral(r.Context(), req.ReferralCode, user.ID)
+	}
+
+	// Send verification email asynchronously (fail-open: does not block registration).
+	if h.enqueuer != nil {
+		if otpID, code, err := h.issueOTP(r.Context(), user.ID, otpTypeVerify, 30*time.Minute); err == nil {
+			h.enqueueVerifyEmail(r.Context(), req.Email, otpID, code)
+		}
 	}
 
 	token, _, err := h.issueToken(r.Context(), user.ID)
@@ -395,14 +431,58 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	otpID, _, err := h.issueOTP(r.Context(), user.ID, otpTypeReset, otpTTL)
+	otpID, code, err := h.issueOTP(r.Context(), user.ID, otpTypeReset, otpTTL)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue OTP", err))
 		return
 	}
-	// otp_id must only travel via email to the user — never returned in the API response.
-	_ = otpID
+
+	// Dispatch password-reset email asynchronously (fail-open).
+	// otp_id and code must only travel to the user via email — never returned in the API response.
+	if h.enqueuer != nil {
+		h.enqueueResetPasswordEmail(r.Context(), req.Email, otpID, code)
+	}
+
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": sameMsg})
+}
+
+// --- Resend Verify Email ---
+
+// ResendVerifyEmail handles POST /v1/auth/resend-verify.
+// Requires authentication (authnMW). Rate-limited by the existing auth rate limiter.
+// If the account is already verified it returns 200 with a descriptive message.
+func (h *AuthHandler) ResendVerifyEmail(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	if userID == "" {
+		response.Error(w, r, apperr.Unauthorized("authentication required"))
+		return
+	}
+
+	user, err := h.q.GetUserByID(r.Context(), userID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to fetch user", err))
+		return
+	}
+
+	if user.EmailVerifiedAt.Valid {
+		response.JSON(w, r, http.StatusOK, map[string]string{"message": "email already verified"})
+		return
+	}
+
+	if h.enqueuer == nil {
+		// Enqueuer not wired — acknowledge but do nothing.
+		response.JSON(w, r, http.StatusOK, map[string]string{"message": "verification email sent"})
+		return
+	}
+
+	otpID, code, err := h.issueOTP(r.Context(), userID, otpTypeVerify, 30*time.Minute)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to issue OTP", err))
+		return
+	}
+
+	h.enqueueVerifyEmail(r.Context(), user.Email, otpID, code)
+	response.JSON(w, r, http.StatusOK, map[string]string{"message": "verification email sent"})
 }
 
 // --- Reset Password ---
@@ -460,6 +540,42 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // --- Helpers ---
+
+// enqueueVerifyEmail enqueues a send_verify_email task.
+// It is fail-open: errors are silently dropped so callers are never blocked.
+func (h *AuthHandler) enqueueVerifyEmail(ctx context.Context, to, otpID, code string) {
+	payload, err := json.Marshal(map[string]any{
+		"to":         to,
+		"otp_id":     otpID,
+		"code":       code,
+		"expires_in": "30 分钟",
+	})
+	if err != nil {
+		return
+	}
+	_ = h.enqueuer.EnqueueTask(ctx, taskSendVerifyEmail, payload, "email")
+}
+
+// enqueueResetPasswordEmail enqueues a send_reset_password task.
+// The reset deep-link embeds otp_id and code so the frontend can pre-fill the form.
+// It is fail-open: errors are silently dropped.
+func (h *AuthHandler) enqueueResetPasswordEmail(ctx context.Context, to, otpID, code string) {
+	baseURL := h.appBaseURL
+	if baseURL == "" {
+		baseURL = "https://app.idcd.com"
+	}
+	resetURL := fmt.Sprintf("%s/auth/reset-password?otp_id=%s&code=%s", baseURL, otpID, code)
+
+	payload, err := json.Marshal(map[string]any{
+		"to":         to,
+		"reset_url":  resetURL,
+		"expires_in": "10 分钟",
+	})
+	if err != nil {
+		return
+	}
+	_ = h.enqueuer.EnqueueTask(ctx, taskSendResetPassword, payload, "email")
+}
 
 func (h *AuthHandler) issueToken(ctx context.Context, userID string) (token, sessionID string, err error) {
 	sessionID = idgen.New("sess")

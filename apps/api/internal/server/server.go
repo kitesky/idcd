@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -116,6 +117,19 @@ func (a *redisBlocklistAdapter) SRem(ctx context.Context, key string, members ..
 	return a.client.SRem(ctx, key, args...).Err()
 }
 
+// asynqEnqueuer adapts *asynq.Client to the handler.AuthEnqueuer interface.
+type asynqEnqueuer struct {
+	client *asynq.Client
+}
+
+func (a *asynqEnqueuer) EnqueueTask(ctx context.Context, taskType string, payload []byte, queue string) error {
+	_, err := a.client.EnqueueContext(ctx,
+		asynq.NewTask(taskType, payload),
+		asynq.Queue(queue),
+	)
+	return err
+}
+
 // setupRouter configures the chi router with middleware and routes.
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
@@ -173,7 +187,25 @@ func (s *Server) setupRouter() {
 		q := idcdmain.New(s.pgxPool)
 
 		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
-		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).WithReferralPool(s.pgxPool).WithMFA(s.pgxPool, s.redis).WithFieldCipher(fieldCipher)
+
+		// Wire async email dispatch via asynq (uses the same Redis instance as the notifier).
+		var enqueuer handler.AuthEnqueuer
+		if s.redis != nil {
+			enqueuer = &asynqEnqueuer{
+				client: asynq.NewClient(asynq.RedisClientOpt{
+					Addr:     s.config.Redis.Addr,
+					Password: s.config.Redis.Password,
+					DB:       s.config.Redis.DB,
+				}),
+			}
+		}
+
+		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).
+			WithReferralPool(s.pgxPool).
+			WithMFA(s.pgxPool, s.redis).
+			WithFieldCipher(fieldCipher).
+			WithEnqueuer(enqueuer).
+			WithAppBaseURL(s.config.Server.AppBaseURL)
 		acctH := handler.NewAccountHandler(q)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
@@ -197,6 +229,7 @@ func (s *Server) setupRouter() {
 				r.Post("/login", authH.Login)
 				r.With(authnMW).Post("/logout", authH.Logout)
 				r.Post("/verify-email", authH.VerifyEmail)
+				r.With(authnMW).Post("/resend-verify", authH.ResendVerifyEmail)
 				r.Post("/forgot-password", authH.ForgotPassword)
 				r.Post("/reset-password", authH.ResetPassword)
 				r.Post("/2fa-login", authH.TwoFactorLogin)

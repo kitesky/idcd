@@ -257,7 +257,7 @@ func parseWhoisResponse(domain, raw string) WhoisResponse {
 	result := WhoisResponse{Domain: domain}
 	var nameServers []string
 
-	for _, line := range strings.Split(raw, "\n") {
+	for line := range strings.SplitSeq(raw, "\n") {
 		lower := strings.ToLower(line)
 		if strings.Contains(lower, "registrar:") && result.Registrar == "" {
 			result.Registrar = extractWhoisField(line)
@@ -280,11 +280,11 @@ func parseWhoisResponse(domain, raw string) WhoisResponse {
 
 // extractWhoisField extracts the value after the first colon in a WHOIS line.
 func extractWhoisField(line string) string {
-	idx := strings.IndexByte(line, ':')
-	if idx < 0 {
+	_, after, found := strings.Cut(line, ":")
+	if !found {
 		return ""
 	}
-	return strings.TrimSpace(line[idx+1:])
+	return strings.TrimSpace(after)
 }
 
 // --- rDNS Query Handler ---

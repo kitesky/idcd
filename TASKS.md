@@ -532,10 +532,9 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 标准库 net.Dial port 43，TLD 路由，解析注册商/日期/NS
   - *完成 2026-05-15，505 API tests ✓*
 
-- [ ] **T4** ICP 备案真实查询
-  - 接入 ICP 查询 API（备案信息服务，或爬取 beian.miit.gov.cn）
-  - 返回备案号/主体名称/备案状态
-  - *deps: 无*
+- [x] **T4** ICP 备案真实查询
+  - 接入 icplishi.com API，优雅降级（无备案时引导至 beian.miit.gov.cn）
+  - *完成 2026-05-15*
 
 ### P2 — 15 个信息查询工具接真实 API
 

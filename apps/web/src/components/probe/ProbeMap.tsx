@@ -156,11 +156,24 @@ export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
 
 // ── WorldMap (simple country dots) ────────────────────────────────────────────
 
+// 支持国家代码和常见英文名
 const COUNTRY_COORDS: Record<string, [number, number]> = {
-  US: [-98, 38],  GB: [-3, 54],   DE: [10, 51],  FR: [2, 46],
-  JP: [138, 36],  KR: [128, 36],  SG: [104, 1],  AU: [133, -25],
-  IN: [78, 20],   BR: [-51, -10], CA: [-96, 60],  RU: [100, 60],
-  HK: [114, 22],  TW: [121, 24],  NL: [5, 52],   SE: [18, 60],
+  US: [-98, 38],    "United States": [-98, 38],   "US West": [-118, 34],  "US East": [-74, 41],
+  GB: [-3, 54],     "United Kingdom": [-3, 54],   "UK": [-3, 54],
+  DE: [10, 51],     "Germany": [10, 51],
+  FR: [2, 46],      "France": [2, 46],
+  JP: [138, 36],    "Japan": [138, 36],            "Tokyo": [139.7, 35.7],
+  KR: [128, 36],    "Korea": [128, 36],            "Seoul": [126.9, 37.5],
+  SG: [104, 1],     "Singapore": [104, 1],
+  AU: [133, -25],   "Australia": [133, -25],       "Sydney": [151.2, -33.9],
+  IN: [78, 20],     "India": [78, 20],
+  BR: [-51, -10],   "Brazil": [-51, -10],
+  CA: [-96, 60],    "Canada": [-96, 60],
+  RU: [100, 60],    "Russia": [100, 60],
+  HK: [114, 22],    "Hong Kong": [114, 22],
+  TW: [121, 24],    "Taiwan": [121, 24],
+  NL: [5, 52],      "Netherlands": [5, 52],
+  SE: [18, 60],     "Sweden": [18, 60],
 }
 
 export function WorldMap({ nodes }: { nodes: MapNode[] }) {

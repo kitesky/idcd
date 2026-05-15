@@ -293,6 +293,7 @@ const PROBE_FN: Record<string, typeof probeHttp> = {
 
 // ── HeroSearch ────────────────────────────────────────────────────────────────
 
+
 export function HeroSearch() {
   const [activeCat, setActiveCat] = useState("probe")
   const [activeTool, setActiveTool] = useState("http")

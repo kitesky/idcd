@@ -540,15 +540,15 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 ### P2 — 15 个信息查询工具接真实 API
 
 - [x] **T5** 反向 DNS（rDNS）— `GET /v1/info/rdns?q=<IP>` 调 net.LookupAddr，*完成 2026-05-15*
-- [ ] **T6** MX 记录 — `GET /v1/info/mx?q=<domain>` 调 net.LookupMX（已有 DNS handler 可复用）
+- [x] **T6** MX 记录 — `GET /v1/info/mx?q=<domain>` 调 net.LookupMX，*完成 2026-05-15*
 - [x] **T7** SPF 记录 — `GET /v1/info/spf?q=<domain>` 查 TXT 记录过滤 `v=spf1`，*完成 2026-05-15*
 - [x] **T8** DMARC 查询 — `GET /v1/info/dmarc?q=<domain>` 查 `_dmarc.<domain>` TXT，*完成 2026-05-15*
-- [ ] **T9** DKIM 查询 — `GET /v1/info/dkim?q=<domain>&selector=<s>` 查 `<s>._domainkey.<domain>` TXT
-- [ ] **T10** ASN 查询 — `GET /v1/info/asn?q=<ASN|IP>` 接 ip-api.com 或 bgpview.io
-- [ ] **T11** BGP 路由 — `GET /v1/info/bgp?q=<IP>` 接 bgpview.io API
+- [x] **T9** DKIM 查询 — `GET /v1/info/dkim?q=<domain>&selector=<s>`，*完成 2026-05-15*
+- [x] **T10** ASN 查询 — `GET /v1/info/asn?q=<ASN|IP>` 接 ip-api.com，*完成 2026-05-15*
+- [x] **T11** BGP 路由 — `GET /v1/info/bgp?q=<IP>` 接 bgpview.io，*完成 2026-05-15*
 - [ ] **T12** MTR 路由测试 — `POST /v1/probe/mtr` agent 执行（mtr binary，复用 traceroute executor）
-- [ ] **T13** SMTP 邮件测试 — `POST /v1/probe/smtp` agent 执行（TCP 到 25/587，EHLO 握手）
-- [ ] **T14** NTP 服务测试 — `POST /v1/probe/ntp` agent 执行（NTP UDP 查询）
+- [x] **T13** SMTP 邮件测试 — TCP banner+EHLO 探针，Agent+API+前端，*完成 2026-05-15*
+- [x] **T14** NTP 服务测试 — UDP NTP 查询探针，Agent+API+前端，*完成 2026-05-15*
 
 ### P3 — 有 API 但前端只显示示例数据
 

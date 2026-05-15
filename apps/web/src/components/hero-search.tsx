@@ -1,12 +1,12 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import { useRouter } from "next/navigation"
 import { ChevronDown, Search, Settings2, ArrowRight, MapPin, RotateCcw, Check } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import { getNodes } from "@/lib/api"
-import type { Node as ProbeNode } from "@/lib/api"
+import { getNodes, probeHttp, probePing, probeDns, probeTcp, probeMtr, probeTraceroute } from "@/lib/api"
+import type { Node as ProbeNode, ProbeResult } from "@/lib/api"
+import { ProbeResultPanel } from "@/components/probe/ProbeResultPanel"
 
 // ── 大类 tab 配置 ────────────────────────────────────────────────────────────
 
@@ -280,36 +280,60 @@ function NodeSelectorTrigger({ selectedIds, onConfirm }: { selectedIds: string[]
   )
 }
 
+// ── Probe dispatch ────────────────────────────────────────────────────────────
+
+const PROBE_FN: Record<string, typeof probeHttp> = {
+  http: probeHttp,
+  ping: probePing,
+  dns: probeDns,
+  tcp: probeTcp,
+  mtr: probeMtr,
+  traceroute: probeTraceroute,
+}
+
 // ── HeroSearch ────────────────────────────────────────────────────────────────
 
 export function HeroSearch() {
-  const router = useRouter()
   const [activeCat, setActiveCat] = useState("probe")
   const [activeTool, setActiveTool] = useState("http")
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
   const [query, setQuery] = useState("")
+  const [probeResult, setProbeResult] = useState<ProbeResult | null>(null)
+  const [probeLoading, setProbeLoading] = useState(false)
+  const [probeError, setProbeError] = useState("")
 
   const cat  = CATEGORIES.find(c => c.key === activeCat) ?? CATEGORIES[1]!
   const tool = cat.tools.find(t => t.key === activeTool) ?? cat.tools[0]
 
   const handleCatChange = (key: string) => {
     setActiveCat(key)
+    setProbeResult(null)
     const c = CATEGORIES.find(c => c.key === key)
     if (c?.tools.length) setActiveTool(c.tools[0]!.key)
   }
 
-  const handleGo = () => {
+  const handleGo = async () => {
     if (!query.trim()) return
-    const nodeParam = selectedNodeIds.length ? `&nodes=${selectedNodeIds.join(",")}` : ""
-    const path = activeCat === "diagnose"
-      ? `/tools/diagnose?q=${encodeURIComponent(query.trim())}${nodeParam}`
-      : tool
-        ? `${tool.path}?q=${encodeURIComponent(query.trim())}${nodeParam}`
-        : `/tools/diagnose?q=${encodeURIComponent(query.trim())}${nodeParam}`
-    router.push(path as any)
+    setProbeResult(null)
+    setProbeError("")
+    setProbeLoading(true)
+
+    try {
+      const fn = PROBE_FN[activeTool] ?? probeHttp
+      const res = await fn({
+        target: query.trim(),
+        node_ids: selectedNodeIds.length ? selectedNodeIds : undefined,
+      })
+      setProbeResult(res)
+    } catch (err) {
+      setProbeError(err instanceof Error ? err.message : "拨测失败")
+    } finally {
+      setProbeLoading(false)
+    }
   }
 
   return (
+    <>
     <section className="relative bg-muted/30 border-b">
       {/* 顶部大类 tabs */}
       <div className="border-b">
@@ -390,11 +414,11 @@ export function HeroSearch() {
           {/* CTA */}
           <Button
             onClick={handleGo}
-            disabled={!query.trim()}
+            disabled={!query.trim() || probeLoading}
             className="h-11 rounded-none px-6 text-sm font-medium"
           >
-            立即检测
-            <ArrowRight className="h-4 w-4 ml-1" />
+            {probeLoading ? "检测中..." : "立即检测"}
+            {!probeLoading && <ArrowRight className="h-4 w-4 ml-1" />}
           </Button>
         </div>
 
@@ -417,5 +441,31 @@ export function HeroSearch() {
         </div>
       </div>
     </section>
+
+    {/* ── 拨测结果面板 ─────────────────────────────────────────── */}
+    {(probeLoading || probeResult || probeError) && (
+      <div className="border-b bg-background">
+        {probeError ? (
+          <div className="mx-auto max-w-screen-xl px-6 py-6 text-sm text-destructive">
+            拨测失败：{probeError}
+          </div>
+        ) : probeResult ? (
+          <ProbeResultPanel
+            result={probeResult}
+            target={query}
+            probeType={activeTool}
+            isLoading={probeLoading}
+          />
+        ) : (
+          <div className="mx-auto max-w-screen-xl px-6 py-8 space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
+            ))}
+            <p className="text-xs text-muted-foreground">正在发起拨测，请稍候...</p>
+          </div>
+        )}
+      </div>
+    )}
+    </>
   )
 }

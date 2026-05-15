@@ -168,10 +168,54 @@ function SkeletonCard() {
   )
 }
 
+// ── Quarter aggregation ────────────────────────────────────────────────────
+
+type Granularity = "monthly" | "quarterly"
+
+interface SLAQuarterEntry {
+  month: string  // reused field, stores "YYYY-Qn" in quarterly mode
+  uptime_pct: number
+  total_checks: number
+  failed_checks: number
+}
+
+function toQuarterLabel(month: string): string {
+  // month is "YYYY-MM"
+  const [year, mm] = month.split("-")
+  const q = Math.ceil(parseInt(mm, 10) / 3)
+  return `${year}-Q${q}`
+}
+
+function aggregateToQuarterly(monitor: SLAMonitorEntry): SLAMonitorEntry {
+  const qMap = new Map<string, { total: number; failed: number }>()
+  for (const m of monitor.months) {
+    const label = toQuarterLabel(m.month)
+    const existing = qMap.get(label) ?? { total: 0, failed: 0 }
+    existing.total += m.total_checks
+    existing.failed += m.failed_checks
+    qMap.set(label, existing)
+  }
+  const quarters: SLAQuarterEntry[] = Array.from(qMap.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([label, { total, failed }]) => ({
+      month: label,
+      total_checks: total,
+      failed_checks: failed,
+      uptime_pct: total > 0 ? ((total - failed) / total) * 100 : 100,
+    }))
+  const sum = quarters.reduce((acc, q) => acc + q.uptime_pct, 0)
+  return {
+    ...monitor,
+    months: quarters,
+    avg_uptime_pct: quarters.length > 0 ? sum / quarters.length : 0,
+  }
+}
+
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
   const [months, setMonths] = useState("3")
+  const [granularity, setGranularity] = useState<Granularity>("monthly")
   const [monitors, setMonitors] = useState<SLAMonitorEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -199,6 +243,13 @@ export default function ReportsPage() {
   function handleMonthsChange(val: string) {
     setMonths(val)
   }
+
+  const displayMonitors =
+    granularity === "quarterly"
+      ? monitors.map(aggregateToQuarterly)
+      : monitors
+
+  const periodColumnLabel = granularity === "quarterly" ? "季度" : "月份"
 
   return (
     <div className="min-h-screen bg-background" data-testid="reports-page">
@@ -230,6 +281,21 @@ export default function ReportsPage() {
               <Download className="mr-2 h-4 w-4" />
               导出 CSV
             </Button>
+            <Select
+              value={granularity}
+              onValueChange={(v) => setGranularity(v as Granularity)}
+            >
+              <SelectTrigger
+                className="w-[120px]"
+                data-testid="granularity-select"
+              >
+                <SelectValue placeholder="显示维度" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="monthly">月度</SelectItem>
+                <SelectItem value="quarterly">季度</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={months} onValueChange={handleMonthsChange}>
               <SelectTrigger className="w-[140px]" data-testid="months-select">
                 <SelectValue placeholder="选择月数" />
@@ -255,7 +321,7 @@ export default function ReportsPage() {
               <SkeletonCard key={i} />
             ))}
           </div>
-        ) : monitors.length === 0 ? (
+        ) : displayMonitors.length === 0 ? (
           <div
             className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
             data-testid="reports-empty"
@@ -267,7 +333,7 @@ export default function ReportsPage() {
           </div>
         ) : (
           <div className="flex flex-col gap-6">
-            {monitors.map((monitor) => (
+            {displayMonitors.map((monitor) => (
               <Card key={monitor.id} data-testid={`monitor-card-${monitor.id}`}>
                 <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
                   <div className="flex items-center gap-3">
@@ -284,7 +350,7 @@ export default function ReportsPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>月份</TableHead>
+                        <TableHead>{periodColumnLabel}</TableHead>
                         <TableHead>在线率</TableHead>
                         <TableHead className="text-right">总检查数</TableHead>
                         <TableHead className="text-right">失败次数</TableHead>

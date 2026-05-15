@@ -28,70 +28,73 @@ function MethodBadge({ method }: { method: HttpMethod }) {
 
 export default function APIReferencePage() {
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="w-full min-h-screen">
       {/* Page header */}
-      <div className="border-b bg-background/95 py-10">
+      <div className="border-b bg-background/95 py-8">
         <div className="w-full mx-auto max-w-screen-xl px-6">
-          <h1 className="text-3xl font-bold tracking-tight">API 参考</h1>
-          <p className="mt-2 text-muted-foreground">
+          <h1 className="text-2xl font-bold tracking-tight">API 参考</h1>
+          <p className="mt-1.5 text-sm text-muted-foreground">
             idcd 全球网络诊断 API 完整参考文档。Base URL：{" "}
-            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-sm">
+            <code className="rounded bg-muted px-1.5 py-0.5 font-mono text-xs">
               https://api.idcd.com/v1
             </code>
           </p>
-          <div className="mt-4 flex flex-wrap gap-2 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-blue-400" /> GET
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-green-400" /> POST
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-yellow-400" /> PATCH
-            </span>
-            <span className="flex items-center gap-1">
-              <span className="inline-block h-2 w-2 rounded-full bg-red-400" /> DELETE
-            </span>
+          <div className="mt-3 flex flex-wrap gap-3 text-xs text-muted-foreground">
+            {[
+              { color: "bg-blue-400", label: "GET" },
+              { color: "bg-green-400", label: "POST" },
+              { color: "bg-yellow-400", label: "PATCH" },
+              { color: "bg-red-400", label: "DELETE" },
+            ].map(({ color, label }) => (
+              <span key={label} className="flex items-center gap-1.5">
+                <span className={`inline-block h-2 w-2 rounded-full ${color}`} />
+                {label}
+              </span>
+            ))}
           </div>
         </div>
       </div>
 
-      <div className="w-full mx-auto max-w-screen-xl px-6 flex-1 py-12 md:py-16">
-        <div className="flex gap-8">
-          {/* Left sidebar navigation */}
-          <aside className="hidden w-52 shrink-0 lg:block">
-            <div className="sticky top-8 overflow-y-auto" style={{ maxHeight: "calc(100vh - 8rem)" }}>
-              <nav aria-label="API 端点导航">
-                <ul className="space-y-1">
-                  {API_GROUPS.map((group) => (
-                    <li key={group.id}>
-                      <a
-                        href={`#group-${group.id}`}
-                        className="block rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
-                      >
-                        {group.label}
-                      </a>
-                      <ul className="ml-3 mt-0.5 space-y-0.5">
-                        {group.endpoints.map((ep) => (
-                          <li key={ep.id}>
-                            <a
-                              href={`#ep-${ep.id}`}
-                              className="block rounded px-2 py-1 text-xs text-muted-foreground/70 transition-colors hover:text-muted-foreground"
-                            >
-                              {ep.summary}
-                            </a>
-                          </li>
-                        ))}
-                      </ul>
-                    </li>
-                  ))}
-                </ul>
-              </nav>
-            </div>
-          </aside>
+      {/* 3-col layout */}
+      <div className="w-full mx-auto max-w-screen-xl flex">
 
-          {/* Main content */}
-          <main className="min-w-0 flex-1 space-y-12">
+        {/* ── Left nav ── */}
+        <aside className="hidden lg:block w-52 shrink-0 border-r">
+          <div className="sticky top-16 overflow-y-auto py-8 pr-4 pl-6" style={{ maxHeight: "calc(100vh - 4rem)" }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+              API 端点
+            </p>
+            <nav>
+              <ul className="space-y-3">
+                {API_GROUPS.map((group) => (
+                  <li key={group.id}>
+                    <a
+                      href={`#group-${group.id}`}
+                      className="block text-sm font-medium text-foreground/80 hover:text-foreground transition-colors"
+                    >
+                      {group.label}
+                    </a>
+                    <ul className="mt-1 ml-2 space-y-0.5 border-l border-border pl-3">
+                      {group.endpoints.map((ep) => (
+                        <li key={ep.id}>
+                          <a
+                            href={`#ep-${ep.id}`}
+                            className="block py-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            {ep.summary}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
+        </aside>
+
+        {/* ── Main content ── */}
+        <main className="min-w-0 flex-1 px-8 py-10 space-y-12">
             {/* Auth note */}
             <Card className="border-blue-500/30 bg-blue-500/5">
               <CardContent className="pt-4">
@@ -237,8 +240,43 @@ export default function APIReferencePage() {
                 </p>
               </CardContent>
             </Card>
-          </main>
-        </div>
+        </main>
+
+        {/* ── Right TOC ── */}
+        <aside className="hidden xl:block w-48 shrink-0 border-l">
+          <div className="sticky top-16 overflow-y-auto py-8 pl-5 pr-4" style={{ maxHeight: "calc(100vh - 4rem)" }}>
+            <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/50">
+              本页目录
+            </p>
+            <nav>
+              <ul className="space-y-2.5">
+                {API_GROUPS.map((group) => (
+                  <li key={group.id}>
+                    <a
+                      href={`#group-${group.id}`}
+                      className="block text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                    >
+                      {group.label}
+                    </a>
+                    <ul className="mt-1 ml-2 space-y-0.5 border-l border-border pl-2.5">
+                      {group.endpoints.map((ep) => (
+                        <li key={ep.id}>
+                          <a
+                            href={`#ep-${ep.id}`}
+                            className="block py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors leading-snug"
+                          >
+                            {ep.summary}
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+          </div>
+        </aside>
+
       </div>
     </div>
   )

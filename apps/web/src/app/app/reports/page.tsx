@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Select,
@@ -20,7 +21,48 @@ import {
 } from "@/components/ui/table"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Skeleton } from "@/components/ui/skeleton"
+import { Printer, Download } from "lucide-react"
 import { apiRequest } from "@/lib/api"
+
+// ── Print styles ───────────────────────────────────────────────────────────
+
+function GlobalPrintStyle() {
+  return (
+    <style media="print">{`@media print { .no-print { display: none !important; } }`}</style>
+  )
+}
+
+// ── Export helpers ─────────────────────────────────────────────────────────
+
+function handlePDFExport() {
+  window.print()
+}
+
+function handleCSVExport(monitors: SLAMonitorEntry[]) {
+  const rows: string[] = ["Monitor,Month,Uptime%,Total Checks,Failed Checks"]
+  for (const monitor of monitors) {
+    for (const m of monitor.months) {
+      rows.push(
+        [
+          `"${monitor.name.replace(/"/g, '""')}"`,
+          m.month,
+          m.uptime_pct.toFixed(4),
+          m.total_checks,
+          m.failed_checks,
+        ].join(","),
+      )
+    }
+  }
+  const csv = rows.join("\n")
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" })
+  const url = URL.createObjectURL(blob)
+  const today = new Date().toISOString().slice(0, 10)
+  const a = document.createElement("a")
+  a.href = url
+  a.download = `sla-report-${today}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+}
 
 // ── API types ──────────────────────────────────────────────────────────────
 
@@ -159,7 +201,8 @@ export default function ReportsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background" data-testid="reports-page">
+      <GlobalPrintStyle />
       <div className="container mx-auto px-4 py-8">
         <div className="mb-8 flex items-center justify-between gap-4">
           <div>
@@ -168,16 +211,36 @@ export default function ReportsPage() {
               查看每个监控在过去几个月的可用率统计
             </p>
           </div>
-          <Select value={months} onValueChange={handleMonthsChange}>
-            <SelectTrigger className="w-[140px]" data-testid="months-select">
-              <SelectValue placeholder="选择月数" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="3">最近 3 个月</SelectItem>
-              <SelectItem value="6">最近 6 个月</SelectItem>
-              <SelectItem value="12">最近 12 个月</SelectItem>
-            </SelectContent>
-          </Select>
+          <div className="no-print flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handlePDFExport}
+              data-testid="pdf-export-btn"
+            >
+              <Printer className="mr-2 h-4 w-4" />
+              导出 PDF
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => handleCSVExport(monitors)}
+              data-testid="csv-export-btn"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              导出 CSV
+            </Button>
+            <Select value={months} onValueChange={handleMonthsChange}>
+              <SelectTrigger className="w-[140px]" data-testid="months-select">
+                <SelectValue placeholder="选择月数" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="3">最近 3 个月</SelectItem>
+                <SelectItem value="6">最近 6 个月</SelectItem>
+                <SelectItem value="12">最近 12 个月</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         {error && (

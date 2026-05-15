@@ -2,7 +2,7 @@ import type { NextConfig } from 'next'
 
 const nextConfig: NextConfig = {
   output: 'standalone',
-  typedRoutes: true,
+  // typedRoutes: true,  // 77 页面时内存开销过大，仅在 CI build 中开启
   images: {
     remotePatterns: [
       {

@@ -37,7 +37,7 @@ dev-up:
 
 # ── 测试 ─────────────────────────────────────────────────────
 test:
-	go test ./... -count=1 -timeout 120s
+	go test -p 4 ./... -count=1 -timeout 120s
 	cd apps/web && pnpm test --passWithNoTests 2>/dev/null || true
 
 # ── 数据填充 ─────────────────────────────────────────────────

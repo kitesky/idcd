@@ -34,10 +34,34 @@ func ValidPlan(p Plan) bool {
 	return ok
 }
 
+// User-selectable payment channels for web payments.
+// Paddle is intentionally excluded — it is config-only (international cards, admin-initiated).
+const (
+	ChannelAlipay    = "alipay"
+	ChannelWeChatPay = "wechat_pay"
+	ChannelPaddle    = "paddle"
+)
+
+// UserChannels are the channels users can select on the web checkout page.
+// Both use QR code scanning; method is determined by the provider, not the user.
+var UserChannels = map[string]struct{}{
+	ChannelAlipay:    {},
+	ChannelWeChatPay: {},
+}
+
+// ValidUserChannel reports whether ch is a user-selectable channel.
+func ValidUserChannel(ch string) bool {
+	_, ok := UserChannels[ch]
+	return ok
+}
+
 // SubscribeRequest 创建订阅请求
 type SubscribeRequest struct {
-	UserID    string
-	Plan      Plan
+	UserID  string
+	Plan    Plan
+	// Channel is the user-chosen payment channel: "alipay" or "wechat_pay".
+	// Empty means use the provider's configured default.
+	Channel string
 	ReturnURL string // 支付完成后跳转
 	NotifyURL string // 异步通知 URL
 }

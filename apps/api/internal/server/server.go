@@ -302,8 +302,20 @@ func (s *Server) setupRouter() {
 			})
 
 			// Billing endpoints (subscribe, cancel, invoices, webhook, stub-confirm)
-			stubProvider := billing.NewStubProvider()
-			billingH := handler.NewBillingHandler(s.pgxPool, stubProvider)
+			var billingProvider billing.Provider
+			if s.config.Payment.Enabled && s.config.Payment.APIKey != "" {
+				billingProvider = billing.NewPaymentHubProvider(billing.PaymentHubConfig{
+					BaseURL:       s.config.Payment.BaseURL,
+					APIKey:        s.config.Payment.APIKey,
+					APISecret:     s.config.Payment.APISecret,
+					WebhookSecret: s.config.Payment.WebhookSecret,
+					Channel:       s.config.Payment.Channel,
+					Currency:      s.config.Payment.Currency,
+				})
+			} else {
+				billingProvider = billing.NewStubProvider()
+			}
+			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider)
 			r.Route("/billing", func(r chi.Router) {
 				// Authenticated routes
 				r.With(authnMW).Post("/subscribe", billingH.Subscribe)

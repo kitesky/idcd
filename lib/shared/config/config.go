@@ -24,6 +24,26 @@ type Config struct {
 	AgentGateway  AgentGatewayConfig  `yaml:"agent_gateway"`
 	OAuth         OAuthConfig         `yaml:"oauth"`
 	Encryption    EncryptionConfig    `yaml:"encryption"`
+	Payment       PaymentConfig       `yaml:"payment"`
+}
+
+// PaymentConfig holds credentials for the payment aggregation platform.
+type PaymentConfig struct {
+	// Enabled switches from StubProvider to the real PaymentHubProvider.
+	Enabled bool `yaml:"enabled"`
+	// BaseURL is the payment platform base URL, e.g. "https://pay.example.com".
+	BaseURL string `yaml:"base_url"`
+	// APIKey is the pk_xxx key from the platform admin panel.
+	APIKey string `yaml:"api_key"`
+	// APISecret is the sk_xxx secret used to sign requests.
+	APISecret string `yaml:"api_secret"`
+	// WebhookSecret is the callback secret used to verify incoming webhooks.
+	WebhookSecret string `yaml:"webhook_secret"`
+	// Channel is the default payment channel when the user does not specify one:
+	// "alipay" or "wechat_pay". Method is derived automatically per channel.
+	Channel string `yaml:"channel"`
+	// Currency is the ISO 4217 code: "CNY", "USD".
+	Currency string `yaml:"currency"`
 }
 
 // EncryptionConfig holds keys for field-level at-rest encryption.

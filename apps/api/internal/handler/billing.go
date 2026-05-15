@@ -36,6 +36,10 @@ func NewBillingHandler(pool BillingPool, provider billing.Provider) *BillingHand
 
 type subscribeRequest struct {
 	Plan string `json:"plan"`
+	// Channel selects the payment channel: "alipay" or "wechat_pay".
+	// Omit to use the provider's configured default.
+	// Method is determined automatically (Alipay→page QR, WeChat→native QR).
+	Channel string `json:"channel,omitempty"`
 }
 
 type subscribeResponse struct {
@@ -103,12 +107,18 @@ func (h *BillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Channel != "" && !billing.ValidUserChannel(req.Channel) {
+		response.Error(w, r, apperr.Validation("channel must be alipay or wechat_pay", "channel"))
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
 	result, err := h.provider.Subscribe(ctx, billing.SubscribeRequest{
 		UserID:    userID,
 		Plan:      plan,
+		Channel:   req.Channel,
 		ReturnURL: r.Header.Get("Origin") + "/app/billing",
 		NotifyURL: r.Header.Get("Origin") + "/v1/billing/webhook",
 	})

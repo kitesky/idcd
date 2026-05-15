@@ -15,6 +15,7 @@ require (
 	github.com/prometheus/client_golang v1.23.2
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
+	github.com/wangzheng/payment-go-sdk v0.0.0
 	go.yaml.in/yaml/v2 v2.4.2
 	golang.org/x/crypto v0.51.0
 )

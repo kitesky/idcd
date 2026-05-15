@@ -15,3 +15,5 @@ use (
 	./lib/shared
 	./packages/sdk-go
 )
+
+replace github.com/wangzheng/payment-go-sdk => /Volumes/Workspace/code/payment/payment-go-sdk

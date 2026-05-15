@@ -313,6 +313,7 @@ func (s *Server) setupRouter() {
 				r.Post("/traceroute", probeH.Traceroute)
 				r.Post("/smtp", probeH.SMTP)
 				r.Post("/ntp", probeH.NTP)
+				r.Post("/mtr", probeH.MTR)
 				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)

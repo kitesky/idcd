@@ -18,19 +18,22 @@ type Executor struct {
 	tracerouteProbe *probe.TracerouteProbe
 	smtpProbe       *probe.SMTPProbe
 	ntpProbe        *probe.NTPProbe
+	mtrProbe        *probe.MTRProbe
 	secretKey       []byte
 }
 
 // NewExecutor creates a new task executor with the given secret key for watermarking.
 func NewExecutor(secretKey []byte) *Executor {
+	pingProbe := &probe.PingProbe{}
 	return &Executor{
 		httpProbe:       &probe.HTTPProbe{},
-		pingProbe:       &probe.PingProbe{},
+		pingProbe:       pingProbe,
 		tcpProbe:        &probe.TCPProbe{},
 		dnsProbe:        &probe.DNSProbe{},
 		tracerouteProbe: &probe.TracerouteProbe{},
 		smtpProbe:       &probe.SMTPProbe{},
 		ntpProbe:        &probe.NTPProbe{},
+		mtrProbe:        &probe.MTRProbe{Sender: pingProbe.Sender},
 		secretKey:       secretKey,
 	}
 }
@@ -86,6 +89,8 @@ func (e *Executor) Execute(task Task) *probe.Result {
 		result = e.smtpProbe.Execute(task.Target, timeout, task.Options)
 	case TaskNTP:
 		result = e.ntpProbe.Execute(task.Target, timeout, task.Options)
+	case TaskMTR:
+		result = e.mtrProbe.Execute(task.Target, timeout, task.Options)
 	default:
 		timestamp := time.Now()
 		result := &probe.Result{

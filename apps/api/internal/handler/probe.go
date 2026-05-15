@@ -105,6 +105,12 @@ func (h *ProbeHandler) NTP(w http.ResponseWriter, r *http.Request) {
 	h.handleProbe(w, r, "ntp")
 }
 
+// MTR handles MTR (traceroute + per-hop ping) probe requests.
+// POST /v1/probe/mtr
+func (h *ProbeHandler) MTR(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "mtr")
+}
+
 // Diagnose handles comprehensive diagnostic requests.
 // POST /v1/diagnose
 func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {

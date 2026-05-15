@@ -146,6 +146,13 @@ export async function probeNtp(params: ProbeParams): Promise<ProbeResult> {
   })
 }
 
+export async function probeMtr(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/mtr", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
 export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
   return apiRequest<ProbeTaskResult>(`/v1/probe/tasks/${taskId}`)
 }
@@ -164,9 +171,11 @@ export interface WhoisInfo {
   domain: string
   registrar: string
   creation_date?: string
+  expiry_date?: string
   expiration_date?: string
   registrant?: string
   name_servers?: string[]
+  note?: string
 }
 
 export async function getSSLInfo(domain: string): Promise<SSLInfo> {
@@ -175,6 +184,94 @@ export async function getSSLInfo(domain: string): Promise<SSLInfo> {
 
 export async function getWhoisInfo(domain: string): Promise<WhoisInfo> {
   return apiRequest<WhoisInfo>(`/v1/info/whois?q=${encodeURIComponent(domain)}`)
+}
+
+// ---- Info API: additional types & functions ----
+
+export interface RDNSInfo {
+  ip: string
+  hostnames: string[]
+}
+
+export interface MXInfo {
+  domain: string
+  records: Array<{ host: string; priority: number }>
+}
+
+export interface SPFInfo {
+  domain: string
+  record: string
+  found: boolean
+}
+
+export interface DMARCInfo {
+  domain: string
+  record: string
+  found: boolean
+}
+
+export interface DKIMInfo {
+  domain: string
+  selector: string
+  record: string
+  found: boolean
+}
+
+export interface ASNInfo {
+  query: string
+  asn: string
+  isp: string
+  country: string
+  country_code: string
+}
+
+export interface BGPInfo {
+  ip: string
+  prefixes: string[]
+  asns: string[]
+}
+
+export interface ICPInfo {
+  domain: string
+  icp_number: string
+  company: string
+  type: string
+  filed_at: string
+  note: string
+}
+
+export async function getRDNSInfo(q: string): Promise<RDNSInfo> {
+  return apiRequest<RDNSInfo>(`/v1/info/rdns?q=${encodeURIComponent(q)}`)
+}
+
+export async function getMXInfo(q: string): Promise<MXInfo> {
+  return apiRequest<MXInfo>(`/v1/info/mx?q=${encodeURIComponent(q)}`)
+}
+
+export async function getSPFInfo(q: string): Promise<SPFInfo> {
+  return apiRequest<SPFInfo>(`/v1/info/spf?q=${encodeURIComponent(q)}`)
+}
+
+export async function getDMARCInfo(q: string): Promise<DMARCInfo> {
+  return apiRequest<DMARCInfo>(`/v1/info/dmarc?q=${encodeURIComponent(q)}`)
+}
+
+export async function getDKIMInfo(q: string, selector?: string): Promise<DKIMInfo> {
+  return apiRequest<DKIMInfo>(
+    `/v1/info/dkim?q=${encodeURIComponent(q)}${selector ? `&selector=${encodeURIComponent(selector)}` : ""}`
+  )
+}
+
+export async function getASNInfo(q: string): Promise<ASNInfo> {
+  return apiRequest<ASNInfo>(`/v1/info/asn?q=${encodeURIComponent(q)}`)
+}
+
+export async function getBGPInfo(q: string): Promise<BGPInfo> {
+  return apiRequest<BGPInfo>(`/v1/info/bgp?q=${encodeURIComponent(q)}`)
+}
+
+export async function getICPInfo(q: string): Promise<ICPInfo> {
+  return apiRequest<ICPInfo>(`/v1/info/icp?q=${encodeURIComponent(q)}`)
 }
 
 // Billing API

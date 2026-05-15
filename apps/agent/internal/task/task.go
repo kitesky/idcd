@@ -29,13 +29,14 @@ const (
 	TaskTraceroute = probe.TaskTraceroute
 	TaskSMTP       = probe.TaskSMTP
 	TaskNTP        = probe.TaskNTP
+	TaskMTR        = probe.TaskMTR
 )
 
 // IsValidTaskType checks if the given task type is supported.
 func IsValidTaskType(t probe.TaskType) bool {
 	switch t {
 	case probe.TaskHTTP, probe.TaskPing, probe.TaskTCP, probe.TaskDNS, probe.TaskTraceroute,
-		probe.TaskSMTP, probe.TaskNTP:
+		probe.TaskSMTP, probe.TaskNTP, probe.TaskMTR:
 		return true
 	default:
 		return false

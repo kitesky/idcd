@@ -16,6 +16,7 @@ const (
 	TaskTraceroute TaskType = "traceroute"
 	TaskSMTP       TaskType = "smtp"
 	TaskNTP        TaskType = "ntp"
+	TaskMTR        TaskType = "mtr"
 )
 
 // Result represents the outcome of a probe execution.

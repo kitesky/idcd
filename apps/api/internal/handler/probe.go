@@ -111,6 +111,12 @@ func (h *ProbeHandler) MTR(w http.ResponseWriter, r *http.Request) {
 	h.handleProbe(w, r, "mtr")
 }
 
+// Speedtest handles HTTP bandwidth measurement probe requests.
+// POST /v1/probe/speedtest
+func (h *ProbeHandler) Speedtest(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "speedtest")
+}
+
 // Diagnose handles comprehensive diagnostic requests.
 // POST /v1/diagnose
 func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {

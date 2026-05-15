@@ -126,7 +126,8 @@ export const probeDns       = (p: ProbeParams) => probePost("dns",        p)
 export const probeTraceroute = (p: ProbeParams) => probePost("traceroute", p)
 export const probeSmtp      = (p: ProbeParams) => probePost("smtp",       p)
 export const probeNtp       = (p: ProbeParams) => probePost("ntp",        p)
-export const probeMtr       = (p: ProbeParams) => probePost("mtr",        p)
+export const probeMtr        = (p: ProbeParams) => probePost("mtr",        p)
+export const probeSpeedtest  = (p: ProbeParams) => probePost("speedtest",  p)
 
 export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
   return apiRequest<ProbeTaskResult>(`/v1/probe/tasks/${taskId}`)

@@ -72,6 +72,8 @@ func OncallSchedule() string    { return New("sch_") }
 func OncallParticipant() string { return New("par_") }
 func OncallOverride() string    { return New("ovr_") }
 
+func NodeUpgradeRollout() string { return New("oru_") }
+
 // --- Semantic IDs (not nanoid) ---
 
 // Node returns a semantic node ID.

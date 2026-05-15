@@ -6,6 +6,7 @@ const NAV = [
   { href: "/admin/nodes",            label: "节点健康" },
   { href: "/admin/refund-failed",    label: "退款失败" },
   { href: "/admin/beta-invitations", label: "Beta 邀请码" },
+  { href: "/admin/upgrades",         label: "OTA 升级" },
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -19,6 +19,7 @@ type Executor struct {
 	smtpProbe       *probe.SMTPProbe
 	ntpProbe        *probe.NTPProbe
 	mtrProbe        *probe.MTRProbe
+	speedtestProbe  *probe.SpeedtestProbe
 	secretKey       []byte
 }
 
@@ -34,6 +35,7 @@ func NewExecutor(secretKey []byte) *Executor {
 		smtpProbe:       &probe.SMTPProbe{},
 		ntpProbe:        &probe.NTPProbe{},
 		mtrProbe:        &probe.MTRProbe{Sender: pingProbe.Sender},
+		speedtestProbe:  &probe.SpeedtestProbe{},
 		secretKey:       secretKey,
 	}
 }
@@ -66,6 +68,8 @@ func (e *Executor) Execute(task Task) *probe.Result {
 		result = e.ntpProbe.Execute(task.Target, timeout, task.Options)
 	case TaskMTR:
 		result = e.mtrProbe.Execute(task.Target, timeout, task.Options)
+	case TaskSpeedtest:
+		result = e.speedtestProbe.Execute(task.Target, timeout, task.Options)
 	default:
 		timestamp := time.Now()
 		result = &probe.Result{

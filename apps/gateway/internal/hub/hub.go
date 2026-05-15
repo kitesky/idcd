@@ -168,6 +168,17 @@ func (h *Hub) GetConnection(nodeID string) (*Connection, bool) {
 	return c, exists
 }
 
+// GetAllNodeIDs returns the IDs of all currently connected nodes.
+func (h *Hub) GetAllNodeIDs() []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	ids := make([]string, 0, len(h.connections))
+	for id := range h.connections {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // Count returns the number of active connections.
 func (h *Hub) Count() int {
 	h.mu.RLock()

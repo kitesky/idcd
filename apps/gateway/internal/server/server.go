@@ -69,6 +69,10 @@ func (s *Server) setupRouter() {
 	wsHandler := handler.NewWSHandler(s.hub, nil, s.pgxPool, s.streamCli, s.logger)
 	r.Get("/agent/ws", wsHandler.ServeWS)
 
+	// Internal endpoint for OTA broadcast (called by API service, not public)
+	upgradeHandler := handler.NewUpgradeHandler(s.hub)
+	r.Post("/internal/broadcast-upgrade", upgradeHandler.BroadcastUpgrade)
+
 	s.router = r
 }
 

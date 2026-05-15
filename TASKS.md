@@ -569,6 +569,9 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 添加 `ProbeResultConsumer`：读 `probe.results` stream → UPDATE probe_task SET result=$1,status='done'
   - *deps: T1 依赖此*
 
+- [x] **N3** 节点 OTA 灰度升级 — 三级灰度（1%/10%/100%），upgrade_rollouts DB + Admin API + Gateway 广播 + Agent 自更新 + 前端看板，完成 2026-05-15
+- [x] **N4** Speedtest 网速测试探针 — HTTP 大包下载/上传测速，download_mbps/upload_mbps，Agent+API+前端工具页，完成 2026-05-15
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

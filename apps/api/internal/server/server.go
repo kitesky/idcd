@@ -314,6 +314,7 @@ func (s *Server) setupRouter() {
 				r.Post("/smtp", probeH.SMTP)
 				r.Post("/ntp", probeH.NTP)
 				r.Post("/mtr", probeH.MTR)
+				r.Post("/speedtest", probeH.Speedtest)
 				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)
@@ -571,6 +572,8 @@ func (s *Server) setupRouter() {
 			blocklistHandlerStore = &redisBlocklistAdapter{client: s.redis}
 		}
 		blocklistH := handler.NewAdminBlocklistHandler(blocklistHandlerStore)
+		gatewayInternalURL := s.config.AgentGateway.InternalURL
+		upgradeH := handler.NewNodeUpgradeHandler(s.pgxPool, gatewayInternalURL)
 		r.Route("/internal/admin", func(r chi.Router) {
 			r.Use(adminH.AdminAuthMiddleware)
 			r.Get("/metrics", adminH.AdminMetrics)
@@ -578,6 +581,9 @@ func (s *Server) setupRouter() {
 			r.Get("/users/{id}", adminH.AdminUserDetail)
 			r.Post("/block-ip", blocklistH.BlockIP)
 			r.Delete("/block-ip", blocklistH.UnblockIP)
+			r.Post("/upgrade-rollouts", upgradeH.Create)
+			r.Get("/upgrade-rollouts", upgradeH.List)
+			r.Patch("/upgrade-rollouts/{id}", upgradeH.Update)
 		})
 
 		// Community node application and points endpoints.

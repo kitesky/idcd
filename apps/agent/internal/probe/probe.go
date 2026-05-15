@@ -17,6 +17,7 @@ const (
 	TaskSMTP       TaskType = "smtp"
 	TaskNTP        TaskType = "ntp"
 	TaskMTR        TaskType = "mtr"
+	TaskSpeedtest  TaskType = "speedtest"
 )
 
 // Result represents the outcome of a probe execution.
@@ -62,6 +63,9 @@ type SMTPProbe struct{}
 
 // NTPProbe executes NTP server time queries.
 type NTPProbe struct{}
+
+// SpeedtestProbe measures download/upload bandwidth via HTTP large-payload transfers.
+type SpeedtestProbe struct{}
 
 // PingSender interface allows mocking ICMP operations in tests.
 type PingSender interface {

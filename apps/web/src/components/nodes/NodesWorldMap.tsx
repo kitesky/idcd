@@ -92,7 +92,7 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
       const mk: Marker[] = []
       for (const [key, val] of grouped) {
         const [lngStr, latStr] = key.split(",")
-        const [x, y] = projection([parseFloat(lngStr), parseFloat(latStr)]) ?? [0, 0]
+        const [x, y] = projection([parseFloat(lngStr ?? "0"), parseFloat(latStr ?? "0")]) ?? [0, 0]
         mk.push({ x, y, online: val.online, label: val.names.join(" · ") || key })
       }
       setMarkers(mk)

@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   Edit,
@@ -11,9 +12,29 @@ import {
   Wifi,
   Radio,
 } from "lucide-react"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -88,6 +109,107 @@ function formatDateTime(iso: string): string {
   })
 }
 
+interface EditMonitorDialogProps {
+  monitor: Monitor
+  onUpdated: (m: Monitor) => void
+}
+
+function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [name, setName] = useState(monitor.name)
+  const [target, setTarget] = useState(monitor.target)
+  const [intervalSeconds, setIntervalSeconds] = useState(monitor.intervalSeconds)
+  const [submitting, setSubmitting] = useState(false)
+
+  function handleOpenChange(v: boolean) {
+    if (v) {
+      // reset fields to current monitor values when opening
+      setName(monitor.name)
+      setTarget(monitor.target)
+      setIntervalSeconds(monitor.intervalSeconds)
+    }
+    setOpen(v)
+  }
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setSubmitting(true)
+    try {
+      const json = await apiRequest<{ data: Monitor }>(`/v1/monitors/${monitor.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, target, interval_seconds: intervalSeconds }),
+      })
+      const updated: Monitor = json?.data ?? { ...monitor, name, target, intervalSeconds }
+      onUpdated(updated)
+      setOpen(false)
+      toast.success("监控已更新")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "更新失败，请重试"
+      toast.error(msg)
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <>
+      <Button variant="outline" size="sm" onClick={() => handleOpenChange(true)}>
+        <Edit className="mr-2 h-4 w-4" />
+        编辑
+      </Button>
+      <Dialog open={open} onOpenChange={handleOpenChange}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>编辑监控</DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-name">名称</Label>
+              <Input
+                id="edit-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                placeholder="监控名称"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-target">目标 URL</Label>
+              <Input
+                id="edit-target"
+                value={target}
+                onChange={(e) => setTarget(e.target.value)}
+                required
+                placeholder="https://example.com"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-interval">检测间隔（秒）</Label>
+              <Input
+                id="edit-interval"
+                type="number"
+                min={10}
+                value={intervalSeconds}
+                onChange={(e) => setIntervalSeconds(Number(e.target.value))}
+                required
+              />
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
+                取消
+              </Button>
+              <Button type="submit" disabled={submitting}>
+                {submitting ? "保存中…" : "保存"}
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
+    </>
+  )
+}
+
 interface MonitorDetailClientProps {
   monitor: Monitor | null
   monitorId: string
@@ -103,9 +225,12 @@ const EMPTY_BUCKETS: CheckBucket[] = Array.from({ length: 48 }, () => ({
 }))
 
 export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientProps) {
+  const router = useRouter()
   const [currentMonitor, setCurrentMonitor] = useState<Monitor | null>(monitor)
   const id = monitor?.id ?? monitorId
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   const [latestCheck, setLatestCheck] = useState<LatestCheck | null>(null)
   const [checkBuckets, setCheckBuckets] = useState<CheckBucket[] | null>(null)
   const [bucketLoading, setBucketLoading] = useState(true)
@@ -143,6 +268,20 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       })
   }, [id])
 
+  async function handleDelete() {
+    setDeleting(true)
+    try {
+      await apiRequest(`/v1/monitors/${id}`, { method: "DELETE" })
+      toast.success("监控已删除")
+      router.push("/app/monitors")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "删除失败，请重试"
+      toast.error(msg)
+      setDeleting(false)
+      setDeleteOpen(false)
+    }
+  }
+
   function togglePause() {
     setCurrentMonitor((prev) => {
       if (!prev) return null
@@ -173,10 +312,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
           </Link>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Edit className="mr-2 h-4 w-4" />
-            编辑
-          </Button>
+          <EditMonitorDialog monitor={currentMonitor} onUpdated={setCurrentMonitor} />
           <Button variant="outline" size="sm" onClick={togglePause}>
             {currentMonitor.status === "PAUSED" ? (
               <>
@@ -190,11 +326,37 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
               </>
             )}
           </Button>
-          <Button variant="outline" size="sm" className="text-destructive hover:text-destructive">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
             <Trash2 className="mr-2 h-4 w-4" />
             删除
           </Button>
         </div>
+
+        <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>确认删除监控？</AlertDialogTitle>
+              <AlertDialogDescription>
+                此操作不可撤销，将永久删除监控项「{currentMonitor.name}」及其所有历史数据。
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleDelete}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? "删除中…" : "确认删除"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
 
       {/* 监控名称 + 状态 */}

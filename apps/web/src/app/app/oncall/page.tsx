@@ -7,6 +7,8 @@ import {
   Plus,
   RefreshCw,
   ChevronRight,
+  Trash2,
+  UserPlus,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -350,6 +352,128 @@ function OverrideDialog({ scheduleId, participants }: OverrideDialogProps) {
   )
 }
 
+// ── Remove Participant Button ──────────────────────────────────────────────
+
+interface RemoveParticipantButtonProps {
+  scheduleId: string
+  userId: string
+  onRemoved: () => void
+}
+
+function RemoveParticipantButton({ scheduleId, userId, onRemoved }: RemoveParticipantButtonProps) {
+  const [removing, setRemoving] = useState(false)
+
+  async function handleRemove() {
+    setRemoving(true)
+    try {
+      await apiRequest(`/v1/oncall/schedules/${scheduleId}/participants/${userId}`, {
+        method: "DELETE",
+      })
+      onRemoved()
+    } catch {
+      // silently ignore — participant row stays if error
+    } finally {
+      setRemoving(false)
+    }
+  }
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      disabled={removing}
+      onClick={handleRemove}
+      data-testid={`remove-participant-${userId}`}
+      className="shrink-0 h-7 w-7"
+    >
+      <Trash2 className="h-4 w-4 text-destructive" />
+    </Button>
+  )
+}
+
+// ── Add Participant Dialog ─────────────────────────────────────────────────
+
+interface AddParticipantDialogProps {
+  scheduleId: string
+  currentCount: number
+  onAdded: () => void
+}
+
+function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticipantDialogProps) {
+  const [open, setOpen] = useState(false)
+  const [userId, setUserId] = useState("")
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSubmit() {
+    if (!userId.trim()) return
+    setSubmitting(true)
+    setError(null)
+    try {
+      await apiRequest(`/v1/oncall/schedules/${scheduleId}/participants`, {
+        method: "POST",
+        body: JSON.stringify({
+          user_id: userId.trim(),
+          order_index: currentCount,
+        }),
+      })
+      setOpen(false)
+      setUserId("")
+      onAdded()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "添加失败")
+    } finally {
+      setSubmitting(false)
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={setOpen}>
+      <DialogTrigger asChild>
+        <Button size="sm" variant="outline" data-testid="add-participant-button">
+          <UserPlus className="mr-2 h-4 w-4" />
+          添加成员
+        </Button>
+      </DialogTrigger>
+      <DialogContent data-testid="add-participant-dialog">
+        <DialogHeader>
+          <DialogTitle>添加排班成员</DialogTitle>
+        </DialogHeader>
+        {error && (
+          <Alert variant="destructive">
+            <AlertDescription>{error}</AlertDescription>
+          </Alert>
+        )}
+        <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label htmlFor="participant-user-id">用户 ID</Label>
+            <Input
+              id="participant-user-id"
+              placeholder="输入用户 ID"
+              value={userId}
+              onChange={(e) => setUserId(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
+              data-testid="participant-user-id-input"
+            />
+          </div>
+        </div>
+        <div className="flex justify-end gap-2">
+          <Button variant="outline" onClick={() => setOpen(false)}>
+            取消
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!userId.trim() || submitting}
+            data-testid="add-participant-submit"
+          >
+            {submitting ? "添加中…" : "添加"}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 // ── Oncall Stats Card ──────────────────────────────────────────────────────
 
 interface OncallStatsCardProps {
@@ -680,29 +804,49 @@ export default function OncallPage() {
             <Card>
               <CardHeader className="pb-3">
                 <CardTitle className="flex items-center justify-between text-base">
-                  <span>{schedule.name}</span>
-                  <Badge variant="secondary">
-                    {schedule.rotation_type === "weekly" ? "每周轮换" : "每日轮换"}
-                  </Badge>
+                  <div className="flex items-center gap-3">
+                    <span>{schedule.name}</span>
+                    <Badge variant="secondary">
+                      {schedule.rotation_type === "weekly" ? "每周轮换" : "每日轮换"}
+                    </Badge>
+                  </div>
+                  <AddParticipantDialog
+                    scheduleId={schedule.id}
+                    currentCount={participants.length}
+                    onAdded={loadData}
+                  />
                 </CardTitle>
               </CardHeader>
               <CardContent>
                 <div className="space-y-1">
-                  {participants.map((p, i) => (
-                    <div
-                      key={p.user_id}
-                      className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
-                      data-testid={`schedule-participant-${p.user_id}`}
-                    >
-                      <span className="text-muted-foreground w-6 text-right shrink-0">
-                        {i + 1}.
-                      </span>
-                      <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary shrink-0">
-                        {p.email.charAt(0).toUpperCase()}
+                  {participants.length === 0 ? (
+                    <p className="py-4 text-center text-sm text-muted-foreground">
+                      暂无成员，点击「添加成员」开始
+                    </p>
+                  ) : (
+                    participants.map((p, i) => (
+                      <div
+                        key={p.user_id}
+                        className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+                        data-testid={`schedule-participant-${p.user_id}`}
+                      >
+                        <span className="text-muted-foreground w-6 text-right shrink-0">
+                          {i + 1}.
+                        </span>
+                        <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary shrink-0">
+                          {p.email.charAt(0).toUpperCase()}
+                        </div>
+                        <span className="flex-1">{p.email}</span>
+                        <RemoveParticipantButton
+                          scheduleId={schedule.id}
+                          userId={p.user_id}
+                          onRemoved={() =>
+                            setParticipants((prev) => prev.filter((x) => x.user_id !== p.user_id))
+                          }
+                        />
                       </div>
-                      <span>{p.email}</span>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </CardContent>
             </Card>

@@ -60,14 +60,19 @@ export default function IncidentsPage() {
   const [error, setError] = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
   const [generateError, setGenerateError] = useState<string | null>(null)
+  const [limit, setLimit] = useState(20)
+  const [hasMore, setHasMore] = useState(false)
+  const [loadingMore, setLoadingMore] = useState(false)
 
   useEffect(() => {
     async function fetchIncidents() {
       setLoading(true)
       setError(null)
       try {
-        const res = await apiRequest<{ data: { incidents: Incident[] } }>("/v1/incidents")
-        setIncidents(res.data.incidents ?? [])
+        const res = await apiRequest<{ data: { incidents: Incident[] } }>(`/v1/incidents?limit=${limit}`)
+        const list = res.data.incidents ?? []
+        setIncidents(list)
+        setHasMore(list.length === limit)
       } catch (err) {
         setError(err instanceof Error ? err.message : "加载失败，请刷新重试")
       } finally {
@@ -75,7 +80,16 @@ export default function IncidentsPage() {
       }
     }
     fetchIncidents()
-  }, [])
+  }, [limit])
+
+  async function handleLoadMore() {
+    setLoadingMore(true)
+    setLimit((l) => l + 20)
+  }
+
+  useEffect(() => {
+    setLoadingMore(false)
+  }, [incidents])
 
   async function handleGenerate(eventId: string) {
     setGenerating(eventId)
@@ -131,52 +145,67 @@ export default function IncidentsPage() {
                 <p className="text-sm text-muted-foreground">暂无故障记录</p>
               </div>
             ) : (
-              <Table data-testid="incidents-table">
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>监控名</TableHead>
-                    <TableHead>开始时间</TableHead>
-                    <TableHead>复盘状态</TableHead>
-                    <TableHead>操作</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {incidents.map((incident) => (
-                    <TableRow key={incident.event_id} data-testid={`incident-row-${incident.event_id}`}>
-                      <TableCell className="font-medium">{incident.monitor_name}</TableCell>
-                      <TableCell>
-                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Clock className="h-3 w-3" />
-                          {formatDate(incident.started_at)}
-                        </span>
-                      </TableCell>
-                      <TableCell>
-                        {incident.has_draft ? (
-                          <Badge variant="secondary" data-testid={`postmortem-status-${incident.event_id}`}>
-                            已生成
-                          </Badge>
-                        ) : (
-                          <Badge variant="outline" data-testid={`postmortem-status-${incident.event_id}`}>
-                            未生成
-                          </Badge>
-                        )}
-                      </TableCell>
-                      <TableCell>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleGenerate(incident.event_id)}
-                          disabled={generating === incident.event_id}
-                          data-testid={`generate-btn-${incident.event_id}`}
-                        >
-                          <Zap className="mr-1 h-3 w-3" />
-                          {generating === incident.event_id ? "生成中..." : "生成复盘"}
-                        </Button>
-                      </TableCell>
+              <div className="space-y-4">
+                <Table data-testid="incidents-table">
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>监控名</TableHead>
+                      <TableHead>开始时间</TableHead>
+                      <TableHead>复盘状态</TableHead>
+                      <TableHead>操作</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {incidents.map((incident) => (
+                      <TableRow key={incident.event_id} data-testid={`incident-row-${incident.event_id}`}>
+                        <TableCell className="font-medium">{incident.monitor_name}</TableCell>
+                        <TableCell>
+                          <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Clock className="h-3 w-3" />
+                            {formatDate(incident.started_at)}
+                          </span>
+                        </TableCell>
+                        <TableCell>
+                          {incident.has_draft ? (
+                            <Badge variant="secondary" data-testid={`postmortem-status-${incident.event_id}`}>
+                              已生成
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" data-testid={`postmortem-status-${incident.event_id}`}>
+                              未生成
+                            </Badge>
+                          )}
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => handleGenerate(incident.event_id)}
+                            disabled={generating === incident.event_id}
+                            data-testid={`generate-btn-${incident.event_id}`}
+                          >
+                            <Zap className="mr-1 h-3 w-3" />
+                            {generating === incident.event_id ? "生成中..." : "生成复盘"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                {hasMore && (
+                  <div className="flex justify-center pt-2" data-testid="load-more-container">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleLoadMore}
+                      disabled={loadingMore}
+                      data-testid="load-more-btn"
+                    >
+                      {loadingMore ? "加载中…" : "查看更多"}
+                    </Button>
+                  </div>
+                )}
+              </div>
             )}
           </CardContent>
         </Card>

@@ -28,6 +28,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/components/ui/index"
 import { apiRequest } from "@/lib/api"
 
@@ -92,14 +93,36 @@ const REDEEM_OPTIONS = [
 interface PointsBalanceCardProps {
   balance: number | null
   loading: boolean
+  onRedeemed: () => void
 }
 
-function PointsBalanceCard({ balance, loading }: PointsBalanceCardProps) {
+function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardProps) {
   const [redeemType, setRedeemType] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
+  const [redeeming, setRedeeming] = useState(false)
+  const [redeemError, setRedeemError] = useState<string | null>(null)
 
   const selected = REDEEM_OPTIONS.find((o) => o.value === redeemType)
   const canRedeem = selected && balance !== null && balance >= selected.points
+
+  async function handleRedeem() {
+    if (!redeemType) return
+    setRedeeming(true)
+    setRedeemError(null)
+    try {
+      await apiRequest("/v1/account/points/redeem", {
+        method: "POST",
+        body: JSON.stringify({ redeem_type: redeemType }),
+      })
+      setDialogOpen(false)
+      setRedeemType("")
+      onRedeemed()
+    } catch (err) {
+      setRedeemError(err instanceof Error ? err.message : "兑换失败")
+    } finally {
+      setRedeeming(false)
+    }
+  }
 
   return (
     <Card data-testid="points-balance-card">
@@ -127,7 +150,10 @@ function PointsBalanceCard({ balance, loading }: PointsBalanceCardProps) {
             <span className="text-sm text-muted-foreground mb-0.5">pts</span>
           </div>
         )}
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+        <Dialog open={dialogOpen} onOpenChange={(open) => {
+          setDialogOpen(open)
+          if (!open) setRedeemError(null)
+        }}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" data-testid="redeem-button" disabled={loading}>
               兑换积分
@@ -153,20 +179,26 @@ function PointsBalanceCard({ balance, loading }: PointsBalanceCardProps) {
                   ))}
                 </SelectContent>
               </Select>
+              {redeemError && (
+                <Alert variant="destructive" data-testid="redeem-error-alert">
+                  <AlertDescription>{redeemError}</AlertDescription>
+                </Alert>
+              )}
             </div>
             <DialogFooter>
               <Button
                 variant="outline"
                 onClick={() => setDialogOpen(false)}
+                disabled={redeeming}
               >
                 取消
               </Button>
               <Button
-                disabled={!canRedeem}
-                onClick={() => setDialogOpen(false)}
+                disabled={!canRedeem || redeeming}
+                onClick={handleRedeem}
                 data-testid="confirm-redeem"
               >
-                确认兑换
+                {redeeming ? "兑换中…" : "确认兑换"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -182,16 +214,21 @@ export function UsageClient() {
   const [pointsData, setPointsData] = useState<PointsData | null>(null)
   const [pointsLoading, setPointsLoading] = useState(true)
 
+  function fetchPoints() {
+    setPointsLoading(true)
+    apiRequest<{ data: PointsData }>("/v1/account/points")
+      .then((json) => setPointsData(json.data))
+      .catch(() => setPointsData(null))
+      .finally(() => setPointsLoading(false))
+  }
+
   useEffect(() => {
     apiRequest<{ data: QuotaData }>("/v1/account/quota")
       .then((json) => setData(json.data))
       .catch(() => setData(null))
       .finally(() => setLoading(false))
 
-    apiRequest<{ data: PointsData }>("/v1/account/points")
-      .then((json) => setPointsData(json.data))
-      .catch(() => setPointsData(null))
-      .finally(() => setPointsLoading(false))
+    fetchPoints()
   }, [])
 
   return (
@@ -456,7 +493,7 @@ export function UsageClient() {
       </Card>
 
       {/* ── 积分余额 ── */}
-      <PointsBalanceCard balance={pointsData?.balance ?? null} loading={pointsLoading} />
+      <PointsBalanceCard balance={pointsData?.balance ?? null} loading={pointsLoading} onRedeemed={fetchPoints} />
     </div>
   )
 }

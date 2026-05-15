@@ -8,11 +8,11 @@ import {
 } from "./nodes-utils"
 
 const sampleNodes: NodeEntry[] = [
-  { id: "n1", asn: "AS4134", carrier: "中国电信", region: "北京", exitIp: "1.2.3.4", status: "online", country: "CN" },
-  { id: "n2", asn: "AS4837", carrier: "中国联通", region: "上海", exitIp: "2.3.4.5", status: "online", country: "CN" },
-  { id: "n3", asn: "AS9269", carrier: "PCCW", region: "香港", exitIp: "3.4.5.6", status: "offline", country: "HK" },
-  { id: "n4", asn: "AS2497", carrier: "IIJ", region: "东京", exitIp: "4.5.6.7", status: "degraded", country: "JP" },
-  { id: "n5", asn: "AS16509", carrier: "AWS", region: "弗吉尼亚", exitIp: "5.6.7.8", status: "online", country: "US" },
+  { id: "n1", name: "北京节点", asn: "AS4134", carrier: "中国电信", region: "北京", exitIp: "1.2.3.4", status: "online", country: "CN" },
+  { id: "n2", name: "上海节点", asn: "AS4837", carrier: "中国联通", region: "上海", exitIp: "2.3.4.5", status: "online", country: "CN" },
+  { id: "n3", name: "香港节点", asn: "AS9269", carrier: "PCCW", region: "香港", exitIp: "3.4.5.6", status: "offline", country: "HK" },
+  { id: "n4", name: "东京节点", asn: "AS2497", carrier: "IIJ", region: "东京", exitIp: "4.5.6.7", status: "degraded", country: "JP" },
+  { id: "n5", name: "弗吉尼亚节点", asn: "AS16509", carrier: "AWS", region: "弗吉尼亚", exitIp: "5.6.7.8", status: "online", country: "US" },
 ]
 
 describe("mapStatus", () => {

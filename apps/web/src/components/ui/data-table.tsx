@@ -14,6 +14,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from ".
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "./table"
 import { cn } from "@/lib/utils"
 
+declare module "@tanstack/react-table" {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  interface ColumnMeta<TData, TValue> {
+    headerClassName?: string
+    cellClassName?: string
+  }
+}
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface DataTablePagination {

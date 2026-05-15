@@ -338,16 +338,126 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
 
 // ─── Events Tab ───────────────────────────────────────────────────────────────
 
-interface EventsTabProps {
-  events: AlertEvent[]
-  onAcknowledge: (id: string) => void
-}
+function EventsTab() {
+  const [events, setEvents] = useState<AlertEvent[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
 
-function EventsTab({ events, onAcknowledge }: EventsTabProps) {
+  // Filter state
+  const [status, setStatus] = useState<"" | "firing" | "resolved">("")
+  const [monitorId, setMonitorId] = useState("")
+  const [monitors, setMonitors] = useState<MonitorOption[]>([])
+
+  const handleAcknowledge = async (id: string) => {
+    try {
+      await apiRequest(`/v1/alert-events/${id}/ack`, { method: "POST" })
+      setEvents((prev) =>
+        prev.map((e) =>
+          e.id === id
+            ? { ...e, status: "acknowledged" as const, acknowledgedAt: new Date().toISOString() }
+            : e
+        )
+      )
+      toast("告警已确认")
+    } catch (err) {
+      toast(err instanceof Error ? err.message : "确认失败，请重试")
+    }
+  }
+
+  // Fetch monitors once for the filter dropdown
+  useEffect(() => {
+    apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
+      .then((res) => setMonitors(res.data.monitors ?? []))
+      .catch(() => {/* leave monitors empty; filter will just show status only */})
+  }, [])
+
+  // Fetch events whenever filters change
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    const params = new URLSearchParams({ limit: "50" })
+    if (status) params.set("status", status)
+    if (monitorId) params.set("monitor_id", monitorId)
+    apiRequest<{ data: { events: AlertEvent[] } }>(`/v1/alert-events?${params}`)
+      .then((res) => { if (!cancelled) setEvents(res.data.events ?? []) })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "加载失败") })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
+  }, [status, monitorId])
+
   const firingCount = events.filter((e) => e.status === "firing").length
+
+  if (loading) {
+    return (
+      <div className="space-y-4" data-testid="events-skeleton">
+        <Skeleton className="h-10 w-full rounded-md" />
+        <div className="space-y-3">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-10 w-full rounded" />
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <Alert variant="destructive" data-testid="events-error">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle>加载失败</AlertTitle>
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
 
   return (
     <div className="space-y-4">
+      {/* Filter bar */}
+      <div className="flex flex-wrap items-center gap-3" data-testid="events-filter-bar">
+        <Select
+          value={status || "__all__"}
+          onValueChange={(v) => setStatus(v === "__all__" ? "" : (v as "firing" | "resolved"))}
+        >
+          <SelectTrigger className="w-36" data-testid="events-status-filter">
+            <SelectValue placeholder="全部状态" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="__all__">全部状态</SelectItem>
+            <SelectItem value="firing">告警中</SelectItem>
+            <SelectItem value="resolved">已恢复</SelectItem>
+          </SelectContent>
+        </Select>
+
+        {monitors.length > 0 && (
+          <Select
+            value={monitorId || "__all__"}
+            onValueChange={(v) => setMonitorId(v === "__all__" ? "" : v)}
+          >
+            <SelectTrigger className="w-44" data-testid="events-monitor-filter">
+              <SelectValue placeholder="全部监控" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="__all__">全部监控</SelectItem>
+              {monitors.map((m) => (
+                <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {(status || monitorId) && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setStatus(""); setMonitorId("") }}
+            data-testid="events-clear-filter"
+          >
+            清除筛选
+          </Button>
+        )}
+      </div>
+
       {firingCount > 0 && (
         <Alert variant="destructive" data-testid="firing-alert">
           <AlertCircle className="h-4 w-4" />
@@ -358,7 +468,12 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
         </Alert>
       )}
 
-      <Table>
+      {events.length === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground" data-testid="events-empty">
+          {status || monitorId ? "没有符合筛选条件的事件" : "暂无告警事件"}
+        </p>
+      ) : (
+        <Table>
           <TableHeader>
             <TableRow>
               <TableHead>监控名</TableHead>
@@ -392,7 +507,7 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => onAcknowledge(evt.id)}
+                      onClick={() => handleAcknowledge(evt.id)}
                       data-testid={`ack-btn-${evt.id}`}
                     >
                       <CheckCheck className="mr-1 h-3 w-3" />
@@ -404,6 +519,7 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
             ))}
           </TableBody>
         </Table>
+      )}
     </div>
   )
 }
@@ -672,7 +788,6 @@ function PoliciesTab({
             ))}
           </TableBody>
         </Table>
-      </Card>
     </div>
   )
 }
@@ -892,9 +1007,6 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
 
 // ─── API response shapes ──────────────────────────────────────────────────────
 
-interface EventsResponse {
-  data: { events: AlertEvent[] }
-}
 interface ChannelsResponse {
   data: { channels: AlertChannel[] }
 }
@@ -903,21 +1015,6 @@ interface PoliciesResponse {
 }
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
-
-function EventsSkeleton() {
-  return (
-    <div className="space-y-4" data-testid="events-skeleton">
-      <Skeleton className="h-14 w-full rounded-md" />
-      <Card>
-        <div className="p-4 space-y-3">
-          {Array.from({ length: 5 }).map((_, i) => (
-            <Skeleton key={i} className="h-8 w-full rounded" />
-          ))}
-        </div>
-      </Card>
-    </div>
-  )
-}
 
 function ChannelsSkeleton() {
   return (
@@ -957,14 +1054,11 @@ function PoliciesSkeleton() {
 
 export function AlertsClient() {
   // Per-tab data state
-  const [events, setEvents] = useState<AlertEvent[]>([])
   const [channels, setChannels] = useState<AlertChannel[]>([])
   const [policies, setPolicies] = useState<AlertPolicy[]>([])
   const [silences, setSilences] = useState<AlertSilence[]>([])
 
   // Per-tab loading & error state
-  const [eventsLoading, setEventsLoading] = useState(true)
-  const [eventsError, setEventsError] = useState<string | null>(null)
   const [channelsLoading, setChannelsLoading] = useState(false)
   const [channelsError, setChannelsError] = useState<string | null>(null)
   const [policiesLoading, setPoliciesLoading] = useState(false)
@@ -973,7 +1067,7 @@ export function AlertsClient() {
   const [silencesError, setSilencesError] = useState<string | null>(null)
 
   // Track which tabs have been fetched
-  const fetchedRef = useRef<Record<string, boolean>>({ events: false, channels: false, policies: false, silences: false })
+  const fetchedRef = useRef<Record<string, boolean>>({ channels: false, policies: false, silences: false })
 
   // Silence dialog state
   const [showAddSilence, setShowAddSilence] = useState(false)
@@ -994,21 +1088,6 @@ export function AlertsClient() {
   }>({ open: false, mode: "add-channel" })
 
   // ── Data fetchers ──
-
-  const fetchEvents = useCallback(async () => {
-    if (fetchedRef.current.events) return
-    fetchedRef.current.events = true
-    setEventsLoading(true)
-    setEventsError(null)
-    try {
-      const res = await apiRequest<EventsResponse>("/v1/alert-events")
-      setEvents(res.data.events ?? [])
-    } catch (err) {
-      setEventsError(err instanceof Error ? err.message : "加载失败")
-    } finally {
-      setEventsLoading(false)
-    }
-  }, [])
 
   const fetchChannels = useCallback(async () => {
     if (fetchedRef.current.channels) return
@@ -1055,11 +1134,6 @@ export function AlertsClient() {
     }
   }, [])
 
-  // Fetch events on mount (default tab)
-  useEffect(() => {
-    void fetchEvents()
-  }, [fetchEvents])
-
   // ── Tab change handler ──
 
   const handleTabChange = (value: string) => {
@@ -1069,22 +1143,6 @@ export function AlertsClient() {
   }
 
   // ── Event handlers ──
-
-  const handleAcknowledge = async (id: string) => {
-    try {
-      await apiRequest(`/v1/alert-events/${id}/ack`, { method: "POST" })
-      setEvents((prev) =>
-        prev.map((e) =>
-          e.id === id
-            ? { ...e, status: "acknowledged", acknowledgedAt: new Date().toISOString() }
-            : e
-        )
-      )
-      toast("告警已确认")
-    } catch (err) {
-      toast(err instanceof Error ? err.message : "确认失败，请重试")
-    }
-  }
 
   const handleTestChannel = async (id: string) => {
     const ch = channels.find((c) => c.id === id)
@@ -1231,17 +1289,7 @@ export function AlertsClient() {
           <TabsTrigger value="silences" className="flex-1" data-testid="tab-silences">静默规则</TabsTrigger>
         </TabsList>
         <TabsContent value="events">
-          {eventsLoading ? (
-            <EventsSkeleton />
-          ) : eventsError ? (
-            <Alert variant="destructive" data-testid="events-error">
-              <AlertCircle className="h-4 w-4" />
-              <AlertTitle>加载失败</AlertTitle>
-              <AlertDescription>{eventsError}</AlertDescription>
-            </Alert>
-          ) : (
-            <EventsTab events={events} onAcknowledge={handleAcknowledge} />
-          )}
+          <EventsTab />
         </TabsContent>
         <TabsContent value="channels">
           {channelsLoading ? (

@@ -38,7 +38,9 @@ func CSRF(exemptPaths ...string) func(http.Handler) http.Handler {
 			// Exempt paths by prefix
 			if strings.HasPrefix(path, "/v1/auth/") ||
 				strings.HasPrefix(path, "/v1/probe/") ||
-				strings.HasPrefix(path, "/v1/info/") {
+				strings.HasPrefix(path, "/v1/info/") ||
+				strings.HasPrefix(path, "/internal/") ||
+				strings.HasPrefix(path, "/v1/agent/") {
 				next.ServeHTTP(w, r)
 				return
 			}

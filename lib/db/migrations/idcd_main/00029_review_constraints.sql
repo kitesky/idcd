@@ -78,7 +78,7 @@ ALTER TABLE oncall_overrides
 
 -- Missing performance indexes.
 CREATE INDEX IF NOT EXISTS idx_oncall_participants_user_id ON oncall_participants(user_id);
-CREATE INDEX IF NOT EXISTS idx_oncall_overrides_active ON oncall_overrides(schedule_id, start_at, end_at) WHERE end_at > NOW();
+CREATE INDEX IF NOT EXISTS idx_oncall_overrides_active ON oncall_overrides(schedule_id, start_at, end_at);
 CREATE INDEX IF NOT EXISTS idx_point_redemptions_user_id ON point_redemptions(user_id);
 CREATE INDEX IF NOT EXISTS idx_anchor_deviations_baseline_id ON anchor_deviations(baseline_id);
 CREATE INDEX IF NOT EXISTS idx_webauthn_challenges_user_expires ON webauthn_challenges(user_id, expires_at);
@@ -87,7 +87,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_team_invitations_pending ON team_invitation
 CREATE INDEX IF NOT EXISTS idx_incident_postmortems_monitor_id ON incident_postmortems(monitor_id);
 CREATE INDEX IF NOT EXISTS idx_alert_groups_user_id ON alert_groups(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_alert_groups_user_dim ON alert_groups(user_id, group_by, group_value);
-CREATE INDEX IF NOT EXISTS idx_pat_active ON personal_access_tokens(user_id) WHERE expires_at IS NULL OR expires_at > NOW();
+CREATE INDEX IF NOT EXISTS idx_pat_active ON personal_access_tokens(user_id);
 
 -- +goose Down
 DROP INDEX IF EXISTS uq_alert_events_firing;

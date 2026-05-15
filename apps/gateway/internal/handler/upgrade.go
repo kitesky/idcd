@@ -88,9 +88,6 @@ func selectByPercent(ids []string, pct int) []string {
 	copy(shuffled, ids)
 	rng.Shuffle(len(shuffled), func(i, j int) { shuffled[i], shuffled[j] = shuffled[j], shuffled[i] })
 
-	n := (len(shuffled)*pct + 99) / 100
-	if n > len(shuffled) {
-		n = len(shuffled)
-	}
+	n := min((len(shuffled)*pct+99)/100, len(shuffled))
 	return shuffled[:n]
 }

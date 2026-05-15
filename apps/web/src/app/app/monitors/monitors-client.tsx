@@ -173,7 +173,6 @@ export function MonitorsClient() {
 
   // ── Derived stats ───────────────────────────────────────────────────────────
 
-  const total = monitors.length
   const upCount = monitors.filter((m) => m.status === "UP").length
   const downCount = monitors.filter((m) => m.status === "DOWN").length
   const checkingCount = monitors.filter((m) => m.status !== "PAUSED").length

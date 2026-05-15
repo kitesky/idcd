@@ -404,7 +404,6 @@ function EventsTab({ events, onAcknowledge }: EventsTabProps) {
             ))}
           </TableBody>
         </Table>
-      </Card>
     </div>
   )
 }

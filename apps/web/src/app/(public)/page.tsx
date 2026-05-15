@@ -1,55 +1,58 @@
 "use client"
 
 import {
-  Globe2,
   Activity,
-  Clock,
-  TrendingUp,
   Globe,
+  Code2,
+  Monitor,
+  BellRing,
+  BarChart2,
   Zap,
-  Shield,
+  Webhook,
 } from "lucide-react"
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge } from "@/components/ui"
 import { HeroSearch } from "@/components/hero-search"
 
 const features = [
   {
+    icon: Activity,
+    title: "网络质量监控",
+    description: "主动探测分布在全球各地方的用户访问中心云、边缘云的网络质量，包括可达性、时延、丢包、抖动等。",
+  },
+  {
     icon: Globe,
-    title: "全球节点覆盖",
-    description: "100+ 节点，中国大陆/香港/欧美/东南亚全覆盖",
+    title: "DNS 监测",
+    description: "主动探测 DNS 的可用性、时延，分析诊断解析记录。",
+  },
+  {
+    icon: Code2,
+    title: "API 监测",
+    description: "主动探测分布在全球各地方的用户访问 HTTP 接口的响应时间、响应码、响应内容正确性。",
+  },
+  {
+    icon: Monitor,
+    title: "Web 页面监测",
+    description: "从用户视角分析页面整体加载耗时，页面元素从 CDN、源站拉取的时延、可用性，洞察用户体验。",
+  },
+  {
+    icon: BellRing,
+    title: "告警",
+    description: "支持固定阈值、智能基线的异常检测，发现问题第一时间通知相关人。",
+  },
+  {
+    icon: BarChart2,
+    title: "多维分析",
+    description: "分析从各地区、各城市、各运营商等访问的网络质量和用户体验。",
   },
   {
     icon: Zap,
-    title: "实时多地并发",
-    description: "同时从多个节点发起检测，秒级返回结果",
+    title: "即时拨测",
+    description: "立即发起一次探测，即刻查看结果，进行问题诊断和业务验证。",
   },
   {
-    icon: Shield,
-    title: "SSL/安全检测",
-    description: "证书链验证、到期提醒、安全头检测",
-  },
-]
-
-const stats = [
-  {
-    icon: Globe2,
-    label: "监测节点",
-    value: "100+",
-  },
-  {
-    icon: Clock,
-    label: "平均延迟",
-    value: "10ms",
-  },
-  {
-    icon: TrendingUp,
-    label: "可用率",
-    value: "99.9%",
-  },
-  {
-    icon: Activity,
-    label: "工具",
-    value: "50+",
+    icon: Webhook,
+    title: "开放 API",
+    description: "支持 API 拉取拨测数据，用于故障转移、报告等场景。",
   },
 ]
 
@@ -93,24 +96,20 @@ export default function HomePage() {
       <HeroSearch />
 
       {/* Features Section */}
-      <section className="py-20 lg:py-32">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 gap-12 lg:grid-cols-3">
+      <section className="py-12 md:py-16 border-b">
+        <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
+          <h2 className="text-center text-2xl font-bold text-foreground mb-8">产品功能</h2>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {features.map((feature) => {
               const Icon = feature.icon
               return (
-                <Card key={feature.title} className="text-center">
-                  <CardHeader>
-                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                <Card key={feature.title} className="p-6">
+                  <div className="flex flex-col items-center text-center">
+                    <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
                       <Icon className="h-6 w-6 text-primary" />
                     </div>
-                    <CardTitle className="text-xl">{feature.title}</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <CardDescription className="text-base">
-                      {feature.description}
-                    </CardDescription>
-                  </CardContent>
+                    <h3 className="text-sm font-semibold text-foreground">{feature.title}</h3>
+                  </div>
                 </Card>
               )
             })}
@@ -118,52 +117,11 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Node Map Preview Section */}
-      <section className="py-20 lg:py-32 bg-muted/50">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
-              覆盖全球的节点网络
-            </h2>
-
-            {/* Stats Grid */}
-            <div className="mx-auto mt-16 grid max-w-2xl grid-cols-2 gap-8 sm:grid-cols-4">
-              {stats.map((stat) => {
-                const Icon = stat.icon
-                return (
-                  <Card key={stat.label} className="p-6">
-                    <div className="flex flex-col items-center">
-                      <Icon className="h-8 w-8 text-primary mb-4" />
-                      <div className="text-2xl font-bold text-foreground">
-                        {stat.value}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {stat.label}
-                      </div>
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-
-            {/* CTA */}
-            <div className="mt-10">
-              <a
-                href="/nodes"
-                className="inline-flex items-center text-primary hover:text-primary/80 transition-colors"
-              >
-                查看所有节点 →
-              </a>
-            </div>
-          </div>
-        </div>
-      </section>
-
       {/* Tools Section */}
-      <section className="py-20 lg:py-32">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="text-center mb-16">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground sm:text-4xl">
+      <section className="py-12 md:py-16 bg-muted/30">
+        <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8">
+          <div className="text-center mb-10">
+            <h2 className="text-2xl font-bold tracking-tight text-foreground sm:text-3xl">
               常用网络诊断工具
             </h2>
           </div>

@@ -185,3 +185,12 @@
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
 }
+
+/* ── 工具类：隐藏滚动条但保留滚动能力 ──────────────────────── */
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}

@@ -128,7 +128,7 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
   ).length
 
   return (
-    <div className="absolute top-full left-0 z-50 mt-1 w-[480px] bg-popover border rounded-lg shadow-xl overflow-hidden">
+    <div className="absolute top-full left-0 z-50 mt-1 w-[480px] max-w-[calc(100vw-2rem)] bg-popover border rounded-lg shadow-xl overflow-hidden">
       {/* 中国 / 全球 tabs */}
       <div className="flex border-b">
         {(["cn", "global"] as const).map(t => (
@@ -336,18 +336,18 @@ export function HeroSearch() {
   return (
     <>
     <section className="relative bg-muted/30 border-b">
-      {/* 顶部大类 tabs */}
+      {/* 顶部大类 tabs — 胶囊分段控件 */}
       <div className="border-b">
-        <div className="mx-auto max-w-screen-xl px-6">
-          <div className="flex">
+        <div className="mx-auto max-w-screen-xl px-4 md:px-6 py-4">
+          <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/60 border border-border/50 p-0.5">
             {CATEGORIES.map(c => (
               <button
                 key={c.key}
                 onClick={() => handleCatChange(c.key)}
                 className={cn(
-                  "relative px-6 py-4 text-sm font-medium transition-colors",
+                  "px-3.5 py-1.5 text-xs font-medium rounded-md transition-all duration-150 whitespace-nowrap",
                   activeCat === c.key
-                    ? "text-primary after:absolute after:bottom-0 after:left-0 after:right-0 after:h-0.5 after:bg-primary"
+                    ? "bg-background text-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -359,23 +359,23 @@ export function HeroSearch() {
       </div>
 
       {/* 主体内容 */}
-      <div className="mx-auto max-w-screen-xl px-6 py-10">
+      <div className="mx-auto max-w-screen-xl px-4 md:px-6 py-6 md:py-10">
         {/* 标题区 */}
-        <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold text-foreground">{cat.title}</h2>
+        <div className="text-center mb-6 md:mb-8">
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">{cat.title}</h2>
           <p className="mt-2 text-sm text-primary font-medium">{cat.subtitle}</p>
-          <p className="mt-2 text-sm text-muted-foreground max-w-xl mx-auto">{cat.desc}</p>
+          <p className="mt-1.5 text-sm text-muted-foreground max-w-xl mx-auto hidden md:block">{cat.desc}</p>
         </div>
 
         {/* 工具子 tabs */}
         {cat.tools.length > 0 && (
-          <div className="flex items-center gap-0 mb-5">
+          <div className="flex items-center gap-0 mb-4 overflow-x-auto scrollbar-hide">
             {cat.tools.map(t => (
               <button
                 key={t.key}
                 onClick={() => setActiveTool(t.key)}
                 className={cn(
-                  "px-5 py-2 text-sm font-medium transition-colors border-b-2",
+                  "px-4 md:px-5 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap flex-shrink-0",
                   activeTool === t.key
                     ? "text-primary border-primary"
                     : "text-muted-foreground border-transparent hover:text-foreground"
@@ -387,11 +387,11 @@ export function HeroSearch() {
           </div>
         )}
 
-        {/* 输入行 */}
-        <div className="flex gap-0 rounded-md border border-border overflow-visible bg-background shadow-sm">
+        {/* 输入行 — 桌面横排，移动端纵排 */}
+        <div className="flex flex-col md:flex-row gap-0 rounded-md border border-border overflow-visible bg-background shadow-sm">
           {/* 节点选择器 */}
           {cat.showNodeSelector && (
-            <div className="w-56 flex-shrink-0 border-r">
+            <div className="w-full md:w-56 md:flex-shrink-0 border-b md:border-b-0 md:border-r">
               <NodeSelectorTrigger
                 selectedIds={selectedNodeIds}
                 onConfirm={setSelectedNodeIds}
@@ -399,8 +399,8 @@ export function HeroSearch() {
             </div>
           )}
 
-          {/* 输入框 */}
-          <div className="flex flex-1 items-center gap-2 px-4">
+          {/* 输入框 + CTA */}
+          <div className="flex flex-1 items-center gap-2 px-4 min-h-[44px]">
             <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
             <input
               type="text"
@@ -416,7 +416,7 @@ export function HeroSearch() {
           <Button
             onClick={handleGo}
             disabled={!query.trim() || probeLoading}
-            className="h-11 rounded-none px-6 text-sm font-medium"
+            className="h-11 px-6 text-sm font-medium w-full md:w-auto rounded-none rounded-b-md md:rounded-r-md"
           >
             {probeLoading ? "检测中..." : "立即检测"}
             {!probeLoading && <ArrowRight className="h-4 w-4 ml-1" />}
@@ -424,9 +424,9 @@ export function HeroSearch() {
         </div>
 
         {/* 底部辅助行 */}
-        <div className="flex items-center justify-between mt-3 px-0.5">
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mt-3 px-0.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Settings2 className="h-3.5 w-3.5" />
+            <Settings2 className="h-3.5 w-3.5 flex-shrink-0" />
             <span>高级配置</span>
             <span className="mx-2 opacity-30">|</span>
             <span>

@@ -1,106 +1,153 @@
+"use client"
+
+import { useState } from "react"
 import Link from "next/link"
-import { Separator } from "@/components/ui"
+import { ChevronDown } from "lucide-react"
+import { cn } from "@/lib/utils"
 
-const productLinks = [
-  { name: "工具", href: "/tools" },
-  { name: "节点", href: "/nodes" },
-  { name: "定价", href: "/pricing" },
+const sections = [
+  {
+    title: "关于我们",
+    links: [
+      { name: "为什么选 idcd", href: "/about" },
+      { name: "文档中心", href: "/docs/api" },
+      { name: "透明度报告", href: "/transparency" },
+      { name: "加入我们", href: "/about#join" },
+    ],
+  },
+  {
+    title: "拨测",
+    links: [
+      { name: "Ping 测试", href: "/tools/ping" },
+      { name: "HTTP 检测", href: "/tools/http" },
+      { name: "DNS 查询", href: "/tools/dns" },
+      { name: "TCP 端口", href: "/tools/tcp" },
+      { name: "Traceroute", href: "/tools/traceroute" },
+      { name: "MTR 路由", href: "/tools/mtr" },
+    ],
+  },
+  {
+    title: "监控",
+    links: [
+      { name: "网络质量监控", href: "/app/monitors" },
+      { name: "DNS 监测", href: "/app/monitors/dns" },
+      { name: "API 监测", href: "/app/monitors/api" },
+      { name: "Web 页面监测", href: "/app/monitors/web" },
+      { name: "告警配置", href: "/app/alerts" },
+      { name: "多维分析", href: "/app/analytics" },
+    ],
+  },
 ]
 
-const resourceLinks = [
-  { name: "文档", href: "/docs/api" },
-  { name: "API", href: "/docs/api" },
-]
-
-const companyLinks = [
-  { name: "关于", href: "/about" },
-  { name: "透明度报告", href: "/transparency" },
-  { name: "条款", href: "/terms" },
-  { name: "隐私", href: "/privacy" },
-  { name: "AUP", href: "/aup" },
-]
+function AccordionSection({ title, links }: { title: string; links: { name: string; href: string }[] }) {
+  const [open, setOpen] = useState(false)
+  return (
+    <div className="border-b md:border-b-0">
+      {/* mobile: tap to toggle */}
+      <button
+        className="flex w-full items-center justify-between py-4 text-sm font-semibold text-foreground md:hidden"
+        onClick={() => setOpen(v => !v)}
+      >
+        {title}
+        <ChevronDown className={cn("h-4 w-4 text-muted-foreground transition-transform duration-200", open && "rotate-180")} />
+      </button>
+      {/* mobile collapsed content */}
+      <div className={cn("overflow-hidden transition-all duration-200 md:hidden", open ? "max-h-96 pb-4" : "max-h-0")}>
+        <ul className="space-y-3">
+          {links.map(link => (
+            <li key={link.name}>
+              <Link href={link.href as any} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                {link.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+      {/* desktop: always visible */}
+      <div className="hidden md:block">
+        <h3 className="text-sm font-semibold text-foreground mb-3">{title}</h3>
+        <ul className="space-y-2.5">
+          {links.map(link => (
+            <li key={link.name}>
+              <Link href={link.href as any} className="text-sm text-muted-foreground hover:text-foreground transition-colors">
+                {link.name}
+              </Link>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </div>
+  )
+}
 
 export function Footer() {
   return (
     <footer className="border-t bg-background">
-      <div className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8">
-        {/* Links */}
-        <div className="grid grid-cols-1 gap-8 sm:grid-cols-3">
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">产品</h3>
-            <ul className="mt-4 space-y-3">
-              {productLinks.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href as any}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
+      <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 pt-0 md:pt-10 pb-0">
+
+        {/* Desktop: 5-col grid | Mobile: stacked accordion */}
+        <div className="md:grid md:grid-cols-[180px_1fr_1fr_1fr_200px] md:gap-x-6 md:gap-y-6">
+
+          {/* Logo — desktop only top section; on mobile shown above accordion */}
+          <div className="py-8 md:py-0 md:col-span-1">
+            <a href="/" className="inline-flex items-center gap-2">
+              <svg className="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M3 12L12 3l9 9v9H3v-9z" opacity="0.2" />
+                <path d="M3 12L12 3l9 9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+              <span className="font-mono font-bold text-foreground text-lg tracking-tight">idcd</span>
+            </a>
           </div>
 
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">资源</h3>
-            <ul className="mt-4 space-y-3">
-              {resourceLinks.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href as any}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
+          {/* Accordion sections */}
+          {sections.map(s => (
+            <AccordionSection key={s.title} title={s.title} links={s.links} />
+          ))}
 
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">公司</h3>
-            <ul className="mt-4 space-y-3">
-              {companyLinks.map((link) => (
-                <li key={link.name}>
-                  <Link
-                    href={link.href as any}
-                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                  >
-                    {link.name}
-                  </Link>
-                </li>
+          {/* 联系我们 — always expanded */}
+          <div className="py-6 md:py-0 border-b md:border-b-0">
+            <h3 className="text-sm font-semibold text-foreground mb-3">联系我们</h3>
+            <p className="text-sm text-muted-foreground mb-1">
+              邮箱：<a href="mailto:hi@idcd.com" className="hover:text-foreground transition-colors">hi@idcd.com</a>
+            </p>
+            <div className="flex gap-4 mt-3 flex-wrap">
+              {[
+                { label: "微信公众号", text: "微信公众号\n二维码" },
+                { label: "视频号",    text: "视频号\n二维码" },
+              ].map(({ label, text }) => (
+                <div key={label} className="flex flex-col items-center gap-1.5 group relative">
+                  {/* 放大气泡 */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 scale-90 group-hover:opacity-100 group-hover:scale-100 transition-all duration-200 pointer-events-none z-50">
+                    <div className="h-[140px] w-[140px] rounded-lg bg-popover border border-border shadow-xl flex items-center justify-center">
+                      <span className="text-[11px] text-muted-foreground text-center leading-relaxed whitespace-pre-line px-2">{text}</span>
+                    </div>
+                    {/* 小三角 */}
+                    <div className="absolute top-full left-1/2 -translate-x-1/2 w-0 h-0 border-l-[6px] border-r-[6px] border-t-[6px] border-l-transparent border-r-transparent border-t-border" />
+                  </div>
+                  {/* 小缩略图 */}
+                  <div className="h-[72px] w-[72px] rounded-md bg-muted/60 border border-border flex items-center justify-center shrink-0 cursor-pointer transition-colors group-hover:border-primary/50">
+                    <span className="text-[9px] text-muted-foreground text-center leading-tight px-1 whitespace-pre-line">{text}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground">{label}</span>
+                </div>
               ))}
-            </ul>
+            </div>
           </div>
         </div>
 
-        <Separator className="my-8" />
-
-        {/* Copyright */}
-        <div className="flex flex-col items-center space-y-2 sm:flex-row sm:justify-between sm:space-y-0">
-          <p className="text-sm text-muted-foreground">
-            © 2026 idcd.com. 保留所有权利。
-          </p>
-          <div className="flex flex-col items-center gap-1 sm:items-end">
-            <a
-              href="https://beian.miit.gov.cn/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
+        {/* Bottom bar */}
+        <div className="mt-0 md:mt-8 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
+          <span>© 2026 idcd.com. 保留所有权利。</span>
+          <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-end">
+            <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
               蜀ICP备19009987号-2
             </a>
-            <a
-              href="https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=51010702001950"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-            >
+            <a href="https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=51010702001950" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
               川公网安备 51010702001950号
             </a>
           </div>
         </div>
+
       </div>
     </footer>
   )

@@ -8,6 +8,7 @@ import { ALL_TOOLS } from "@/app/(public)/tools/tools-config"
 import {
   Sheet,
   SheetContent,
+  SheetDescription,
   SheetHeader,
   SheetTitle,
   SheetTrigger,
@@ -379,6 +380,99 @@ function MegaMenuPanel({ menu }: MegaMenuProps) {
   )
 }
 
+// ── MobileSheet ─────────────────────────────────────────────────────────────
+
+function MobileSheet() {
+  const [open, setOpen] = useState(false)
+  const [expandedCat, setExpandedCat] = useState<string | null>(null)
+
+  const close = () => setOpen(false)
+
+  return (
+    <Sheet open={open} onOpenChange={setOpen}>
+      <SheetTrigger asChild>
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label="打开菜单">
+          <Menu className="h-5 w-5" />
+        </Button>
+      </SheetTrigger>
+      <SheetContent side="left" className="w-72 p-0 flex flex-col">
+        <SheetHeader className="border-b px-4 py-3 flex-shrink-0">
+          <SheetTitle asChild>
+            <a href="/" onClick={close} className="font-mono font-bold text-foreground text-lg">idcd</a>
+          </SheetTitle>
+          <SheetDescription className="sr-only">网站导航菜单</SheetDescription>
+        </SheetHeader>
+
+        {/* Scrollable nav body */}
+        <div className="flex-1 overflow-y-auto py-2">
+          {navItems.map((item) => {
+            if (!item.mega) {
+              return (
+                <a
+                  key={item.name}
+                  href={item.href}
+                  onClick={close}
+                  className="flex items-center px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  {item.name}
+                </a>
+              )
+            }
+            // expandable mega item
+            const isExpanded = expandedCat === item.name
+            return (
+              <div key={item.name}>
+                <button
+                  onClick={() => setExpandedCat(isExpanded ? null : item.name)}
+                  className="flex items-center justify-between w-full px-4 py-2.5 text-sm text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+                >
+                  {item.name}
+                  <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-150", isExpanded && "rotate-180")} />
+                </button>
+                {isExpanded && (
+                  <div className="bg-muted/30 border-y">
+                    {item.mega.categories.map(cat => (
+                      <div key={cat.label} className="px-4 py-3">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">{cat.label}</p>
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                          {cat.groups.flatMap(g => g.items).slice(0, 10).map(it => (
+                            <a
+                              key={it.href}
+                              href={it.href}
+                              onClick={close}
+                              className="text-sm text-foreground/70 hover:text-primary transition-colors py-1 truncate"
+                            >
+                              {it.name}
+                            </a>
+                          ))}
+                        </div>
+                        <a href="/tools" onClick={close} className="mt-2 block text-xs text-primary hover:underline">
+                          查看全部工具 →
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Footer */}
+        <div className="border-t p-4 flex flex-col gap-2 flex-shrink-0">
+          <LangToggle />
+          <Button variant="outline" className="w-full mt-2" asChild>
+            <a href="/auth/login" onClick={close}>登录</a>
+          </Button>
+          <Button className="w-full" asChild>
+            <a href="/auth/register" onClick={close}>立即注册</a>
+          </Button>
+        </div>
+      </SheetContent>
+    </Sheet>
+  )
+}
+
 // ── Nav ─────────────────────────────────────────────────────────────────────
 
 export function Nav() {
@@ -467,54 +561,7 @@ export function Nav() {
         </div>
 
         {/* Mobile menu */}
-        <Sheet>
-          <SheetTrigger asChild>
-            <Button variant="ghost" size="icon" className="md:hidden" aria-label="打开菜单">
-              <Menu className="h-5 w-5" />
-            </Button>
-          </SheetTrigger>
-          <SheetContent side="left" className="w-72 p-0">
-            <SheetHeader className="border-b px-4 py-3">
-              <SheetTitle asChild>
-                <a href="/" className="font-mono font-bold text-foreground text-lg">idcd</a>
-              </SheetTitle>
-            </SheetHeader>
-            <div className="flex flex-col gap-1 p-4">
-              {navItems.map((item) => (
-                <Button key={item.name} variant="ghost" className="justify-start" asChild={!item.mega}>
-                  {item.mega ? (
-                    <span>{item.name}</span>
-                  ) : (
-                    <a href={item.href}>{item.name}</a>
-                  )}
-                </Button>
-              ))}
-              <div className="mt-2 pt-2 border-t flex flex-col gap-2">
-                <Button variant="ghost" className="justify-start" asChild>
-                  <a href="/tools/ping">Ping 测试</a>
-                </Button>
-                <Button variant="ghost" className="justify-start" asChild>
-                  <a href="/tools/ssl">SSL 证书检查</a>
-                </Button>
-                <Button variant="ghost" className="justify-start" asChild>
-                  <a href="/tools/dns">DNS 查询</a>
-                </Button>
-                <a href="/tools" className="text-xs text-primary px-4 py-1.5 hover:underline">
-                  查看全部工具 →
-                </a>
-              </div>
-            </div>
-            <div className="border-t p-4 flex flex-col gap-2">
-              <LangToggle />
-              <Button variant="outline" className="w-full mt-2" asChild>
-                <a href="/auth/login">登录</a>
-              </Button>
-              <Button className="w-full" asChild>
-                <a href="/auth/register">立即注册</a>
-              </Button>
-            </div>
-          </SheetContent>
-        </Sheet>
+        <MobileSheet />
       </nav>
 
       {/* Mega menu panels (full-width, below nav) */}

@@ -249,27 +249,15 @@ export default function APIReferencePage() {
               本页目录
             </p>
             <nav>
-              <ul className="space-y-2.5">
+              <ul className="space-y-1.5">
                 {API_GROUPS.map((group) => (
                   <li key={group.id}>
                     <a
                       href={`#group-${group.id}`}
-                      className="block text-xs font-medium text-muted-foreground hover:text-foreground transition-colors"
+                      className="block text-xs text-muted-foreground hover:text-foreground transition-colors py-0.5"
                     >
                       {group.label}
                     </a>
-                    <ul className="mt-1 ml-2 space-y-0.5 border-l border-border pl-2.5">
-                      {group.endpoints.map((ep) => (
-                        <li key={ep.id}>
-                          <a
-                            href={`#ep-${ep.id}`}
-                            className="block py-0.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors leading-snug"
-                          >
-                            {ep.summary}
-                          </a>
-                        </li>
-                      ))}
-                    </ul>
                   </li>
                 ))}
               </ul>

@@ -66,6 +66,72 @@ export const EN_TOOLS_META: EnToolMeta[] = [
     description: 'Validate IPv6 addresses, convert between expanded and compressed formats, and detect address type (global, link-local, loopback).',
     schemaName: 'IPv6 Check',
   },
+  {
+    slug: 'base64',
+    title: 'Base64 Encoder/Decoder — Encode & Decode Online | idcd',
+    description: 'Instantly encode or decode Base64 strings and files in your browser. Supports URL-safe Base64 with no data ever leaving your device.',
+    schemaName: 'Base64 Encoder/Decoder',
+  },
+  {
+    slug: 'cidr-calculator',
+    title: 'CIDR Calculator — Subnet & IP Range Tool | idcd',
+    description: 'Calculate subnet masks, broadcast addresses, and host ranges from any CIDR notation. Supports IPv4 and IPv6 supernetting.',
+    schemaName: 'CIDR Calculator',
+  },
+  {
+    slug: 'cron-parser',
+    title: 'Cron Expression Parser — Schedule Visualizer | idcd',
+    description: 'Parse and visualize any cron expression with a human-readable schedule preview. See the next 10 run times at a glance.',
+    schemaName: 'Cron Expression Parser',
+  },
+  {
+    slug: 'hash',
+    title: 'Hash Generator — MD5, SHA-1, SHA-256 & More | idcd',
+    description: 'Generate MD5, SHA-1, SHA-256, and SHA-512 hashes from text or files instantly. All computation runs locally in your browser.',
+    schemaName: 'Hash Generator',
+  },
+  {
+    slug: 'ipv6-converter',
+    title: 'IPv6 Converter — Format & Notation Converter | idcd',
+    description: 'Convert IPv6 addresses between full, compressed, and mixed notations. Also converts between IPv6 and decimal or hex representations.',
+    schemaName: 'IPv6 Converter',
+  },
+  {
+    slug: 'json-formatter',
+    title: 'JSON Formatter — Beautify & Validate JSON | idcd',
+    description: 'Format, minify, and validate JSON with syntax highlighting and error detection. Supports large payloads with instant client-side processing.',
+    schemaName: 'JSON Formatter',
+  },
+  {
+    slug: 'jwt-decoder',
+    title: 'JWT Decoder — Decode & Inspect JWTs | idcd',
+    description: 'Decode JWT headers, payloads, and signatures without sending tokens to any server. Verify expiry and claims in one click.',
+    schemaName: 'JWT Decoder',
+  },
+  {
+    slug: 'qrcode',
+    title: 'QR Code Generator — Create QR Codes Online | idcd',
+    description: 'Generate QR codes for URLs, text, or contact info with customizable size and error correction. Download as PNG or SVG instantly.',
+    schemaName: 'QR Code Generator',
+  },
+  {
+    slug: 'regex-tester',
+    title: 'Regex Tester — Live Regular Expression Editor | idcd',
+    description: 'Test and debug regular expressions with real-time match highlighting and group capture display. Supports PCRE, JavaScript, and Python flavors.',
+    schemaName: 'Regex Tester',
+  },
+  {
+    slug: 'tcping',
+    title: 'TCP Ping — Port Connectivity Tester | idcd',
+    description: 'Test TCP port reachability and measure connection latency to any host from global probe nodes. Instantly detect blocked or closed ports.',
+    schemaName: 'TCP Ping',
+  },
+  {
+    slug: 'timestamp',
+    title: 'Timestamp Converter — Unix Time Converter | idcd',
+    description: 'Convert Unix timestamps to human-readable dates and back, across any timezone. Supports seconds, milliseconds, and ISO 8601 formats.',
+    schemaName: 'Timestamp Converter',
+  },
 ]
 
 export function getEnToolMeta(slug: string): EnToolMeta | undefined {

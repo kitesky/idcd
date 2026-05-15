@@ -94,22 +94,38 @@ describe('zh and en message keys are in sync', () => {
 })
 
 describe('EN_TOOLS_META', () => {
-  it('contains 10 tools', () => {
-    expect(EN_TOOLS_META).toHaveLength(10)
+  it('contains 21 tools', () => {
+    expect(EN_TOOLS_META).toHaveLength(21)
   })
 
-  it('all required top-10 slugs are present', () => {
+  it('all 21 slugs are present', () => {
     const slugs = EN_TOOLS_META.map(t => t.slug)
-    expect(slugs).toContain('ping')
-    expect(slugs).toContain('http')
-    expect(slugs).toContain('dns')
-    expect(slugs).toContain('traceroute')
-    expect(slugs).toContain('ssl')
-    expect(slugs).toContain('ip')
-    expect(slugs).toContain('whois')
-    expect(slugs).toContain('icp')
-    expect(slugs).toContain('diagnose')
-    expect(slugs).toContain('ipv6-check')
+    const expectedSlugs = [
+      'ping',
+      'http',
+      'dns',
+      'traceroute',
+      'ssl',
+      'ip',
+      'whois',
+      'icp',
+      'diagnose',
+      'ipv6-check',
+      'base64',
+      'cidr-calculator',
+      'cron-parser',
+      'hash',
+      'ipv6-converter',
+      'json-formatter',
+      'jwt-decoder',
+      'qrcode',
+      'regex-tester',
+      'tcping',
+      'timestamp',
+    ]
+    for (const slug of expectedSlugs) {
+      expect(slugs).toContain(slug)
+    }
   })
 
   it('each tool has title, description, and schemaName', () => {

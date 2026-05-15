@@ -3,7 +3,7 @@
 import { useState } from "react"
 import { Card, CardContent, CardHeader, CardTitle, Input, Button, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui"
 
-export type ProbeType = "http" | "ping" | "tcp" | "dns" | "traceroute"
+export type ProbeType = "http" | "ping" | "tcp" | "dns" | "traceroute" | "mtr"
 
 interface ProbeFormProps {
   type: ProbeType
@@ -29,6 +29,8 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
       case "dns":
         return "example.com"
       case "traceroute":
+        return "example.com 或 1.1.1.1"
+      case "mtr":
         return "example.com 或 1.1.1.1"
       default:
         return "请输入目标地址"

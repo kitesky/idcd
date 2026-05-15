@@ -553,7 +553,7 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 
 // --- ICP Query Handler ---
 
-// ICP handles GET /v1/info/icp?q=<domain> — ICP filing query (S1: mock).
+// ICP handles GET /v1/info/icp?q=<domain> — ICP filing query.
 func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
@@ -561,14 +561,61 @@ func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// S1 mock: return note that real implementation will be in S2
-	result := ICPResponse{
-		Domain:    query,
-		ICPNumber: "",
-		Note:      "ICP query will be implemented in S2",
+	// Normalize: remove protocol prefix and path.
+	query = strings.TrimPrefix(query, "https://")
+	query = strings.TrimPrefix(query, "http://")
+	if idx := strings.IndexByte(query, '/'); idx != -1 {
+		query = query[:idx]
+	}
+	query = strings.ToLower(strings.TrimSpace(query))
+
+	result := h.queryICP(r.Context(), query)
+	response.JSON(w, r, http.StatusOK, result)
+}
+
+// queryICP attempts to query ICP filing information for the given domain.
+// Falls back gracefully if the external service is unavailable.
+func (h *InfoHandler) queryICP(ctx context.Context, domain string) ICPResponse {
+	apiURL := "https://icplishi.com/api/?domain=" + domain
+	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if err != nil {
+		return ICPResponse{Domain: domain, Note: "ICP 备案查询需接入工信部官方 API，当前为演示模式。请访问 https://beian.miit.gov.cn/ 手动查询。"}
+	}
+	req.Header.Set("User-Agent", "idcd-icp-tool/1.0")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		return ICPResponse{Domain: domain, Note: "ICP 备案查询服务暂时不可用，请访问 https://beian.miit.gov.cn/ 手动查询。"}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ICPResponse{Domain: domain, Note: "ICP 备案查询服务返回错误，请访问 https://beian.miit.gov.cn/ 手动查询。"}
 	}
 
-	response.JSON(w, r, http.StatusOK, result)
+	var apiResp struct {
+		Code int `json:"code"`
+		Data struct {
+			ICPNo  string `json:"icpNo"`
+			Name   string `json:"name"`
+			Type   string `json:"type"`
+			Domain string `json:"domain"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return ICPResponse{Domain: domain, Note: "ICP 备案数据解析失败，请访问 https://beian.miit.gov.cn/ 手动查询。"}
+	}
+
+	if apiResp.Code != 0 || apiResp.Data.ICPNo == "" {
+		return ICPResponse{Domain: domain, Note: "未查询到 ICP 备案记录"}
+	}
+
+	return ICPResponse{
+		Domain:    domain,
+		ICPNumber: apiResp.Data.ICPNo,
+		Company:   apiResp.Data.Name,
+		Type:      apiResp.Data.Type,
+	}
 }
 
 // --- MX Query Handler ---

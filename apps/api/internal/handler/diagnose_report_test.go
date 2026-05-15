@@ -32,11 +32,11 @@ func newDiagnoseTestEnv(t *testing.T) (*DiagnoseReportHandler, *redis.Client) {
 func TestDiagnoseReportHandler_SaveAndGet_miniredis(t *testing.T) {
 	h, rdb := newDiagnoseTestEnv(t)
 
-	report := map[string]interface{}{
+	report := map[string]any{
 		"id":         "rpt_abc123",
 		"domain":     "example.com",
 		"createdAt":  "2026-05-15T00:00:00Z",
-		"checks":     []interface{}{},
+		"checks":     []any{},
 		"doneCount":  0,
 		"errorCount": 0,
 	}
@@ -77,7 +77,7 @@ func TestDiagnoseReportHandler_SaveAndGet_miniredis(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, getRR.Code, "get: %s", getRR.Body.String())
 
-	var gotReport map[string]interface{}
+	var gotReport map[string]any
 	require.NoError(t, json.Unmarshal(getRR.Body.Bytes(), &gotReport))
 	assert.Equal(t, "example.com", gotReport["domain"])
 	assert.Equal(t, "rpt_abc123", gotReport["id"])

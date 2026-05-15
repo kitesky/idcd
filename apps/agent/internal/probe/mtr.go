@@ -3,6 +3,7 @@ package probe
 import (
 	"context"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -49,34 +50,47 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 	const rdnsTimeout = 1 * time.Second
 	pingTimeout := 2 * time.Second
 
-	mtrHops := make([]MTRHop, 0, len(hops))
-
-	for _, h := range hops {
+	// Phase 1: build base hop structs.
+	mtrHops := make([]MTRHop, len(hops))
+	for i, h := range hops {
 		mh := MTRHop{
-			Hop:     h.Hop,
-			IP:      h.IP,
-			Timeout: h.Timeout,
+			Hop:      h.Hop,
+			IP:       h.IP,
+			Hostname: h.Hostname,
+			Timeout:  h.Timeout,
 		}
-
 		if h.Timeout || h.IP == "" || h.IP == "*" {
 			mh.SentPkts = pingsPerHop
 			mh.Loss = 100.0
-			mtrHops = append(mtrHops, mh)
+		}
+		mtrHops[i] = mh
+	}
+
+	// Phase 2: parallel rDNS for hops that need hostname resolution.
+	var wg sync.WaitGroup
+	for i := range mtrHops {
+		mh := &mtrHops[i]
+		if mh.Timeout || mh.IP == "" || mh.IP == "*" || mh.Hostname != "" {
 			continue
 		}
-
-		if h.Hostname != "" {
-			mh.Hostname = h.Hostname
-		} else {
+		wg.Go(func() {
 			ctx, cancel := context.WithTimeout(context.Background(), rdnsTimeout)
-			if names, err := net.DefaultResolver.LookupAddr(ctx, h.IP); err == nil && len(names) > 0 {
+			defer cancel()
+			if names, err := net.DefaultResolver.LookupAddr(ctx, mh.IP); err == nil && len(names) > 0 {
 				mh.Hostname = names[0]
 			}
-			cancel()
+		})
+	}
+	wg.Wait()
+
+	// Phase 3: ping each reachable hop.
+	for i := range mtrHops {
+		mh := &mtrHops[i]
+		h := hops[i]
+		if mh.Timeout || h.IP == "" || h.IP == "*" {
+			continue
 		}
-
 		mh.SentPkts = pingsPerHop
-
 		if p.Sender != nil {
 			stats, err := p.Sender.SendPing(h.IP, pingTimeout, pingsPerHop)
 			if err == nil {
@@ -95,8 +109,6 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 			mh.MinRTTMs = rttMs
 			mh.MaxRTTMs = rttMs
 		}
-
-		mtrHops = append(mtrHops, mh)
 	}
 
 	return &Result{

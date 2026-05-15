@@ -161,6 +161,7 @@ const CHECKS: CheckDef[] = [
   },
 ]
 
+const INTERNAL_TLDS = new Set(["localhost", "local", "internal", "intranet", "localdomain"])
 // Compiled once at module load — reused on every isPublicDomain call.
 const IPV4_RE = /^(\d{1,3}\.){3}\d{1,3}$/
 // Each DNS label: starts and ends with alnum, optionally has hyphens in the middle.
@@ -178,8 +179,7 @@ function isPublicDomain(domain: string): boolean {
   if (labels.length < 2) return false
   if (!labels.every((l) => l.length > 0 && LABEL_RE.test(l))) return false
   // Reject well-known internal/loopback names
-  const blocklist = ["localhost", "local", "internal", "intranet", "localdomain"]
-  if (blocklist.includes(labels[labels.length - 1]!.toLowerCase())) return false
+  if (INTERNAL_TLDS.has(labels[labels.length - 1]!.toLowerCase())) return false
   return true
 }
 
@@ -264,8 +264,10 @@ export async function GET(req: NextRequest) {
         await Promise.race([
           Promise.allSettled(checkPromises),
           new Promise<void>((_, reject) =>
-            streamController.signal.addEventListener("abort", () =>
-              reject(new Error("stream timeout"))
+            streamController.signal.addEventListener(
+              "abort",
+              () => reject(new Error("stream timeout")),
+              { once: true }
             )
           ),
         ])

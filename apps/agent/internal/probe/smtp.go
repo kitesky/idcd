@@ -63,7 +63,7 @@ func (p *SMTPProbe) Execute(target string, timeout time.Duration, options map[st
 			Type:       TaskSMTP,
 			Target:     target,
 			Success:    false,
-			Error:      "failed to send EHLO: " + err.Error(),
+			Error:      fmt.Sprintf("failed to send EHLO: %v", err),
 			Data:       map[string]any{"port": port},
 			DurationMs: time.Since(start).Milliseconds(),
 			Timestamp:  time.Now(),

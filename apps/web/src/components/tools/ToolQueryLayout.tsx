@@ -1,11 +1,5 @@
 "use client"
 
-/**
- * Shared layout for single-input info-query tool pages.
- * Handles the query/loading/error/result state pattern common to:
- * ASN, BGP, DMARC, ICP, IP, RDNS, SPF, SSL, WHOIS, MX, DKIM, etc.
- */
-
 import { useState, useCallback, type KeyboardEvent, type ReactNode } from "react"
 import {
   Card,
@@ -34,8 +28,6 @@ interface ToolQueryLayoutProps<T> {
   actionLabel?: string
   /** Button label while loading */
   loadingLabel?: string
-  /** Card header title for the result section */
-  resultCardTitle?: string
   /** Extra fields to render above the submit button (e.g. DKIM selector) */
   extraFields?: (loading: boolean) => ReactNode
   /** Build the query string from field values and invoke the API */

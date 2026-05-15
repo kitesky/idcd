@@ -160,7 +160,7 @@ export function NodesClient({ nodes }: NodesClientProps) {
               <SelectValue placeholder="选择国家/地区" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">所有国家/地区</SelectItem>
+              <SelectItem key="all" value="all">所有国家/地区</SelectItem>
               {countries.map((code) => (
                 <SelectItem key={code} value={code}>
                   {COUNTRY_NAMES[code] ?? code}
@@ -174,7 +174,7 @@ export function NodesClient({ nodes }: NodesClientProps) {
               <SelectValue placeholder="选择运营商" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">所有运营商</SelectItem>
+              <SelectItem key="all" value="all">所有运营商</SelectItem>
               {carriers.map((c) => (
                 <SelectItem key={c} value={c}>
                   {c}

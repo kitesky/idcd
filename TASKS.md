@@ -509,6 +509,74 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ---
 
+## T 系列 — 工具站功能补全（2026-05-15 整理）
+
+> 来源：E2E 测试后发现的功能缺口，下个 session 逐个实现。
+
+### P0 — 拨测结果回传前端（最高优先）
+
+- [x] **T1** `GET /v1/probe/tasks/{taskId}` 结果查询端点
+  - aggregator 写 probe_task.result JSONB（migration 00033）
+  - API handler 读 probe_task 表返回结果 JSON
+  - 前端 `useProbePolling` hook 每 2s 轮询直到 completed（或 30s 超时）
+  - 影响 5 个拨测工具：http / ping / tcp / dns / traceroute
+  - *完成 2026-05-15，916 Go + 689 前端 tests ✓*
+
+- [ ] **T2** 一键诊断报告展示拨测结果
+  - diagnose stream route 在 http/ping/traceroute check 后轮询 T1 结果（最多等 15s）
+  - 报告页 `/report/[id]` 展示延迟/状态码/丢包率等真实数据（替换 "task queued" 文本）
+  - *deps: T1*
+
+### P1 — Info 查询 API 从 Mock 变真实
+
+- [ ] **T3** WHOIS 真实查询
+  - 接入 whois 库（Go `golang.org/x/net/idna` + 第三方 whois client）
+  - 覆盖常见 TLD：.com/.net/.org/.cn
+  - `/v1/info/whois` 返回注册商/创建日期/到期日期/NS 列表
+  - *deps: 无*
+
+- [ ] **T4** ICP 备案真实查询
+  - 接入 ICP 查询 API（备案信息服务，或爬取 beian.miit.gov.cn）
+  - 返回备案号/主体名称/备案状态
+  - *deps: 无*
+
+### P2 — 15 个信息查询工具接真实 API
+
+- [ ] **T5** 反向 DNS（rDNS）— `GET /v1/info/rdns?q=<IP>` 调 net.LookupAddr
+- [ ] **T6** MX 记录 — `GET /v1/info/mx?q=<domain>` 调 net.LookupMX（已有 DNS handler 可复用）
+- [ ] **T7** SPF 记录 — `GET /v1/info/spf?q=<domain>` 查 TXT 记录过滤 `v=spf1`
+- [ ] **T8** DMARC 查询 — `GET /v1/info/dmarc?q=<domain>` 查 `_dmarc.<domain>` TXT
+- [ ] **T9** DKIM 查询 — `GET /v1/info/dkim?q=<domain>&selector=<s>` 查 `<s>._domainkey.<domain>` TXT
+- [ ] **T10** ASN 查询 — `GET /v1/info/asn?q=<ASN|IP>` 接 ip-api.com 或 bgpview.io
+- [ ] **T11** BGP 路由 — `GET /v1/info/bgp?q=<IP>` 接 bgpview.io API
+- [ ] **T12** MTR 路由测试 — `POST /v1/probe/mtr` agent 执行（mtr binary，复用 traceroute executor）
+- [ ] **T13** SMTP 邮件测试 — `POST /v1/probe/smtp` agent 执行（TCP 到 25/587，EHLO 握手）
+- [ ] **T14** NTP 服务测试 — `POST /v1/probe/ntp` agent 执行（NTP UDP 查询）
+
+### P3 — 有 API 但前端只显示示例数据
+
+- [ ] **T15** SSL 证书页前端接真实 API
+  - `ssl-probe-client.tsx` 替换 PLACEHOLDER_DATA，真实调用 `GET /v1/info/ssl`
+  - 展示：颁发机构/到期日/SAN 域名列表/剩余天数
+
+- [ ] **T16** IP 地理位置页前端接真实 API
+  - 替换 PLACEHOLDER_DATA，真实调用 `GET /v1/info/ip`
+  - 展示：城市/国家/ASN/ISP/经纬度地图
+
+### P4 — 基础设施补全
+
+- [ ] **T17** 邮件服务配置（Resend 接入）
+  - 注册 / 忘记密码邮件当前在本地 SMTP 25 发不出去
+  - 配置 `config/dev.env.yaml` + `config/prod.env.yaml` 的 Resend SMTP relay
+  - *deps: Resend 账号 [👤]*
+
+- [ ] **T18** aggregator 消费 probe.results stream，写回 probe_task 表
+  - 当前 aggregator 只处理 monitor_checks，probe_task.result 字段从未写入
+  - 添加 `ProbeResultConsumer`：读 `probe.results` stream → UPDATE probe_task SET result=$1,status='done'
+  - *deps: T1 依赖此*
+
+---
+
 ## 长期推迟（不进入当前冲刺）
 
 ```
@@ -554,6 +622,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-14 | F4（监控UI）+ G4（告警UI）+ H4（状态页app）+ H5（计费UI）并行完成，289+9 前端 tests ✓ | H2/H3 待 Paddle 账号 [👤] |
 | 2026-05-14 | H2（支付stub）+ H3（配额执行）+ App Shell（侧边栏）+ Settings（account+api-keys）并行完成，842 Go + 334 前端 tests ✓ | 聚合支付接入待定 |
 | 2026-05-14 | L4（英文国际化基础）完成：next-intl + /en/tools/[slug] SSG + leaderboard 双语 + Nav 语言切换，543 前端 tests ✓ | — |
+| 2026-05-15 | E2E 测试全链路打通：修复 agent 重连 401 + probe stream 格式 + denylist URL 支持 + nodes 表名 + gateway Redis timeout，905 Go tests ✓ | 见下方 T 系列待做任务 |
 
 ---
 

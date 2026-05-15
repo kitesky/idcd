@@ -235,7 +235,7 @@ function SummaryTab({ rows, isHttp, isChinaOnly }: { rows: ResultRow[]; isHttp: 
 
         <div className="flex min-h-[320px]">
           {/* 左侧地图 */}
-          <div className="w-[420px] flex-shrink-0 border-r p-4 flex flex-col justify-between bg-zinc-950/40">
+          <div className="w-[420px] flex-shrink-0 border-r p-4 flex flex-col gap-2">
             <ProbeMap nodes={mapNodes} isChinaOnly={isChinaOnly} />
           </div>
 

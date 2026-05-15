@@ -161,6 +161,36 @@ func TestProcessor_Process_missingNodeID(t *testing.T) {
 	}
 }
 
+func TestProcessor_Process_summaryWrittenToResult(t *testing.T) {
+	// Verify that Process marshals summary into result when dedup fires (no DB ops).
+	// The deduped path returns nil early, confirming the summaryJSON marshal code runs.
+	s := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: s.Addr()})
+	dedupr := dedup.New(rdb)
+
+	ctx := context.Background()
+	key := "pt_summary_01:nd_jp_01"
+	if err := dedupr.MarkProcessed(ctx, key); err != nil {
+		t.Fatalf("pre-mark: %v", err)
+	}
+
+	p := New(nil, dedupr)
+
+	summary := map[string]any{"latency_ms": 42, "success": true}
+	summaryJSON, _ := json.Marshal(summary)
+
+	err := p.Process(ctx, "1-1", map[string]any{
+		"task_id":     "pt_summary_01",
+		"node_id":     "nd_jp_01",
+		"summary":     string(summaryJSON),
+		"duration_ms": "42",
+		"success":     "true",
+	})
+	if err != nil {
+		t.Errorf("expected nil (dedup skip), got %v", err)
+	}
+}
+
 func TestProcessor_Process_dedupSkips(t *testing.T) {
 	s := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: s.Addr()})

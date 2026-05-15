@@ -84,7 +84,8 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 		return fmt.Errorf("processor: insert probe_result: %w", err)
 	}
 
-	if err := p.completeProbeTask(ctx, taskID); err != nil {
+	summaryJSON, _ := json.Marshal(result.summary)
+	if err := p.completeProbeTask(ctx, taskID, summaryJSON); err != nil {
 		return fmt.Errorf("processor: complete probe_task: %w", err)
 	}
 
@@ -239,13 +240,12 @@ func (p *Processor) insertProbeResult(ctx context.Context, taskID, nodeID string
 	return err
 }
 
-// completeProbeTask transitions a probe_task from "running" to "completed".
-// For S1, we mark completed on the first result received (single-node tasks).
-func (p *Processor) completeProbeTask(ctx context.Context, taskID string) error {
+// completeProbeTask transitions a probe_task from "running" to "completed" and writes the result.
+func (p *Processor) completeProbeTask(ctx context.Context, taskID string, resultJSON []byte) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE probe_task
-		SET status = 'completed', completed_at = NOW()
+		SET status = 'completed', completed_at = NOW(), result = $2
 		WHERE id = $1 AND status = 'running'
-	`, taskID)
+	`, taskID, resultJSON)
 	return err
 }

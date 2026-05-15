@@ -72,8 +72,23 @@ export interface ProbeResult {
     success: boolean
     latency_ms?: number
     error?: string
-    details?: any
+    details?: Record<string, unknown>
   }>
+}
+
+// Response from GET /v1/probe/tasks/{taskId}
+export interface ProbeTaskResult {
+  task_id: string
+  status: string  // queued | running | completed | failed | cancelled
+  result?: {
+    node_id?: string
+    success?: boolean
+    duration_ms?: number
+    error?: string
+    [key: string]: unknown  // probe-type-specific fields
+  }
+  created_at: string
+  completed_at?: string
 }
 
 // Nodes API
@@ -117,8 +132,8 @@ export async function probeTraceroute(params: ProbeParams): Promise<ProbeResult>
   })
 }
 
-export async function getProbeTask(taskId: string): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>(`/v1/probe/tasks/${taskId}`)
+export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
+  return apiRequest<ProbeTaskResult>(`/v1/probe/tasks/${taskId}`)
 }
 
 // Info API

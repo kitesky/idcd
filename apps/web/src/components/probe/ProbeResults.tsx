@@ -1,16 +1,66 @@
 "use client"
 
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
-import type { ProbeResult } from "@/lib/api"
+import { useProbePolling } from "@/hooks/useProbePolling"
+import type { ProbeResult, ProbeTaskResult } from "@/lib/api"
 
 interface ProbeResultsProps {
-  result: ProbeResult | null
+  result?: ProbeResult | null  // legacy prop mode
+  taskId?: string | null       // new polling mode
   loading?: boolean
   error?: string
 }
 
-export default function ProbeResults({ result, loading = false, error }: ProbeResultsProps) {
-  if (loading) {
+interface DisplayItem {
+  node_id: string
+  node_name?: string
+  success: boolean
+  latency_ms?: number
+  error?: string
+  details?: Record<string, unknown>
+}
+
+function buildDisplayItems(
+  result: ProbeResult | null | undefined,
+  taskResult: ProbeTaskResult | null | undefined
+): DisplayItem[] {
+  // Legacy result with results array
+  if (result?.results && result.results.length > 0) return result.results
+
+  // New polling result
+  if (taskResult?.result) {
+    const r = taskResult.result
+    const knownKeys = new Set(["node_id", "success", "duration_ms", "error"])
+    const details: Record<string, unknown> = Object.fromEntries(
+      Object.entries(r).filter(([k]) => !knownKeys.has(k))
+    )
+    return [{
+      node_id: r.node_id ?? "unknown",
+      success: r.success ?? false,
+      latency_ms: r.duration_ms,
+      error: r.error,
+      details: Object.keys(details).length > 0 ? details : undefined,
+    }]
+  }
+  return []
+}
+
+export default function ProbeResults({
+  result,
+  taskId,
+  loading = false,
+  error: externalError,
+}: ProbeResultsProps) {
+  const { taskResult, isPolling, error: pollError } = useProbePolling(taskId ?? null)
+
+  const isLoading = loading || isPolling
+  const error = externalError ?? pollError
+
+  const displayItems = buildDisplayItems(result, taskResult)
+  const successCount = displayItems.filter(r => r.success).length
+  const totalCount = displayItems.length
+
+  if (isLoading && totalCount === 0) {
     return (
       <Card>
         <CardHeader>
@@ -22,6 +72,9 @@ export default function ProbeResults({ result, loading = false, error }: ProbeRe
               <div key={i} className="h-16 bg-muted/50 animate-pulse rounded-md" />
             ))}
           </div>
+          {isPolling && (
+            <p className="text-xs text-muted-foreground mt-2">等待节点返回结果...</p>
+          )}
         </CardContent>
       </Card>
     )
@@ -40,7 +93,7 @@ export default function ProbeResults({ result, loading = false, error }: ProbeRe
     )
   }
 
-  if (!result) {
+  if (!result && !taskResult) {
     return (
       <Card>
         <CardHeader>
@@ -55,24 +108,24 @@ export default function ProbeResults({ result, loading = false, error }: ProbeRe
     )
   }
 
-  const results = result.results || []
-  const successCount = results.filter(r => r.success).length
-  const totalCount = results.length
+  const shownTaskId = result?.task_id ?? taskResult?.task_id
 
   return (
     <Card>
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>拨测结果</CardTitle>
-          <Badge variant={successCount === totalCount ? "default" : "secondary"}>
-            成功 {successCount} / {totalCount}
-          </Badge>
+          {totalCount > 0 && (
+            <Badge variant={successCount === totalCount ? "default" : "secondary"}>
+              成功 {successCount} / {totalCount}
+            </Badge>
+          )}
         </div>
       </CardHeader>
       <CardContent>
-        {result.status === "pending" && (
+        {isPolling && (
           <div className="mb-4">
-            <Badge>任务进行中...</Badge>
+            <Badge>正在获取结果...</Badge>
           </div>
         )}
 
@@ -87,17 +140,17 @@ export default function ProbeResults({ result, loading = false, error }: ProbeRe
               </tr>
             </thead>
             <tbody>
-              {results.length === 0 ? (
+              {displayItems.length === 0 ? (
                 <tr>
                   <td colSpan={4} className="text-center py-6 text-muted-foreground">
                     暂无结果
                   </td>
                 </tr>
               ) : (
-                results.map((item, index) => (
+                displayItems.map((item, index) => (
                   <tr key={index} className="border-b">
                     <td className="py-3 px-3">
-                      <div className="font-medium">{item.node_name || item.node_id}</div>
+                      <div className="font-medium">{item.node_name ?? item.node_id}</div>
                     </td>
                     <td className="py-3 px-3">
                       <Badge variant={item.success ? "default" : "destructive"}>
@@ -108,7 +161,7 @@ export default function ProbeResults({ result, loading = false, error }: ProbeRe
                       {item.latency_ms !== undefined ? `${item.latency_ms} ms` : "-"}
                     </td>
                     <td className="py-3 px-3 text-muted-foreground">
-                      {item.error || (item.details ? JSON.stringify(item.details) : "-")}
+                      {item.error ?? (item.details ? JSON.stringify(item.details) : "-")}
                     </td>
                   </tr>
                 ))
@@ -117,9 +170,9 @@ export default function ProbeResults({ result, loading = false, error }: ProbeRe
           </table>
         </div>
 
-        {result.task_id && (
+        {shownTaskId && (
           <div className="mt-4 text-xs text-muted-foreground">
-            任务 ID: {result.task_id}
+            任务 ID: {shownTaskId}
           </div>
         )}
       </CardContent>

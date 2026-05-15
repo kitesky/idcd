@@ -304,6 +304,7 @@ func (s *Server) setupRouter() {
 				r.Post("/tcp", probeH.TCP)
 				r.Post("/dns", probeH.DNS)
 				r.Post("/traceroute", probeH.Traceroute)
+				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)
 			// Node directory endpoint

@@ -7,8 +7,11 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
+	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/redis/go-redis/v9"
 
@@ -366,6 +369,92 @@ func TestProbeHandler_Diagnose(t *testing.T) {
 
 	if response.Data.Status != "queued" {
 		t.Errorf("expected status 'queued', got %q", response.Data.Status)
+	}
+
+	if err := mockPool.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestProbeHandler_TaskResult_200(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	resultJSON := json.RawMessage(`{"latency_ms":42,"success":true}`)
+	now := time.Now()
+
+	rows := pgxmock.NewRows([]string{"status", "result", "created_at", "completed_at"}).
+		AddRow("completed", &resultJSON, now, &now)
+	mockPool.ExpectQuery("SELECT status, result, created_at, completed_at").
+		WithArgs("pt_test_001").
+		WillReturnRows(rows)
+
+	req := httptest.NewRequest("GET", "/v1/probe/tasks/pt_test_001", nil)
+	ctx := context.WithValue(req.Context(), "request_id", "test-req-taskresult")
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+
+	// Simulate chi URL param by using chi context.
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("taskId", "pt_test_001")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	handler.TaskResult(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d: %s", http.StatusOK, rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Data struct {
+			TaskID string           `json:"task_id"`
+			Status string           `json:"status"`
+			Result *json.RawMessage `json:"result"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("failed to parse response: %v", err)
+	}
+	if resp.Data.TaskID != "pt_test_001" {
+		t.Errorf("expected task_id pt_test_001, got %q", resp.Data.TaskID)
+	}
+	if resp.Data.Status != "completed" {
+		t.Errorf("expected status completed, got %q", resp.Data.Status)
+	}
+	if resp.Data.Result == nil {
+		t.Error("expected result to be non-nil")
+	}
+
+	if err := mockPool.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestProbeHandler_TaskResult_404(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery("SELECT status, result, created_at, completed_at").
+		WithArgs("pt_notfound").
+		WillReturnError(pgx.ErrNoRows)
+
+	req := httptest.NewRequest("GET", "/v1/probe/tasks/pt_notfound", nil)
+	ctx := context.WithValue(req.Context(), "request_id", "test-req-taskresult-404")
+	req = req.WithContext(ctx)
+
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("taskId", "pt_notfound")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+
+	rr := httptest.NewRecorder()
+
+	handler.TaskResult(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("expected status %d, got %d: %s", http.StatusNotFound, rr.Code, rr.Body.String())
 	}
 
 	if err := mockPool.ExpectationsWereMet(); err != nil {

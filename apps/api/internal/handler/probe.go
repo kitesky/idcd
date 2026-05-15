@@ -4,11 +4,13 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -292,4 +294,49 @@ func normalizeTarget(target string) string {
 // getClientIP delegates to the middleware package so proxy-header trust logic is centralised.
 func getClientIP(r *http.Request) string {
 	return middleware.ClientIP(r)
+}
+
+// TaskResult handles GET /v1/probe/tasks/{taskId}
+func (h *ProbeHandler) TaskResult(w http.ResponseWriter, r *http.Request) {
+	taskID := chi.URLParam(r, "taskId")
+	if taskID == "" {
+		response.Error(w, r, apperr.Validation("missing task ID", ""))
+		return
+	}
+
+	ctx := r.Context()
+	var status string
+	var result *json.RawMessage
+	var createdAt time.Time
+	var completedAt *time.Time
+
+	err := h.pool.QueryRow(ctx, `
+		SELECT status, result, created_at, completed_at
+		FROM probe_task WHERE id = $1
+	`, taskID).Scan(&status, &result, &createdAt, &completedAt)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, r, apperr.NotFound("task not found"))
+			return
+		}
+		response.Error(w, r, apperr.Internal("query failed", err))
+		return
+	}
+
+	type TaskResultResponse struct {
+		TaskID      string           `json:"task_id"`
+		Status      string           `json:"status"`
+		Result      *json.RawMessage `json:"result,omitempty"`
+		CreatedAt   time.Time        `json:"created_at"`
+		CompletedAt *time.Time       `json:"completed_at,omitempty"`
+	}
+
+	response.JSON(w, r, http.StatusOK, TaskResultResponse{
+		TaskID:      taskID,
+		Status:      status,
+		Result:      result,
+		CreatedAt:   createdAt,
+		CompletedAt: completedAt,
+	})
 }

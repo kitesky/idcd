@@ -4,30 +4,26 @@ import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
-import { probePing, type ProbeResult } from "@/lib/api"
+import { probePing } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 
 export default function PingProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<ProbeResult | null>(null)
-  const [error, setError] = useState("")
+  const [taskId, setTaskId] = useState<string | null>(null)
+  const [submitError, setSubmitError] = useState("")
 
-  const handleSubmit = async (target: string, params: Record<string, any>) => {
+  const handleSubmit = async (target: string, params: Record<string, unknown>) => {
     try {
-      setLoading(true)
-      setError("")
-      const probeResult = await probePing({
+      setSubmitError("")
+      setTaskId(null)
+      const res = await probePing({
         target,
         node_ids: selectedNodes.length > 0 ? selectedNodes : undefined,
-        ...params
+        ...params,
       })
-      setResult(probeResult)
+      setTaskId(res.task_id)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "拨测失败")
-      setResult(null)
-    } finally {
-      setLoading(false)
+      setSubmitError(err instanceof Error ? err.message : "提交失败")
     }
   }
 
@@ -42,12 +38,12 @@ export default function PingProbeClient() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <ProbeForm type="ping" onSubmit={handleSubmit} loading={loading} />
+          <ProbeForm type="ping" onSubmit={handleSubmit} loading={false} />
           <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
         </div>
 
         <div>
-          <ProbeResults result={result} loading={loading} error={error} />
+          <ProbeResults taskId={taskId} error={submitError} />
         </div>
       </div>
 

@@ -93,6 +93,18 @@ func (h *ProbeHandler) Traceroute(w http.ResponseWriter, r *http.Request) {
 	h.handleProbe(w, r, "traceroute")
 }
 
+// SMTP handles SMTP connection test requests.
+// POST /v1/probe/smtp
+func (h *ProbeHandler) SMTP(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "smtp")
+}
+
+// NTP handles NTP server test requests.
+// POST /v1/probe/ntp
+func (h *ProbeHandler) NTP(w http.ResponseWriter, r *http.Request) {
+	h.handleProbe(w, r, "ntp")
+}
+
 // Diagnose handles comprehensive diagnostic requests.
 // POST /v1/diagnose
 func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {

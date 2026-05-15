@@ -132,6 +132,20 @@ export async function probeTraceroute(params: ProbeParams): Promise<ProbeResult>
   })
 }
 
+export async function probeSmtp(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/smtp", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
+export async function probeNtp(params: ProbeParams): Promise<ProbeResult> {
+  return apiRequest<ProbeResult>("/v1/probe/ntp", {
+    method: "POST",
+    body: JSON.stringify(params)
+  })
+}
+
 export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
   return apiRequest<ProbeTaskResult>(`/v1/probe/tasks/${taskId}`)
 }

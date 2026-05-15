@@ -781,6 +781,188 @@ func TestIsPrivateIP_CIDRParseError(t *testing.T) {
 	}
 }
 
+// --- MX handler tests ---
+
+func TestInfoHandler_MX_missingParam(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/mx", nil)
+	w := httptest.NewRecorder()
+
+	h.MX(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("MX() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] == nil {
+		t.Error("MX() expected error field in response")
+	}
+}
+
+func TestInfoHandler_MX_query(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/mx?q=example.com", nil)
+	w := httptest.NewRecorder()
+
+	h.MX(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("MX() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("MX() unexpected error: %v", resp["error"])
+	}
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("response data is not a map")
+	}
+	if domain, ok := data["domain"].(string); !ok || domain != "example.com" {
+		t.Errorf("MX() domain = %v, want example.com", domain)
+	}
+	if _, ok := data["records"]; !ok {
+		t.Error("MX() response missing records field")
+	}
+}
+
+// --- DKIM handler tests ---
+
+func TestInfoHandler_DKIM_missingParam(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/dkim", nil)
+	w := httptest.NewRecorder()
+
+	h.DKIM(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("DKIM() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] == nil {
+		t.Error("DKIM() expected error field in response")
+	}
+}
+
+func TestInfoHandler_DKIM_withSelector(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/dkim?q=example.com&selector=s1", nil)
+	w := httptest.NewRecorder()
+
+	h.DKIM(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("DKIM() status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("DKIM() unexpected error: %v", resp["error"])
+	}
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("response data is not a map")
+	}
+	if domain, ok := data["domain"].(string); !ok || domain != "example.com" {
+		t.Errorf("DKIM() domain = %v, want example.com", domain)
+	}
+	if selector, ok := data["selector"].(string); !ok || selector != "s1" {
+		t.Errorf("DKIM() selector = %v, want s1", selector)
+	}
+}
+
+// --- ASN handler tests ---
+
+func TestInfoHandler_ASN_missingParam(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/asn", nil)
+	w := httptest.NewRecorder()
+
+	h.ASN(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("ASN() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] == nil {
+		t.Error("ASN() expected error field in response")
+	}
+}
+
+func TestInfoHandler_ASN_asnNumber(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/asn?q=AS13335", nil)
+	w := httptest.NewRecorder()
+
+	h.ASN(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("ASN(AS13335) status = %v, want %v", w.Code, http.StatusOK)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] != nil {
+		t.Errorf("ASN() unexpected error: %v", resp["error"])
+	}
+	data, ok := resp["data"].(map[string]any)
+	if !ok {
+		t.Fatal("response data is not a map")
+	}
+	if asn, ok := data["asn"].(string); !ok || asn != "AS13335" {
+		t.Errorf("ASN() asn = %v, want AS13335", asn)
+	}
+}
+
+// --- BGP handler tests ---
+
+func TestInfoHandler_BGP_missingParam(t *testing.T) {
+	h := NewInfoHandler()
+
+	req := httptest.NewRequest("GET", "/v1/info/bgp", nil)
+	w := httptest.NewRecorder()
+
+	h.BGP(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("BGP() status = %v, want %v", w.Code, http.StatusBadRequest)
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp["error"] == nil {
+		t.Error("BGP() expected error field in response")
+	}
+}
+
 // Ensure linklocal detection works
 func TestLinkLocalDetection(t *testing.T) {
 	ip := net.ParseIP("169.254.1.1")

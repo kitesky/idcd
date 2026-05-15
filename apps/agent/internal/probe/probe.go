@@ -14,6 +14,8 @@ const (
 	TaskTCP        TaskType = "tcp"
 	TaskDNS        TaskType = "dns"
 	TaskTraceroute TaskType = "traceroute"
+	TaskSMTP       TaskType = "smtp"
+	TaskNTP        TaskType = "ntp"
 )
 
 // Result represents the outcome of a probe execution.
@@ -53,6 +55,12 @@ type DNSProbe struct {
 
 // TracerouteProbe executes traceroute probes.
 type TracerouteProbe struct{}
+
+// SMTPProbe executes SMTP banner/EHLO connection probes.
+type SMTPProbe struct{}
+
+// NTPProbe executes NTP server time queries.
+type NTPProbe struct{}
 
 // PingSender interface allows mocking ICMP operations in tests.
 type PingSender interface {

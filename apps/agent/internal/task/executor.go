@@ -16,6 +16,8 @@ type Executor struct {
 	tcpProbe        *probe.TCPProbe
 	dnsProbe        *probe.DNSProbe
 	tracerouteProbe *probe.TracerouteProbe
+	smtpProbe       *probe.SMTPProbe
+	ntpProbe        *probe.NTPProbe
 	secretKey       []byte
 }
 
@@ -27,6 +29,8 @@ func NewExecutor(secretKey []byte) *Executor {
 		tcpProbe:        &probe.TCPProbe{},
 		dnsProbe:        &probe.DNSProbe{},
 		tracerouteProbe: &probe.TracerouteProbe{},
+		smtpProbe:       &probe.SMTPProbe{},
+		ntpProbe:        &probe.NTPProbe{},
 		secretKey:       secretKey,
 	}
 }
@@ -78,6 +82,10 @@ func (e *Executor) Execute(task Task) *probe.Result {
 		result = e.dnsProbe.Execute(task.Target, timeout, task.Options)
 	case TaskTraceroute:
 		result = e.tracerouteProbe.Execute(task.Target, timeout, task.Options)
+	case TaskSMTP:
+		result = e.smtpProbe.Execute(task.Target, timeout, task.Options)
+	case TaskNTP:
+		result = e.ntpProbe.Execute(task.Target, timeout, task.Options)
 	default:
 		timestamp := time.Now()
 		result := &probe.Result{

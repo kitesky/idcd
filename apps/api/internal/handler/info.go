@@ -571,6 +571,215 @@ func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, result)
 }
 
+// --- MX Query Handler ---
+
+// MXResponse represents MX record query results.
+type MXResponse struct {
+	Domain  string     `json:"domain"`
+	Records []MXRecord `json:"records"`
+}
+
+// MXRecord represents a single MX record with priority.
+type MXRecord struct {
+	Host     string `json:"host"`
+	Priority uint16 `json:"priority"`
+}
+
+// MX handles GET /v1/info/mx?q=<domain> — MX record query.
+func (h *InfoHandler) MX(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	mxs, err := net.DefaultResolver.LookupMX(ctx, query)
+	if err != nil {
+		response.JSON(w, r, http.StatusOK, MXResponse{Domain: query, Records: []MXRecord{}})
+		return
+	}
+	records := make([]MXRecord, 0, len(mxs))
+	for _, mx := range mxs {
+		records = append(records, MXRecord{Host: mx.Host, Priority: mx.Pref})
+	}
+	response.JSON(w, r, http.StatusOK, MXResponse{Domain: query, Records: records})
+}
+
+// --- DKIM Query Handler ---
+
+// DKIMResponse represents DKIM record query results.
+type DKIMResponse struct {
+	Domain   string `json:"domain"`
+	Selector string `json:"selector"`
+	Record   string `json:"record,omitempty"`
+	Found    bool   `json:"found"`
+}
+
+// DKIM handles GET /v1/info/dkim?q=<domain>&selector=<selector> — DKIM record query.
+func (h *InfoHandler) DKIM(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	selector := strings.TrimSpace(r.URL.Query().Get("selector"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	if selector == "" {
+		selector = "default"
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	dkimDomain := selector + "._domainkey." + query
+	txts, err := net.DefaultResolver.LookupTXT(ctx, dkimDomain)
+	if err != nil {
+		response.JSON(w, r, http.StatusOK, DKIMResponse{Domain: query, Selector: selector, Found: false})
+		return
+	}
+	for _, txt := range txts {
+		if strings.Contains(txt, "v=DKIM1") || strings.HasPrefix(txt, "p=") {
+			response.JSON(w, r, http.StatusOK, DKIMResponse{Domain: query, Selector: selector, Record: txt, Found: true})
+			return
+		}
+	}
+	// Return first TXT if no DKIM prefix (some records have split format)
+	if len(txts) > 0 {
+		response.JSON(w, r, http.StatusOK, DKIMResponse{Domain: query, Selector: selector, Record: strings.Join(txts, ""), Found: true})
+		return
+	}
+	response.JSON(w, r, http.StatusOK, DKIMResponse{Domain: query, Selector: selector, Found: false})
+}
+
+// --- ASN Query Handler ---
+
+// ASNResponse represents ASN query results.
+type ASNResponse struct {
+	Query       string `json:"query"`
+	ASN         string `json:"asn"`
+	ISP         string `json:"isp"`
+	Country     string `json:"country"`
+	CountryCode string `json:"country_code"`
+}
+
+// ASN handles GET /v1/info/asn?q=<IP或ASN> — ASN query.
+func (h *InfoHandler) ASN(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+
+	// If it's an AS number (AS12345), ip-api doesn't support direct ASN lookup;
+	// return basic info with the normalised ASN string.
+	if strings.HasPrefix(strings.ToUpper(query), "AS") {
+		response.JSON(w, r, http.StatusOK, ASNResponse{Query: query, ASN: strings.ToUpper(query)})
+		return
+	}
+
+	apiURL := fmt.Sprintf("http://ip-api.com/json/%s?fields=status,message,country,countryCode,isp,as", query)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", apiURL, nil)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("Failed to create request", err))
+		return
+	}
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		response.Error(w, r, apperr.Unavailable("ASN query failed", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	var apiResp struct {
+		Status      string `json:"status"`
+		Message     string `json:"message"`
+		Country     string `json:"country"`
+		CountryCode string `json:"countryCode"`
+		ISP         string `json:"isp"`
+		AS          string `json:"as"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		response.Error(w, r, apperr.Internal("Failed to parse response", err))
+		return
+	}
+	if apiResp.Status != "success" {
+		response.Error(w, r, apperr.Validation("ASN query failed", apiResp.Message))
+		return
+	}
+	response.JSON(w, r, http.StatusOK, ASNResponse{
+		Query:       query,
+		ASN:         apiResp.AS,
+		ISP:         apiResp.ISP,
+		Country:     apiResp.Country,
+		CountryCode: apiResp.CountryCode,
+	})
+}
+
+// --- BGP Query Handler ---
+
+// BGPResponse represents BGP route query results.
+type BGPResponse struct {
+	IP       string   `json:"ip"`
+	Prefixes []string `json:"prefixes"`
+	ASNs     []string `json:"asns"`
+}
+
+// BGP handles GET /v1/info/bgp?q=<IP> — BGP route query via bgpview.io.
+func (h *InfoHandler) BGP(w http.ResponseWriter, r *http.Request) {
+	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	if query == "" {
+		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+
+	apiURL := fmt.Sprintf("https://api.bgpview.io/ip/%s", query)
+	req, err := http.NewRequestWithContext(r.Context(), "GET", apiURL, nil)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("Failed to create request", err))
+		return
+	}
+	req.Header.Set("User-Agent", "idcd-bgp-tool/1.0")
+
+	resp, err := h.httpClient.Do(req)
+	if err != nil {
+		response.Error(w, r, apperr.Unavailable("BGP query failed", err))
+		return
+	}
+	defer resp.Body.Close()
+
+	var bgpResp struct {
+		Status string `json:"status"`
+		Data   struct {
+			Prefixes []struct {
+				Prefix string `json:"prefix"`
+				ASN    struct {
+					ASN  int    `json:"asn"`
+					Name string `json:"name"`
+				} `json:"asn"`
+			} `json:"prefixes"`
+		} `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&bgpResp); err != nil {
+		response.Error(w, r, apperr.Internal("Failed to parse BGP response", err))
+		return
+	}
+
+	prefixes := make([]string, 0)
+	asns := make([]string, 0)
+	seen := map[string]bool{}
+	for _, p := range bgpResp.Data.Prefixes {
+		prefixes = append(prefixes, p.Prefix)
+		asnStr := fmt.Sprintf("AS%d", p.ASN.ASN)
+		if !seen[asnStr] {
+			asns = append(asns, asnStr)
+			seen[asnStr] = true
+		}
+	}
+
+	response.JSON(w, r, http.StatusOK, BGPResponse{IP: query, Prefixes: prefixes, ASNs: asns})
+}
+
 // --- Helper functions ---
 
 // isIP checks if the string is a valid IP address.

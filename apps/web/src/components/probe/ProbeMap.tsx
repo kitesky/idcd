@@ -156,24 +156,55 @@ export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
 
 // ── WorldMap (simple country dots) ────────────────────────────────────────────
 
-// 支持国家代码和常见英文名
-const COUNTRY_COORDS: Record<string, [number, number]> = {
-  US: [-98, 38],    "United States": [-98, 38],   "US West": [-118, 34],  "US East": [-74, 41],
-  GB: [-3, 54],     "United Kingdom": [-3, 54],   "UK": [-3, 54],
-  DE: [10, 51],     "Germany": [10, 51],
-  FR: [2, 46],      "France": [2, 46],
-  JP: [138, 36],    "Japan": [138, 36],            "Tokyo": [139.7, 35.7],
-  KR: [128, 36],    "Korea": [128, 36],            "Seoul": [126.9, 37.5],
-  SG: [104, 1],     "Singapore": [104, 1],
-  AU: [133, -25],   "Australia": [133, -25],       "Sydney": [151.2, -33.9],
-  IN: [78, 20],     "India": [78, 20],
-  BR: [-51, -10],   "Brazil": [-51, -10],
-  CA: [-96, 60],    "Canada": [-96, 60],
-  RU: [100, 60],    "Russia": [100, 60],
-  HK: [114, 22],    "Hong Kong": [114, 22],
-  TW: [121, 24],    "Taiwan": [121, 24],
-  NL: [5, 52],      "Netherlands": [5, 52],
-  SE: [18, 60],     "Sweden": [18, 60],
+// 精确到城市/州级坐标表
+// key 支持: 国家代码、城市名、州名、常见节点名（部分匹配）
+const LOCATION_COORDS: Array<{ keys: string[]; coords: [number, number] }> = [
+  // ── 美国各州/城市 ────────────────────────────────────────────────────────
+  { keys: ["New York", "NYC", "纽约"],                    coords: [-74.0, 40.7] },
+  { keys: ["Oregon", "Portland", "俄勒冈"],               coords: [-122.7, 45.5] },
+  { keys: ["California", "Los Angeles", "LA", "加州"],    coords: [-118.2, 34.1] },
+  { keys: ["San Francisco", "SF", "旧金山"],              coords: [-122.4, 37.8] },
+  { keys: ["Seattle", "Washington State", "西雅图"],      coords: [-122.3, 47.6] },
+  { keys: ["Texas", "Dallas", "Houston", "德克萨斯"],     coords: [-96.8, 32.8] },
+  { keys: ["Chicago", "Illinois", "芝加哥"],              coords: [-87.6, 41.9] },
+  { keys: ["Virginia", "Ashburn", "弗吉尼亚"],            coords: [-77.5, 39.0] },
+  { keys: ["Miami", "Florida", "迈阿密"],                 coords: [-80.2, 25.8] },
+  { keys: ["US", "United States", "美国"],                coords: [-98.0, 39.0] },
+  // ── 欧洲 ────────────────────────────────────────────────────────────────
+  { keys: ["London", "UK", "United Kingdom", "英国", "伦敦"],      coords: [-0.1, 51.5] },
+  { keys: ["Frankfurt", "Germany", "德国", "法兰克福"],            coords: [8.7, 50.1] },
+  { keys: ["Amsterdam", "Netherlands", "荷兰"],                    coords: [4.9, 52.4] },
+  { keys: ["Paris", "France", "法国", "巴黎"],                     coords: [2.3, 48.9] },
+  { keys: ["Stockholm", "Sweden", "瑞典"],                         coords: [18.1, 59.3] },
+  { keys: ["Warsaw", "Poland", "波兰"],                            coords: [21.0, 52.2] },
+  { keys: ["Madrid", "Spain", "西班牙"],                           coords: [-3.7, 40.4] },
+  { keys: ["Milan", "Italy", "意大利"],                            coords: [9.2, 45.5] },
+  // ── 亚太 ────────────────────────────────────────────────────────────────
+  { keys: ["Tokyo", "Japan", "日本", "东京"],                      coords: [139.7, 35.7] },
+  { keys: ["Seoul", "Korea", "韩国", "首尔"],                      coords: [126.9, 37.6] },
+  { keys: ["Singapore", "新加坡"],                                  coords: [103.8, 1.4] },
+  { keys: ["Hong Kong", "HK", "香港"],                             coords: [114.2, 22.3] },
+  { keys: ["Taipei", "Taiwan", "台湾"],                            coords: [121.5, 25.0] },
+  { keys: ["Sydney", "Australia", "澳大利亚", "悉尼"],             coords: [151.2, -33.9] },
+  { keys: ["Melbourne", "墨尔本"],                                  coords: [144.9, -37.8] },
+  { keys: ["Mumbai", "India", "印度"],                             coords: [72.9, 19.1] },
+  { keys: ["Bangkok", "Thailand", "泰国"],                         coords: [100.5, 13.8] },
+  // ── 其他 ────────────────────────────────────────────────────────────────
+  { keys: ["São Paulo", "Brazil", "巴西"],                         coords: [-46.6, -23.5] },
+  { keys: ["Toronto", "Canada", "加拿大"],                         coords: [-79.4, 43.7] },
+  { keys: ["Moscow", "Russia", "俄罗斯"],                          coords: [37.6, 55.8] },
+  { keys: ["Dubai", "UAE", "阿联酋"],                              coords: [55.3, 25.2] },
+  { keys: ["Johannesburg", "South Africa", "南非"],                coords: [28.0, -26.2] },
+]
+
+function lookupCoords(nodeName: string): [number, number] | undefined {
+  const lower = nodeName.toLowerCase()
+  for (const entry of LOCATION_COORDS) {
+    if (entry.keys.some(k => lower.includes(k.toLowerCase()))) {
+      return entry.coords
+    }
+  }
+  return undefined
 }
 
 export function WorldMap({ nodes }: { nodes: MapNode[] }) {
@@ -193,8 +224,9 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
       setGeoPaths(countries.features.map((f: any) => pathGen(f) ?? ""))
 
       const mk = nodes.flatMap(n => {
+        // 优先用节点自带的经纬度，其次模糊匹配城市/州名
         const coords: [number, number] | undefined =
-          (n.lat !== 0 && n.lng !== 0) ? [n.lng, n.lat] : COUNTRY_COORDS[n.name]
+          (n.lat !== 0 && n.lng !== 0) ? [n.lng, n.lat] : lookupCoords(n.name)
         if (!coords) return []
         const [x, y] = projection(coords) ?? [0, 0]
         return [{ x, y, node: n }]

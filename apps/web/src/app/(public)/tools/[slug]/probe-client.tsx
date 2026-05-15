@@ -1,6 +1,8 @@
 "use client"
 
 import { useState } from 'react'
+import { useSearchParams } from 'next/navigation'
+import { Link2, Check } from 'lucide-react'
 import {
   Card, CardContent, CardHeader, CardTitle,
   Input, Button, Badge, Label, Separator,
@@ -48,12 +50,27 @@ export default function ProbeToolClient({ slug }: ProbeClientProps) {
   const tool = getToolBySlug(slug)
   const config = PROBE_INPUTS[slug] ?? { label: '目标', placeholder: 'example.com' }
 
-  const [target, setTarget] = useState('')
+  const searchParams = useSearchParams()
+  const initialTarget = searchParams.get('target') ?? ''
+
+  const [target, setTarget] = useState(initialTarget)
   const [extra, setExtra] = useState('')
   const [submitted, setSubmitted] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const ExtraField = PROBE_FIELDS_EXTRA[slug]
+
+  const handleCopyLink = () => {
+    const url =
+      window.location.origin +
+      window.location.pathname +
+      '?target=' +
+      encodeURIComponent(target)
+    navigator.clipboard.writeText(url)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 1500)
+  }
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -94,9 +111,31 @@ export default function ProbeToolClient({ slug }: ProbeClientProps) {
 
             {ExtraField && <ExtraField extra={extra} setExtra={setExtra} />}
 
-            <Button type="submit" disabled={loading || !target.trim()}>
-              {loading ? '查询中…' : '开始查询'}
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button type="submit" disabled={loading || !target.trim()}>
+                {loading ? '查询中…' : '开始查询'}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleCopyLink}
+                disabled={!target.trim()}
+                data-testid="copy-link-button"
+              >
+                {copied ? (
+                  <>
+                    <Check className="mr-1 h-4 w-4" />
+                    已复制！
+                  </>
+                ) : (
+                  <>
+                    <Link2 className="mr-1 h-4 w-4" />
+                    复制链接
+                  </>
+                )}
+              </Button>
+            </div>
           </form>
         </CardContent>
       </Card>

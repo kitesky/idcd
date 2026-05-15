@@ -17,6 +17,7 @@ import (
 
 	"github.com/kite365/idcd/apps/api/internal/billing"
 	"github.com/kite365/idcd/apps/api/internal/handler"
+	_ "github.com/kite365/idcd/apps/api/internal/metrics" // register business metrics with Prometheus default registry
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/quota"
 	"github.com/kite365/idcd/lib/auth/jwt"
@@ -475,6 +476,11 @@ func (s *Server) setupRouter() {
 			r.Post("/{node_id}/upgrade", nodeCmdH.QueueUpgrade)
 			r.Post("/{node_id}/reload-config", nodeCmdH.QueueReloadConfig)
 		})
+
+		// Prometheus metrics endpoint — VPN/internal only (no auth; rely on network policy).
+		// Exposes the default Prometheus registry including idcd business metrics from
+		// the internal/metrics package.
+		r.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
 
 		// Admin management endpoints (token-protected, VPN-only in production).
 		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)

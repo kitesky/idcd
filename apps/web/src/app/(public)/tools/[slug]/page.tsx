@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { Suspense } from 'react'
 import { ALL_TOOLS, getToolBySlug } from '@/app/(public)/tools/tools-config'
 import ToolRenderer from './tool-renderer'
 
@@ -55,7 +56,9 @@ export default async function ToolSlugPage({ params }: Props) {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
       />
-      <ToolRenderer slug={slug} />
+      <Suspense fallback={null}>
+        <ToolRenderer slug={slug} />
+      </Suspense>
     </>
   )
 }

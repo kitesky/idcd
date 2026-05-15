@@ -61,12 +61,12 @@ export function NodesClient({ nodes }: NodesClientProps) {
   const stats = useMemo(() => aggregateStats(nodes), [nodes])
 
   const countries = useMemo(
-    () => Array.from(new Set(nodes.map((n) => n.country))).sort(),
+    () => Array.from(new Set(nodes.map((n) => n.country))).filter(Boolean).sort(),
     [nodes]
   )
 
   const carriers = useMemo(
-    () => Array.from(new Set(nodes.map((n) => n.carrier))).sort(),
+    () => Array.from(new Set(nodes.map((n) => n.carrier))).filter(Boolean).sort(),
     [nodes]
   )
 

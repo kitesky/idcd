@@ -10,26 +10,27 @@ export const metadata: Metadata = {
 interface ApiNode {
   id: string
   name: string
-  region: string
-  country: string
-  city: string
-  isp: string
-  ip: string
+  tier?: string
+  country_code?: string
+  region?: string
+  city?: string
+  isp?: string
+  ip?: string
   status: "active" | "inactive" | "degraded"
-  uptime_percent: number
-  latency_ms: number
-  last_seen_at: string
+  uptime_percent?: number
+  latency_ms?: number
+  last_seen_at?: string
 }
 
 function mapApiNode(n: ApiNode): NodeEntry {
   return {
     id: n.id,
     asn: "",
-    carrier: n.isp,
-    region: n.city || n.region,
-    exitIp: n.ip,
+    carrier: n.isp ?? "",
+    region: n.city || n.region || "",
+    exitIp: n.ip ?? "",
     status: n.status === "active" ? "online" : n.status === "degraded" ? "degraded" : "offline",
-    country: n.country,
+    country: n.country_code ?? "",
   }
 }
 

@@ -157,7 +157,7 @@ func (h *WSHandler) verifyAPIKey(ctx context.Context, key string) (string, error
 	err := h.pool.QueryRow(ctx, `
 		SELECT node_id FROM enrolled_nodes
 		WHERE secret_hash = $1
-		  AND status IN ('pending', 'active')
+		  AND status != 'disabled'
 	`, secretHash).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -411,13 +411,26 @@ func queryPendingCommands(ctx context.Context, pool NodeAuthPool, nodeID string)
 
 // ── result / ack / cmd_ack ────────────────────────────────────────────────────
 
+// probeResultItem is the minimal structure parsed from a probe result.
+type probeResultItem struct {
+	TaskID string         `json:"task_id"`
+	Data   map[string]any `json:"data"`
+}
+
 func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) error {
-	var result struct {
-		TaskID string         `json:"task_id"`
-		Data   map[string]any `json:"data"`
-	}
-	if err := json.Unmarshal(payload, &result); err != nil {
-		return apperr.Validation("invalid result payload", err.Error())
+	// Agent sends either a single result object or an array of results.
+	// Normalise both into a slice for uniform processing.
+	var results []probeResultItem
+	if len(payload) > 0 && payload[0] == '[' {
+		if err := json.Unmarshal(payload, &results); err != nil {
+			return apperr.Validation("invalid result payload (array)", err.Error())
+		}
+	} else {
+		var single probeResultItem
+		if err := json.Unmarshal(payload, &single); err != nil {
+			return apperr.Validation("invalid result payload", err.Error())
+		}
+		results = []probeResultItem{single}
 	}
 
 	if h.streamCli == nil {
@@ -425,34 +438,38 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		return nil
 	}
 
-	// Verify that the task was assigned to this node, preventing a rogue agent
-	// from submitting results for tasks belonging to other users' monitors.
-	if h.pool != nil && result.TaskID != "" {
-		ctx := context.Background()
-		var assignedNodeID string
-		err := h.pool.QueryRow(ctx,
-			`SELECT node_id FROM scheduler_tasks WHERE id = $1`, result.TaskID,
-		).Scan(&assignedNodeID)
-		if err == nil && assignedNodeID != "" && assignedNodeID != c.NodeID {
-			h.logger.Warn("result rejected: task_id belongs to different node",
-				"node_id", c.NodeID, "task_id", result.TaskID, "assigned_node", assignedNodeID)
-			return apperr.Forbidden("task not assigned to this node")
-		}
-		// If the task is not found (err != nil), allow the result through — the task
-		// may be in a different store or already cleaned up. Deny only on confirmed mismatch.
-	}
-
 	ctx := context.Background()
-	streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, result.Data)
-	if err != nil {
-		return apperr.Internal("failed to write to stream", err)
-	}
-	h.logger.Info("probe result received", "node_id", c.NodeID, "task_id", result.TaskID, "stream_id", streamID)
+	for _, result := range results {
+		if result.TaskID == "" {
+			continue
+		}
 
-	ackPayload, _ := json.Marshal(map[string]string{"task_id": result.TaskID})
-	ackMsg := Message{Type: MsgTypeAck, Payload: json.RawMessage(ackPayload)}
-	ackBytes, _ := json.Marshal(ackMsg)
-	h.hub.Broadcast(c.NodeID, ackBytes)
+		// Verify that the task was assigned to this node, preventing a rogue agent
+		// from submitting results for tasks belonging to other users' monitors.
+		if h.pool != nil {
+			var assignedNodeID string
+			err := h.pool.QueryRow(ctx,
+				`SELECT node_id FROM scheduler_tasks WHERE id = $1`, result.TaskID,
+			).Scan(&assignedNodeID)
+			if err == nil && assignedNodeID != "" && assignedNodeID != c.NodeID {
+				h.logger.Warn("result rejected: task_id belongs to different node",
+					"node_id", c.NodeID, "task_id", result.TaskID, "assigned_node", assignedNodeID)
+				continue
+			}
+		}
+
+		streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, result.Data)
+		if err != nil {
+			h.logger.Error("failed to write result to stream", "task_id", result.TaskID, "err", err)
+			continue
+		}
+		h.logger.Info("probe result received", "node_id", c.NodeID, "task_id", result.TaskID, "stream_id", streamID)
+
+		ackPayload, _ := json.Marshal(map[string]string{"task_id": result.TaskID})
+		ackMsg := Message{Type: MsgTypeAck, Payload: json.RawMessage(ackPayload)}
+		ackBytes, _ := json.Marshal(ackMsg)
+		h.hub.Broadcast(c.NodeID, ackBytes)
+	}
 	return nil
 }
 

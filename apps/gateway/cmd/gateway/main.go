@@ -66,7 +66,7 @@ func main() {
 		Password:     cfg.RedisPassword,
 		DB:           cfg.RedisDB,
 		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
+		ReadTimeout:  10 * time.Second,
 		WriteTimeout: 3 * time.Second,
 		PoolSize:     10,
 	})

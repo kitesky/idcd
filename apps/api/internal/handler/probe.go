@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/denylist"
@@ -28,6 +29,7 @@ type ProbeHandler struct {
 // ProbePool is the interface for database operations.
 type ProbePool interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
 // NewProbeHandler creates a new ProbeHandler.
@@ -40,8 +42,9 @@ func NewProbeHandler(pool ProbePool, streamClient *stream.Client) *ProbeHandler 
 
 // ProbeRequest is the common request structure for probe endpoints.
 type ProbeRequest struct {
-	Target string                 `json:"target"`
-	Nodes  []string               `json:"nodes,omitempty"`
+	Target string         `json:"target"`
+	NodeID string         `json:"node_id,omitempty"` // single node shorthand
+	Nodes  []string       `json:"nodes,omitempty"`
 	Params map[string]any `json:"params,omitempty"`
 }
 
@@ -107,6 +110,17 @@ func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve node for diagnose tasks
+	diagNodeID := req.NodeID
+	if diagNodeID == "" && len(req.Nodes) > 0 {
+		diagNodeID = req.Nodes[0]
+	}
+	if diagNodeID == "" {
+		_ = h.pool.QueryRow(ctx,
+			`SELECT node_id FROM enrolled_nodes WHERE status='active' LIMIT 1`,
+		).Scan(&diagNodeID)
+	}
+
 	// Generate diagnosis ID
 	diagnosisID := idgen.ProbeTask()
 
@@ -115,7 +129,7 @@ func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
 	taskIDs := make([]string, 0, len(probeTypes))
 
 	for _, probeType := range probeTypes {
-		taskID, err := h.createProbeTask(ctx, r, probeType, resolvedTarget, req.Nodes, req.Params)
+		taskID, err := h.createProbeTask(ctx, r, probeType, resolvedTarget, diagNodeID, req.Nodes, req.Params)
 		if err != nil {
 			response.Error(w, r, apperr.Internal("Failed to create probe task", err))
 			return
@@ -150,8 +164,20 @@ func (h *ProbeHandler) handleProbe(w http.ResponseWriter, r *http.Request, probe
 		return
 	}
 
+	// Resolve node: prefer explicit node_id, then first item in nodes array
+	nodeID := req.NodeID
+	if nodeID == "" && len(req.Nodes) > 0 {
+		nodeID = req.Nodes[0]
+	}
+	// If still empty, pick any active node from DB
+	if nodeID == "" {
+		_ = h.pool.QueryRow(ctx,
+			`SELECT node_id FROM enrolled_nodes WHERE status='active' LIMIT 1`,
+		).Scan(&nodeID)
+	}
+
 	// Create probe task
-	taskID, err := h.createProbeTask(ctx, r, probeType, resolvedTarget, req.Nodes, req.Params)
+	taskID, err := h.createProbeTask(ctx, r, probeType, resolvedTarget, nodeID, req.Nodes, req.Params)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("Failed to create probe task", err))
 		return
@@ -166,11 +192,13 @@ func (h *ProbeHandler) handleProbe(w http.ResponseWriter, r *http.Request, probe
 }
 
 // createProbeTask creates a probe task in the database and pushes it to Redis Stream.
+// nodeID is the resolved target node; nodes is the original selection list.
 func (h *ProbeHandler) createProbeTask(
 	ctx context.Context,
 	r *http.Request,
 	probeType string,
 	target string,
+	nodeID string,
 	nodes []string,
 	params map[string]any,
 ) (string, error) {
@@ -232,13 +260,14 @@ func (h *ProbeHandler) createProbeTask(
 
 	// Push to Redis Stream "probe.tasks"
 	streamData := map[string]any{
-		"task_id":          taskID,
-		"type":             probeType,
-		"target":           target,
+		"task_id":           taskID,
+		"type":              probeType,
+		"target":            target,
 		"target_normalized": targetNormalized,
-		"params":           string(paramsJSON),
-		"node_selection":   string(nodeSelectionJSON),
-		"created_at":       time.Now().Unix(),
+		"params":            string(paramsJSON),
+		"node_id":           nodeID,
+		"node_selection":    string(nodeSelectionJSON),
+		"created_at":        time.Now().Unix(),
 	}
 
 	if _, err := h.streamClient.Add(ctx, "probe.tasks", streamData); err != nil {

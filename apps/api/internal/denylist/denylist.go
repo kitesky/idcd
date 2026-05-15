@@ -4,6 +4,7 @@ package denylist
 import (
 	"fmt"
 	"net"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -15,10 +16,24 @@ import (
 // Callers MUST use the returned resolvedAddr instead of the original hostname
 // so that the same IP that passed the check is the one that gets dialed.
 // Returns ("", err) if the target is rejected.
+//
+// Accepts full URLs (http://… or https://…), bare hostnames, or host:port pairs.
 func CheckTarget(target string) (resolvedAddr string, err error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return "", fmt.Errorf("target cannot be empty")
+	}
+
+	// Handle full URLs: extract host (and port) from the parsed URL.
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		u, parseErr := url.Parse(target)
+		if parseErr != nil {
+			return "", fmt.Errorf("invalid URL: %w", parseErr)
+		}
+		target = u.Host // e.g. "example.com" or "example.com:8443"
+		if target == "" {
+			return "", fmt.Errorf("URL has no host")
+		}
 	}
 
 	// Extract host and optional port.

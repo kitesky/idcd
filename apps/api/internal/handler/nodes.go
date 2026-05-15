@@ -94,38 +94,29 @@ func (h *NodesHandler) List(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, resp)
 }
 
-// queryNodes queries the database for nodes matching the given filters.
-func (h *NodesHandler) queryNodes(ctx context.Context, country, tier string) ([]NodeInfo, error) {
+// queryNodes queries the database for enrolled nodes matching the given filters.
+func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]NodeInfo, error) {
 	query := `
-		SELECT id, country, region, city, asn, asn_org, status, type, tier
-		FROM node
-		WHERE status = $1
+		SELECT node_id, hostname, ip_address, status,
+		       metadata->>'country_code' AS country_code,
+		       metadata->>'region'       AS region,
+		       metadata->>'city'         AS city,
+		       metadata->>'asn'          AS asn,
+		       metadata->>'isp'          AS isp
+		FROM enrolled_nodes
+		WHERE status = 'active'
 	`
-	args := []any{"active"}
-	argIdx := 2
+	args := []any{}
+	argIdx := 1
 
-	// Add country filter
 	if country != "" {
-		query += " AND country = $" + strconv.Itoa(argIdx)
+		query += " AND metadata->>'country_code' = $" + strconv.Itoa(argIdx)
 		args = append(args, country)
 		argIdx++
 	}
 
-	// Add tier filter (map tier1_cn/tier1_overseas/community to tier integer)
-	if tier != "" {
-		switch tier {
-		case "tier1_cn", "tier1_overseas":
-			query += " AND tier = $" + strconv.Itoa(argIdx)
-			args = append(args, 1)
-			argIdx++
-		case "community":
-			query += " AND tier = $" + strconv.Itoa(argIdx)
-			args = append(args, 3)
-			argIdx++
-		}
-	}
-
-	query += " ORDER BY country, city LIMIT 1000"
+	_ = argIdx
+	query += " ORDER BY node_id LIMIT 1000"
 
 	rows, err := h.pool.Query(ctx, query, args...)
 	if err != nil {
@@ -136,49 +127,44 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, tier string) ([]
 	var nodes []NodeInfo
 	for rows.Next() {
 		var n NodeInfo
-		var asnInt *int
-		var tierInt *int
-		var nodeType string
+		var hostname, ipAddr *string
+		var countryCode, region, city, asn, isp *string
 
-		err := rows.Scan(
+		if err := rows.Scan(
 			&n.ID,
-			&n.CountryCode,
-			&n.Region,
-			&n.City,
-			&asnInt,
-			&n.ISP,
+			&hostname,
+			&ipAddr,
 			&n.Status,
-			&nodeType,
-			&tierInt,
-		)
-		if err != nil {
+			&countryCode,
+			&region,
+			&city,
+			&asn,
+			&isp,
+		); err != nil {
 			return nil, err
 		}
 
-		// Convert ASN integer to string
-		if asnInt != nil {
-			n.ASN = strconv.Itoa(*asnInt)
+		if hostname != nil {
+			n.Name = *hostname
+		} else {
+			n.Name = n.ID
 		}
-
-		// Map tier integer to tier string
-		if tierInt != nil {
-			switch *tierInt {
-			case 1:
-				// Determine if CN or overseas based on country
-				if n.CountryCode == "CN" {
-					n.Tier = "tier1_cn"
-				} else {
-					n.Tier = "tier1_overseas"
-				}
-			case 2:
-				n.Tier = "tier2"
-			case 3:
-				n.Tier = "community"
-			}
+		if countryCode != nil {
+			n.CountryCode = *countryCode
 		}
-
-		// Use node ID as name if no explicit name field
-		n.Name = n.ID
+		if region != nil {
+			n.Region = *region
+		}
+		if city != nil {
+			n.City = *city
+		}
+		if asn != nil {
+			n.ASN = *asn
+		}
+		if isp != nil {
+			n.ISP = *isp
+		}
+		n.Tier = "community"
 
 		nodes = append(nodes, n)
 	}

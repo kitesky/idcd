@@ -113,11 +113,12 @@ export async function getNodes(): Promise<Node[]> {
 }
 
 // Probe API — shared POST helper
-function probePost(endpoint: string, params: ProbeParams): Promise<ProbeResult> {
-  return apiRequest<ProbeResult>(`/v1/probe/${endpoint}`, {
+async function probePost(endpoint: string, params: ProbeParams): Promise<ProbeResult> {
+  const res = await apiRequest<{ data: ProbeResult }>(`/v1/probe/${endpoint}`, {
     method: "POST",
     body: JSON.stringify(params),
   })
+  return res.data
 }
 
 export const probeHttp      = (p: ProbeParams) => probePost("http",       p)
@@ -131,7 +132,8 @@ export const probeMtr        = (p: ProbeParams) => probePost("mtr",        p)
 export const probeSpeedtest  = (p: ProbeParams) => probePost("speedtest",  p)
 
 export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
-  return apiRequest<ProbeTaskResult>(`/v1/probe/tasks/${taskId}`)
+  const res = await apiRequest<{ data: ProbeTaskResult }>(`/v1/probe/tasks/${taskId}`)
+  return res.data
 }
 
 // Info API
@@ -156,11 +158,13 @@ export interface WhoisInfo {
 }
 
 export async function getSSLInfo(domain: string): Promise<SSLInfo> {
-  return apiRequest<SSLInfo>(`/v1/info/ssl?q=${encodeURIComponent(domain)}`)
+  const res = await apiRequest<{ data: SSLInfo }>(`/v1/info/ssl?q=${encodeURIComponent(domain)}`)
+  return res.data
 }
 
 export async function getWhoisInfo(domain: string): Promise<WhoisInfo> {
-  return apiRequest<WhoisInfo>(`/v1/info/whois?q=${encodeURIComponent(domain)}`)
+  const res = await apiRequest<{ data: WhoisInfo }>(`/v1/info/whois?q=${encodeURIComponent(domain)}`)
+  return res.data
 }
 
 // ---- Info API: additional types & functions ----
@@ -218,37 +222,45 @@ export interface ICPInfo {
 }
 
 export async function getRDNSInfo(q: string): Promise<RDNSInfo> {
-  return apiRequest<RDNSInfo>(`/v1/info/rdns?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: RDNSInfo }>(`/v1/info/rdns?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 export async function getMXInfo(q: string): Promise<MXInfo> {
-  return apiRequest<MXInfo>(`/v1/info/mx?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: MXInfo }>(`/v1/info/mx?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 export async function getSPFInfo(q: string): Promise<SPFInfo> {
-  return apiRequest<SPFInfo>(`/v1/info/spf?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: SPFInfo }>(`/v1/info/spf?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 export async function getDMARCInfo(q: string): Promise<DMARCInfo> {
-  return apiRequest<DMARCInfo>(`/v1/info/dmarc?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: DMARCInfo }>(`/v1/info/dmarc?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 export async function getDKIMInfo(q: string, selector?: string): Promise<DKIMInfo> {
-  return apiRequest<DKIMInfo>(
+  const res = await apiRequest<{ data: DKIMInfo }>(
     `/v1/info/dkim?q=${encodeURIComponent(q)}${selector ? `&selector=${encodeURIComponent(selector)}` : ""}`
   )
+  return res.data
 }
 
 export async function getASNInfo(q: string): Promise<ASNInfo> {
-  return apiRequest<ASNInfo>(`/v1/info/asn?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: ASNInfo }>(`/v1/info/asn?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 export async function getBGPInfo(q: string): Promise<BGPInfo> {
-  return apiRequest<BGPInfo>(`/v1/info/bgp?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: BGPInfo }>(`/v1/info/bgp?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 export async function getICPInfo(q: string): Promise<ICPInfo> {
-  return apiRequest<ICPInfo>(`/v1/info/icp?q=${encodeURIComponent(q)}`)
+  const res = await apiRequest<{ data: ICPInfo }>(`/v1/info/icp?q=${encodeURIComponent(q)}`)
+  return res.data
 }
 
 // Billing API

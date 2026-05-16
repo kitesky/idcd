@@ -98,6 +98,7 @@ interface FormState {
   packetLossThreshold: string
   port: string
   expectedIp: string
+  sslExpiryDays: string  // 到期前 N 天告警
   // agent obs (M21/M22/M23)
   agentObsEndpointUrl: string
   agentObsModelName: string
@@ -117,6 +118,7 @@ const DEFAULT_FORM: FormState = {
   packetLossThreshold: "10",
   port: "80",
   expectedIp: "",
+  sslExpiryDays: "30",
   agentObsEndpointUrl: "",
   agentObsModelName: "",
   agentObsLatencySlaMs: "5000",
@@ -223,9 +225,11 @@ export function NewMonitorClient() {
         break
       }
       case "ssl_expiry":
-      case "domain_expiry":
-        // no per-type config fields exposed in UI yet
+      case "domain_expiry": {
+        const days = parseInt(f.sslExpiryDays, 10)
+        if (!isNaN(days) && days > 0) cfg.expiry_warning_days = days
         break
+      }
       case "llm_endpoint": {
         if (f.agentObsEndpointUrl.trim()) cfg.endpoint_url = f.agentObsEndpointUrl.trim()
         if (f.agentObsModelName.trim()) cfg.model_name = f.agentObsModelName.trim()
@@ -538,6 +542,26 @@ export function NewMonitorClient() {
                   </div>
                 )}
 
+                {(form.type === "ssl_expiry" || form.type === "domain_expiry") && (
+                  <div className="space-y-2">
+                    <Label htmlFor="ssl-expiry-days">
+                      到期前告警天数
+                    </Label>
+                    <Input
+                      id="ssl-expiry-days"
+                      type="number"
+                      placeholder="30"
+                      min="1"
+                      max="365"
+                      value={form.sslExpiryDays}
+                      onChange={(e) => update("sslExpiryDays", e.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      证书/域名到期前 N 天触发告警，默认 30 天
+                    </p>
+                  </div>
+                )}
+
                 {form.type === "llm_endpoint" && (
                   <>
                     <div className="space-y-2">
@@ -589,6 +613,8 @@ export function NewMonitorClient() {
                   form.type !== "ping" &&
                   form.type !== "tcp" &&
                   form.type !== "dns" &&
+                  form.type !== "ssl_expiry" &&
+                  form.type !== "domain_expiry" &&
                   form.type !== "llm_endpoint" && (
                     <p className="text-sm text-muted-foreground">
                       此类型暂无额外高级配置项

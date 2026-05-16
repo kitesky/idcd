@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
   Bell,
+  ChevronDown,
   Edit,
   Pause,
   Play,
@@ -18,6 +19,11 @@ import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible"
 import {
   Dialog,
   DialogContent,
@@ -135,6 +141,15 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
   const [name, setName] = useState(monitor.name)
   const [target, setTarget] = useState(monitor.target)
   const [intervalSeconds, setIntervalSeconds] = useState(monitor.intervalSeconds)
+  const [advancedOpen, setAdvancedOpen] = useState(false)
+  // Advanced config fields
+  const [timeoutMs, setTimeoutMs] = useState<number | "">(monitor.timeoutMs ?? "")
+  const [assertStatusCode, setAssertStatusCode] = useState<number | "">(monitor.assertStatusCode ?? "")
+  const [keywordMatch, setKeywordMatch] = useState(monitor.keywordMatch ?? "")
+  const [packetLossThreshold, setPacketLossThreshold] = useState<number | "">(monitor.packetLossThreshold ?? "")
+  const [port, setPort] = useState<number | "">(monitor.port ?? "")
+  const [expectedIp, setExpectedIp] = useState(monitor.expectedIp ?? "")
+  const [sslExpiryDays, setSslExpiryDays] = useState<number | "">(monitor.sslExpiryDays ?? "")
   const [submitting, setSubmitting] = useState(false)
 
   function handleOpenChange(v: boolean) {
@@ -143,6 +158,14 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
       setName(monitor.name)
       setTarget(monitor.target)
       setIntervalSeconds(monitor.intervalSeconds)
+      setTimeoutMs(monitor.timeoutMs ?? "")
+      setAssertStatusCode(monitor.assertStatusCode ?? "")
+      setKeywordMatch(monitor.keywordMatch ?? "")
+      setPacketLossThreshold(monitor.packetLossThreshold ?? "")
+      setPort(monitor.port ?? "")
+      setExpectedIp(monitor.expectedIp ?? "")
+      setSslExpiryDays(monitor.sslExpiryDays ?? "")
+      setAdvancedOpen(false)
     }
     setOpen(v)
   }
@@ -151,12 +174,32 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
     e.preventDefault()
     setSubmitting(true)
     try {
+      const body: Record<string, unknown> = { name, target, interval_seconds: intervalSeconds }
+      if (timeoutMs !== "") body.timeout_ms = timeoutMs
+      if (assertStatusCode !== "") body.assert_status_code = assertStatusCode
+      if (keywordMatch) body.keyword_match = keywordMatch
+      if (packetLossThreshold !== "") body.packet_loss_threshold = packetLossThreshold
+      if (port !== "") body.port = port
+      if (expectedIp) body.expected_ip = expectedIp
+      if (sslExpiryDays !== "") body.ssl_expiry_days = sslExpiryDays
       const json = await apiRequest<{ data: Monitor }>(`/v1/monitors/${monitor.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, target, interval_seconds: intervalSeconds }),
+        body: JSON.stringify(body),
       })
-      const updated: Monitor = json?.data ?? { ...monitor, name, target, intervalSeconds }
+      const updated: Monitor = json?.data ?? {
+        ...monitor,
+        name,
+        target,
+        intervalSeconds,
+        timeoutMs: timeoutMs !== "" ? timeoutMs : undefined,
+        assertStatusCode: assertStatusCode !== "" ? assertStatusCode : undefined,
+        keywordMatch: keywordMatch || undefined,
+        packetLossThreshold: packetLossThreshold !== "" ? packetLossThreshold : undefined,
+        port: port !== "" ? port : undefined,
+        expectedIp: expectedIp || undefined,
+        sslExpiryDays: sslExpiryDays !== "" ? sslExpiryDays : undefined,
+      }
       onUpdated(updated)
       setOpen(false)
       toast.success("监控已更新")
@@ -167,6 +210,17 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
       setSubmitting(false)
     }
   }
+
+  // Determine which advanced fields are relevant for this monitor type
+  const showAssertStatus = ["http", "https", "keyword", "llm_endpoint", "tool_api", "rag"].includes(monitor.type)
+  const showKeyword = monitor.type === "keyword"
+  const showTimeout = ["http", "https", "ping", "tcp", "keyword", "llm_endpoint", "tool_api", "rag"].includes(monitor.type)
+  const showPacketLoss = monitor.type === "ping"
+  const showPort = monitor.type === "tcp"
+  const showExpectedIp = monitor.type === "dns"
+  const showSslExpiry = monitor.type === "ssl_expiry"
+
+  const hasAdvancedFields = showAssertStatus || showKeyword || showTimeout || showPacketLoss || showPort || showExpectedIp || showSslExpiry
 
   return (
     <>
@@ -211,6 +265,115 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                 required
               />
             </div>
+
+            {hasAdvancedFields && (
+              <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                <CollapsibleTrigger asChild>
+                  <Button type="button" variant="ghost" size="sm" className="w-full justify-between px-0 text-xs text-muted-foreground hover:text-foreground">
+                    配置选项
+                    <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+                  </Button>
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-3 pt-2">
+                  {showTimeout && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-timeout" className="text-xs">超时（ms）</Label>
+                      <Input
+                        id="edit-timeout"
+                        type="number"
+                        min={100}
+                        placeholder="例: 5000"
+                        value={timeoutMs}
+                        onChange={(e) => setTimeoutMs(e.target.value === "" ? "" : Number(e.target.value))}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                  {showAssertStatus && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-assert" className="text-xs">断言状态码</Label>
+                      <Input
+                        id="edit-assert"
+                        type="number"
+                        placeholder="例: 200"
+                        value={assertStatusCode}
+                        onChange={(e) => setAssertStatusCode(e.target.value === "" ? "" : Number(e.target.value))}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                  {showKeyword && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-keyword" className="text-xs">关键字匹配</Label>
+                      <Input
+                        id="edit-keyword"
+                        placeholder="页面必须包含的关键字"
+                        value={keywordMatch}
+                        onChange={(e) => setKeywordMatch(e.target.value)}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                  {showPacketLoss && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-packetloss" className="text-xs">丢包阈值（%）</Label>
+                      <Input
+                        id="edit-packetloss"
+                        type="number"
+                        min={0}
+                        max={100}
+                        placeholder="例: 10"
+                        value={packetLossThreshold}
+                        onChange={(e) => setPacketLossThreshold(e.target.value === "" ? "" : Number(e.target.value))}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                  {showPort && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-port" className="text-xs">端口</Label>
+                      <Input
+                        id="edit-port"
+                        type="number"
+                        min={1}
+                        max={65535}
+                        placeholder="例: 443"
+                        value={port}
+                        onChange={(e) => setPort(e.target.value === "" ? "" : Number(e.target.value))}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                  {showExpectedIp && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-expectedip" className="text-xs">期望 IP</Label>
+                      <Input
+                        id="edit-expectedip"
+                        placeholder="例: 104.21.0.1"
+                        value={expectedIp}
+                        onChange={(e) => setExpectedIp(e.target.value)}
+                        className="font-mono text-xs"
+                      />
+                    </div>
+                  )}
+                  {showSslExpiry && (
+                    <div className="space-y-1.5">
+                      <Label htmlFor="edit-sslexpiry" className="text-xs">到期告警提前天数</Label>
+                      <Input
+                        id="edit-sslexpiry"
+                        type="number"
+                        min={1}
+                        placeholder="例: 30"
+                        value={sslExpiryDays}
+                        onChange={(e) => setSslExpiryDays(e.target.value === "" ? "" : Number(e.target.value))}
+                        className="text-xs"
+                      />
+                    </div>
+                  )}
+                </CollapsibleContent>
+              </Collapsible>
+            )}
+
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
                 取消
@@ -424,6 +587,25 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         <p className="mt-1 font-mono text-sm text-muted-foreground">
           {currentMonitor.target}
         </p>
+        {/* 配置摘要 */}
+        {(() => {
+          const items: string[] = []
+          if (currentMonitor.timeoutMs) items.push(`超时 ${currentMonitor.timeoutMs}ms`)
+          if (currentMonitor.assertStatusCode) items.push(`断言 ${currentMonitor.assertStatusCode}`)
+          if (currentMonitor.keywordMatch) items.push(`关键字: ${currentMonitor.keywordMatch}`)
+          if (currentMonitor.sslExpiryDays) items.push(`告警 ${currentMonitor.sslExpiryDays}天`)
+          if (currentMonitor.packetLossThreshold) items.push(`丢包阈值 ${currentMonitor.packetLossThreshold}%`)
+          if (currentMonitor.port) items.push(`端口 ${currentMonitor.port}`)
+          if (currentMonitor.expectedIp) items.push(`期望IP ${currentMonitor.expectedIp}`)
+          if (items.length === 0) return null
+          return (
+            <div className="flex flex-wrap gap-1.5 mt-2">
+              {items.map(item => (
+                <Badge key={item} variant="outline" className="text-xs font-mono">{item}</Badge>
+              ))}
+            </div>
+          )
+        })()}
       </div>
 
       <div className="flex items-center gap-3 rounded-md border border-dashed px-4 py-3" data-testid="sse-live-check">

@@ -14,26 +14,35 @@ import (
 )
 
 const (
-	envPort     = "CERT_SVC_PORT"
-	envDB       = "CERT_DB_DSN"
-	envRedis    = "CERT_REDIS_URL"
-	envLogLevel = "CERT_LOG_LEVEL"
-	envEnv      = "CERT_ENV"
+	envPort         = "CERT_SVC_PORT"
+	envDB           = "CERT_DB_DSN"
+	envRedis        = "CERT_REDIS_URL"
+	envRedisAddr    = "CERT_REDIS_ADDR"
+	envLogLevel     = "CERT_LOG_LEVEL"
+	envEnv          = "CERT_ENV"
+	envLEEnv        = "CERT_LE_ENV"
+	envAccountEmail = "CERT_ACME_ACCOUNT_EMAIL"
 
-	defaultPort     = 8080
-	defaultDB       = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
-	defaultRedis    = "redis://localhost:6379/0"
-	defaultLogLevel = "info"
-	defaultEnv      = "development"
+	defaultPort         = 8080
+	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
+	defaultRedis        = "redis://localhost:6379/0"
+	defaultRedisAddr    = "localhost:6379"
+	defaultLogLevel     = "info"
+	defaultEnv          = "development"
+	defaultLEEnv        = "staging"
+	defaultAccountEmail = "acme@idcd.local"
 )
 
 // Config is the cert-svc runtime configuration.
 type Config struct {
-	Port        int
-	DatabaseDSN string
-	RedisURL    string
-	LogLevel    string
-	Env         string
+	Port         int
+	DatabaseDSN  string
+	RedisURL     string
+	RedisAddr    string
+	LogLevel     string
+	Env          string
+	LEEnv        string
+	AccountEmail string
 }
 
 // Load reads CERT_* env vars and returns a populated Config.
@@ -41,11 +50,14 @@ type Config struct {
 // failure today is a non-numeric CERT_SVC_PORT.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:        defaultPort,
-		DatabaseDSN: defaultDB,
-		RedisURL:    defaultRedis,
-		LogLevel:    defaultLogLevel,
-		Env:         defaultEnv,
+		Port:         defaultPort,
+		DatabaseDSN:  defaultDB,
+		RedisURL:     defaultRedis,
+		RedisAddr:    defaultRedisAddr,
+		LogLevel:     defaultLogLevel,
+		Env:          defaultEnv,
+		LEEnv:        defaultLEEnv,
+		AccountEmail: defaultAccountEmail,
 	}
 
 	if v := strings.TrimSpace(os.Getenv(envPort)); v != "" {
@@ -65,11 +77,20 @@ func Load() (*Config, error) {
 	if v := strings.TrimSpace(os.Getenv(envRedis)); v != "" {
 		cfg.RedisURL = v
 	}
+	if v := strings.TrimSpace(os.Getenv(envRedisAddr)); v != "" {
+		cfg.RedisAddr = v
+	}
 	if v := strings.TrimSpace(os.Getenv(envLogLevel)); v != "" {
 		cfg.LogLevel = strings.ToLower(v)
 	}
 	if v := strings.TrimSpace(os.Getenv(envEnv)); v != "" {
 		cfg.Env = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envLEEnv)); v != "" {
+		cfg.LEEnv = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAccountEmail)); v != "" {
+		cfg.AccountEmail = v
 	}
 
 	return cfg, nil

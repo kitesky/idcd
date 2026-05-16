@@ -12,6 +12,8 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+
+	"github.com/kite365/idcd/apps/cert-svc/internal/service"
 )
 
 // ErrorResponse is the JSON shape returned for every non-2xx response.
@@ -26,8 +28,9 @@ type ErrorResponse struct {
 // business logic lands in W2. Today only the readiness probes are wired,
 // so the fields are optional — handlers must nil-check before use.
 type Deps struct {
-	DB    Pinger
-	Redis Pinger
+	DB      Pinger
+	Redis   Pinger
+	Service *service.Service
 }
 
 // Pinger is the minimum surface readyz needs. Both pgxpool.Pool and

@@ -53,7 +53,9 @@ func main() {
 		_ = shutdownTelemetry(ctx)
 	}()
 
-	// W2 will populate Deps with a pgxpool + redis client.
+	// Service is initialised lazily by the worker; the server only
+	// exposes the orchestrator surface for manual-mode confirmation in
+	// W3. For W2 we leave Deps.Service nil — handlers nil-check.
 	router := handler.New(handler.Deps{})
 
 	srv := &http.Server{

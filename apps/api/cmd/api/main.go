@@ -4,16 +4,21 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"log"
+	"log/slog"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	_ "github.com/lib/pq" // PostgreSQL driver for sql.DB health check
 	"github.com/redis/go-redis/v9"
 
+	acmemgr "github.com/kite365/idcd/apps/api/internal/acme"
 	"github.com/kite365/idcd/apps/api/internal/server"
 	"github.com/kite365/idcd/lib/shared/config"
 	"github.com/kite365/idcd/lib/shared/logger"
@@ -103,6 +108,13 @@ func main() {
 	// Create and start server
 	srv := server.New(cfg, db, pgxPool, redisClient, slogLogger)
 
+	// ACME / Let's Encrypt for custom-domain status pages (M11 / K8).
+	// Feature-flagged via env vars; default OFF.  See wireACME for details.
+	if mgr := wireACME(pgxPool, slogLogger); mgr != nil {
+		srv.MountACME(mgr)
+		srv.StartACMEHTTPListener(mgr, acmeHTTPAddr())
+	}
+
 	// Start server in a goroutine
 	serverErr := make(chan error, 1)
 	go func() {
@@ -154,4 +166,112 @@ func maskDSN(dsn string) string {
 		return dsn[:20] + "***"
 	}
 	return "***"
+}
+
+// =====================================================================
+// ACME / Let's Encrypt wiring for custom-domain status pages (M11 / K8).
+//
+// Feature-flagged via environment variables so prod can enable per-env
+// without a config-schema change:
+//
+//   IDCD_ACME_ENABLED   "true" to turn on (default off)
+//   IDCD_ACME_EMAIL     contact address registered with Let's Encrypt
+//   IDCD_ACME_CACHE_DIR filesystem path for autocert.DirCache
+//                       (default "/var/cache/idcd-acme", falls back to
+//                       "./.acme-cache" if the default isn't writable)
+//   IDCD_ACME_HTTP_ADDR address for the HTTP-01 listener (default ":80")
+//
+// The HostPolicy queries status_pages.custom_domain_verified_at IS NOT
+// NULL — only domains that completed DNS verification can request a
+// cert.  This is identical to the read in
+// internal/handler/status_page_public.go.
+// =====================================================================
+
+// wireACME returns an *acme.Manager when IDCD_ACME_ENABLED=true, else nil.
+// pgxPool is required (the host policy hits the DB on every TLS hello).
+func wireACME(pool *pgxpool.Pool, log *slog.Logger) *acmemgr.Manager {
+	if !envBool("IDCD_ACME_ENABLED") {
+		return nil
+	}
+	if pool == nil {
+		log.Warn("acme: IDCD_ACME_ENABLED=true but pgxPool is nil; ACME disabled")
+		return nil
+	}
+
+	email := os.Getenv("IDCD_ACME_EMAIL")
+	if email == "" {
+		// Email is not strictly required by autocert but Let's Encrypt
+		// strongly recommends one for expiry notifications.  Log a
+		// warning but proceed — staging / non-prod often runs without.
+		log.Warn("acme: IDCD_ACME_EMAIL not set; Let's Encrypt expiry notices will be skipped")
+	}
+
+	cacheDir := os.Getenv("IDCD_ACME_CACHE_DIR")
+	if cacheDir == "" {
+		cacheDir = "/var/cache/idcd-acme"
+	}
+
+	checker := &pgxDomainChecker{pool: pool}
+	mgr := acmemgr.New(acmemgr.Config{
+		CacheDir: cacheDir,
+		Email:    email,
+	}, checker)
+	log.Info("acme: manager enabled",
+		"cache_dir", cacheDir,
+		"http_addr", acmeHTTPAddr(),
+		"email_set", email != "",
+	)
+	return mgr
+}
+
+// acmeHTTPAddr returns the listen address for the HTTP-01 challenge
+// listener.  Defaults to ":80".
+func acmeHTTPAddr() string {
+	if v := os.Getenv("IDCD_ACME_HTTP_ADDR"); v != "" {
+		return v
+	}
+	return ":80"
+}
+
+// envBool parses IDCD_* boolean env vars.  Accepts "true", "1", "yes"
+// (case-insensitive).
+func envBool(key string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(key))) {
+	case "true", "1", "yes", "on":
+		return true
+	}
+	return false
+}
+
+// pgxDomainChecker satisfies acmemgr.DomainChecker against the
+// status_pages table.
+type pgxDomainChecker struct {
+	pool *pgxpool.Pool
+}
+
+// IsVerifiedDomain reports whether host has a verified custom domain.
+// Uses a 2s timeout to keep TLS hello handshakes snappy even if the
+// DB is degraded — a slow DB causes a TLS handshake failure rather
+// than blocking the connection indefinitely.
+func (c *pgxDomainChecker) IsVerifiedDomain(ctx context.Context, host string) (bool, error) {
+	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
+	defer cancel()
+
+	var one int
+	err := c.pool.QueryRow(ctx,
+		`SELECT 1 FROM status_pages
+		 WHERE custom_domain = $1
+		   AND custom_domain_verified_at IS NOT NULL
+		 LIMIT 1`,
+		host,
+	).Scan(&one)
+	if err != nil {
+		// pgx returns ErrNoRows when nothing matches — that's "not verified",
+		// not an error.
+		if errors.Is(err, pgx.ErrNoRows) {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
 }

@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -28,7 +29,9 @@ import (
 	agentws "github.com/kite365/idcd/apps/agent/internal/ws"
 	"github.com/kite365/idcd/apps/agent/internal/probe"
 	"github.com/kite365/idcd/apps/agent/internal/task"
+	"github.com/kite365/idcd/apps/agent/internal/watermark"
 	"github.com/kite365/idcd/lib/shared/logger"
+	"github.com/kite365/idcd/lib/shared/netfilter"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
@@ -319,6 +322,21 @@ func (a *Agent) handleTask(payload json.RawMessage) error {
 	if err := json.Unmarshal(payload, &t); err != nil {
 		return fmt.Errorf("task: parse: %w", err)
 	}
+
+	// SSRF / metadata-IP guard: a malicious gateway or compromised admin could
+	// otherwise have every agent simultaneously dial 169.254.169.254 (cloud
+	// metadata service) and exfiltrate IAM credentials. Refuse the task
+	// before any DNS / TCP / HTTP / SMTP I/O happens against task.Target.
+	if blocked, reason := checkTaskTarget(t); blocked {
+		a.logger.Warn("task: target blocked by netfilter",
+			"task_id", t.ID, "type", t.Type, "target", t.Target, "reason", reason)
+		result := a.failedTaskResult(t, "target blocked by netfilter: "+reason)
+		if err := a.buffer.Store(result); err != nil {
+			a.logger.Error("task: store blocked result", "task_id", t.ID, "err", err)
+		}
+		return nil
+	}
+
 	result := a.executor.Execute(t)
 	if result != nil {
 		if err := a.buffer.Store(*result); err != nil {
@@ -326,6 +344,103 @@ func (a *Agent) handleTask(payload json.RawMessage) error {
 		}
 	}
 	return nil
+}
+
+// checkTaskTarget validates task.Target against the netfilter SSRF policy.
+// Returns (true, reason) when the task must be rejected. Per-task allow-list
+// CIDRs may be supplied via options["allow_cidrs"]:[]string — useful for
+// speedtest servers whose operator pins the server set in advance.
+func checkTaskTarget(t task.Task) (bool, string) {
+	host := extractHost(string(t.Type), t.Target)
+	if host == "" {
+		return true, "empty target"
+	}
+	cfg := netfilter.Config{}
+	if cidrs := allowCIDRsFromOptions(t.Options); len(cidrs) > 0 {
+		nets, err := netfilter.ParseAllowList(cidrs)
+		if err != nil {
+			return true, "invalid allow_cidrs in task options: " + err.Error()
+		}
+		cfg.AllowList = nets
+	}
+	return netfilter.IsBlockedWith(host, cfg)
+}
+
+// extractHost strips scheme / path / port from a probe target so netfilter
+// sees only the hostname or IP. Mirrors the input shapes the various probes
+// accept (DNS gets bare hostname, HTTP gets full URL, TCP/SMTP get host:port,
+// etc.).
+func extractHost(taskType, target string) string {
+	target = strings.TrimSpace(target)
+	if target == "" {
+		return ""
+	}
+	// URL form: http(s)://host[:port]/path
+	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
+		if u, err := url.Parse(target); err == nil && u.Host != "" {
+			return u.Hostname()
+		}
+	}
+	// Bracketed IPv6 literal, optionally with port: [::1]:80
+	if strings.HasPrefix(target, "[") {
+		if host, _, err := net.SplitHostPort(target); err == nil {
+			return host
+		}
+		// Bare [::1] without port.
+		return strings.Trim(target, "[]")
+	}
+	// host:port (IPv4 or hostname) — exactly one colon.
+	if strings.Count(target, ":") == 1 {
+		if host, _, err := net.SplitHostPort(target); err == nil {
+			return host
+		}
+	}
+	// Otherwise: bare IP (v4/v6) or bare hostname.
+	return target
+}
+
+// allowCIDRsFromOptions extracts ["allow_cidrs"] from a task's options map.
+// Accepts []string or []any (JSON decodes string arrays into []any when the
+// surrounding map is map[string]any).
+func allowCIDRsFromOptions(opts map[string]any) []string {
+	v, ok := opts["allow_cidrs"]
+	if !ok {
+		return nil
+	}
+	switch xs := v.(type) {
+	case []string:
+		return xs
+	case []any:
+		out := make([]string, 0, len(xs))
+		for _, x := range xs {
+			if s, ok := x.(string); ok {
+				out = append(out, s)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// failedTaskResult builds a signed Result describing a refused task. It mirrors
+// the executor's "unsupported task type" default branch so downstream
+// aggregation handles this uniformly.
+func (a *Agent) failedTaskResult(t task.Task, errMsg string) probe.Result {
+	timestamp := time.Now()
+	cfg := a.cfg.Load()
+	result := probe.Result{
+		TaskID:     t.ID,
+		NodeID:     t.NodeID,
+		Type:       t.Type,
+		Target:     t.Target,
+		Success:    false,
+		Error:      errMsg,
+		Data:       map[string]any{},
+		Timestamp:  timestamp,
+		DurationMs: 0,
+	}
+	result.Watermark = watermark.Sign(t.NodeID, t.ID, t.Target, timestamp, []byte(cfg.SecretKey))
+	return result
 }
 
 func (a *Agent) handleAck(payload json.RawMessage) error {

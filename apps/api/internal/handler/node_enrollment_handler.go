@@ -1,5 +1,42 @@
 package handler
 
+// Node enrollment & activation state machine
+// ------------------------------------------
+//
+//   1. Admin calls POST /internal/admin/nodes/enrollment-tokens
+//      → stores a SHA-256 hash of a single-use token in
+//        node_enrollment_tokens with a default 24h TTL.
+//
+//   2. Operator runs the agent on a fresh box. Agent calls
+//        POST /v1/agent/enroll  { token, hostname, arch, os, kernel }
+//      → API atomically (a) marks the token as used and
+//        (b) inserts a row into enrolled_nodes with status='pending'.
+//        API returns { node_id, secret_key, gateway_url }.
+//
+//   3. status='pending' → status='active' happens via ONE of:
+//        (a) Gateway auto-activate: when the agent opens a WebSocket
+//            to the gateway, apps/gateway/internal/handler/ws.go runs
+//            `UPDATE enrolled_nodes SET status='active', last_seen_at=now()`.
+//            This is the production path — no admin action required.
+//        (b) Admin manual activate: POST /v1/admin/nodes/{id}/activate
+//            (handled by NodeActivate below) lets ops force a pending
+//            node into 'active' without waiting for a gateway connect.
+//            Useful for staging, broken egress, or pre-warming a node.
+//
+//   4. status='active' ↔ status='offline': gateway flips to 'offline'
+//      when the WS read pump exits (see ws.go readPump defer).
+//      A cleanup job in apps/gateway/internal/scheduler/cleanup.go
+//      also stale-times nodes that haven't sent heartbeats.
+//
+//   5. status='disabled' / 'drained' are admin-only terminal states
+//      (see migration 00030 for the full enum).
+//
+// Why no gateway → API "node-online" HTTP webhook? Gateway already shares
+// the postgres pool, so it writes status directly (one round-trip, no
+// inter-service auth surface). If we ever split gateway out into its own
+// DB tenant we'll need a `POST /internal/nodes/{id}/heartbeat-active`
+// endpoint here — leaving that TODO for the gateway team.
+
 import (
 	"context"
 	"crypto/subtle"
@@ -8,6 +45,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -202,5 +240,91 @@ func (h *NodeEnrollmentHandler) Enroll(w http.ResponseWriter, r *http.Request) {
 		NodeID:     nodeID,
 		SecretKey:  secretKey,
 		GatewayURL: h.gatewayURL,
+	})
+}
+
+// activateResponse is the response payload for NodeActivate.
+type activateResponse struct {
+	NodeID         string `json:"node_id"`
+	Status         string `json:"status"`           // always "active" on success
+	PreviousStatus string `json:"previous_status"`  // pending|offline|drained|...
+}
+
+// NodeActivate flips an enrolled node from any non-disabled state to 'active'.
+//
+// Use case: an admin in the dashboard explicitly approves a freshly enrolled
+// node ("status=pending") before the agent has connected to the gateway, OR
+// recovers a node that the cleanup job marked 'offline' after a transient
+// network blip.
+//
+// Refuses to act on 'disabled' nodes — those are intentional bans and must
+// be re-enabled through a separate (audited) path, not this convenience
+// endpoint.
+//
+// POST /v1/admin/nodes/{node_id}/activate
+//
+// TODO(server.go): mount POST /v1/admin/nodes/{node_id}/activate -> NodeActivate
+func (h *NodeEnrollmentHandler) NodeActivate(w http.ResponseWriter, r *http.Request) {
+	if !h.isAdmin(r) {
+		response.Error(w, r, apperr.Unauthorized("invalid admin token"))
+		return
+	}
+
+	nodeID := chi.URLParam(r, "node_id")
+	if nodeID == "" {
+		response.Error(w, r, apperr.Validation("node_id is required", ""))
+		return
+	}
+
+	// Atomic state-machine guard: only transition if the node exists and
+	// isn't disabled. RETURNING the prior status gives the admin UI a
+	// useful audit trail without a second roundtrip.
+	var previousStatus string
+	err := h.pool.QueryRow(r.Context(), `
+		WITH prev AS (
+			SELECT status FROM enrolled_nodes WHERE node_id = $1
+		)
+		UPDATE enrolled_nodes
+		SET status = 'active', last_seen_at = NOW()
+		WHERE node_id = $1
+		  AND status != 'disabled'
+		RETURNING (SELECT status FROM prev)
+	`, nodeID).Scan(&previousStatus)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Two possible causes: node doesn't exist, or it's disabled.
+			// Disambiguate with one more query so the admin gets a clear
+			// error instead of a generic 404.
+			var status string
+			lookupErr := h.pool.QueryRow(r.Context(),
+				`SELECT status FROM enrolled_nodes WHERE node_id = $1`,
+				nodeID,
+			).Scan(&status)
+			if errors.Is(lookupErr, pgx.ErrNoRows) {
+				response.Error(w, r, apperr.NotFound("node not found"))
+				return
+			}
+			if lookupErr != nil {
+				response.Error(w, r, apperr.Internal("failed to look up node status", lookupErr))
+				return
+			}
+			if status == "disabled" {
+				response.Error(w, r, apperr.Conflict(
+					"node is disabled; re-enable through admin console first",
+				))
+				return
+			}
+			// Some other race — surface generically.
+			response.Error(w, r, apperr.Internal("activation update affected 0 rows", nil))
+			return
+		}
+		response.Error(w, r, apperr.Internal("failed to activate node", err))
+		return
+	}
+
+	response.JSON(w, r, http.StatusOK, activateResponse{
+		NodeID:         nodeID,
+		Status:         "active",
+		PreviousStatus: previousStatus,
 	})
 }

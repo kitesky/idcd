@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -168,6 +169,10 @@ func TestProbeHandler_Ping(t *testing.T) {
 	defer mr.Close()
 	defer mockPool.Close()
 
+	// No nodes specified → handler must look one up in the DB.
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_active_001"))
+
 	mockPool.ExpectExec("INSERT INTO probe_task").
 		WithArgs(
 			pgxmock.AnyArg(),
@@ -204,6 +209,9 @@ func TestProbeHandler_TCP(t *testing.T) {
 	handler, mr, mockPool := setupTestProbeHandler(t)
 	defer mr.Close()
 	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_active_001"))
 
 	mockPool.ExpectExec("INSERT INTO probe_task").
 		WithArgs(
@@ -242,6 +250,9 @@ func TestProbeHandler_DNS(t *testing.T) {
 	defer mr.Close()
 	defer mockPool.Close()
 
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_active_001"))
+
 	mockPool.ExpectExec("INSERT INTO probe_task").
 		WithArgs(
 			pgxmock.AnyArg(),
@@ -279,6 +290,9 @@ func TestProbeHandler_Traceroute(t *testing.T) {
 	defer mr.Close()
 	defer mockPool.Close()
 
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_active_001"))
+
 	mockPool.ExpectExec("INSERT INTO probe_task").
 		WithArgs(
 			pgxmock.AnyArg(),
@@ -315,6 +329,10 @@ func TestProbeHandler_Diagnose(t *testing.T) {
 	handler, mr, mockPool := setupTestProbeHandler(t)
 	defer mr.Close()
 	defer mockPool.Close()
+
+	// Diagnose looks up an active node once, then fans out 5 inserts.
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow("nd_active_001"))
 
 	// Expect 5 inserts (one for each probe type)
 	for range 5 {
@@ -482,6 +500,158 @@ func TestProbeHandler_InvalidRequest(t *testing.T) {
 
 	if rr.Code != http.StatusBadRequest {
 		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rr.Code)
+	}
+}
+
+// TestProbeHandler_NoActiveNode covers the case where no nodes are enrolled
+// or all are pending/offline. Previously the silent `_ = QueryRow(...).Scan`
+// swallowed the ErrNoRows and the task was queued anyway, leaving the user's
+// request stuck in "queued" forever. After the fix we return 503.
+func TestProbeHandler_NoActiveNode(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnError(pgx.ErrNoRows)
+
+	body, _ := json.Marshal(ProbeRequest{Target: "example.com"})
+	req := httptest.NewRequest("POST", "/v1/probe/http", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	ctx := context.WithValue(req.Context(), "request_id", "test-req-noactive")
+	req = req.WithContext(ctx)
+
+	rr := httptest.NewRecorder()
+	handler.HTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rr.Code, rr.Body.String())
+	}
+
+	var resp struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rr.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("decode error response: %v", err)
+	}
+	if resp.Error.Code != "UNAVAILABLE" {
+		t.Errorf("expected error code UNAVAILABLE, got %q", resp.Error.Code)
+	}
+	if resp.Error.Message == "" {
+		t.Error("expected non-empty error message guiding the user")
+	}
+
+	if err := mockPool.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+// TestProbeHandler_NoActiveNode_EmptyScan covers the defensive case where the
+// DB driver returns no error but scans an empty node_id (shouldn't happen in
+// practice, but the silent-fail bug masked this for years — keep belt + braces).
+func TestProbeHandler_NoActiveNode_EmptyScan(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnRows(pgxmock.NewRows([]string{"node_id"}).AddRow(""))
+
+	body, _ := json.Marshal(ProbeRequest{Target: "example.com"})
+	req := httptest.NewRequest("POST", "/v1/probe/http", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.HTTP(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503 on empty scan, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestProbeHandler_NodeLookupDBError covers a real DB outage during the
+// active-node lookup. Must surface as 500, not silently fall through to a
+// task no one will run.
+func TestProbeHandler_NodeLookupDBError(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnError(errors.New("connection refused"))
+
+	body, _ := json.Marshal(ProbeRequest{Target: "example.com"})
+	req := httptest.NewRequest("POST", "/v1/probe/http", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.HTTP(rr, req)
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestProbeHandler_Diagnose_NoActiveNode mirrors the per-probe test for the
+// /v1/diagnose fan-out endpoint.
+func TestProbeHandler_Diagnose_NoActiveNode(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`SELECT node_id FROM enrolled_nodes WHERE status='active'`).
+		WillReturnError(pgx.ErrNoRows)
+
+	body, _ := json.Marshal(ProbeRequest{Target: "example.com"})
+	req := httptest.NewRequest("POST", "/v1/diagnose", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+
+	handler.Diagnose(rr, req)
+
+	if rr.Code != http.StatusServiceUnavailable {
+		t.Fatalf("expected 503, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+// TestProbeHandler_ExplicitNodeBypassesLookup confirms the happy path when
+// the caller supplies a node_id: we must NOT hit the DB at all.
+func TestProbeHandler_ExplicitNodeBypassesLookup(t *testing.T) {
+	handler, mr, mockPool := setupTestProbeHandler(t)
+	defer mr.Close()
+	defer mockPool.Close()
+
+	// Only the INSERT — no SELECT expected.
+	mockPool.ExpectExec("INSERT INTO probe_task").
+		WithArgs(
+			pgxmock.AnyArg(),
+			"http",
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+
+	body, _ := json.Marshal(ProbeRequest{
+		Target: "example.com",
+		NodeID: "nd_explicit_001",
+	})
+	req := httptest.NewRequest("POST", "/v1/probe/http", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rr := httptest.NewRecorder()
+	handler.HTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if err := mockPool.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
 	}
 }
 

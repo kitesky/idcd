@@ -381,6 +381,88 @@ func TestBillingHandler_Webhook_InvalidPayload(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
+// TestBillingHandler_Webhook_RefundFailed_EnqueuesRetry asserts the D5 fix:
+// on EventRefundFailed, the handler both records the failure in the DB AND
+// schedules an asynq refund retry task 5 minutes out.  Without the enqueue
+// path, refund_failed payments would sit forever waiting for manual admin
+// intervention.
+func TestBillingHandler_Webhook_RefundFailed_EnqueuesRetry(t *testing.T) {
+	h, mockPool, _ := newBillingTestHandler(t)
+	defer mockPool.Close()
+	enq := &stubBillingEnqueuer{}
+	h = h.WithEnqueuer(enq)
+
+	extTxnID := "stub_txn_refund_fail"
+
+	// 1. UPDATE payments to mark refund_failed (status + retry_count + timestamp).
+	mockPool.ExpectExec("UPDATE payments").
+		WithArgs(extTxnID, pgxmock.AnyArg(), "stub").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	// 2. SELECT payment+user to build the retry payload.
+	rows := pgxmock.NewRows([]string{
+		"id", "user_id", "ext_txn_id", "amount_cents", "currency", "provider", "user_email",
+	}).AddRow("pay_001", "u_user1", &extTxnID, int64(9900), "CNY", "stub", "user@example.com")
+	mockPool.ExpectQuery("SELECT(.|\n)+FROM payments").
+		WithArgs(extTxnID, "stub").
+		WillReturnRows(rows)
+
+	payload := billing.StubWebhookPayload{
+		EventType: billing.EventRefundFailed,
+		ExtTxnID:  extTxnID,
+		UserID:    "u_user1",
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader(body))
+	req = withRequestID(req, "test-req-refund-fail")
+	rr := httptest.NewRecorder()
+
+	h.Webhook(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+
+	calls := enq.Calls()
+	require.Len(t, calls, 1, "exactly one refund retry should be enqueued")
+	assert.Equal(t, 5*time.Minute, calls[0].Delay, "first retry must be scheduled 5 minutes out (D5)")
+	assert.Equal(t, "pay_001", calls[0].Payload.PaymentID)
+	assert.Equal(t, extTxnID, calls[0].Payload.ExtTxnID)
+	assert.Equal(t, int64(9900), calls[0].Payload.AmountCents)
+	assert.Equal(t, "user@example.com", calls[0].Payload.UserEmail)
+	assert.Equal(t, "webhook_refund_failed", calls[0].Payload.Reason)
+	assert.Equal(t, 0, calls[0].Payload.AttemptCount, "webhook-triggered retry starts at attempt 0")
+
+	assert.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestBillingHandler_Webhook_RefundFailed_NoEnqueuerStillRecordsDB verifies
+// backward compat: when no enqueuer is wired, the webhook still marks the
+// payment refund_failed (so the admin dashboard / manual recovery still
+// works), it just does not schedule an automated retry.
+func TestBillingHandler_Webhook_RefundFailed_NoEnqueuerStillRecordsDB(t *testing.T) {
+	h, mockPool, _ := newBillingTestHandler(t)
+	defer mockPool.Close()
+	// Intentionally do NOT wire an enqueuer.
+
+	mockPool.ExpectExec("UPDATE payments").
+		WithArgs("stub_txn_no_enq", pgxmock.AnyArg(), "stub").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	payload := billing.StubWebhookPayload{
+		EventType: billing.EventRefundFailed,
+		ExtTxnID:  "stub_txn_no_enq",
+		UserID:    "u_user1",
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader(body))
+	req = withRequestID(req, "test-req-noenq")
+	rr := httptest.NewRecorder()
+
+	h.Webhook(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.NoError(t, mockPool.ExpectationsWereMet())
+}
+
 // ---- StubConfirm ----
 
 func TestBillingHandler_StubConfirm_Success(t *testing.T) {

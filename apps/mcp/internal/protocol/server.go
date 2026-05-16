@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 )
 
 type ToolHandler func(ctx context.Context, args map[string]any) (string, error)
@@ -172,12 +174,109 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 	}
 }
 
+// ─────────────────────────────────────────────
+// HTTP transport (SSE + /messages) — secured
+// ─────────────────────────────────────────────
+
+// MaxMessageBytes is the maximum size of a single JSON-RPC message body
+// accepted over the HTTP transport. 1 MiB is far above any legitimate
+// tools/call payload and prevents memory exhaustion from a hostile client.
+const MaxMessageBytes int64 = 1 * 1024 * 1024
+
+// HTTPConfig configures the HTTP-transport handlers. Fail-closed defaults:
+// if Validator is nil OR AllowedOrigins is empty, every request is rejected.
+type HTTPConfig struct {
+	// Validator authenticates the bearer token. Required — nil ⇒ all
+	// requests get 401.
+	Validator TokenValidator
+
+	// AllowedOrigins is the CORS allowlist. An entry of "*" enables
+	// permissive mode (dev only — credentials are still NOT echoed).
+	// Empty list ⇒ every cross-origin preflight is rejected.
+	AllowedOrigins []string
+
+	// AllowCredentials echoes Access-Control-Allow-Credentials: true on
+	// matched origins. Wildcard "*" + credentials is unsafe and
+	// suppressed automatically.
+	AllowCredentials bool
+}
+
+// httpConfig is the package-level configuration consulted by the legacy
+// SSEHandler(s) / MessagesHandler(s) entry points (which keep their existing
+// signature so cmd/mcp/main.go does not have to be touched in this PR).
+// Prefer SSEHandlerWithConfig / MessagesHandlerWithConfig in new code.
+var (
+	httpConfigMu sync.RWMutex
+	httpConfig   HTTPConfig
+)
+
+// SetHTTPConfig installs the global config for SSEHandler / MessagesHandler.
+// Wire this from cmd/mcp/main.go before serving. If never called, the HTTP
+// transport rejects every request with 401 (fail-closed default).
+func SetHTTPConfig(cfg HTTPConfig) {
+	httpConfigMu.Lock()
+	defer httpConfigMu.Unlock()
+	httpConfig = cfg
+}
+
+func currentHTTPConfig() HTTPConfig {
+	httpConfigMu.RLock()
+	defer httpConfigMu.RUnlock()
+	return httpConfig
+}
+
+// SSEHandler returns the SSE handler bound to the package-level HTTP config.
+// Kept for backward compatibility with cmd/mcp/main.go; new code should use
+// SSEHandlerWithConfig.
 func SSEHandler(s *Server) http.Handler {
+	return sseHandler(s, currentHTTPConfig)
+}
+
+// MessagesHandler returns the /messages handler bound to the package-level
+// HTTP config. Kept for backward compatibility with cmd/mcp/main.go; new
+// code should use MessagesHandlerWithConfig.
+func MessagesHandler(s *Server) http.Handler {
+	return messagesHandler(s, currentHTTPConfig)
+}
+
+// SSEHandlerWithConfig is the preferred constructor — takes an explicit
+// config, no global state.
+func SSEHandlerWithConfig(s *Server, cfg HTTPConfig) http.Handler {
+	return sseHandler(s, func() HTTPConfig { return cfg })
+}
+
+// MessagesHandlerWithConfig is the preferred constructor — takes an
+// explicit config, no global state.
+func MessagesHandlerWithConfig(s *Server, cfg HTTPConfig) http.Handler {
+	return messagesHandler(s, func() HTTPConfig { return cfg })
+}
+
+func sseHandler(s *Server, cfgFn func() HTTPConfig) http.Handler {
+	_ = s // server reserved for future server-initiated SSE events
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgFn()
+
+		// CORS preflight is allowed only for explicitly-allowlisted origins.
+		if r.Method == http.MethodOptions {
+			handleCORSPreflight(w, r, cfg)
+			return
+		}
+
+		applyCORS(w, r, cfg)
+
+		// Authenticate every SSE connection. The MCP spec couples SSE
+		// session identity to /messages calls — anonymous SSE is the
+		// same exposure as anonymous /messages.
+		if _, err := authenticateRequest(r, cfg); err != nil {
+			writeAuthError(w, err)
+			return
+		}
+
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// Defence-in-depth: forbid iframe / cross-site embedding.
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 
 		fmt.Fprintf(w, "event: endpoint\ndata: /messages\n\n")
 		if f, ok := w.(http.Flusher); ok {
@@ -188,23 +287,55 @@ func SSEHandler(s *Server) http.Handler {
 	})
 }
 
-func MessagesHandler(s *Server) http.Handler {
+func messagesHandler(s *Server, cfgFn func() HTTPConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cfg := cfgFn()
+
+		if r.Method == http.MethodOptions {
+			handleCORSPreflight(w, r, cfg)
+			return
+		}
+
+		applyCORS(w, r, cfg)
+
+		// Auth precedes method check so anonymous probes can't enumerate
+		// which HTTP verbs the server accepts.
+		principal, err := authenticateRequest(r, cfg)
+		if err != nil {
+			writeAuthError(w, err)
+			return
+		}
+
 		if r.Method != http.MethodPost {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 			return
 		}
 
+		// TODO(v2-S3): per-token rate limit hook here (token-bucket
+		// keyed on principal.TokenID). Out of scope for this PR — see
+		// REVIEW-FINDINGS-2026-05-16 P0#7.
+
+		// Cap body to 1 MiB. http.MaxBytesReader returns an error on
+		// ReadAll once the limit is exceeded, and also writes a 413 to
+		// the response writer if we let it. We surface 413 ourselves
+		// for a stable error contract.
+		r.Body = http.MaxBytesReader(w, r.Body, MaxMessageBytes)
 		body, err := io.ReadAll(r.Body)
 		if err != nil {
+			if isMaxBytesError(err) {
+				http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+				return
+			}
 			http.Error(w, "read error", http.StatusBadRequest)
 			return
 		}
 
+		ctx := withPrincipal(r.Context(), principal)
 		line := []byte(strings.TrimSpace(string(body)))
-		resp := s.handle(r.Context(), line)
+		resp := s.handle(ctx, line)
 
 		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Content-Type-Options", "nosniff")
 		if resp == nil {
 			w.WriteHeader(http.StatusNoContent)
 			return
@@ -215,6 +346,104 @@ func MessagesHandler(s *Server) http.Handler {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
-		w.Write(data)
+		_, _ = w.Write(data)
 	})
+}
+
+// authenticateRequest validates the bearer token from r and returns the
+// resulting principal. All errors map to 401 at the HTTP layer (the caller
+// uses writeAuthError).
+func authenticateRequest(r *http.Request, cfg HTTPConfig) (*Principal, error) {
+	if cfg.Validator == nil {
+		// Fail-closed: no validator wired ⇒ deny.
+		return nil, ErrTokenMissing
+	}
+	raw, err := extractBearerToken(r)
+	if err != nil {
+		return nil, err
+	}
+	return cfg.Validator.Validate(r.Context(), raw)
+}
+
+// writeAuthError emits a 401 with a stable, opaque body. We deliberately do
+// NOT echo which validator error fired (don't leak token state to an
+// unauthenticated client).
+func writeAuthError(w http.ResponseWriter, _ error) {
+	w.Header().Set("WWW-Authenticate", `Bearer realm="idcd-mcp"`)
+	http.Error(w, "unauthorized", http.StatusUnauthorized)
+}
+
+// isMaxBytesError reports whether err is the MaxBytesReader "too large"
+// error. Go 1.20+ wraps it as *http.MaxBytesError.
+func isMaxBytesError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var mbe *http.MaxBytesError
+	if errors.As(err, &mbe) {
+		return true
+	}
+	// Older runtimes returned a generic "http: request body too large".
+	return strings.Contains(err.Error(), "request body too large")
+}
+
+// ─────────────────────────────────────────────
+// CORS helpers (allowlist-only — no "*" leakage)
+// ─────────────────────────────────────────────
+
+func handleCORSPreflight(w http.ResponseWriter, r *http.Request, cfg HTTPConfig) {
+	origin := r.Header.Get("Origin")
+	if origin == "" || !isAllowedOrigin(origin, cfg.AllowedOrigins) {
+		// Don't echo Access-Control-Allow-Origin for unmatched origin.
+		w.WriteHeader(http.StatusForbidden)
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Vary", "Origin")
+	w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
+	w.Header().Set("Access-Control-Allow-Headers", "Authorization, Content-Type")
+	w.Header().Set("Access-Control-Max-Age", "600")
+	if cfg.AllowCredentials && !isWildcard(cfg.AllowedOrigins) {
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func applyCORS(w http.ResponseWriter, r *http.Request, cfg HTTPConfig) {
+	origin := r.Header.Get("Origin")
+	if origin == "" {
+		return
+	}
+	if !isAllowedOrigin(origin, cfg.AllowedOrigins) {
+		return
+	}
+	w.Header().Set("Access-Control-Allow-Origin", origin)
+	w.Header().Set("Vary", "Origin")
+	if cfg.AllowCredentials && !isWildcard(cfg.AllowedOrigins) {
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+}
+
+// isAllowedOrigin returns true if origin is in the allowlist. The single
+// entry "*" enables permissive mode for dev (every origin matches, but
+// credentials are never echoed).
+func isAllowedOrigin(origin string, allowed []string) bool {
+	for _, a := range allowed {
+		if a == "*" {
+			return true
+		}
+		if a == origin {
+			return true
+		}
+	}
+	return false
+}
+
+func isWildcard(allowed []string) bool {
+	for _, a := range allowed {
+		if a == "*" {
+			return true
+		}
+	}
+	return false
 }

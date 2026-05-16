@@ -3,6 +3,7 @@ package server
 
 import (
 	"context"
+	"crypto/tls"
 	"database/sql"
 	"log/slog"
 	"net/http"
@@ -16,6 +17,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
+	acmemgr "github.com/kite365/idcd/apps/api/internal/acme"
 	"github.com/kite365/idcd/apps/api/internal/billing"
 	"github.com/kite365/idcd/apps/api/internal/handler"
 	_ "github.com/kite365/idcd/apps/api/internal/metrics" // register business metrics with Prometheus default registry
@@ -758,4 +760,104 @@ func newFieldCipher(fieldKey string, log *slog.Logger) *aesenc.Cipher {
 		panic("encryption.field_key invalid: " + err.Error())
 	}
 	return c
+}
+
+// =====================================================================
+// ACME / Let's Encrypt wiring (custom-domain status pages — M11 / K8).
+//
+// The Manager (apps/api/internal/acme) was implemented but never wired
+// into the API server, causing custom-domain status pages to never
+// receive TLS certificates.  These methods plug it in.
+//
+// HTTP-01 vs TLS-ALPN-01:
+//   We use HTTP-01.  Easier to debug, no port-443 contention with the
+//   main TLS terminator (Cloudflare / Caddy / nginx), and works through
+//   any reverse proxy that forwards :80 to the API process.
+//
+// Port strategy:
+//   The main API server keeps its existing port (8080 by default).
+//   When ACME is enabled, StartACMEHTTPListener spins up an additional
+//   listener on :80 (configurable) whose handler is
+//   acme.Manager.HTTPHandler(fallback).  autocert short-circuits the
+//   /.well-known/acme-challenge/{token} path itself; everything else
+//   falls through to a 308 redirect to https:// (or the supplied
+//   fallback handler).
+//
+//   For testability we ALSO mount the challenge path on the main chi
+//   router via MountACME so smoke tests can hit it without a port-80
+//   listener.  In production traffic only ever hits the :80 listener
+//   for ACME validation, so the chi mount is harmless.
+//
+// TLS bootstrapping:
+//   The API server itself does not terminate TLS today (Cloudflare in
+//   front).  The Manager.GetCertificate hook is exposed via
+//   ACMETLSConfig() for future use when we run a direct TLS listener
+//   for custom-domain status pages.  Until then only HTTP-01 is wired.
+// =====================================================================
+
+// MountACME registers the HTTP-01 challenge route on the main chi router.
+// Safe to call after New() and before Start().  No-op if mgr is nil.
+//
+// The path is fixed by RFC 8555 §8.3: /.well-known/acme-challenge/{token}
+// The handler returned by mgr.HTTPHandler(nil) responds to that exact
+// prefix; the chi route forwards the request to it unchanged.
+func (s *Server) MountACME(mgr *acmemgr.Manager) {
+	if mgr == nil || s.router == nil {
+		return
+	}
+	h := mgr.HTTPHandler(nil)
+	s.router.Get("/.well-known/acme-challenge/{token}", h.ServeHTTP)
+	s.logger.Info("acme: HTTP-01 challenge route mounted on main router")
+}
+
+// StartACMEHTTPListener spins up an HTTP-only listener on the given addr
+// (typically ":80") whose handler is mgr.HTTPHandler(fallback).
+// autocert serves /.well-known/acme-challenge/* itself; everything else
+// is delegated to fallback.  When fallback is nil a permanent redirect
+// to the https:// equivalent of the request URL is returned.
+//
+// The listener runs in a goroutine and logs errors via s.logger.  It is
+// not part of the main httpServer lifecycle — caller may rely on
+// process termination to tear it down; this is acceptable for the
+// long-lived API process.
+//
+// No-op if mgr is nil or addr is empty.
+func (s *Server) StartACMEHTTPListener(mgr *acmemgr.Manager, addr string) {
+	if mgr == nil || addr == "" {
+		return
+	}
+	fallback := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		target := "https://" + r.Host + r.URL.RequestURI()
+		http.Redirect(w, r, target, http.StatusPermanentRedirect)
+	})
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mgr.HTTPHandler(fallback),
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      15 * time.Second,
+		IdleTimeout:       60 * time.Second,
+	}
+	go func() {
+		s.logger.Info("acme: starting HTTP-01 listener", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			s.logger.Error("acme: HTTP-01 listener error", "addr", addr, "error", err)
+		}
+	}()
+}
+
+// ACMETLSConfig returns a *tls.Config whose GetCertificate is wired to
+// the autocert manager.  Use this when you stand up a direct TLS
+// listener for custom-domain status pages.  Returns nil if mgr is nil.
+//
+// Not currently used in main.go — included for symmetry and future use.
+func ACMETLSConfig(mgr *acmemgr.Manager) *tls.Config {
+	if mgr == nil {
+		return nil
+	}
+	return &tls.Config{
+		GetCertificate: mgr.GetCertificate,
+		NextProtos:     []string{"h2", "http/1.1", "acme-tls/1"},
+		MinVersion:     tls.VersionTLS12,
+	}
 }

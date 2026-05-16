@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +22,16 @@ import (
 	"github.com/kite365/idcd/lib/shared/idgen"
 	"github.com/kite365/idcd/lib/shared/stream"
 )
+
+// errNoActiveProbeNode is returned by resolveActiveNodeID when no enrolled
+// node is currently in the 'active' state. The HTTP handler maps this to a
+// 503 Service Unavailable so callers (frontend, agent SDK) can distinguish
+// "no capacity right now" from generic server failure.
+//
+// See `node_enrollment_handler.go` for the full enrollment → pending → active
+// state machine. Active status is set by the gateway WS handler when an agent
+// connects, or manually by admin via POST /v1/admin/nodes/{id}/activate.
+var errNoActiveProbeNode = errors.New("no active probe node available")
 
 // ProbeHandler handles probe task endpoints.
 type ProbeHandler struct {
@@ -142,9 +153,12 @@ func (h *ProbeHandler) Diagnose(w http.ResponseWriter, r *http.Request) {
 		diagNodeID = req.Nodes[0]
 	}
 	if diagNodeID == "" {
-		_ = h.pool.QueryRow(ctx,
-			`SELECT node_id FROM enrolled_nodes WHERE status='active' LIMIT 1`,
-		).Scan(&diagNodeID)
+		resolved, resolveErr := h.resolveActiveNodeID(ctx)
+		if resolveErr != nil {
+			h.writeNodeResolutionError(w, r, resolveErr)
+			return
+		}
+		diagNodeID = resolved
 	}
 
 	// Generate diagnosis ID
@@ -195,11 +209,16 @@ func (h *ProbeHandler) handleProbe(w http.ResponseWriter, r *http.Request, probe
 	if nodeID == "" && len(req.Nodes) > 0 {
 		nodeID = req.Nodes[0]
 	}
-	// If still empty, pick any active node from DB
+	// If still empty, pick any active node from DB. Returning a clear 503
+	// (instead of silently queuing a task that no one will ever pick up) is
+	// load-bearing — see REVIEW-FINDINGS-2026-05-16 P0#9.
 	if nodeID == "" {
-		_ = h.pool.QueryRow(ctx,
-			`SELECT node_id FROM enrolled_nodes WHERE status='active' LIMIT 1`,
-		).Scan(&nodeID)
+		resolved, resolveErr := h.resolveActiveNodeID(ctx)
+		if resolveErr != nil {
+			h.writeNodeResolutionError(w, r, resolveErr)
+			return
+		}
+		nodeID = resolved
 	}
 
 	// Create probe task
@@ -298,6 +317,47 @@ func (h *ProbeHandler) createProbeTask(
 	}
 
 	return taskID, nil
+}
+
+// resolveActiveNodeID picks any active probe node from the DB.
+//
+// Returns errNoActiveProbeNode when no row matches (operator must enroll a
+// node or wait for an existing one to come online). Any other error is a real
+// DB failure and is wrapped, so the caller can map it to 500.
+func (h *ProbeHandler) resolveActiveNodeID(ctx context.Context) (string, error) {
+	var nodeID string
+	err := h.pool.QueryRow(ctx,
+		`SELECT node_id FROM enrolled_nodes WHERE status='active' LIMIT 1`,
+	).Scan(&nodeID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", errNoActiveProbeNode
+		}
+		return "", fmt.Errorf("query active node: %w", err)
+	}
+	// Defensive: pgx normally returns ErrNoRows when zero rows match, but
+	// some Scan implementations may yield an empty string instead.
+	if nodeID == "" {
+		return "", errNoActiveProbeNode
+	}
+	return nodeID, nil
+}
+
+// writeNodeResolutionError converts a resolveActiveNodeID error into an HTTP
+// response: 503 when no node is online, 500 + log for genuine DB failures.
+func (h *ProbeHandler) writeNodeResolutionError(w http.ResponseWriter, r *http.Request, err error) {
+	if errors.Is(err, errNoActiveProbeNode) {
+		response.Error(w, r, apperr.Unavailable(
+			"no active probe node available, please contact support",
+			err,
+		))
+		return
+	}
+	slog.Default().Error("probe: failed to resolve active node",
+		"err", err,
+		"path", r.URL.Path,
+	)
+	response.Error(w, r, apperr.Internal("failed to resolve probe node", err))
 }
 
 // normalizeTarget normalizes the target for database storage.

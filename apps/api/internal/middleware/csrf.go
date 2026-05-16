@@ -5,14 +5,26 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
+	"os"
 	"strings"
 )
 
 const (
-	csrfCookieName = "csrf_token"
-	csrfHeaderName = "X-CSRF-Token"
-	csrfTokenLen   = 32 // 32 bytes = 64 hex chars
+	csrfCookieName   = "csrf_token"
+	csrfHeaderName   = "X-CSRF-Token"
+	csrfTokenLen     = 32 // 32 bytes = 64 hex chars
+	cookieDomainEnv  = "IDCD_COOKIE_DOMAIN"
 )
+
+// getCookieDomain returns the cookie Domain attribute from env IDCD_COOKIE_DOMAIN.
+// Empty string (dev / no env) means no Domain attribute → host-only cookie.
+// Production sets e.g. ".idcd.com" so api.idcd.com and idcd.com share the cookie
+// (required for the CSRF double-submit pattern to work across subdomains).
+//
+// Read each call (not cached) so tests can use t.Setenv freely.
+func getCookieDomain() string {
+	return os.Getenv(cookieDomainEnv)
+}
 
 // CSRF implements double-submit cookie pattern for CSRF protection.
 // On GET requests: generates and sets csrf_token cookie (HttpOnly=false for JS access).
@@ -64,14 +76,18 @@ func CSRF(exemptPaths ...string) func(http.Handler) http.Handler {
 				token := getCSRFToken(r)
 				if token == "" {
 					token = generateCSRFToken()
-					http.SetCookie(w, &http.Cookie{
+					cookie := &http.Cookie{
 						Name:     csrfCookieName,
 						Value:    token,
 						Path:     "/",
-						HttpOnly: false, // Allow JS to read for header submission
+						HttpOnly: false,            // Allow JS to read for header submission
 						Secure:   r.TLS != nil,
-						SameSite: http.SameSiteStrictMode,
-					})
+						SameSite: http.SameSiteLaxMode, // Lax: Strict would drop cookie on cross-subdomain callbacks
+					}
+					if domain := getCookieDomain(); domain != "" {
+						cookie.Domain = domain // e.g. ".idcd.com" so api.idcd.com + idcd.com share cookie
+					}
+					http.SetCookie(w, cookie)
 				}
 				next.ServeHTTP(w, r)
 				return

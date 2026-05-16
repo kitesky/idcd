@@ -21,6 +21,65 @@ type BillingPool interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
+// Task type constants for billing-related asynq tasks.
+// Must match the notifier worker's task registry.
+const (
+	// TaskRefundRetry is the asynq task type for retrying a failed refund.
+	// Payload: RefundRetryPayload (JSON).
+	TaskRefundRetry = "payment:refund_retry"
+
+	// QueueBilling is the asynq queue name for billing tasks.
+	QueueBilling = "billing"
+
+	// RefundRetryFirstDelay is the delay for the first automatic retry after
+	// a Paddle refund.failed webhook (D5: 5 minutes).
+	RefundRetryFirstDelay = 5 * time.Minute
+
+	// RefundRetrySecondDelay is the delay for the second automatic retry after
+	// the first retry attempt fails (D5: 30 minutes from t0, so 25 minutes after
+	// the first retry).  We use 30 minutes as a conservative upper bound — the
+	// total elapsed time (first delay + second delay) stays at ~30 minutes from
+	// the original refund.failed webhook.
+	RefundRetrySecondDelay = 25 * time.Minute
+
+	// RefundRetryMaxAttempts is the number of automated retries before we
+	// give up, send an apology email, and surface the payment in the admin
+	// dashboard (D5).  attempt_count starts at 0 (first webhook-triggered try)
+	// and increments to 1 (after the 5min retry fails), 2 (after the 30min
+	// retry fails).  At attempt_count >= 2, we stop retrying and trigger the
+	// apology email.
+	RefundRetryMaxAttempts = 2
+)
+
+// RefundRetryPayload is the asynq payload for a refund retry task.
+//
+// The notifier worker consumes this payload, calls the Paddle Refund API,
+// updates the payment status, and either re-schedules another retry or
+// triggers the apology email + admin dashboard escalation.
+type RefundRetryPayload struct {
+	PaymentID    string `json:"payment_id"`
+	ExtTxnID     string `json:"ext_txn_id"`
+	UserID       string `json:"user_id"`
+	UserEmail    string `json:"user_email,omitempty"`
+	AmountCents  int64  `json:"amount_cents"`
+	Currency     string `json:"currency"`
+	Provider     string `json:"provider"`
+	Reason       string `json:"reason,omitempty"`
+	AttemptCount int    `json:"attempt_count"`
+}
+
+// BillingEnqueuer enqueues billing-related asynq tasks (refund retry, etc.).
+// Implementations must be safe for concurrent use.
+//
+// The Server wires this against an *asynq.Client adapter that maps delay to
+// asynq.ProcessIn — the worker-side default retry/backoff is intentionally NOT
+// used for refund retries, because D5 mandates explicit 5min/30min scheduling.
+type BillingEnqueuer interface {
+	// EnqueueRefundRetry schedules a refund retry task with the given delay.
+	// A delay of 0 schedules the task for immediate processing.
+	EnqueueRefundRetry(ctx context.Context, payload RefundRetryPayload, delay time.Duration) error
+}
+
 // AdminBillingHandler handles admin billing endpoints.
 //
 // TODO: Enforce role=admin authentication by checking users.is_admin field
@@ -28,12 +87,23 @@ type BillingPool interface {
 // requests reaching these handlers are treated as authorized — they should
 // be protected at the network / VPN layer until proper auth is in place.
 type AdminBillingHandler struct {
-	pool BillingPool
+	pool     BillingPool
+	enqueuer BillingEnqueuer // optional: nil falls back to direct DB status change (legacy / tests)
 }
 
 // NewAdminBillingHandler creates a new AdminBillingHandler.
 func NewAdminBillingHandler(pool BillingPool) *AdminBillingHandler {
 	return &AdminBillingHandler{pool: pool}
+}
+
+// WithEnqueuer wires a BillingEnqueuer used by RetryRefund.  When wired,
+// RetryRefund schedules an immediate asynq task instead of mutating the
+// payment row directly — this ensures the Paddle Refund API is actually
+// called (D5 fix: previously the admin button set status='refunded' without
+// hitting Paddle, causing ledger divergence).
+func (h *AdminBillingHandler) WithEnqueuer(enq BillingEnqueuer) *AdminBillingHandler {
+	h.enqueuer = enq
+	return h
 }
 
 // RefundFailedPayment represents a payment with refund_failed status.
@@ -121,10 +191,16 @@ type RetryRefundResponse struct {
 }
 
 // RetryRefund handles POST /v1/admin/refund-failed/:id/retry.
-// Simulates a manual refund retry by transitioning the payment status to 'refunded'.
 //
-// In production this would call the Paddle API to re-attempt the refund.
-// For now it updates the status in-DB to simulate success (as specified in D5 TODO).
+// D5 fix: instead of directly mutating payment.status='refunded' (which
+// previously created a ledger drift because Paddle was never re-called),
+// this handler enqueues an immediate asynq task that the notifier worker
+// processes — the worker actually calls Paddle Refund API and updates DB
+// only after a successful provider response.
+//
+// When no BillingEnqueuer is wired (legacy/tests without a Redis-backed
+// asynq client), the handler falls back to the previous in-DB status
+// transition so tests and dev environments without Redis still function.
 func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request) {
 	paymentID := chi.URLParam(r, "id")
 	if paymentID == "" {
@@ -135,6 +211,75 @@ func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
+	// Read the payment fields needed for the retry payload.  We require the
+	// row to be in refund_failed status to retry.
+	rows, err := h.pool.Query(ctx, `
+		SELECT
+			id, user_id, ext_txn_id, amount_cents, currency, provider,
+			refund_retry_count
+		FROM payments
+		WHERE id = $1 AND status = 'refund_failed'
+	`, paymentID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to query payment", err))
+		return
+	}
+	defer rows.Close()
+
+	if !rows.Next() {
+		response.Error(w, r, apperr.NotFound("payment not found or not in refund_failed state"))
+		return
+	}
+
+	var (
+		id           string
+		userID       string
+		extTxnID     *string
+		amountCents  int64
+		currency     string
+		provider     string
+		retryCount   int
+	)
+	if err := rows.Scan(&id, &userID, &extTxnID, &amountCents, &currency, &provider, &retryCount); err != nil {
+		response.Error(w, r, apperr.Internal("failed to scan payment row", err))
+		return
+	}
+	rows.Close()
+
+	// Build payload — admin-initiated retries always start at attempt_count=0
+	// (a fresh attempt from the admin dashboard, independent of automated
+	// retry counters).  The worker logic handles delay scheduling.
+	payload := RefundRetryPayload{
+		PaymentID:    id,
+		UserID:       userID,
+		AmountCents:  amountCents,
+		Currency:     currency,
+		Provider:     provider,
+		Reason:       "admin_manual_retry",
+		AttemptCount: 0,
+	}
+	if extTxnID != nil {
+		payload.ExtTxnID = *extTxnID
+	}
+
+	// Preferred path: enqueue an immediate asynq task.  The notifier worker
+	// will call Paddle Refund and update payment status only after a
+	// successful provider response.
+	if h.enqueuer != nil {
+		if err := h.enqueuer.EnqueueRefundRetry(ctx, payload, 0); err != nil {
+			response.Error(w, r, apperr.Internal("failed to enqueue refund retry", err))
+			return
+		}
+		response.JSON(w, r, http.StatusOK, RetryRefundResponse{
+			ID:     paymentID,
+			Status: "retry_enqueued",
+		})
+		return
+	}
+
+	// Fallback (no enqueuer wired): legacy in-DB transition.  Kept so tests
+	// and offline dev environments without Redis still work — production
+	// MUST wire an enqueuer (see server.go).
 	tag, err := h.pool.Exec(ctx, `
 		UPDATE payments
 		SET
@@ -147,14 +292,13 @@ func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request
 		response.Error(w, r, apperr.Internal("failed to update payment", err))
 		return
 	}
-
 	if tag.RowsAffected() == 0 {
 		response.Error(w, r, apperr.NotFound("payment not found or not in refund_failed state"))
 		return
 	}
-
 	response.JSON(w, r, http.StatusOK, RetryRefundResponse{
 		ID:     paymentID,
 		Status: "refunded",
 	})
 }
+

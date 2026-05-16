@@ -176,18 +176,20 @@ func TestInfoHandler_DNS(t *testing.T) {
 			wantError:      true,
 		},
 		{
-			name:           "A record query - localhost",
+			// netfilter must refuse hostnames that resolve to loopback/private
+			// IPs — protects against SSRF/metadata-IP coercion (P0#6).
+			name:           "blocked - localhost resolves to loopback",
 			query:          "localhost",
 			recordType:     "A",
-			wantStatusCode: http.StatusOK,
-			wantError:      false,
+			wantStatusCode: http.StatusBadRequest,
+			wantError:      true,
 		},
 		{
-			name:           "default type (A)",
+			name:           "blocked - localhost (default type)",
 			query:          "localhost",
 			recordType:     "",
-			wantStatusCode: http.StatusOK,
-			wantError:      false,
+			wantStatusCode: http.StatusBadRequest,
+			wantError:      true,
 		},
 	}
 
@@ -618,7 +620,10 @@ func TestInfoHandler_DNS_AllTypes(t *testing.T) {
 
 	for _, recordType := range types {
 		t.Run("type_"+recordType, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/v1/info/dns?q=localhost&type="+recordType, nil)
+			// Use a public domain so the netfilter (added for P0#6 SSRF
+			// protection) does not block the query. example.com resolves
+			// to a public IP via IANA.
+			req := httptest.NewRequest("GET", "/v1/info/dns?q=example.com&type="+recordType, nil)
 			w := httptest.NewRecorder()
 
 			h.DNS(w, req)
@@ -634,7 +639,8 @@ func TestInfoHandler_DNS_AllTypes(t *testing.T) {
 func TestInfoHandler_DNS_CaseInsensitiveType(t *testing.T) {
 	h := NewInfoHandler()
 
-	req := httptest.NewRequest("GET", "/v1/info/dns?q=localhost&type=a", nil)
+	// Use a public domain — see TestInfoHandler_DNS_AllTypes note.
+	req := httptest.NewRequest("GET", "/v1/info/dns?q=example.com&type=a", nil)
 	w := httptest.NewRecorder()
 
 	h.DNS(w, req)

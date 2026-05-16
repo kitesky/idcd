@@ -8,7 +8,12 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
+
+// ─────────────────────────────────────────────
+// Stdio / handle() tests — unchanged from pre-auth era
+// ─────────────────────────────────────────────
 
 func newTestServer() *Server {
 	srv := NewServer()
@@ -177,17 +182,78 @@ func TestInitializedNotification(t *testing.T) {
 	}
 }
 
-func TestHTTPTransportMessages(t *testing.T) {
-	srv := newTestServer()
-	handler := MessagesHandler(srv)
+// ─────────────────────────────────────────────
+// HTTP transport tests — auth, CORS, body cap
+// ─────────────────────────────────────────────
 
-	body := `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"ping","arguments":{"target":"1.2.3.4"}}}`
+// validToken is a syntactically-valid MCP token used across the HTTP tests.
+const validToken = "idcd_mcp_" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+// expiredToken / revokedToken are different rawTokens so their hashes differ.
+const expiredToken = "idcd_mcp_" + "deadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
+const revokedToken = "idcd_mcp_" + "11111111111111112222222222222222333333333333333344444444444444"
+
+// buildHTTPConfig returns a config with:
+//   - a valid principal for validToken (personal, 1h ahead),
+//   - an expired record for expiredToken,
+//   - a revoked record for revokedToken,
+//   - an https://app.idcd.com CORS allowlist entry.
+func buildHTTPConfig(t *testing.T) HTTPConfig {
+	t.Helper()
+	v := NewStaticTokenValidator(
+		StaticTokenRecord{
+			RawToken:  validToken,
+			TokenID:   "mcpt_test01",
+			UserID:    "usr_test",
+			Workspace: "wks_test",
+			Type:      "personal",
+			Scopes:    []string{"tools:call"},
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+		},
+		StaticTokenRecord{
+			RawToken:  expiredToken,
+			TokenID:   "mcpt_exp01",
+			UserID:    "usr_exp",
+			Type:      "personal",
+			ExpiresAt: time.Now().Add(-1 * time.Minute),
+		},
+		StaticTokenRecord{
+			RawToken:  revokedToken,
+			TokenID:   "mcpt_rev01",
+			UserID:    "usr_rev",
+			Type:      "personal",
+			ExpiresAt: time.Now().Add(1 * time.Hour),
+			Revoked:   true,
+		},
+	)
+	return HTTPConfig{
+		Validator:      v,
+		AllowedOrigins: []string{"https://app.idcd.com"},
+	}
+}
+
+// messagesPost builds an authenticated POST /messages request body.
+func messagesPost(t *testing.T, srv *Server, cfg HTTPConfig, token, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	handler := MessagesHandlerWithConfig(srv, cfg)
 	req := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader(body))
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
+	return w
+}
+
+func TestHTTPMessages_OKWithValidToken(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	body := `{"jsonrpc":"2.0","id":20,"method":"tools/call","params":{"name":"ping","arguments":{"target":"1.2.3.4"}}}`
+	w := messagesPost(t, srv, cfg, validToken, body)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("status = %d, want 200", w.Code)
+		t.Fatalf("status = %d, want 200 (body=%s)", w.Code, w.Body.String())
 	}
 	var resp Response
 	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
@@ -198,15 +264,344 @@ func TestHTTPTransportMessages(t *testing.T) {
 	}
 }
 
-func TestHTTPTransportMethodNotAllowed(t *testing.T) {
+func TestHTTPMessages_MissingAuth(t *testing.T) {
 	srv := newTestServer()
-	handler := MessagesHandler(srv)
+	cfg := buildHTTPConfig(t)
 
+	w := messagesPost(t, srv, cfg, "", `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+	if got := w.Header().Get("WWW-Authenticate"); !strings.HasPrefix(got, "Bearer") {
+		t.Errorf("WWW-Authenticate = %q, want Bearer realm", got)
+	}
+}
+
+func TestHTTPMessages_MalformedAuth(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	// Missing Bearer prefix.
+	handler := MessagesHandlerWithConfig(srv, cfg)
+	req := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", validToken) // no "Bearer " prefix
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("missing Bearer prefix: status = %d, want 401", w.Code)
+	}
+
+	// Wrong prefix for the token value.
+	w = messagesPost(t, srv, cfg, "not_an_idcd_token_at_all_long_enough", `{}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("wrong prefix: status = %d, want 401", w.Code)
+	}
+
+	// Way too short.
+	w = messagesPost(t, srv, cfg, "idcd_mcp_x", `{}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("too short: status = %d, want 401", w.Code)
+	}
+}
+
+func TestHTTPMessages_UnknownToken(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	bogus := "idcd_mcp_" + strings.Repeat("a", 64)
+	w := messagesPost(t, srv, cfg, bogus, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHTTPMessages_ExpiredToken(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	w := messagesPost(t, srv, cfg, expiredToken, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHTTPMessages_RevokedToken(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	w := messagesPost(t, srv, cfg, revokedToken, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestHTTPMessages_BodyTooLarge(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	// Build a JSON payload >1 MiB. tools/call with a giant target string.
+	big := strings.Repeat("A", int(MaxMessageBytes)+1024)
+	body := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"ping","arguments":{"target":"` + big + `"}}}`
+
+	w := messagesPost(t, srv, cfg, validToken, body)
+	if w.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want 413", w.Code)
+	}
+}
+
+func TestHTTPMessages_MethodNotAllowed(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	handler := MessagesHandlerWithConfig(srv, cfg)
+	// GET with valid token: handler should still reject as 405 (auth happens
+	// after the method check? — actually we want auth FIRST so we don't
+	// leak which routes exist; spec is "auth then method check"). Verify
+	// the contract.
 	req := httptest.NewRequest(http.MethodGet, "/messages", nil)
+	req.Header.Set("Authorization", "Bearer "+validToken)
 	w := httptest.NewRecorder()
 	handler.ServeHTTP(w, req)
 
 	if w.Code != http.StatusMethodNotAllowed {
 		t.Errorf("status = %d, want 405", w.Code)
+	}
+}
+
+func TestHTTPMessages_MethodNotAllowedWithoutAuth(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	handler := MessagesHandlerWithConfig(srv, cfg)
+	req := httptest.NewRequest(http.MethodGet, "/messages", nil)
+	// No Authorization header → should be 401 (auth happens before method
+	// check so we never leak whether GET would have been accepted).
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 (auth precedes method check)", w.Code)
+	}
+}
+
+func TestHTTPMessages_NoValidatorFailsClosed(t *testing.T) {
+	srv := newTestServer()
+	// Config with allowlist but no validator → every request denied.
+	cfg := HTTPConfig{AllowedOrigins: []string{"https://app.idcd.com"}}
+
+	w := messagesPost(t, srv, cfg, validToken, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401 (fail-closed when no validator)", w.Code)
+	}
+}
+
+// ─────────────────────────────────────────────
+// CORS tests
+// ─────────────────────────────────────────────
+
+func TestCORS_PreflightAllowed(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+	handler := MessagesHandlerWithConfig(srv, cfg)
+
+	req := httptest.NewRequest(http.MethodOptions, "/messages", nil)
+	req.Header.Set("Origin", "https://app.idcd.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "https://app.idcd.com" {
+		t.Errorf("Allow-Origin = %q, want https://app.idcd.com", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Methods"); !strings.Contains(got, "POST") {
+		t.Errorf("Allow-Methods = %q, want POST in list", got)
+	}
+}
+
+func TestCORS_PreflightDeniedForUnlistedOrigin(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+	handler := MessagesHandlerWithConfig(srv, cfg)
+
+	req := httptest.NewRequest(http.MethodOptions, "/messages", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Allow-Origin = %q, want empty for unlisted origin", got)
+	}
+}
+
+func TestCORS_PreflightDeniedWhenAllowlistEmpty(t *testing.T) {
+	srv := newTestServer()
+	cfg := HTTPConfig{Validator: buildHTTPConfig(t).Validator} // no AllowedOrigins
+	handler := MessagesHandlerWithConfig(srv, cfg)
+
+	req := httptest.NewRequest(http.MethodOptions, "/messages", nil)
+	req.Header.Set("Origin", "https://app.idcd.com")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want 403 (empty allowlist → deny all CORS)", w.Code)
+	}
+}
+
+func TestCORS_NoOriginHeaderSkipsCORS(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+
+	// Same-origin POST: no Origin header, no Access-Control-* on response.
+	w := messagesPost(t, srv, cfg, validToken,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Errorf("Allow-Origin = %q, want empty when no Origin header", got)
+	}
+}
+
+func TestCORS_AllowCredentialsSuppressedWithWildcard(t *testing.T) {
+	srv := newTestServer()
+	cfg := HTTPConfig{
+		Validator:        buildHTTPConfig(t).Validator,
+		AllowedOrigins:   []string{"*"},
+		AllowCredentials: true,
+	}
+	handler := MessagesHandlerWithConfig(srv, cfg)
+
+	req := httptest.NewRequest(http.MethodOptions, "/messages", nil)
+	req.Header.Set("Origin", "https://anywhere.example")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusNoContent {
+		t.Fatalf("status = %d, want 204 (wildcard mode)", w.Code)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Errorf("Allow-Credentials = %q, want empty when wildcard active", got)
+	}
+}
+
+// ─────────────────────────────────────────────
+// SSE tests
+// ─────────────────────────────────────────────
+
+func TestSSE_UnauthRejected(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+	handler := SSEHandlerWithConfig(srv, cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/sse", nil)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("status = %d, want 401", w.Code)
+	}
+}
+
+func TestSSE_AuthorisedConnectionFlushes(t *testing.T) {
+	srv := newTestServer()
+	cfg := buildHTTPConfig(t)
+	handler := SSEHandlerWithConfig(srv, cfg)
+
+	// SSE blocks on r.Context().Done(); cancel quickly to return.
+	ctx, cancel := context.WithCancel(context.Background())
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/sse", nil)
+	req.Header.Set("Authorization", "Bearer "+validToken)
+	w := httptest.NewRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		handler.ServeHTTP(w, req)
+		close(done)
+	}()
+	// Give the goroutine a tick to write the headers + endpoint event.
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	<-done
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	if !strings.Contains(w.Body.String(), "event: endpoint") {
+		t.Errorf("body missing endpoint event: %q", w.Body.String())
+	}
+}
+
+// ─────────────────────────────────────────────
+// Principal context plumbing
+// ─────────────────────────────────────────────
+
+func TestPrincipalReachesToolHandler(t *testing.T) {
+	srv := NewServer()
+	var seen *Principal
+	srv.Register(ToolDefinition{Name: "whoami", Description: "x", InputSchema: map[string]any{}}, func(ctx context.Context, _ map[string]any) (string, error) {
+		seen = PrincipalFromContext(ctx)
+		return "ok", nil
+	})
+
+	cfg := buildHTTPConfig(t)
+	body := `{"jsonrpc":"2.0","id":99,"method":"tools/call","params":{"name":"whoami","arguments":{}}}`
+	w := messagesPost(t, srv, cfg, validToken, body)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d (body=%s)", w.Code, w.Body.String())
+	}
+	if seen == nil {
+		t.Fatal("principal not propagated to tool handler")
+	}
+	if seen.UserID != "usr_test" {
+		t.Errorf("UserID = %q, want usr_test", seen.UserID)
+	}
+	if seen.WorkspaceID != "wks_test" {
+		t.Errorf("WorkspaceID = %q, want wks_test", seen.WorkspaceID)
+	}
+}
+
+// ─────────────────────────────────────────────
+// Global config path (back-compat for cmd/mcp/main.go)
+// ─────────────────────────────────────────────
+
+func TestLegacyHandlers_UseGlobalConfig(t *testing.T) {
+	srv := newTestServer()
+
+	// Reset global config at end so we don't leak between tests.
+	t.Cleanup(func() { SetHTTPConfig(HTTPConfig{}) })
+
+	// No global config ⇒ everything 401.
+	SetHTTPConfig(HTTPConfig{})
+	handler := MessagesHandler(srv)
+	req := httptest.NewRequest(http.MethodPost, "/messages", strings.NewReader(`{}`))
+	req.Header.Set("Authorization", "Bearer "+validToken)
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusUnauthorized {
+		t.Errorf("no global config: status = %d, want 401", w.Code)
+	}
+
+	// Wire global config ⇒ valid token works.
+	SetHTTPConfig(buildHTTPConfig(t))
+	handler = MessagesHandler(srv)
+	req = httptest.NewRequest(http.MethodPost, "/messages",
+		strings.NewReader(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+	req.Header.Set("Authorization", "Bearer "+validToken)
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+	if w.Code != http.StatusOK {
+		t.Errorf("with global config: status = %d, want 200 (body=%s)",
+			w.Code, w.Body.String())
 	}
 }

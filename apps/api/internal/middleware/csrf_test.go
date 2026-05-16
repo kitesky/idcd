@@ -8,6 +8,9 @@ import (
 )
 
 func TestCSRF(t *testing.T) {
+	// Ensure tests don't inherit a real env Domain — sub-tests below assert no Domain set.
+	t.Setenv(cookieDomainEnv, "")
+
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		w.Write([]byte("OK"))
@@ -172,8 +175,11 @@ func TestCSRF(t *testing.T) {
 					if c.HttpOnly {
 						t.Error("CSRF cookie should not be HttpOnly (JS needs to read it)")
 					}
-					if c.SameSite != http.SameSiteStrictMode {
-						t.Errorf("expected SameSite=Strict, got %v", c.SameSite)
+					if c.SameSite != http.SameSiteLaxMode {
+						t.Errorf("expected SameSite=Lax, got %v", c.SameSite)
+					}
+					if c.Domain != "" {
+						t.Errorf("expected no Domain when env unset, got %q", c.Domain)
 					}
 					if len(c.Value) != csrfTokenLen*2 { // hex encoding doubles length
 						t.Errorf("expected token length %d, got %d", csrfTokenLen*2, len(c.Value))
@@ -277,6 +283,130 @@ func TestGetCSRFToken(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestCSRFCookieDomain verifies that the Domain attribute on the csrf_token cookie
+// reflects the IDCD_COOKIE_DOMAIN env at request time:
+//   - env set to ".idcd.com" → cookie.Domain == ".idcd.com"
+//   - env unset → cookie.Domain == "" (host-only, dev compat)
+//
+// SameSite must always be Lax (Strict drops cookie on cross-subdomain navigation
+// from idcd.com → api.idcd.com responses).
+func TestCSRFCookieDomain(t *testing.T) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	t.Run("env set → cookie has Domain", func(t *testing.T) {
+		t.Setenv(cookieDomainEnv, ".idcd.com")
+
+		req := httptest.NewRequest("GET", "/v1/account/profile", nil)
+		rr := httptest.NewRecorder()
+		CSRF()(testHandler).ServeHTTP(rr, req)
+
+		// Raw Set-Cookie header — verify Domain attribute is present.
+		// Go's http.SetCookie normalizes ".idcd.com" → "idcd.com" per RFC 6265 §4.1.2.3,
+		// which browsers treat identically (matches host + all subdomains).
+		setCookie := rr.Header().Get("Set-Cookie")
+		if !strings.Contains(setCookie, "Domain=idcd.com") {
+			t.Errorf("expected Set-Cookie to contain Domain=idcd.com, got: %s", setCookie)
+		}
+
+		found := findCookie(rr.Result().Cookies(), csrfCookieName)
+		if found == nil {
+			t.Fatal("expected csrf_token cookie to be set")
+		}
+		// Parsed form: leading dot stripped, but Domain still set.
+		if found.Domain == "" {
+			t.Errorf("expected non-empty Domain, got empty")
+		}
+		if found.Domain != "idcd.com" {
+			t.Errorf("expected parsed Domain=idcd.com, got %q", found.Domain)
+		}
+		if found.SameSite != http.SameSiteLaxMode {
+			t.Errorf("expected SameSite=Lax, got %v", found.SameSite)
+		}
+		if found.HttpOnly {
+			t.Error("CSRF cookie must not be HttpOnly (JS reads it)")
+		}
+	})
+
+	t.Run("env unset → cookie has no Domain", func(t *testing.T) {
+		t.Setenv(cookieDomainEnv, "")
+
+		req := httptest.NewRequest("GET", "/v1/account/profile", nil)
+		rr := httptest.NewRecorder()
+		CSRF()(testHandler).ServeHTTP(rr, req)
+
+		var found *http.Cookie
+		for _, c := range rr.Result().Cookies() {
+			if c.Name == csrfCookieName {
+				found = c
+				break
+			}
+		}
+		if found == nil {
+			t.Fatal("expected csrf_token cookie to be set")
+		}
+		if found.Domain != "" {
+			t.Errorf("expected no Domain (host-only), got %q", found.Domain)
+		}
+		if found.SameSite != http.SameSiteLaxMode {
+			t.Errorf("expected SameSite=Lax, got %v", found.SameSite)
+		}
+	})
+
+	t.Run("env can switch between requests", func(t *testing.T) {
+		// First request: domain set
+		t.Setenv(cookieDomainEnv, ".idcd.com")
+		req1 := httptest.NewRequest("GET", "/v1/account/profile", nil)
+		rr1 := httptest.NewRecorder()
+		CSRF()(testHandler).ServeHTTP(rr1, req1)
+
+		c1 := findCookie(rr1.Result().Cookies(), csrfCookieName)
+		if c1 == nil || c1.Domain == "" {
+			t.Fatalf("first request: expected non-empty Domain, got %+v", c1)
+		}
+
+		// Second request: domain cleared — handler should re-read env, no caching
+		t.Setenv(cookieDomainEnv, "")
+		req2 := httptest.NewRequest("GET", "/v1/account/profile", nil)
+		rr2 := httptest.NewRecorder()
+		CSRF()(testHandler).ServeHTTP(rr2, req2)
+
+		c2 := findCookie(rr2.Result().Cookies(), csrfCookieName)
+		if c2 == nil {
+			t.Fatal("second request: expected csrf_token cookie")
+		}
+		if c2.Domain != "" {
+			t.Errorf("second request: expected no Domain (env cleared), got %q — env caching bug?", c2.Domain)
+		}
+	})
+}
+
+func findCookie(cookies []*http.Cookie, name string) *http.Cookie {
+	for _, c := range cookies {
+		if c.Name == name {
+			return c
+		}
+	}
+	return nil
+}
+
+func TestGetCookieDomain(t *testing.T) {
+	t.Run("returns env value", func(t *testing.T) {
+		t.Setenv(cookieDomainEnv, ".idcd.com")
+		if got := getCookieDomain(); got != ".idcd.com" {
+			t.Errorf("expected .idcd.com, got %q", got)
+		}
+	})
+
+	t.Run("returns empty when env unset", func(t *testing.T) {
+		t.Setenv(cookieDomainEnv, "")
+		if got := getCookieDomain(); got != "" {
+			t.Errorf("expected empty, got %q", got)
+		}
+	})
 }
 
 func TestValidateCSRFToken(t *testing.T) {

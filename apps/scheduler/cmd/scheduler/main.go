@@ -14,7 +14,6 @@ import (
 
 	"github.com/kite365/idcd/apps/scheduler/internal/config"
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
-	"github.com/kite365/idcd/apps/scheduler/internal/queue"
 	"github.com/kite365/idcd/apps/scheduler/internal/scheduler"
 	"github.com/kite365/idcd/lib/db"
 	"github.com/kite365/idcd/lib/shared/stream"
@@ -38,7 +37,9 @@ func run() error {
 	log.Printf("[main] Config loaded from %s", cfgPath)
 	log.Printf("[main] Redis: %s", cfg.Redis.Addr)
 	log.Printf("[main] Leader key: %s, TTL: %v", cfg.Leader.Key, cfg.Leader.TTL)
-	log.Printf("[main] Workers: %d", cfg.Worker.Count)
+	// cfg.Worker.Count is retained in config for now but unused: the legacy
+	// worker pool that consumed `scheduler:tasks` ZSET was removed in
+	// 2026-05-16 (no producer existed). See scheduler package doc.
 
 	// Initialize OpenTelemetry
 	telCfg := telemetry.Config{
@@ -98,7 +99,6 @@ func run() error {
 	}
 
 	leaderElection := leader.New(rdb, cfg.Leader.Key, cfg.Leader.TTL, nodeID)
-	taskQueue := queue.New(rdb, "scheduler:tasks")
 	streamClient := stream.New(rdb)
 
 	// Use DBNodeSelector when a DB pool is available (production).
@@ -115,17 +115,17 @@ func run() error {
 	}
 
 	// Wire the DB-backed MonitorStore so monitorPoller fires (B6 wiring).
+	// Queue + WorkerCount fields removed 2026-05-16: the worker pool that
+	// consumed scheduler:tasks ZSET had no producer; monitor poller is the
+	// sole live path. See scheduler package doc.
 	monitorStore := scheduler.NewPGMonitorStore(pool)
 
-	// Create scheduler
 	sched := scheduler.New(scheduler.Config{
 		Leader:       leaderElection,
-		Queue:        taskQueue,
 		Selector:     nodeSelector,
 		Stream:       streamClient,
 		Pool:         pool,
 		MonitorStore: monitorStore,
-		WorkerCount:  cfg.Worker.Count,
 	})
 
 	// Setup signal handling

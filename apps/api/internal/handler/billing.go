@@ -23,13 +23,23 @@ import (
 // the billing tables are not yet in the sqlc schema (they are pending sqlc regen
 // after the 00010 migration lands).
 type BillingHandler struct {
-	pool     BillingPool     // reuse the interface from admin_billing.go
+	pool     BillingPool // reuse the interface from admin_billing.go
 	provider billing.Provider
+	enqueuer BillingEnqueuer // optional: nil disables automatic refund retry scheduling
 }
 
 // NewBillingHandler wires a BillingHandler with the given DB pool and payment provider.
 func NewBillingHandler(pool BillingPool, provider billing.Provider) *BillingHandler {
 	return &BillingHandler{pool: pool, provider: provider}
+}
+
+// WithEnqueuer wires a BillingEnqueuer used for automatic refund retries
+// triggered by refund.failed webhooks (D5).  When nil, the webhook still
+// records the failure in the DB but no retry queue entry is created — admin
+// dashboard remains the only recovery path.
+func (h *BillingHandler) WithEnqueuer(enq BillingEnqueuer) *BillingHandler {
+	h.enqueuer = enq
+	return h
 }
 
 // ---- request / response types ----
@@ -450,9 +460,68 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 			`, event.ExtTxnID, now, h.provider.Name()); err != nil {
 				return fmt.Errorf("billing: mark refund_failed ext_txn=%s: %w", event.ExtTxnID, err)
 			}
+
+			// D5: schedule the first automatic refund retry 5 minutes out.
+			// We re-read the payment row to build a complete payload (the
+			// webhook event itself may not carry user_email, currency etc.).
+			if h.enqueuer != nil {
+				if err := h.scheduleRefundRetry(ctx, event.ExtTxnID, RefundRetryFirstDelay); err != nil {
+					// Non-fatal: webhook ack should still succeed.  Surface
+					// in logs via the wrapped error so the admin dashboard
+					// + monitoring catch the queue divergence.
+					return fmt.Errorf("billing: schedule refund retry ext_txn=%s: %w", event.ExtTxnID, err)
+				}
+			}
 		}
 	}
 	return nil
+}
+
+// scheduleRefundRetry fetches the payment + user email and enqueues a
+// payment:refund_retry asynq task with the given delay.  AttemptCount=0 means
+// this is the first retry (after the initial webhook-reported failure).
+func (h *BillingHandler) scheduleRefundRetry(ctx context.Context, extTxnID string, delay time.Duration) error {
+	rows, err := h.pool.Query(ctx, `
+		SELECT
+			p.id, p.user_id, p.ext_txn_id, p.amount_cents, p.currency, p.provider,
+			COALESCE(u.email, '') AS user_email
+		FROM payments p
+		LEFT JOIN users u ON u.id = p.user_id
+		WHERE p.ext_txn_id = $1 AND p.provider = $2 AND p.status = 'refund_failed'
+		LIMIT 1
+	`, extTxnID, h.provider.Name())
+	if err != nil {
+		return fmt.Errorf("query payment for retry: %w", err)
+	}
+	defer rows.Close()
+	if !rows.Next() {
+		// Row not found — webhook may have arrived for a payment we never
+		// recorded.  Skip enqueueing.
+		return nil
+	}
+	var (
+		payload     RefundRetryPayload
+		extTxnIDPtr *string
+	)
+	if err := rows.Scan(
+		&payload.PaymentID,
+		&payload.UserID,
+		&extTxnIDPtr,
+		&payload.AmountCents,
+		&payload.Currency,
+		&payload.Provider,
+		&payload.UserEmail,
+	); err != nil {
+		return fmt.Errorf("scan payment for retry: %w", err)
+	}
+	rows.Close()
+	if extTxnIDPtr != nil {
+		payload.ExtTxnID = *extTxnIDPtr
+	}
+	payload.Reason = "webhook_refund_failed"
+	payload.AttemptCount = 0
+
+	return h.enqueuer.EnqueueRefundRetry(ctx, payload, delay)
 }
 
 // ---- StubConfirm ----

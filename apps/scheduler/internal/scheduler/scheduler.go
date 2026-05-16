@@ -1,4 +1,14 @@
 // Package scheduler implements the main scheduling loop for probe tasks.
+//
+// As of 2026-05-16 the only active path is the monitor poller: it queries the
+// database for monitors that are due and pushes probe_task entries directly to
+// the `probe.tasks` Redis Stream. Ad-hoc tool probes are pushed to the same
+// stream by the API handler, bypassing the scheduler entirely.
+//
+// The Scheduler also owns leader election. When leadership is lost the work
+// context is cancelled immediately so the monitor poller stops in <1s rather
+// than waiting for the next 30s tick (avoids a split-brain window where two
+// scheduler instances could both be polling).
 package scheduler
 
 import (
@@ -18,11 +28,17 @@ import (
 )
 
 const (
-	// Stream names
-	ProbeTasksStream = "probe.tasks" // tasks to be executed by agents
+	// ProbeTasksStream is the Redis Stream that nodes consume for probe tasks.
+	ProbeTasksStream = "probe.tasks"
 
-	// monitorPollInterval is how often the monitor poller queries for due monitors.
+	// monitorPollInterval is how often the monitor poller queries for due
+	// monitors. Kept short enough that a leader transition + the next poll
+	// stays within the user-perceived monitor cadence.
 	monitorPollInterval = 30 * time.Second
+
+	// leaderRenewInterval controls how often the current leader extends its
+	// Redis lock. Must be < leaderTTL by a comfortable margin.
+	leaderRenewInterval = 2 * time.Second
 )
 
 // DueMonitor is the minimal projection of a monitors row needed by the poller.
@@ -50,44 +66,42 @@ type NodeSelector interface {
 }
 
 // Scheduler orchestrates task scheduling.
+//
+// Today the scheduler owns two responsibilities:
+//   - Leader election via Redis SETNX (only the leader does any work).
+//   - Monitor polling: query the DB every monitorPollInterval and push
+//     probe_tasks to the `probe.tasks` Redis Stream.
 type Scheduler struct {
 	leader       *leader.Leader
-	queue        *queue.Queue
 	selector     NodeSelector
 	stream       *stream.Client
 	pool         *pgxpool.Pool
 	monitorStore MonitorStore
-
-	workerCount int
 }
 
 // Config holds Scheduler configuration.
 type Config struct {
 	Leader       *leader.Leader
-	Queue        *queue.Queue
 	Selector     NodeSelector
 	Stream       *stream.Client
 	Pool         *pgxpool.Pool
 	MonitorStore MonitorStore // optional; set to enable monitor polling
-	WorkerCount  int
 }
 
 // New creates a Scheduler instance.
 func New(cfg Config) *Scheduler {
 	return &Scheduler{
 		leader:       cfg.Leader,
-		queue:        cfg.Queue,
 		selector:     cfg.Selector,
 		stream:       cfg.Stream,
 		pool:         cfg.Pool,
 		monitorStore: cfg.MonitorStore,
-		workerCount:  cfg.WorkerCount,
 	}
 }
 
 // Run starts the scheduler loop.
 // Only runs if this instance is the leader.
-// Blocks until ctx is cancelled.
+// Blocks until ctx is cancelled (or leadership is lost).
 func (s *Scheduler) Run(ctx context.Context) error {
 	log.Println("[scheduler] Starting scheduler loop")
 
@@ -101,40 +115,58 @@ func (s *Scheduler) Run(ctx context.Context) error {
 		return nil
 	}
 
-	log.Println("[scheduler] Acquired leadership, starting workers")
+	log.Println("[scheduler] Acquired leadership, starting work goroutines")
 
-	// Start leader renewal goroutine
-	renewCtx, cancelRenew := context.WithCancel(ctx)
-	defer cancelRenew()
-	go s.renewLeadership(renewCtx)
+	// workCtx is cancelled either when the parent ctx is cancelled OR when
+	// renewLeadership detects we lost the lock. All work goroutines (today:
+	// the monitor poller) must select on workCtx.Done() so they stop
+	// immediately on leader loss — this is what closes the split-brain
+	// window.
+	workCtx, cancelWork := context.WithCancel(ctx)
+	defer cancelWork()
+
+	// Start leader renewal goroutine; it cancels workCtx on renewal failure.
+	go s.renewLeadership(workCtx, cancelWork)
 
 	// Start monitor poller goroutine if a MonitorStore was provided.
 	if s.monitorStore != nil {
-		go s.monitorPoller(ctx)
+		go s.monitorPoller(workCtx)
 	}
 
-	// Start worker goroutines
-	for i := 0; i < s.workerCount; i++ {
-		go s.worker(ctx, i)
+	// Block until either the parent ctx is cancelled (shutdown signal) or
+	// leadership is lost (renewLeadership cancels workCtx).
+	<-workCtx.Done()
+	if ctx.Err() != nil {
+		log.Println("[scheduler] Context cancelled, releasing leadership")
+	} else {
+		log.Println("[scheduler] Leadership lost, stopping")
 	}
 
-	// Wait for context cancellation
-	<-ctx.Done()
-	log.Println("[scheduler] Context cancelled, releasing leadership")
-
-	// Release leadership
+	// Release leadership best-effort. Use a fresh background ctx because
+	// workCtx is already cancelled.
 	releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.leader.Release(releaseCtx); err != nil {
 		log.Printf("[scheduler] Failed to release leadership: %v", err)
 	}
 
-	return ctx.Err()
+	// If the parent context was cancelled, surface that error. If we exited
+	// purely because leadership was lost, return nil (clean exit, the orchestrator
+	// can restart us and we'll re-attempt acquisition).
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	return nil
 }
 
-// renewLeadership periodically renews the leader lock.
-func (s *Scheduler) renewLeadership(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second) // renew every 5s (TTL is 10s)
+// renewLeadership periodically renews the leader lock. On any renewal failure
+// it cancels workCtx via cancelWork, which signals every other goroutine to
+// stop. The previous implementation only returned, which left the monitor
+// poller running on its 30s ticker for up to 30s after leadership was lost —
+// during which a second instance could acquire the lock and both would poll
+// in parallel (split brain).
+func (s *Scheduler) renewLeadership(ctx context.Context, cancelWork context.CancelFunc) {
+	ticker := time.NewTicker(leaderRenewInterval)
 	defer ticker.Stop()
 
 	for {
@@ -143,99 +175,36 @@ func (s *Scheduler) renewLeadership(ctx context.Context) {
 			return
 		case <-ticker.C:
 			if err := s.leader.Renew(ctx); err != nil {
-				log.Printf("[scheduler] Failed to renew leadership: %v", err)
-				// Lost leadership, stop scheduling
+				log.Printf("[scheduler] Failed to renew leadership: %v — cancelling work", err)
+				cancelWork()
 				return
 			}
 		}
 	}
-}
-
-// worker processes tasks from the queue.
-func (s *Scheduler) worker(ctx context.Context, id int) {
-	log.Printf("[scheduler] Worker %d started", id)
-	defer log.Printf("[scheduler] Worker %d stopped", id)
-
-	ticker := time.NewTicker(1 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-ticker.C:
-			if !s.leader.IsLeader() {
-				// Lost leadership, stop processing
-				return
-			}
-
-			// Try to dequeue a task
-			task, err := s.queue.Dequeue(ctx)
-			if err != nil {
-				log.Printf("[scheduler] Worker %d: dequeue error: %v", id, err)
-				continue
-			}
-			if task == nil {
-				// Queue empty, wait for next tick
-				continue
-			}
-
-			// Process task
-			if err := s.processTask(ctx, task); err != nil {
-				log.Printf("[scheduler] Worker %d: process task %s error: %v", id, task.ID, err)
-				// TODO: retry logic or dead-letter queue
-			} else {
-				log.Printf("[scheduler] Worker %d: task %s dispatched to node %s", id, task.ID, task.NodeID)
-			}
-		}
-	}
-}
-
-// processTask selects a node and dispatches the task.
-func (s *Scheduler) processTask(ctx context.Context, task *queue.ProbeTask) error {
-	// Select node
-	nodeID, err := s.selector.SelectNode(ctx, task)
-	if err != nil {
-		return fmt.Errorf("select node: %w", err)
-	}
-	task.NodeID = nodeID
-
-	// Dispatch to probe.tasks stream
-	vals := map[string]any{
-		"task_id":  task.ID,
-		"type":     task.Type,
-		"target":   task.Target,
-		"node_id":  task.NodeID,
-		"priority": task.Priority,
-	}
-	// Add params
-	for k, v := range task.Params {
-		vals["param_"+k] = v
-	}
-
-	_, err = s.stream.Add(ctx, ProbeTasksStream, vals)
-	if err != nil {
-		return fmt.Errorf("add to stream: %w", err)
-	}
-
-	return nil
 }
 
 // monitorPoller polls the DB every monitorPollInterval for monitors that are
-// due for their next check. For each due monitor it generates a probe_task
-// and pushes it to the probe.tasks Redis Stream.
+// due for their next check. For each due monitor it generates probe_tasks and
+// pushes them to the probe.tasks Redis Stream.
+//
+// Returns as soon as ctx is cancelled (parent shutdown OR leader loss).
 func (s *Scheduler) monitorPoller(ctx context.Context) {
 	log.Println("[scheduler] monitorPoller started")
+	defer log.Println("[scheduler] monitorPoller stopped")
+
 	ticker := time.NewTicker(monitorPollInterval)
 	defer ticker.Stop()
 
-	// Run immediately on startup, then on ticker cadence.
+	// Run immediately on startup, then on ticker cadence. Check ctx first
+	// so we never poll if we were already cancelled.
+	if ctx.Err() != nil {
+		return
+	}
 	s.pollMonitors(ctx)
 
 	for {
 		select {
 		case <-ctx.Done():
-			log.Println("[scheduler] monitorPoller stopped")
 			return
 		case <-ticker.C:
 			if !s.leader.IsLeader() {
@@ -248,6 +217,11 @@ func (s *Scheduler) monitorPoller(ctx context.Context) {
 
 // pollMonitors fetches due monitors and dispatches probe tasks for each.
 func (s *Scheduler) pollMonitors(ctx context.Context) {
+	// Cheap fail-fast before hitting the DB.
+	if err := ctx.Err(); err != nil {
+		return
+	}
+
 	monitors, err := s.monitorStore.ListActiveMonitorsDue(ctx)
 	if err != nil {
 		log.Printf("[scheduler] monitorPoller: list due monitors error: %v", err)
@@ -255,6 +229,10 @@ func (s *Scheduler) pollMonitors(ctx context.Context) {
 	}
 
 	for _, m := range monitors {
+		// Bail out mid-loop if leadership was lost while we were dispatching.
+		if err := ctx.Err(); err != nil {
+			return
+		}
 		if err := s.dispatchMonitorTask(ctx, m); err != nil {
 			log.Printf("[scheduler] monitorPoller: dispatch monitor %s error: %v", m.ID, err)
 		}
@@ -262,8 +240,7 @@ func (s *Scheduler) pollMonitors(ctx context.Context) {
 }
 
 // dispatchMonitorTask creates probe tasks for a due monitor — one per requested node.
-// We push directly to the probe.tasks stream without going through the local queue
-// since monitor tasks should be dispatched immediately.
+// We push directly to the probe.tasks stream; monitor tasks should be dispatched immediately.
 func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error {
 	// Determine how many nodes to use (minimum 1).
 	count := int(m.NodeCount)
@@ -283,6 +260,10 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 	paramsJSON, _ := json.Marshal(baseParams)
 
 	for i := 0; i < count; i++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		taskID := idgen.ProbeTask()
 
 		// Select a node via the configured NodeSelector.

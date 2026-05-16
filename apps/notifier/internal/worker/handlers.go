@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -20,7 +21,63 @@ const (
 	TaskSendWelcome       = "task:send_welcome"
 	TaskSendResetPassword = "task:send_reset_password"
 	TypeAlertNotification = "alert:notification"
+
+	// TaskRefundRetry is the asynq task type for retrying a failed Paddle
+	// refund (D5).  Payload: RefundRetryPayload (JSON).  The task is
+	// scheduled with explicit asynq.ProcessIn delays (5min / 30min) and MUST
+	// NOT rely on the generic exponential backoff configured in worker.go.
+	TaskRefundRetry = "payment:refund_retry"
 )
+
+// Refund retry timing constants (D5).
+//
+// The first retry runs 5 minutes after the original refund.failed webhook.
+// The second retry runs 25 minutes after the first (≈30 minutes total).
+// After both attempts fail (attempt_count >= 2) we send an apology email
+// and leave the payment in 'refund_failed' status for the admin dashboard.
+const (
+	RefundRetryFirstDelay  = 5 * time.Minute
+	RefundRetrySecondDelay = 25 * time.Minute
+	RefundRetryMaxAttempts = 2
+)
+
+// RefundRetryPayload mirrors the API-side payload structure.  Kept in sync
+// manually because importing apps/api/... from notifier would create a
+// circular dependency.
+type RefundRetryPayload struct {
+	PaymentID    string `json:"payment_id"`
+	ExtTxnID     string `json:"ext_txn_id"`
+	UserID       string `json:"user_id"`
+	UserEmail    string `json:"user_email,omitempty"`
+	AmountCents  int64  `json:"amount_cents"`
+	Currency     string `json:"currency"`
+	Provider     string `json:"provider"`
+	Reason       string `json:"reason,omitempty"`
+	AttemptCount int    `json:"attempt_count"`
+}
+
+// PaymentRefunder is the abstraction over the billing provider's Refund API.
+// In production, wire an adapter around billing.Provider.RefundPayment.
+type PaymentRefunder interface {
+	RefundPayment(ctx context.Context, extTxnID string, amountCents int64, reason string) error
+}
+
+// PaymentStore is the persistence interface used by the refund retry handler
+// to update the payment row after a Paddle call.
+type PaymentStore interface {
+	// MarkRefunded transitions the payment to status='refunded'.
+	MarkRefunded(ctx context.Context, paymentID string) error
+	// MarkRefundFailed bumps refund_retry_count and stamps refund_failed_at.
+	// Called when an automated retry hits the cap and we surface the row in
+	// the admin dashboard.
+	MarkRefundFailed(ctx context.Context, paymentID string, retryCount int) error
+}
+
+// RefundRetryEnqueuer schedules the next refund retry attempt.  Implementations
+// must use asynq.ProcessIn (or equivalent) to respect explicit delay semantics.
+type RefundRetryEnqueuer interface {
+	EnqueueRefundRetry(ctx context.Context, payload RefundRetryPayload, delay time.Duration) error
+}
 
 // SendVerifyEmailPayload holds the payload for sending verification email.
 type SendVerifyEmailPayload struct {
@@ -47,6 +104,13 @@ type Handlers struct {
 	sender    email.Sender
 	templates *template.Templates
 	logger    *slog.Logger
+
+	// Optional dependencies for D5 refund retry pipeline.  All three must be
+	// wired together to enable HandleRefundRetry; if any is nil the handler
+	// returns a clear error (and the task is retried by asynq).
+	refunder         PaymentRefunder
+	paymentStore     PaymentStore
+	refundEnqueuer   RefundRetryEnqueuer
 }
 
 // NewHandlers creates a new Handlers instance.
@@ -56,6 +120,20 @@ func NewHandlers(sender email.Sender, templates *template.Templates, logger *slo
 		templates: templates,
 		logger:    logger,
 	}
+}
+
+// WithRefundDeps wires the dependencies required for HandleRefundRetry.
+// Production wiring goes through cmd/notifier/main.go; tests inject mocks
+// directly.
+func (h *Handlers) WithRefundDeps(
+	refunder PaymentRefunder,
+	store PaymentStore,
+	enq RefundRetryEnqueuer,
+) *Handlers {
+	h.refunder = refunder
+	h.paymentStore = store
+	h.refundEnqueuer = enq
+	return h
 }
 
 // HandleSendVerifyEmail processes verify email tasks.
@@ -282,6 +360,154 @@ func (h *Handlers) buildChannel(channelType string, cfgJSON []byte) (channel.Cha
 	}
 }
 
+// HandleRefundRetry processes a payment:refund_retry asynq task (D5).
+//
+// Flow:
+//  1. Call PaymentRefunder.RefundPayment (Paddle Refund API).
+//  2. On success: PaymentStore.MarkRefunded(paymentID) → ack task.
+//  3. On failure:
+//     - If attempt_count < RefundRetryMaxAttempts: bump attempt_count and
+//       re-enqueue with the next explicit delay (5min → 30min schedule per D5).
+//       refund_retry_count is left to be incremented when the next attempt
+//       persists its outcome.
+//     - If attempt_count >= RefundRetryMaxAttempts: send apology email to
+//       the user, leave payment row in 'refund_failed' (bump retry_count one
+//       last time) so the admin dashboard surfaces it.  Returning nil here
+//       prevents asynq from re-running the task indefinitely.
+//
+// IMPORTANT: This handler MUST be scheduled with asynq.ProcessIn from the
+// enqueuer side.  It deliberately does NOT participate in the generic
+// exponential backoff configured in worker.go — refund retries follow the
+// fixed D5 schedule (5min/30min) regardless of asynq's internal retry count.
+func (h *Handlers) HandleRefundRetry(ctx context.Context, task *asynq.Task) error {
+	var payload RefundRetryPayload
+	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		return apperr.Internal("解析 refund retry 任务载荷失败", err)
+	}
+
+	if payload.PaymentID == "" {
+		return apperr.Validation("payment_id 不能为空", "")
+	}
+	if payload.ExtTxnID == "" {
+		return apperr.Validation("ext_txn_id 不能为空", "")
+	}
+	if payload.AmountCents <= 0 {
+		return apperr.Validation("amount_cents 必须为正数", "")
+	}
+
+	if h.refunder == nil || h.paymentStore == nil || h.refundEnqueuer == nil {
+		// Fail loud — production must wire all three.  Returning a non-
+		// validation error lets asynq retry on its own backoff so a wiring
+		// bug is recoverable once notifier is restarted with proper deps.
+		return apperr.Internal("refund retry deps not wired (refunder / store / enqueuer)", nil)
+	}
+
+	// Attempt the Paddle refund.
+	refundErr := h.refunder.RefundPayment(ctx, payload.ExtTxnID, payload.AmountCents, payload.Reason)
+	if refundErr == nil {
+		// Paddle accepted the refund — persist the new state.
+		if err := h.paymentStore.MarkRefunded(ctx, payload.PaymentID); err != nil {
+			h.logger.Error("标记 payment 为 refunded 失败",
+				"payment_id", payload.PaymentID,
+				"error", err,
+			)
+			// Return error so asynq retries — DB hiccups are transient.
+			return fmt.Errorf("mark refunded: %w", err)
+		}
+		h.logger.Info("退款重试成功",
+			"payment_id", payload.PaymentID,
+			"ext_txn_id", payload.ExtTxnID,
+			"attempt_count", payload.AttemptCount,
+		)
+		return nil
+	}
+
+	// Refund failed again.  Decide between rescheduling and giving up.
+	h.logger.Warn("退款重试失败",
+		"payment_id", payload.PaymentID,
+		"ext_txn_id", payload.ExtTxnID,
+		"attempt_count", payload.AttemptCount,
+		"error", refundErr,
+	)
+
+	nextAttempt := payload.AttemptCount + 1
+
+	if nextAttempt < RefundRetryMaxAttempts {
+		// Reschedule with the explicit second-stage delay.
+		nextPayload := payload
+		nextPayload.AttemptCount = nextAttempt
+		if err := h.refundEnqueuer.EnqueueRefundRetry(ctx, nextPayload, RefundRetrySecondDelay); err != nil {
+			return fmt.Errorf("reschedule refund retry: %w", err)
+		}
+		// Bump retry_count to reflect that one more attempt has occurred.
+		if err := h.paymentStore.MarkRefundFailed(ctx, payload.PaymentID, nextAttempt); err != nil {
+			h.logger.Warn("标记 payment 重试计数失败（非致命）",
+				"payment_id", payload.PaymentID,
+				"error", err,
+			)
+		}
+		return nil
+	}
+
+	// Max attempts reached → send apology email + leave row in refund_failed
+	// for admin dashboard escalation (D5).
+	if err := h.paymentStore.MarkRefundFailed(ctx, payload.PaymentID, nextAttempt); err != nil {
+		h.logger.Warn("最终标记 refund_failed 失败（非致命）",
+			"payment_id", payload.PaymentID,
+			"error", err,
+		)
+	}
+	if payload.UserEmail != "" {
+		if err := h.sendRefundApologyEmail(ctx, payload); err != nil {
+			h.logger.Error("发送退款道歉邮件失败",
+				"payment_id", payload.PaymentID,
+				"user_email", payload.UserEmail,
+				"error", err,
+			)
+			// Return error so asynq retries the apology email at least once.
+			return fmt.Errorf("send apology email: %w", err)
+		}
+	} else {
+		h.logger.Warn("无用户邮箱，跳过道歉邮件",
+			"payment_id", payload.PaymentID,
+			"user_id", payload.UserID,
+		)
+	}
+	return nil
+}
+
+// sendRefundApologyEmail sends the D5 apology email after automated refund
+// retries have been exhausted.  We deliberately keep the body inline rather
+// than adding a fourth go:embed template — keeps the diff small and avoids
+// touching the template package's surface area.
+func (h *Handlers) sendRefundApologyEmail(ctx context.Context, p RefundRetryPayload) error {
+	amountYuan := float64(p.AmountCents) / 100.0
+	html := fmt.Sprintf(`<!DOCTYPE html>
+<html lang="zh-CN">
+<head><meta charset="UTF-8"><title>退款延迟通知</title></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
+  <h2 style="color: #18181b;">关于您退款延迟的致歉说明</h2>
+  <p>尊敬的用户您好，</p>
+  <p>我们注意到您订单 <code>%s</code> 的退款（金额 <strong>%.2f %s</strong>）在自动处理过程中遇到了问题，目前尚未成功完成。</p>
+  <p>对此给您带来的不便，我们深感抱歉。我们的工程师已收到此次失败告警，并将在 24 小时内人工处理您的退款请求。</p>
+  <p>如您有任何疑问，请直接回复本邮件或联系 support@idcd.com，我们会优先处理。</p>
+  <p>感谢您的耐心与理解。</p>
+  <p>— idcd 团队</p>
+  <hr style="border: 0; border-top: 1px solid #e4e4e7; margin: 24px 0;">
+  <p style="font-size: 12px; color: #71717a;">订单号：%s ｜ 交易号：%s</p>
+</body>
+</html>`,
+		p.PaymentID, amountYuan, p.Currency, p.PaymentID, p.ExtTxnID,
+	)
+
+	msg := email.Message{
+		To:      p.UserEmail,
+		Subject: "【idcd】关于您退款延迟的致歉说明",
+		HTML:    html,
+	}
+	return h.sender.Send(ctx, msg)
+}
+
 // GetMux returns a configured ServeMux with all handlers registered.
 func (h *Handlers) GetMux() *asynq.ServeMux {
 	mux := asynq.NewServeMux()
@@ -291,6 +517,8 @@ func (h *Handlers) GetMux() *asynq.ServeMux {
 	mux.HandleFunc(TaskSendWelcome, h.withRetry(h.HandleSendWelcome))
 	mux.HandleFunc(TaskSendResetPassword, h.withRetry(h.HandleSendResetPassword))
 	mux.HandleFunc(TypeAlertNotification, h.withRetry(h.HandleAlertNotification))
+	// D5: refund retry — explicit schedule via asynq.ProcessIn, NOT generic backoff.
+	mux.HandleFunc(TaskRefundRetry, h.withRetry(h.HandleRefundRetry))
 
 	return mux
 }

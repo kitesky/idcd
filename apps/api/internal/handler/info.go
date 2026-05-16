@@ -15,8 +15,24 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/netfilter"
 	"github.com/kite365/idcd/lib/shared/netutil"
 )
+
+// rejectIfBlockedHost validates a user-supplied hostname against the
+// SSRF / metadata netfilter and writes a 400 response if blocked.
+// Returns true when the caller should stop processing the request.
+//
+// Used by the public DNS-class endpoints (rdns / spf / dmarc / dns / mx / dkim)
+// to prevent attackers from coercing the API into resolving names that point
+// at internal infrastructure or cloud-metadata IPs.
+func rejectIfBlockedHost(w http.ResponseWriter, r *http.Request, host string) bool {
+	if blocked, reason := netfilter.IsBlocked(host); blocked {
+		response.Error(w, r, apperr.Validation("Target host not allowed", reason))
+		return true
+	}
+	return false
+}
 
 // InfoHandler handles network information query endpoints.
 type InfoHandler struct {
@@ -300,6 +316,9 @@ func (h *InfoHandler) RDNS(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("Invalid IP address", ""))
 		return
 	}
+	if rejectIfBlockedHost(w, r, query) {
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -319,6 +338,9 @@ func (h *InfoHandler) SPF(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	if rejectIfBlockedHost(w, r, query) {
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -347,6 +369,9 @@ func (h *InfoHandler) DMARC(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
 		return
 	}
+	if rejectIfBlockedHost(w, r, query) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -372,6 +397,9 @@ func (h *InfoHandler) DNS(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", "q parameter is required"))
+		return
+	}
+	if rejectIfBlockedHost(w, r, query) {
 		return
 	}
 
@@ -639,6 +667,9 @@ func (h *InfoHandler) MX(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
 		return
 	}
+	if rejectIfBlockedHost(w, r, query) {
+		return
+	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 
@@ -670,6 +701,9 @@ func (h *InfoHandler) DKIM(w http.ResponseWriter, r *http.Request) {
 	selector := strings.TrimSpace(r.URL.Query().Get("selector"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	if rejectIfBlockedHost(w, r, query) {
 		return
 	}
 	if selector == "" {

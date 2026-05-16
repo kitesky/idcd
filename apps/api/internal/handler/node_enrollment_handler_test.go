@@ -2,12 +2,15 @@ package handler
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
 	"github.com/pashagolub/pgxmock/v4"
 
@@ -230,6 +233,135 @@ func TestEnroll_ExpiredToken(t *testing.T) {
 
 	if rr.Code != http.StatusUnauthorized {
 		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+// activateReq is a small helper to build a request with the node_id URL param
+// wired through chi's RouteContext, so chi.URLParam(r, "node_id") works.
+func activateReq(t *testing.T, nodeID, adminToken string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodPost,
+		"/v1/admin/nodes/"+nodeID+"/activate", nil)
+	if adminToken != "" {
+		req.Header.Set("X-Admin-Token", adminToken)
+	}
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("node_id", nodeID)
+	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+}
+
+func TestNodeActivate_Success_FromPending(t *testing.T) {
+	h, mockPool := setupEnrollmentHandler(t)
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`UPDATE enrolled_nodes`).
+		WithArgs("nd_test_001").
+		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("pending"))
+
+	rr := httptest.NewRecorder()
+	h.NodeActivate(rr, activateReq(t, "nd_test_001", enrollTestAdminToken))
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	var resp struct {
+		Data activateResponse `json:"data"`
+	}
+	if err := json.NewDecoder(rr.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if resp.Data.NodeID != "nd_test_001" {
+		t.Errorf("node_id mismatch: %q", resp.Data.NodeID)
+	}
+	if resp.Data.Status != "active" {
+		t.Errorf("expected status=active, got %q", resp.Data.Status)
+	}
+	if resp.Data.PreviousStatus != "pending" {
+		t.Errorf("expected previous_status=pending, got %q", resp.Data.PreviousStatus)
+	}
+	if err := mockPool.ExpectationsWereMet(); err != nil {
+		t.Errorf("unmet expectations: %v", err)
+	}
+}
+
+func TestNodeActivate_Unauthorized(t *testing.T) {
+	h, mockPool := setupEnrollmentHandler(t)
+	defer mockPool.Close()
+
+	rr := httptest.NewRecorder()
+	h.NodeActivate(rr, activateReq(t, "nd_test_001", "wrong-token"))
+
+	if rr.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d", rr.Code)
+	}
+}
+
+func TestNodeActivate_MissingNodeID(t *testing.T) {
+	h, mockPool := setupEnrollmentHandler(t)
+	defer mockPool.Close()
+
+	rr := httptest.NewRecorder()
+	h.NodeActivate(rr, activateReq(t, "", enrollTestAdminToken))
+
+	if rr.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d", rr.Code)
+	}
+}
+
+func TestNodeActivate_NodeNotFound(t *testing.T) {
+	h, mockPool := setupEnrollmentHandler(t)
+	defer mockPool.Close()
+
+	// First UPDATE returns no rows.
+	mockPool.ExpectQuery(`UPDATE enrolled_nodes`).
+		WithArgs("nd_missing").
+		WillReturnError(pgx.ErrNoRows)
+	// Disambiguation SELECT also finds nothing → confirms node doesn't exist.
+	mockPool.ExpectQuery(`SELECT status FROM enrolled_nodes`).
+		WithArgs("nd_missing").
+		WillReturnError(pgx.ErrNoRows)
+
+	rr := httptest.NewRecorder()
+	h.NodeActivate(rr, activateReq(t, "nd_missing", enrollTestAdminToken))
+
+	if rr.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestNodeActivate_DisabledNode_Conflict(t *testing.T) {
+	h, mockPool := setupEnrollmentHandler(t)
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`UPDATE enrolled_nodes`).
+		WithArgs("nd_banned").
+		WillReturnError(pgx.ErrNoRows)
+	// Disambiguation reveals the node is disabled → 409.
+	mockPool.ExpectQuery(`SELECT status FROM enrolled_nodes`).
+		WithArgs("nd_banned").
+		WillReturnRows(pgxmock.NewRows([]string{"status"}).AddRow("disabled"))
+
+	rr := httptest.NewRecorder()
+	h.NodeActivate(rr, activateReq(t, "nd_banned", enrollTestAdminToken))
+
+	if rr.Code != http.StatusConflict {
+		t.Fatalf("expected 409, got %d: %s", rr.Code, rr.Body.String())
+	}
+}
+
+func TestNodeActivate_DBError(t *testing.T) {
+	h, mockPool := setupEnrollmentHandler(t)
+	defer mockPool.Close()
+
+	mockPool.ExpectQuery(`UPDATE enrolled_nodes`).
+		WithArgs("nd_dberr").
+		WillReturnError(errors.New("connection lost"))
+
+	rr := httptest.NewRecorder()
+	h.NodeActivate(rr, activateReq(t, "nd_dberr", enrollTestAdminToken))
+
+	if rr.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500, got %d: %s", rr.Code, rr.Body.String())
 	}
 }
 

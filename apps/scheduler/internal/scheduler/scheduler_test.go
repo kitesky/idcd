@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -33,87 +34,6 @@ func (m *mockNodeSelector) SelectNode(ctx context.Context, task *queue.ProbeTask
 		return "", m.err
 	}
 	return m.nodeID, nil
-}
-
-func TestProcessTask(t *testing.T) {
-	_, rdb := setupRedis(t)
-	ctx := context.Background()
-
-	// Setup
-	q := queue.New(rdb, "test:queue")
-	streamClient := stream.New(rdb)
-	selector := &mockNodeSelector{nodeID: "nd_test_01"}
-	l := leader.New(rdb, "test:leader", 10*time.Second, "node1")
-
-	// Acquire leadership
-	ok, err := l.Acquire(ctx)
-	if err != nil {
-		t.Fatalf("l.Acquire: %v", err)
-	}
-	if !ok {
-		t.Fatalf("l.Acquire() = false, want true")
-	}
-
-	s := New(Config{
-		Leader:      l,
-		Queue:       q,
-		Selector:    selector,
-		Stream:      streamClient,
-		Pool:        nil, // not used in S1
-		WorkerCount: 2,
-	})
-
-	// Create task
-	task := &queue.ProbeTask{
-		ID:       "pt_test123",
-		Type:     "http",
-		Target:   "https://example.com",
-		Priority: queue.P2,
-		Params:   map[string]string{"method": "GET"},
-	}
-
-	// Process task
-	err = s.processTask(ctx, task)
-	if err != nil {
-		t.Fatalf("s.processTask: %v", err)
-	}
-
-	// Verify task was assigned node
-	if task.NodeID != "nd_test_01" {
-		t.Errorf("task.NodeID = %q, want nd_test_01", task.NodeID)
-	}
-
-	// Verify task was added to stream
-	length, err := streamClient.Len(ctx, ProbeTasksStream)
-	if err != nil {
-		t.Fatalf("streamClient.Len: %v", err)
-	}
-	if length != 1 {
-		t.Errorf("stream length = %d, want 1", length)
-	}
-
-	// Read stream entry to verify content
-	entries, err := rdb.XRange(ctx, ProbeTasksStream, "-", "+").Result()
-	if err != nil {
-		t.Fatalf("XRange: %v", err)
-	}
-	if len(entries) != 1 {
-		t.Fatalf("len(entries) = %d, want 1", len(entries))
-	}
-
-	values := entries[0].Values
-	if values["task_id"] != "pt_test123" {
-		t.Errorf("values[task_id] = %v, want pt_test123", values["task_id"])
-	}
-	if values["type"] != "http" {
-		t.Errorf("values[type] = %v, want http", values["type"])
-	}
-	if values["node_id"] != "nd_test_01" {
-		t.Errorf("values[node_id] = %v, want nd_test_01", values["node_id"])
-	}
-	if values["param_method"] != "GET" {
-		t.Errorf("values[param_method] = %v, want GET", values["param_method"])
-	}
 }
 
 func TestStaticNodeSelector(t *testing.T) {
@@ -186,9 +106,11 @@ func TestStaticNodeSelector(t *testing.T) {
 type mockMonitorStore struct {
 	monitors []DueMonitor
 	err      error
+	calls    atomic.Int32
 }
 
 func (m *mockMonitorStore) ListActiveMonitorsDue(ctx context.Context) ([]DueMonitor, error) {
+	m.calls.Add(1)
 	return m.monitors, m.err
 }
 
@@ -237,11 +159,9 @@ func TestPollMonitors_dispatchesTasks(t *testing.T) {
 
 	s := New(Config{
 		Leader:       l,
-		Queue:        queue.New(rdb, "test:queue2"),
 		Selector:     selector,
 		Stream:       streamClient,
 		MonitorStore: store,
-		WorkerCount:  1,
 	})
 
 	s.pollMonitors(ctx)
@@ -284,11 +204,9 @@ func TestPollMonitors_storeError(t *testing.T) {
 
 	s := New(Config{
 		Leader:       l,
-		Queue:        queue.New(rdb, "test:queue3"),
 		Selector:     selector,
 		Stream:       streamClient,
 		MonitorStore: store,
-		WorkerCount:  1,
 	})
 
 	// Should not panic — just log and return.
@@ -313,11 +231,9 @@ func TestPollMonitors_emptyMonitors(t *testing.T) {
 
 	s := New(Config{
 		Leader:       l,
-		Queue:        queue.New(rdb, "test:queue4"),
 		Selector:     selector,
 		Stream:       streamClient,
 		MonitorStore: store,
-		WorkerCount:  1,
 	})
 
 	s.pollMonitors(ctx)
@@ -328,91 +244,143 @@ func TestPollMonitors_emptyMonitors(t *testing.T) {
 	}
 }
 
-func TestWorkerStopsWhenLostLeadership(t *testing.T) {
+// TestPollMonitors_respectsCancelledContext verifies the poller bails out
+// before hitting the DB or stream once its context is cancelled. This is the
+// safety net behind the leader race fix: when renewLeadership cancels workCtx
+// the in-flight pollMonitors call must stop instead of finishing a full poll
+// against the new leader's data.
+func TestPollMonitors_respectsCancelledContext(t *testing.T) {
 	_, rdb := setupRedis(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // pre-cancel
 
-	// Setup
-	q := queue.New(rdb, "test:queue")
 	streamClient := stream.New(rdb)
 	selector := &mockNodeSelector{nodeID: "nd_test_01"}
-	l := leader.New(rdb, "test:leader", 10*time.Second, "node1")
+	l := leader.New(rdb, "test:leader_cancel", 10*time.Second, "node1")
+	_, _ = l.Acquire(context.Background())
 
-	// Acquire leadership
-	ctx := context.Background()
-	ok, err := l.Acquire(ctx)
-	if err != nil {
-		t.Fatalf("l.Acquire: %v", err)
-	}
-	if !ok {
-		t.Fatalf("l.Acquire() = false, want true")
+	store := &mockMonitorStore{
+		monitors: []DueMonitor{
+			{ID: "mon_x", Type: "http", Target: "x.com", NodeCount: 1},
+		},
 	}
 
 	s := New(Config{
-		Leader:      l,
-		Queue:       q,
-		Selector:    selector,
-		Stream:      streamClient,
-		Pool:        nil,
-		WorkerCount: 1,
+		Leader:       l,
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
 	})
 
-	// Enqueue a task
-	task := &queue.ProbeTask{
-		ID:       "pt_test123",
-		Type:     "http",
-		Target:   "https://example.com",
-		Priority: queue.P2,
+	s.pollMonitors(ctx)
+
+	// Cancelled ctx → must not query DB and must not push to stream.
+	if got := store.calls.Load(); got != 0 {
+		t.Errorf("ListActiveMonitorsDue calls = %d, want 0 when ctx cancelled", got)
 	}
-	if err := q.Enqueue(ctx, task); err != nil {
-		t.Fatalf("q.Enqueue: %v", err)
+	length, _ := streamClient.Len(ctx, ProbeTasksStream)
+	if length != 0 {
+		t.Errorf("stream length = %d, want 0 when ctx cancelled", length)
+	}
+}
+
+// TestMonitorPoller_stopsOnContextCancel exercises the long-running goroutine
+// loop. The leader race fix routes leader loss → workCtx cancel → poller
+// returns. We simulate the same shape here by cancelling the ctx the poller
+// is running with.
+func TestMonitorPoller_stopsOnContextCancel(t *testing.T) {
+	_, rdb := setupRedis(t)
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+	l := leader.New(rdb, "test:leader_cancel_loop", 10*time.Second, "node1")
+	if ok, err := l.Acquire(context.Background()); err != nil || !ok {
+		t.Fatalf("l.Acquire: %v ok=%v", err, ok)
 	}
 
-	// Start worker in goroutine
-	workerCtx, cancel := context.WithCancel(ctx)
+	store := &mockMonitorStore{monitors: []DueMonitor{}}
+
+	s := New(Config{
+		Leader:       l,
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() {
+		s.monitorPoller(ctx)
+		close(done)
+	}()
+
+	// Let the immediate poll on startup happen, then cancel.
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// success — poller exited promptly on cancel
+	case <-time.After(1 * time.Second):
+		t.Fatal("monitorPoller did not stop within 1s of ctx cancel (leader race fix regressed)")
+	}
+
+	// At minimum the immediate startup poll should have run.
+	if store.calls.Load() < 1 {
+		t.Errorf("expected at least 1 ListActiveMonitorsDue call, got %d", store.calls.Load())
+	}
+}
+
+// TestRun_stopsWhenLeadershipLost is the headline test for the leader race
+// fix. Run() is invoked, leadership is then yanked out from under it (via a
+// second instance acquiring the lock after the first one's lease expires),
+// and Run() must return in <1s — well under the previous worst case of
+// monitorPollInterval (30s).
+func TestRun_stopsWhenLeadershipLost(t *testing.T) {
+	mr, rdb := setupRedis(t)
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+
+	// Short TTL so renewal fires several times per test second.
+	ttl := 1 * time.Second
+	l1 := leader.New(rdb, "test:run_loss", ttl, "node1")
+
+	store := &mockMonitorStore{monitors: []DueMonitor{}}
+
+	s := New(Config{
+		Leader:       l1,
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go s.worker(workerCtx, 0)
+	runErr := make(chan error, 1)
+	go func() { runErr <- s.Run(ctx) }()
 
-	// Wait for task to be processed
-	time.Sleep(1500 * time.Millisecond)
-
-	// Verify task was processed
-	length, err := streamClient.Len(ctx, ProbeTasksStream)
-	if err != nil {
-		t.Fatalf("streamClient.Len: %v", err)
-	}
-	if length != 1 {
-		t.Errorf("stream length = %d, want 1 (task should be processed)", length)
+	// Wait for the scheduler to acquire and start its goroutines.
+	time.Sleep(100 * time.Millisecond)
+	if !l1.IsLeader() {
+		t.Fatal("scheduler did not acquire leadership")
 	}
 
-	// Simulate leadership loss
-	if err := l.Release(ctx); err != nil {
-		t.Fatalf("l.Release: %v", err)
+	// Expire the lock and hand it to a second instance.
+	mr.FastForward(2 * ttl)
+	l2 := leader.New(rdb, "test:run_loss", ttl, "node2")
+	if ok, err := l2.Acquire(context.Background()); err != nil || !ok {
+		t.Fatalf("l2.Acquire after expiry: ok=%v err=%v", ok, err)
 	}
 
-	// Enqueue another task
-	task2 := &queue.ProbeTask{
-		ID:       "pt_test456",
-		Type:     "http",
-		Target:   "https://example.com",
-		Priority: queue.P2,
+	// Run() must return promptly once renewLeadership notices the loss.
+	// Renewal interval is 2s in production; in this test we accept up to
+	// 3 * leaderRenewInterval as a comfortable bound.
+	select {
+	case err := <-runErr:
+		if err != nil {
+			t.Errorf("Run returned error on leader loss, want nil; got %v", err)
+		}
+	case <-time.After(3 * leaderRenewInterval):
+		t.Fatalf("Run did not exit within %v of leader loss — split brain window still open", 3*leaderRenewInterval)
 	}
-	if err := q.Enqueue(ctx, task2); err != nil {
-		t.Fatalf("q.Enqueue: %v", err)
-	}
-
-	// Wait a bit
-	time.Sleep(1500 * time.Millisecond)
-
-	// Second task should NOT be processed (worker should have stopped)
-	length, err = streamClient.Len(ctx, ProbeTasksStream)
-	if err != nil {
-		t.Fatalf("streamClient.Len: %v", err)
-	}
-	if length != 1 {
-		t.Errorf("stream length = %d, want 1 (second task should not be processed after losing leadership)", length)
-	}
-
-	// Cancel worker context
-	cancel()
 }

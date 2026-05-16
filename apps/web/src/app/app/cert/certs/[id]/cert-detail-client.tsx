@@ -49,7 +49,7 @@ import {
 } from "@/components/ui/select"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { downloadCert, getCert, revokeCert } from "../../cert-api"
+import { CertAPIError, downloadCert, getCert, revokeCert } from "../../cert-api"
 import {
   CERT_STATUS_LABELS,
   REVOKE_REASON_LABELS,
@@ -100,6 +100,12 @@ export function CertDetailClient({ certId }: { certId: string }) {
       .then((c) => {
         if (mounted) setCert(c)
       })
+      .catch((err) => {
+        if (mounted) {
+          const msg = err instanceof Error ? err.message : "加载证书失败"
+          toast.error(msg)
+        }
+      })
       .finally(() => {
         if (mounted) setLoading(false)
       })
@@ -113,15 +119,24 @@ export function CertDetailClient({ certId }: { certId: string }) {
     setBusy(true)
     try {
       const { url, filename } = await downloadCert(cert.id, format)
-      // Trigger an anchor click to surface the mock data URL as a download.
+      if (!url) {
+        toast.error("未获得下载链接")
+        return
+      }
+      // The backend returns a one-shot signed URL; trigger an anchor click so
+      // the browser handles the download / new-tab opening.
       const a = document.createElement("a")
       a.href = url
       a.download = filename
+      a.rel = "noopener"
       document.body.appendChild(a)
       a.click()
       a.remove()
       toast.success(`已开始下载 ${filename}`)
       setDownloadOpen(false)
+    } catch (err) {
+      const msg = err instanceof CertAPIError ? err.message : err instanceof Error ? err.message : "下载失败"
+      toast.error(msg)
     } finally {
       setBusy(false)
     }
@@ -137,6 +152,9 @@ export function CertDetailClient({ certId }: { certId: string }) {
         toast.success("证书已撤销")
       }
       setRevokeOpen(false)
+    } catch (err) {
+      const msg = err instanceof CertAPIError ? err.message : err instanceof Error ? err.message : "撤销失败"
+      toast.error(msg)
     } finally {
       setBusy(false)
     }

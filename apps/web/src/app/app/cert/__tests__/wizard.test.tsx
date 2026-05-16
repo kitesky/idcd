@@ -15,6 +15,21 @@ vi.mock("next/link", () => ({
   }) => <a href={href}>{children}</a>,
 }))
 
+// Stub the cert-api fetch layer so the wizard renders without making real
+// network calls during the test.
+vi.mock("../cert-api", () => ({
+  listDnsCredentials: vi.fn(async () => [
+    {
+      id: "dns-1",
+      provider: "cloudflare" as const,
+      displayName: "Test Cloudflare",
+      health: "healthy" as const,
+      createdAt: new Date().toISOString(),
+    },
+  ]),
+  createOrder: vi.fn(async () => ({ id: "ord-new" })),
+}))
+
 import { WizardClient } from "../new/wizard-client"
 
 describe("WizardClient", () => {

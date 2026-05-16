@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { CalendarClock, CheckCircle2, Plus, ShieldCheck } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -75,11 +76,35 @@ export default function CertOverviewPage() {
 
   useEffect(() => {
     let mounted = true
-    Promise.all([getQuota(), listOrders()])
-      .then(([q, o]) => {
+    Promise.allSettled([getQuota(), listOrders()])
+      .then(([qRes, oRes]) => {
         if (!mounted) return
-        setQuota(q)
-        setOrders(o.slice(0, 5))
+        if (qRes.status === "fulfilled") {
+          setQuota(qRes.value)
+        } else {
+          const err = qRes.reason
+          // Quota endpoint may not be implemented yet (501) — fall back to zeros
+          // instead of yelling at the user.
+          if (!(err instanceof Error && err.message)) {
+            // ignore
+          } else if (
+            (err as { code?: string }).code === "CERT_NOT_IMPL"
+          ) {
+            // silent
+          } else {
+            toast.error(err.message)
+          }
+          setQuota({ used: 0, limit: 0, expiringSoon: 0, monthlySuccessRate: 0 })
+        }
+        if (oRes.status === "fulfilled") {
+          setOrders(oRes.value.slice(0, 5))
+        } else {
+          const err = oRes.reason
+          if (err instanceof Error && (err as { code?: string }).code !== "CERT_NOT_IMPL") {
+            toast.error(err.message)
+          }
+          setOrders([])
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false)

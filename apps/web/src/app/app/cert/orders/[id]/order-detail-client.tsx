@@ -19,7 +19,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Separator } from "@/components/ui/separator"
 import { Skeleton } from "@/components/ui/skeleton"
-import { confirmManualChallenge, getOrder, retryOrder } from "../../cert-api"
+import { CertAPIError, getOrder, markManualReady, retryOrder } from "../../cert-api"
 import {
   CA_OPTIONS,
   ORDER_STATUS_LABELS,
@@ -71,6 +71,12 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
       .then((o) => {
         if (mounted) setOrder(o)
       })
+      .catch((err) => {
+        if (mounted) {
+          const msg = err instanceof Error ? err.message : "加载失败"
+          toast.error(msg)
+        }
+      })
       .finally(() => {
         if (mounted) setLoading(false)
       })
@@ -87,19 +93,33 @@ export function OrderDetailClient({ orderId }: { orderId: string }) {
         setOrder(updated)
         toast.success("已重新提交订单")
       }
+    } catch (err) {
+      const msg = err instanceof CertAPIError ? err.message : err instanceof Error ? err.message : "重试失败"
+      toast.error(msg)
     } finally {
       setBusy(false)
     }
   }
 
   async function handleConfirmManual() {
+    if (!order) return
+    const first = order.manualChallenges?.[0]
+    const fqdn = first?.recordName ?? ""
+    const value = first?.recordValue ?? ""
+    if (!fqdn || !value) {
+      toast.error("缺少 TXT 记录信息，请联系管理员")
+      return
+    }
     setBusy(true)
     try {
-      const updated = await confirmManualChallenge(orderId)
+      const updated = await markManualReady(orderId, fqdn, value)
       if (updated) {
         setOrder(updated)
-        toast.success("已开始验证")
+        toast.success("已通知 worker，正在验证")
       }
+    } catch (err) {
+      const msg = err instanceof CertAPIError ? err.message : err instanceof Error ? err.message : "确认失败"
+      toast.error(msg)
     } finally {
       setBusy(false)
     }

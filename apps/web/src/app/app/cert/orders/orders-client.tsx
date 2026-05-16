@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Plus } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -89,6 +90,12 @@ export function OrdersClient() {
     listOrders()
       .then((o) => {
         if (mounted) setOrders(o)
+      })
+      .catch((err) => {
+        if (mounted) {
+          const msg = err instanceof Error ? err.message : "加载订单失败"
+          toast.error(msg)
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false)

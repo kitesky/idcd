@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -52,6 +53,12 @@ export function CertsClient() {
     listCerts()
       .then((c) => {
         if (mounted) setCerts(c)
+      })
+      .catch((err) => {
+        if (mounted) {
+          const msg = err instanceof Error ? err.message : "加载证书失败"
+          toast.error(msg)
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false)

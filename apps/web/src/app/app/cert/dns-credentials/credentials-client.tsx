@@ -32,6 +32,7 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import {
+  CertAPIError,
   createDnsCredential,
   deleteDnsCredential,
   listDnsCredentials,
@@ -76,6 +77,10 @@ export function CredentialsClient() {
     setLoading(true)
     return listDnsCredentials()
       .then((c) => setCreds(c))
+      .catch((err) => {
+        const msg = err instanceof Error ? err.message : "加载凭据失败"
+        toast.error(msg)
+      })
       .finally(() => setLoading(false))
   }, [])
 
@@ -84,6 +89,12 @@ export function CredentialsClient() {
     listDnsCredentials()
       .then((c) => {
         if (mounted) setCreds(c)
+      })
+      .catch((err) => {
+        if (mounted) {
+          const msg = err instanceof Error ? err.message : "加载凭据失败"
+          toast.error(msg)
+        }
       })
       .finally(() => {
         if (mounted) setLoading(false)
@@ -119,6 +130,9 @@ export function CredentialsClient() {
       toast.success("已新增凭据")
       setSheetOpen(false)
       resetForm()
+    } catch (err) {
+      const msg = err instanceof CertAPIError ? err.message : err instanceof Error ? err.message : "保存失败"
+      toast.error(msg)
     } finally {
       setBusy(false)
     }
@@ -156,6 +170,9 @@ export function CredentialsClient() {
       await deleteDnsCredential(id)
       setCreds((prev) => prev.filter((c) => c.id !== id))
       toast.success("已吊销凭据")
+    } catch (err) {
+      const msg = err instanceof CertAPIError ? err.message : err instanceof Error ? err.message : "吊销失败"
+      toast.error(msg)
     } finally {
       setBusyRow(null)
     }

@@ -194,10 +194,10 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
   useEffect(() => {
     let cancelled = false
     setMonitorsLoading(true)
-    apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
+    apiRequest<{ data: { items: MonitorOption[] } }>("/v1/monitors")
       .then((res) => {
         if (cancelled) return
-        const list = res.data.monitors ?? []
+        const list = res.data.items ?? []
         setMonitors(list)
         // If no initial monitor name is set, default to the first option
         if (!initial?.monitorName && list.length > 0) {
@@ -375,8 +375,8 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
 
   // Fetch monitors once for the filter dropdown
   useEffect(() => {
-    apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
-      .then((res) => setMonitors(res.data.monitors ?? []))
+    apiRequest<{ data: { items: MonitorOption[] } }>("/v1/monitors")
+      .then((res) => setMonitors(res.data.items ?? []))
       .catch(() => {/* leave monitors empty; filter will just show status only */})
   }, [])
 
@@ -941,8 +941,8 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
     if (!open) return
     let cancelled = false
     setMonitorsLoading(true)
-    apiRequest<{ data: { monitors: MonitorOption[] } }>("/v1/monitors")
-      .then((res) => { if (!cancelled) setMonitors(res.data.monitors ?? []) })
+    apiRequest<{ data: { items: MonitorOption[] } }>("/v1/monitors")
+      .then((res) => { if (!cancelled) setMonitors(res.data.items ?? []) })
       .catch(() => { if (!cancelled) setMonitors([]) })
       .finally(() => { if (!cancelled) setMonitorsLoading(false) })
     return () => { cancelled = true }

@@ -9,6 +9,7 @@ import {
   Edit,
   Pause,
   Play,
+  Plus,
   Trash2,
   Wifi,
   Radio,
@@ -63,6 +64,12 @@ interface AlertEvent {
   status: "firing" | "resolved"
   fired_at: string
   resolved_at?: string
+}
+
+interface PolicyItem {
+  id: string
+  name: string
+  enabled: boolean
 }
 
 interface CheckBucket {
@@ -245,6 +252,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   const [bucketLoading, setBucketLoading] = useState(true)
   const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([])
   const [alertsLoading, setAlertsLoading] = useState(false)
+  const [policies, setPolicies] = useState<PolicyItem[]>([])
 
   useEffect(() => {
     const url = `${API_BASE}/v1/monitors/${id}/stream`
@@ -276,6 +284,17 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       })
       .finally(() => {
         setAlertsLoading(false)
+      })
+  }, [id])
+
+  useEffect(() => {
+    apiRequest<{ data: PolicyItem[] }>(`/v1/alert-policies?monitor_id=${id}`)
+      .then((json) => {
+        const items = json?.data
+        setPolicies(Array.isArray(items) ? items : [])
+      })
+      .catch(() => {
+        setPolicies([])
       })
   }, [id])
 
@@ -621,6 +640,42 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             )}
           </TableBody>
         </Table>
+      </Card>
+
+      {/* 告警策略 */}
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between">
+          <CardTitle className="text-base">告警策略</CardTitle>
+          <Link
+            href={`/app/alerts?tab=policies&monitor=${encodeURIComponent(currentMonitor.name)}`}
+            className="text-xs text-muted-foreground hover:text-foreground"
+          >
+            管理策略 →
+          </Link>
+        </CardHeader>
+        <CardContent>
+          {policies.length === 0 ? (
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">暂无告警策略</p>
+              <Button size="sm" variant="outline" asChild>
+                <Link href={`/app/alerts?tab=policies&monitor=${encodeURIComponent(currentMonitor.name)}`}>
+                  <Plus className="mr-1 h-4 w-4" />创建策略
+                </Link>
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {policies.map(policy => (
+                <div key={policy.id} className="flex items-center justify-between text-sm">
+                  <span>{policy.name}</span>
+                  <Badge variant={policy.enabled ? "secondary" : "outline"}>
+                    {policy.enabled ? "启用" : "停用"}
+                  </Badge>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
       </Card>
 
       {/* 告警历史 */}

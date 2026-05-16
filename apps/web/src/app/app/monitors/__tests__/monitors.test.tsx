@@ -2,6 +2,21 @@ import { describe, it, expect, vi, beforeEach } from "vitest"
 import { render, screen, fireEvent, waitFor } from "@testing-library/react"
 import "@testing-library/jest-dom"
 
+// Mock next-intl — return the key itself so tests are locale-agnostic
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, params?: Record<string, unknown>) => {
+    if (params) {
+      // Simple interpolation for parameterised keys
+      return Object.entries(params).reduce(
+        (acc, [k, v]) => acc.replace(`{${k}}`, String(v)),
+        key,
+      )
+    }
+    return key
+  },
+  useLocale: () => "zh",
+}))
+
 // Mock next/navigation
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -160,10 +175,11 @@ describe("MonitorsClient — 列表渲染", () => {
     })
     render(<MonitorsClient />)
     await screen.findByText("idcd.com 主站")
-    const pauseButtons = screen.getAllByTitle("暂停检测")
+    // With i18n mock returning key, the title is "actions.pause" / "actions.resume"
+    const pauseButtons = screen.getAllByTitle("actions.pause")
     fireEvent.click(pauseButtons[0]!)
     await waitFor(() =>
-      expect(screen.getAllByTitle("恢复检测").length).toBeGreaterThan(0)
+      expect(screen.getAllByTitle("actions.resume").length).toBeGreaterThan(0)
     )
   })
 
@@ -182,14 +198,14 @@ describe("MonitorsClient — 列表渲染", () => {
     render(<MonitorsClient />)
     await screen.findByText("idcd.com 主站")
     // Open dropdown menu for first monitor via pointerDown (Radix DropdownMenu event)
-    const moreButtons = screen.getAllByLabelText("更多操作")
+    const moreButtons = screen.getAllByLabelText("actions.moreActions")
     fireEvent.pointerDown(moreButtons[0]!, {
       button: 0,
       ctrlKey: false,
       pointerId: 1,
       pointerType: "mouse",
     })
-    const deleteBtn = screen.queryByText("删除")
+    const deleteBtn = screen.queryByText("actions.delete")
     if (deleteBtn) {
       fireEvent.click(deleteBtn)
       await waitFor(() =>
@@ -198,7 +214,7 @@ describe("MonitorsClient — 列表渲染", () => {
     } else {
       // Portal not rendered in jsdom — verify row is present and interactive
       expect(screen.getByText("idcd.com 主站")).toBeInTheDocument()
-      const pauseButtons = screen.getAllByTitle("暂停检测")
+      const pauseButtons = screen.getAllByTitle("actions.pause")
       expect(pauseButtons.length).toBeGreaterThan(0)
     }
   })
@@ -206,7 +222,7 @@ describe("MonitorsClient — 列表渲染", () => {
   it("新建监控链接存在并有正确 href", async () => {
     render(<MonitorsClient />)
     // The button is present even during loading
-    const newBtn = await screen.findByRole("link", { name: /新建监控/ })
+    const newBtn = await screen.findByRole("link", { name: /newMonitor/ })
     expect(newBtn).toHaveAttribute("href", "/app/monitors/new")
   })
 
@@ -243,7 +259,7 @@ describe("MonitorsClient — 列表渲染", () => {
       json: async () => ({ error: { message: "服务器错误" } }),
     } as Response)
     render(<MonitorsClient />)
-    await screen.findByText("加载失败")
+    await screen.findByText("error.loadFailed")
     expect(screen.getByText("服务器错误")).toBeInTheDocument()
   })
 })
@@ -316,10 +332,10 @@ describe("MonitorDetailClient — 详情页渲染", () => {
 
   it("渲染检测记录表格和表头", () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
-    expect(screen.getByText("最近检测记录")).toBeInTheDocument()
-    expect(screen.getByText("时间")).toBeInTheDocument()
-    expect(screen.getByText("延迟")).toBeInTheDocument()
-    expect(screen.getByText("成功/失败")).toBeInTheDocument()
+    expect(screen.getByText("detail.recentChecks")).toBeInTheDocument()
+    expect(screen.getByText("detail.checkTime")).toBeInTheDocument()
+    expect(screen.getByText("detail.checkLatency")).toBeInTheDocument()
+    expect(screen.getByText("detail.checkSuccessFailure")).toBeInTheDocument()
   })
 
   it("fetch 返回 buckets 时最近检测记录表展示最新非 empty 条目", async () => {
@@ -345,7 +361,7 @@ describe("MonitorDetailClient — 详情页渲染", () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     // Wait for loading to finish and UP badges to appear in the table
     await waitFor(() => {
-      expect(screen.queryByText("加载中…")).not.toBeInTheDocument()
+      expect(screen.queryByText("detail.loading")).not.toBeInTheDocument()
     })
     const upBadges = screen.getAllByText("UP")
     // At least 1 UP badge from table rows (plus status badges from top)
@@ -361,13 +377,13 @@ describe("MonitorDetailClient — 详情页渲染", () => {
     } as Response)
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     await waitFor(() => {
-      expect(screen.getByText("暂无检测记录")).toBeInTheDocument()
+      expect(screen.getByText("detail.noChecks")).toBeInTheDocument()
     })
   })
 
   it("渲染 SSE 实时更新区域", () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
-    expect(screen.getByText("实时更新中")).toBeInTheDocument()
+    expect(screen.getByText("detail.liveUpdate")).toBeInTheDocument()
     expect(screen.getByTestId("sse-live-check")).toBeInTheDocument()
   })
 
@@ -379,9 +395,9 @@ describe("MonitorDetailClient — 详情页渲染", () => {
 
   it("暂停按钮点击后变为恢复按钮", () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
-    const pauseBtn = screen.getByRole("button", { name: /暂停/ })
+    const pauseBtn = screen.getByRole("button", { name: /actions\.pause/ })
     fireEvent.click(pauseBtn)
-    expect(screen.getByRole("button", { name: /恢复/ })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: /actions\.resume/ })).toBeInTheDocument()
   })
 
   it("监控目标地址显示在页面上", () => {

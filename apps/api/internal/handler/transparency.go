@@ -114,7 +114,7 @@ func (h *TransparencyHandler) queryUptimeInterval(ctx context.Context, interval 
 			2
 		), 0)
 		FROM monitor_checks
-		WHERE checked_at > NOW() - INTERVAL '`+interval+`'
+		WHERE check_at > NOW() - INTERVAL '`+interval+`'
 	`).Scan(&pct)
 	if err != nil {
 		return 0
@@ -187,7 +187,7 @@ func (h *TransparencyHandler) Get(w http.ResponseWriter, r *http.Request) {
 		RecentIncidents: []transparencyIncident{
 			{
 				Date:        "2026-05-10",
-				Title:       "API 网关短暂延迟升高",
+				Title:       "API gateway brief latency spike",
 				DurationMin: 12,
 				Severity:    "low",
 				Resolved:    true,

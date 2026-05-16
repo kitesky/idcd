@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -25,11 +26,12 @@ function formatAmount(cents: number, currency: string) {
 
 function formatDate(iso?: string | null) {
   if (!iso) return "—"
-  try { return new Date(iso).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) }
+  try { return new Date(iso).toLocaleString(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" }) }
   catch { return iso }
 }
 
 export function RefundClient({ initialPayments }: { initialPayments: RefundFailedPayment[] }) {
+  const t = useTranslations("admin")
   const [payments, setPayments] = useState(initialPayments)
   const [retrying, setRetrying] = useState<Record<string, boolean>>({})
   const [errors,   setErrors]   = useState<Record<string, string>>({})
@@ -56,41 +58,56 @@ export function RefundClient({ initialPayments }: { initialPayments: RefundFaile
       {payments.length > 0 ? (
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>待处理退款失败记录</AlertTitle>
-          <AlertDescription>共 <strong>{payments.length}</strong> 笔退款处于 refund_failed 状态，需要手动重试或联系用户。</AlertDescription>
+          <AlertTitle>{t("refundFailed.alertTitle")}</AlertTitle>
+          <AlertDescription>
+            {t("refundFailed.alertDesc", { count: payments.length })}
+          </AlertDescription>
         </Alert>
       ) : (
-        <Alert><AlertTitle>无待处理记录</AlertTitle><AlertDescription>当前没有 refund_failed 状态的支付记录。</AlertDescription></Alert>
+        <Alert>
+          <AlertTitle>{t("refundFailed.emptyTitle")}</AlertTitle>
+          <AlertDescription>{t("refundFailed.emptyDesc")}</AlertDescription>
+        </Alert>
       )}
 
       <Card>
-        <CardHeader><CardTitle>退款失败支付列表</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("refundFailed.listTitle")}</CardTitle></CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Payment ID</TableHead>
-                <TableHead>用户 ID</TableHead>
-                <TableHead>金额</TableHead>
-                <TableHead>失败时间</TableHead>
-                <TableHead>重试次数</TableHead>
-                <TableHead>操作</TableHead>
+                <TableHead>{t("refundFailed.table.paymentId")}</TableHead>
+                <TableHead>{t("refundFailed.table.userId")}</TableHead>
+                <TableHead>{t("refundFailed.table.amount")}</TableHead>
+                <TableHead>{t("refundFailed.table.failedAt")}</TableHead>
+                <TableHead>{t("refundFailed.table.retryCount")}</TableHead>
+                <TableHead>{t("refundFailed.table.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {payments.length === 0 ? (
-                <TableRow><TableCell colSpan={6} className="py-8 text-center text-muted-foreground">暂无记录</TableCell></TableRow>
+                <TableRow>
+                  <TableCell colSpan={6} className="py-8 text-center text-muted-foreground">
+                    {t("refundFailed.noData")}
+                  </TableCell>
+                </TableRow>
               ) : payments.map(p => (
                 <TableRow key={p.id}>
                   <TableCell className="font-mono text-xs">{p.id}</TableCell>
                   <TableCell className="font-mono text-xs">{p.user_id}</TableCell>
-                  <TableCell><Badge variant="destructive" className="font-mono">{formatAmount(p.amount_cents, p.currency)}</Badge></TableCell>
+                  <TableCell>
+                    <Badge variant="destructive" className="font-mono">
+                      {formatAmount(p.amount_cents, p.currency)}
+                    </Badge>
+                  </TableCell>
                   <TableCell className="text-xs text-muted-foreground">{formatDate(p.refund_failed_at)}</TableCell>
-                  <TableCell>{p.refund_retry_count} 次</TableCell>
+                  <TableCell>{p.refund_retry_count} {t("refundFailed.retryCountUnit")}</TableCell>
                   <TableCell>
                     <div className="flex flex-col gap-1">
                       <Button size="sm" variant="outline" disabled={retrying[p.id]} onClick={() => handleRetry(p.id)}>
-                        {retrying[p.id] ? <><RefreshCw className="mr-1 h-3 w-3 animate-spin" />重试中…</> : "手动重试"}
+                        {retrying[p.id]
+                          ? <><RefreshCw className="mr-1 h-3 w-3 animate-spin" />{t("refundFailed.retrying")}</>
+                          : t("refundFailed.manualRetry")}
                       </Button>
                       {errors[p.id] && <span className="text-xs text-destructive">{errors[p.id]}</span>}
                     </div>

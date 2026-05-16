@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
@@ -30,14 +31,11 @@ import { apiRequest } from "@/lib/api"
 
 const passwordSchema = z
   .object({
-    current_password: z.string().min(1, { message: "请输入当前密码" }),
-    new_password: z
-      .string()
-      .min(8, { message: "新密码至少 8 位" }),
-    confirm_password: z.string().min(1, { message: "请确认新密码" }),
+    current_password: z.string().min(1),
+    new_password: z.string().min(8),
+    confirm_password: z.string().min(1),
   })
   .refine((data) => data.new_password === data.confirm_password, {
-    message: "两次密码不一致",
     path: ["confirm_password"],
   })
 
@@ -47,6 +45,7 @@ type PasswordFormValues = z.infer<typeof passwordSchema>
 
 export function AccountClient() {
   const router = useRouter()
+  const t = useTranslations("settings")
 
   // ── Profile / email state ────────────────────────────────────────────────
   const [userEmail, setUserEmail] = useState<string | null>(null)
@@ -91,7 +90,7 @@ export function AccountClient() {
       form.reset()
       setTimeout(() => setPwdSuccess(false), 3000)
     } catch (err) {
-      setPwdError(err instanceof Error ? err.message : "密码更新失败，请稍后重试")
+      setPwdError(err instanceof Error ? err.message : t("account.pwdFailed"))
     } finally {
       setPwdLoading(false)
     }
@@ -105,7 +104,7 @@ export function AccountClient() {
 
   async function handleDeleteConfirm() {
     if (deleteEmailInput !== userEmail) {
-      setDeleteError("邮箱地址不匹配，请重新输入")
+      setDeleteError(t("account.emailMismatch"))
       return
     }
     setDeleteLoading(true)
@@ -114,7 +113,7 @@ export function AccountClient() {
       await apiRequest("/v1/account", { method: "DELETE" })
       router.push("/auth/logout")
     } catch {
-      setDeleteError("提交失败，请稍后重试")
+      setDeleteError(t("account.deleteFailed"))
       setDeleteLoading(false)
     }
   }
@@ -124,8 +123,8 @@ export function AccountClient() {
       {/* ── Card 1: 修改密码 ─────────────────────────────────────────── */}
       <Card data-testid="password-card">
         <CardHeader>
-          <CardTitle>修改密码</CardTitle>
-          <CardDescription>定期更换密码以保护账号安全</CardDescription>
+          <CardTitle>{t("account.changePassword")}</CardTitle>
+          <CardDescription>{t("account.changePasswordDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           {pwdError && (
@@ -135,7 +134,7 @@ export function AccountClient() {
           )}
           {pwdSuccess && (
             <Alert data-testid="pwd-success">
-              <AlertDescription>密码已更新</AlertDescription>
+              <AlertDescription>{t("account.pwdUpdated")}</AlertDescription>
             </Alert>
           )}
 
@@ -149,7 +148,7 @@ export function AccountClient() {
                 name="current_password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>当前密码</FormLabel>
+                    <FormLabel>{t("account.currentPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
@@ -169,11 +168,11 @@ export function AccountClient() {
                 name="new_password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>新密码</FormLabel>
+                    <FormLabel>{t("account.newPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder="至少 8 位"
+                        placeholder={t("account.pwdMinLength")}
                         disabled={pwdLoading}
                         data-testid="input-new-password"
                         {...field}
@@ -189,11 +188,11 @@ export function AccountClient() {
                 name="confirm_password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>确认新密码</FormLabel>
+                    <FormLabel>{t("account.confirmPassword")}</FormLabel>
                     <FormControl>
                       <Input
                         type="password"
-                        placeholder="再次输入新密码"
+                        placeholder={t("account.pwdRepeat")}
                         disabled={pwdLoading}
                         data-testid="input-confirm-password"
                         {...field}
@@ -209,7 +208,7 @@ export function AccountClient() {
                 disabled={pwdLoading}
                 data-testid="btn-save-password"
               >
-                {pwdLoading ? "保存中..." : "保存"}
+                {pwdLoading ? t("account.saving") : t("account.save")}
               </Button>
             </form>
           </Form>
@@ -219,19 +218,19 @@ export function AccountClient() {
       {/* ── Card 2: 两步验证 ─────────────────────────────────────────── */}
       <Card data-testid="2fa-card">
         <CardHeader>
-          <CardTitle>两步验证</CardTitle>
-          <CardDescription>为您的账号添加额外的安全保护层</CardDescription>
+          <CardTitle>{t("account.twoFactor")}</CardTitle>
+          <CardDescription>{t("account.twoFactorDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">当前状态：</span>
+            <span className="text-sm text-muted-foreground">{t("account.currentStatus")}</span>
             <Badge variant="secondary" data-testid="2fa-status-badge">
-              未启用
+              {t("account.twoFactorDisabled")}
             </Badge>
           </div>
 
           <Button variant="outline" asChild data-testid="btn-enable-2fa">
-            <Link href="/app/settings/security">前往安全设置</Link>
+            <Link href="/app/settings/security">{t("account.goToSecurity")}</Link>
           </Button>
         </CardContent>
       </Card>
@@ -242,10 +241,9 @@ export function AccountClient() {
         data-testid="danger-zone-card"
       >
         <CardHeader>
-          <CardTitle className="text-destructive">注销账号</CardTitle>
+          <CardTitle className="text-destructive">{t("account.dangerZone")}</CardTitle>
           <CardDescription>
-            注销账号将删除所有数据，此操作不可撤销。删除将在 30
-            天后生效，期间可登录取消。
+            {t("account.dangerZoneDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -257,7 +255,7 @@ export function AccountClient() {
               data-testid="btn-delete-account"
               onClick={() => setShowDeleteConfirm(true)}
             >
-              注销账号
+              {t("account.deleteBtn")}
             </Button>
           ) : (
             <div
@@ -265,9 +263,9 @@ export function AccountClient() {
               data-testid="delete-confirm-panel"
             >
               <p className="text-sm font-medium">
-                请输入您的邮箱地址
+                {t("account.confirmDeletePrompt")}
                 <span className="font-semibold"> {userEmail} </span>
-                以确认注销
+                {t("account.confirmDeleteSuffix")}
               </p>
 
               {deleteError && (
@@ -281,7 +279,7 @@ export function AccountClient() {
 
               <Input
                 type="email"
-                placeholder="输入您的邮箱"
+                placeholder={t("account.emailPlaceholder")}
                 value={deleteEmailInput}
                 onChange={(e) => {
                   setDeleteEmailInput(e.target.value)
@@ -298,7 +296,7 @@ export function AccountClient() {
                   disabled={deleteLoading || deleteEmailInput === ""}
                   data-testid="btn-confirm-delete"
                 >
-                  {deleteLoading ? "提交中..." : "确认注销"}
+                  {deleteLoading ? t("account.confirming") : t("account.confirmDelete")}
                 </Button>
                 <Button
                   variant="outline"
@@ -310,7 +308,7 @@ export function AccountClient() {
                   disabled={deleteLoading}
                   data-testid="btn-cancel-delete"
                 >
-                  取消
+                  {t("account.cancelDelete")}
                 </Button>
               </div>
             </div>

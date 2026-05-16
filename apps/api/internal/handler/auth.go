@@ -548,7 +548,7 @@ func (h *AuthHandler) enqueueVerifyEmail(ctx context.Context, to, otpID, code st
 		"to":         to,
 		"otp_id":     otpID,
 		"code":       code,
-		"expires_in": "30 分钟",
+		"expires_in": "30 minutes",
 	})
 	if err != nil {
 		return
@@ -569,7 +569,7 @@ func (h *AuthHandler) enqueueResetPasswordEmail(ctx context.Context, to, otpID, 
 	payload, err := json.Marshal(map[string]any{
 		"to":         to,
 		"reset_url":  resetURL,
-		"expires_in": "10 分钟",
+		"expires_in": "10 minutes",
 	})
 	if err != nil {
 		return

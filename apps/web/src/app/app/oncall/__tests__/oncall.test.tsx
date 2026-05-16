@@ -62,7 +62,7 @@ function mockFetch(path: string) {
     // Handled via override in individual tests; default to empty
     return Promise.resolve({
       ok: true,
-      json: () => Promise.resolve({ data: { events: [] } }),
+      json: () => Promise.resolve({ data: { items: [] } }),
     })
   }
   if (path.includes("/participants")) {
@@ -167,7 +167,7 @@ describe("OncallPage", () => {
       if (url.includes("/alert-events")) {
         return Promise.resolve({
           ok: true,
-          json: () => Promise.resolve({ data: { events: MOCK_ALERT_EVENTS } }),
+          json: () => Promise.resolve({ data: { items: MOCK_ALERT_EVENTS } }),
         })
       }
       return mockFetch(url)

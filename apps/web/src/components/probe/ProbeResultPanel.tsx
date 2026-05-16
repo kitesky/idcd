@@ -1,8 +1,9 @@
 "use client"
 
 import { useState, useMemo, useEffect } from "react"
-import { Copy, Check, ChevronDown, ChevronLeft, ChevronRight } from "lucide-react"
+import { Copy, Check, ChevronLeft, ChevronRight } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
 import type { ProbeResult } from "@/lib/api"
 import dynamic from "next/dynamic"
@@ -81,56 +82,13 @@ function CopyButton({ text }: { text: string }) {
     setTimeout(() => setCopied(false), 2000)
   }
   return (
-    <button onClick={copy} className="flex items-center gap-1 text-primary hover:text-primary/80 transition-colors text-sm">
+    <Button variant="ghost" size="sm" onClick={copy} className="h-auto p-0 text-sm text-primary hover:text-primary/80 hover:bg-transparent gap-1">
       {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
       {copied ? "已复制" : "复制"}
-    </button>
+    </Button>
   )
 }
 
-// ── SimpleSelect ──────────────────────────────────────────────────────────────
-
-function SimpleSelect({
-  value, onChange, options,
-}: {
-  value: string
-  onChange: (v: string) => void
-  options: { value: string; label: string }[]
-}) {
-  const [open, setOpen] = useState(false)
-  const current = options.find(o => o.value === value)
-  return (
-    <div className="relative inline-block">
-      <button
-        onClick={() => setOpen(v => !v)}
-        className="flex items-center gap-1.5 h-8 px-3 text-sm border rounded-md bg-background hover:bg-muted/50 transition-colors"
-      >
-        <span className="text-muted-foreground text-xs mr-0.5">{current?.label.split(" ")[0]}</span>
-        <span className="font-medium">{current?.label.split(" ")[1] ?? current?.label}</span>
-        <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
-      </button>
-      {open && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute top-full left-0 mt-1 z-50 min-w-[120px] bg-popover border rounded-lg shadow-lg py-1">
-            {options.map(o => (
-              <button
-                key={o.value}
-                onClick={() => { onChange(o.value); setOpen(false) }}
-                className={cn(
-                  "block w-full px-3 py-2 text-left text-sm transition-colors",
-                  o.value === value ? "text-primary bg-muted/60" : "hover:bg-muted"
-                )}
-              >
-                {o.label}
-              </button>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  )
-}
 
 // ── StackedBar ────────────────────────────────────────────────────────────────
 
@@ -370,21 +328,25 @@ function DetailTab({ rows, isHttp }: { rows: ResultRow[]; isHttp: boolean }) {
         {/* Pagination */}
         {pageCount > 1 && (
           <div className="flex items-center justify-center gap-3 py-3 border-t text-sm text-muted-foreground">
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setPage(p => Math.max(1, p - 1))}
               disabled={page === 1}
-              className="disabled:opacity-30"
+              className="h-7 w-7"
             >
               <ChevronLeft className="h-4 w-4" />
-            </button>
+            </Button>
             <span>{page}/{pageCount}</span>
-            <button
+            <Button
+              variant="ghost"
+              size="icon"
               onClick={() => setPage(p => Math.min(pageCount, p + 1))}
               disabled={page === pageCount}
-              className="disabled:opacity-30"
+              className="h-7 w-7"
             >
               <ChevronRight className="h-4 w-4" />
-            </button>
+            </Button>
           </div>
         )}
       </div>
@@ -402,7 +364,6 @@ interface ProbeResultPanelProps {
 }
 
 export function ProbeResultPanel({ result, target, probeType = "http", isLoading }: ProbeResultPanelProps) {
-  const [activeTab, setActiveTab] = useState<"summary" | "detail">("summary")
   // Client-only values to avoid hydration mismatch
   const [timestamp, setTimestamp] = useState("")
   const [shareUrl, setShareUrl] = useState("")
@@ -447,24 +408,6 @@ export function ProbeResultPanel({ result, target, probeType = "http", isLoading
         </div>
       </div>
 
-      {/* 结果概况 / 详情结果 tabs */}
-      <div className="flex items-center gap-0 mb-5 border-b">
-        {(["summary", "detail"] as const).map(tab => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={cn(
-              "px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors",
-              activeTab === tab
-                ? "text-primary border-primary"
-                : "text-muted-foreground border-transparent hover:text-foreground"
-            )}
-          >
-            {tab === "summary" ? "结果概况" : "详情结果"}
-          </button>
-        ))}
-      </div>
-
       {/* Loading skeleton */}
       {isLoading && rows.length === 0 && (
         <div className="space-y-3">
@@ -479,9 +422,18 @@ export function ProbeResultPanel({ result, target, probeType = "http", isLoading
       {!isLoading && rows.length === 0 ? (
         <p className="text-sm text-muted-foreground">暂无结果</p>
       ) : rows.length > 0 ? (
-        activeTab === "summary"
-          ? <SummaryTab rows={rows} isHttp={isHttp} isChinaOnly={isChinaOnly} />
-          : <DetailTab rows={rows} isHttp={isHttp} />
+        <Tabs defaultValue="summary" className="w-full">
+          <TabsList className="mb-5">
+            <TabsTrigger value="summary">结果概况</TabsTrigger>
+            <TabsTrigger value="detail">详情结果</TabsTrigger>
+          </TabsList>
+          <TabsContent value="summary">
+            <SummaryTab rows={rows} isHttp={isHttp} isChinaOnly={isChinaOnly} />
+          </TabsContent>
+          <TabsContent value="detail">
+            <DetailTab rows={rows} isHttp={isHttp} />
+          </TabsContent>
+        </Tabs>
       ) : null}
     </div>
   )

@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Card,
@@ -152,6 +153,7 @@ function TableSkeleton({ rows = 3, cols = 4 }: { rows?: number; cols?: number })
 }
 
 export function TeamClient() {
+  const t = useTranslations("settings")
   const [team, setTeam] = useState<Team | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])

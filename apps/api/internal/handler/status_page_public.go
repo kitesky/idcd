@@ -109,7 +109,7 @@ func (h *StatusPagePublicHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Branding:      sp.Branding,
 		OverallStatus: overall,
 		Groups: []publicGroup{
-			{ID: "default", Name: "监控项", Monitors: pubMonitors},
+			{ID: "default", Name: "Monitors", Monitors: pubMonitors},
 		},
 		Events: []struct{}{},
 	}

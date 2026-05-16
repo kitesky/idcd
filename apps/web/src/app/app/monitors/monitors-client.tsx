@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import {
   Activity,
   AlertCircle,
@@ -138,12 +139,12 @@ function formatInterval(seconds: number): string {
   return `${seconds / 3600}h`
 }
 
-function formatRelativeTime(iso: string): string {
+function formatRelativeTime(iso: string, t: ReturnType<typeof useTranslations<"monitors">>): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (diff < 60) return `${diff}秒前`
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-  return `${Math.floor(diff / 86400)}天前`
+  if (diff < 60) return t("time.secondsAgo", { count: diff })
+  if (diff < 3600) return t("time.minutesAgo", { count: Math.floor(diff / 60) })
+  if (diff < 86400) return t("time.hoursAgo", { count: Math.floor(diff / 3600) })
+  return t("time.daysAgo", { count: Math.floor(diff / 86400) })
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -152,6 +153,7 @@ const PAGE_SIZE = 20
 
 export function MonitorsClient() {
   const router = useRouter()
+  const t = useTranslations("monitors")
   const [monitors, setMonitors] = useState<Monitor[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -182,11 +184,11 @@ export function MonitorsClient() {
       setMonitors((res.data?.items ?? []).map(fromApi))
       setTotal(res.data?.total ?? 0)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败")
+      setError(err instanceof Error ? err.message : t("error.loadFailed"))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   // Initial load and re-fetch when page/search/status change
   useEffect(() => {
@@ -319,7 +321,7 @@ export function MonitorsClient() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Server className="h-4 w-4" />
-              监控总数
+              {t("stats.total")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -335,7 +337,7 @@ export function MonitorsClient() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <CheckCircle2 className="h-4 w-4 text-success" />
-              正常运行
+              {t("stats.up")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -353,7 +355,7 @@ export function MonitorsClient() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <AlertCircle className="h-4 w-4 text-destructive" />
-              故障中
+              {t("stats.down")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -371,7 +373,7 @@ export function MonitorsClient() {
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Activity className="h-4 w-4" />
-              检测中
+              {t("stats.checking")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -388,18 +390,18 @@ export function MonitorsClient() {
       {error && (
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>加载失败</AlertTitle>
+          <AlertTitle>{t("error.loadFailed")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
       {/* 操作栏 */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <h2 className="text-lg font-semibold">监控项目</h2>
+        <h2 className="text-lg font-semibold">{t("toolbar.title")}</h2>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           {/* 搜索框 */}
           <Input
-            placeholder="搜索监控名称..."
+            placeholder={t("toolbar.searchPlaceholder")}
             value={search}
             onChange={(e) => {
               const val = e.target.value
@@ -422,10 +424,10 @@ export function MonitorsClient() {
             }}
           >
             <SelectTrigger className="h-8 w-full sm:w-32">
-              <SelectValue placeholder="全部状态" />
+              <SelectValue placeholder={t("toolbar.filterAllStatus")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="all">{t("toolbar.filterAll")}</SelectItem>
               <SelectItem value="UP">UP</SelectItem>
               <SelectItem value="DOWN">DOWN</SelectItem>
               <SelectItem value="PAUSED">PAUSED</SelectItem>
@@ -434,7 +436,7 @@ export function MonitorsClient() {
           <Button asChild className="h-8">
             <Link href="/app/monitors/new">
               <Plus className="mr-2 h-4 w-4" />
-              新建监控
+              {t("newMonitor")}
             </Link>
           </Button>
         </div>
@@ -444,8 +446,8 @@ export function MonitorsClient() {
       {!loading && (
         <p className="text-sm text-muted-foreground -mb-4">
           {search || statusFilter
-            ? `找到 ${total} 个监控`
-            : `共 ${total} 个监控`}
+            ? t("toolbar.found", { count: total })
+            : t("toolbar.totalCount", { count: total })}
         </p>
       )}
 
@@ -457,16 +459,16 @@ export function MonitorsClient() {
                 <Checkbox
                   checked={allSelected}
                   onCheckedChange={toggleSelectAll}
-                  aria-label="全选"
+                  aria-label={t("table.selectAll")}
                 />
               </TableHead>
-              <TableHead>名称</TableHead>
-              <TableHead>类型</TableHead>
-              <TableHead className="hidden md:table-cell">目标</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="hidden md:table-cell">最后检查</TableHead>
-              <TableHead className="hidden md:table-cell">可用率</TableHead>
-              <TableHead className="w-24">操作</TableHead>
+              <TableHead>{t("table.name")}</TableHead>
+              <TableHead>{t("table.type")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("table.target")}</TableHead>
+              <TableHead>{t("table.status")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("table.lastChecked")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("table.uptime")}</TableHead>
+              <TableHead className="w-24">{t("table.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -505,12 +507,12 @@ export function MonitorsClient() {
                   colSpan={8}
                   className="h-32 text-center text-muted-foreground"
                 >
-                  暂无监控项目，
+                  {t("empty.title")}，
                   <Link
                     href="/app/monitors/new"
                     className="text-primary underline-offset-4 hover:underline"
                   >
-                    立即创建
+                    {t("empty.desc")}
                   </Link>
                 </TableCell>
               </TableRow>
@@ -548,7 +550,7 @@ export function MonitorsClient() {
                   </TableCell>
                   <TableCell>{statusBadge(monitor.status)}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                    {formatRelativeTime(monitor.lastCheckedAt)}
+                    {formatRelativeTime(monitor.lastCheckedAt, t)}
                   </TableCell>
                   <TableCell className="hidden md:table-cell font-mono text-sm">
                     {monitor.uptimePercent.toFixed(1)}%
@@ -561,7 +563,7 @@ export function MonitorsClient() {
                         className="h-8 w-8"
                         onClick={() => togglePause(monitor.id)}
                         title={
-                          monitor.status === "PAUSED" ? "恢复检测" : "暂停检测"
+                          monitor.status === "PAUSED" ? t("actions.resume") : t("actions.pause")
                         }
                       >
                         {monitor.status === "PAUSED" ? (
@@ -576,7 +578,7 @@ export function MonitorsClient() {
                             variant="ghost"
                             size="icon"
                             className="h-8 w-8"
-                            aria-label="更多操作"
+                            aria-label={t("actions.moreActions")}
                           >
                             <MoreVertical className="h-4 w-4" />
                           </Button>
@@ -588,14 +590,14 @@ export function MonitorsClient() {
                             }
                           >
                             <Activity className="h-4 w-4" />
-                            查看详情
+                            {t("actions.viewDetail")}
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
                             onClick={() => deleteMonitor(monitor.id)}
                           >
                             <Trash2 className="h-4 w-4" />
-                            删除
+                            {t("actions.delete")}
                           </DropdownMenuItem>
                         </DropdownMenuContent>
                       </DropdownMenu>
@@ -610,7 +612,7 @@ export function MonitorsClient() {
       {/* 分页 */}
       {total > PAGE_SIZE && (
         <div className="flex items-center justify-between text-sm text-muted-foreground">
-          <span>共 {total} 个监控</span>
+          <span>{t("pagination.total", { count: total })}</span>
           <div className="flex items-center gap-1.5">
             <Button
               variant="outline" size="icon" className="h-7 w-7"
@@ -619,7 +621,7 @@ export function MonitorsClient() {
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="px-2 tabular-nums">{page} / {Math.ceil(total / PAGE_SIZE)}</span>
+            <span className="px-2 tabular-nums">{t("pagination.pageOf", { page, total: Math.ceil(total / PAGE_SIZE) })}</span>
             <Button
               variant="outline" size="icon" className="h-7 w-7"
               disabled={page >= Math.ceil(total / PAGE_SIZE) || loading}
@@ -639,9 +641,9 @@ export function MonitorsClient() {
               className="text-sm font-medium text-muted-foreground whitespace-nowrap"
               data-testid="bulk-selection-count"
             >
-              <span className="hidden sm:inline">已选择 </span>
+              <span className="hidden sm:inline">{t("bulk.selected")} </span>
               {selectedIds.size}
-              <span className="hidden sm:inline"> 个监控</span>
+              <span className="hidden sm:inline"> {t("bulk.monitors")}</span>
             </span>
             <div className="h-4 w-px bg-border" />
             <Button
@@ -650,7 +652,7 @@ export function MonitorsClient() {
               onClick={() => requestBulkAction("pause")}
             >
               <Pause className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline ml-1.5">暂停</span>
+              <span className="hidden sm:inline ml-1.5">{t("bulk.pause")}</span>
             </Button>
             <Button
               variant="outline"
@@ -658,7 +660,7 @@ export function MonitorsClient() {
               onClick={() => requestBulkAction("resume")}
             >
               <Play className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline ml-1.5">恢复</span>
+              <span className="hidden sm:inline ml-1.5">{t("bulk.resume")}</span>
             </Button>
             <Button
               variant="destructive"
@@ -666,14 +668,14 @@ export function MonitorsClient() {
               onClick={() => requestBulkAction("delete")}
             >
               <Trash2 className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline ml-1.5">删除</span>
+              <span className="hidden sm:inline ml-1.5">{t("bulk.delete")}</span>
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => setSelectedIds(new Set())}
             >
-              <span className="hidden sm:inline">取消</span>
+              <span className="hidden sm:inline">{t("bulk.cancel")}</span>
               <span className="sm:hidden">✕</span>
             </Button>
           </div>
@@ -684,14 +686,14 @@ export function MonitorsClient() {
       <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>确认批量删除</AlertDialogTitle>
+            <AlertDialogTitle>{t("confirm.bulkDeleteTitle")}</AlertDialogTitle>
             <AlertDialogDescription>
-              即将删除 {selectedIds.size} 个监控，此操作不可撤销。
+              {t("confirm.bulkDeleteDesc", { count: selectedIds.size })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setPendingBulkAction(null)}>
-              取消
+              {t("bulk.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
@@ -702,7 +704,7 @@ export function MonitorsClient() {
                 }
               }}
             >
-              确认删除
+              {t("confirm.confirmDelete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

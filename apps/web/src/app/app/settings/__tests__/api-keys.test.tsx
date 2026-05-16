@@ -7,6 +7,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const MOCK_KEYS = [
@@ -94,8 +99,9 @@ describe("APIKeysClient", () => {
   it("renders the create API Key button", async () => {
     render(<APIKeysClient />)
     expect(screen.getByTestId("btn-create-key")).toBeInTheDocument()
+    // With i18n mock, t('apiKeys.create') returns the key
     expect(screen.getByTestId("btn-create-key").textContent).toContain(
-      "创建 API Key"
+      "apiKeys.create"
     )
     await waitFor(() =>
       expect(screen.queryByTestId("loading-keys-message")).not.toBeInTheDocument()
@@ -125,13 +131,14 @@ describe("APIKeysClient", () => {
     expect(screen.getByText("sk_live_def...uvw")).toBeInTheDocument()
   })
 
-  it("shows '从未使用' badge for key with no last_used_at", async () => {
+  it("shows never-used badge for key with no last_used_at", async () => {
     render(<APIKeysClient />)
     await waitFor(() =>
       expect(screen.getByTestId("key-row-key_002")).toBeInTheDocument()
     )
     const row = screen.getByTestId("key-row-key_002")
-    expect(row.textContent).toContain("从未使用")
+    // With i18n mock, t('apiKeys.neverUsed') returns the key
+    expect(row.textContent).toContain("apiKeys.neverUsed")
   })
 
   it("renders revoke button for each key", async () => {

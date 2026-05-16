@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Input,
@@ -19,26 +20,27 @@ import {
 import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
-const registerSchema = z.object({
-  email: z.string().email({ message: "请输入有效的邮箱地址" }),
-  password: z
-    .string()
-    .min(8, { message: "密码至少需要 8 个字符" })
-    .regex(/^(?=.*[A-Za-z])(?=.*\d)/, {
-      message: "密码必须包含字母和数字",
-    }),
-  confirmPassword: z.string(),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "两次输入的密码不一致",
-  path: ["confirmPassword"],
-})
-
-type RegisterFormValues = z.infer<typeof registerSchema>
-
 export default function RegisterPage() {
+  const t = useTranslations("auth")
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+
+  const registerSchema = z.object({
+    email: z.string().email({ message: t("register.errors.invalidEmail") }),
+    password: z
+      .string()
+      .min(8, { message: t("register.errors.passwordTooShort") })
+      .regex(/^(?=.*[A-Za-z])(?=.*\d)/, {
+        message: t("register.errors.passwordWeak"),
+      }),
+    confirmPassword: z.string(),
+  }).refine((data) => data.password === data.confirmPassword, {
+    message: t("register.errors.passwordMismatch"),
+    path: ["confirmPassword"],
+  })
+
+  type RegisterFormValues = z.infer<typeof registerSchema>
 
   const form = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -65,7 +67,7 @@ export default function RegisterPage() {
 
       router.push(`/auth/verify-email?email=${encodeURIComponent(values.email)}` as any)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "注册失败，请稍后重试")
+      setError(err instanceof Error ? err.message : t("register.errors.registerFailed"))
     } finally {
       setIsLoading(false)
     }
@@ -73,13 +75,13 @@ export default function RegisterPage() {
 
   return (
     <AuthLayout
-      title="注册账号"
-      description="创建您的 idcd 账号"
+      title={t("register.title")}
+      description={t("register.description")}
       footer={
         <p>
-          已有账号？{" "}
+          {t("register.hasAccount")}{" "}
           <Link href={"/auth/login" as any} className="text-primary hover:underline">
-            立即登录
+            {t("register.login")}
           </Link>
         </p>
       }
@@ -97,11 +99,11 @@ export default function RegisterPage() {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>邮箱</FormLabel>
+                <FormLabel>{t("register.email")}</FormLabel>
                 <FormControl>
                   <Input
                     type="email"
-                    placeholder="your@email.com"
+                    placeholder={t("register.emailPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -116,11 +118,11 @@ export default function RegisterPage() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>密码</FormLabel>
+                <FormLabel>{t("register.password")}</FormLabel>
                 <FormControl>
                   <Input
                     type="password"
-                    placeholder="至少 8 位，包含字母和数字"
+                    placeholder={t("register.passwordPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -135,11 +137,11 @@ export default function RegisterPage() {
             name="confirmPassword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>确认密码</FormLabel>
+                <FormLabel>{t("register.confirmPassword")}</FormLabel>
                 <FormControl>
                   <Input
                     type="password"
-                    placeholder="再次输入密码"
+                    placeholder={t("register.confirmPasswordPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -150,7 +152,7 @@ export default function RegisterPage() {
           />
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "注册中..." : "注册"}
+            {isLoading ? t("register.submitting") : t("register.submit")}
           </Button>
         </form>
       </Form>

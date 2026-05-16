@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { toast } from "sonner"
 import { apiRequest } from "@/lib/api"
 import {
@@ -45,38 +46,6 @@ const PLAN_MONITOR_LIMITS: Record<string, number> = {
   pro: 50,
   team: 200,
   business: 0, // unlimited
-}
-
-const STEP_LABELS = ["类型选择", "基础配置", "高级配置", "确认创建"]
-
-const TYPE_DESCRIPTIONS: Record<MonitorType, string> = {
-  http: "检测 HTTP 接口可用性和响应状态",
-  https: "检测 HTTPS 接口含证书",
-  ping: "ICMP Ping 检测节点可达性",
-  tcp: "TCP 端口连通性检测",
-  dns: "DNS 解析正确性验证",
-  ssl_expiry: "SSL 证书到期时间监控",
-  domain_expiry: "域名到期时间监控",
-  icp_change: "ICP 备案信息变更监控",
-  keyword: "页面关键字存在性检测",
-  llm_endpoint: "监控 LLM API 延迟和可用性",
-  tool_api: "监控 AI Tool API 响应",
-  rag: "监控 RAG 检索系统",
-}
-
-const TARGET_PLACEHOLDERS: Record<MonitorType, string> = {
-  http: "http://example.com/api/health",
-  https: "https://example.com",
-  ping: "8.8.8.8 或 example.com",
-  tcp: "example.com:8080",
-  dns: "example.com",
-  ssl_expiry: "example.com",
-  domain_expiry: "example.com",
-  icp_change: "example.com",
-  keyword: "https://example.com",
-  llm_endpoint: "https://api.openai.com/v1/chat/completions",
-  tool_api: "https://tool.example.com/api",
-  rag: "https://rag.example.com/query",
 }
 
 const AGENT_OBS_ICONS: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -128,13 +97,15 @@ const DEFAULT_FORM: FormState = {
 function StepIndicator({
   currentStep,
   totalSteps,
+  stepLabels,
 }: {
   currentStep: number
   totalSteps: number
+  stepLabels: string[]
 }) {
   return (
     <div className="flex items-center gap-2 mb-8">
-      {STEP_LABELS.map((label, i) => (
+      {stepLabels.map((label, i) => (
         <div key={i} className="flex items-center gap-2">
           <div
             className={[
@@ -174,11 +145,49 @@ interface QuotaExceededState {
 
 export function NewMonitorClient() {
   const router = useRouter()
+  const t = useTranslations("monitors")
   const [step, setStep] = useState(0)
   const [form, setForm] = useState<FormState>(DEFAULT_FORM)
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [saved, setSaved] = useState(false)
   const [quotaExceeded, setQuotaExceeded] = useState<QuotaExceededState | null>(null)
+
+  const STEP_LABELS = [
+    t("new.step0"),
+    t("new.step1"),
+    t("new.step2"),
+    t("new.step3"),
+  ]
+
+  const TYPE_DESCRIPTIONS: Record<MonitorType, string> = {
+    http: t("new.typeDescriptions.http"),
+    https: t("new.typeDescriptions.https"),
+    ping: t("new.typeDescriptions.ping"),
+    tcp: t("new.typeDescriptions.tcp"),
+    dns: t("new.typeDescriptions.dns"),
+    ssl_expiry: t("new.typeDescriptions.ssl_expiry"),
+    domain_expiry: t("new.typeDescriptions.domain_expiry"),
+    icp_change: t("new.typeDescriptions.icp_change"),
+    keyword: t("new.typeDescriptions.keyword"),
+    llm_endpoint: t("new.typeDescriptions.llm_endpoint"),
+    tool_api: t("new.typeDescriptions.tool_api"),
+    rag: t("new.typeDescriptions.rag"),
+  }
+
+  const TARGET_PLACEHOLDERS: Record<MonitorType, string> = {
+    http: "http://example.com/api/health",
+    https: "https://example.com",
+    ping: "8.8.8.8 或 example.com",
+    tcp: "example.com:8080",
+    dns: "example.com",
+    ssl_expiry: "example.com",
+    domain_expiry: "example.com",
+    icp_change: "example.com",
+    keyword: "https://example.com",
+    llm_endpoint: "https://api.openai.com/v1/chat/completions",
+    tool_api: "https://tool.example.com/api",
+    rag: "https://rag.example.com/query",
+  }
 
   function update<K extends keyof FormState>(key: K, value: FormState[K]) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -265,7 +274,7 @@ export function NewMonitorClient() {
         router.push(id ? `/app/monitors/${id}` : "/app/monitors")
       }, 1500)
     } catch (err) {
-      const message = err instanceof Error ? err.message : "创建失败，请稍后重试"
+      const message = err instanceof Error ? err.message : t("error.createFailed")
 
       const planMatch = message.match(/您的\s+(\S+)\s+档/)
       if (planMatch) {
@@ -281,21 +290,21 @@ export function NewMonitorClient() {
         return
       }
 
-      toast.error("创建失败：" + message)
+      toast.error(t("error.createFailed") + ": " + message)
     }
   }
 
   return (
     <div className="max-w-2xl">
-      <StepIndicator currentStep={step} totalSteps={STEP_LABELS.length} />
+      <StepIndicator currentStep={step} totalSteps={STEP_LABELS.length} stepLabels={STEP_LABELS} />
 
       {/* Step 0: 类型选择 */}
       {step === 0 && (
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold">选择监控类型</h2>
+            <h2 className="text-xl font-semibold">{t("new.selectType")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              根据您的需求选择合适的监控类型
+              {t("new.selectTypeDesc")}
             </p>
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -327,7 +336,7 @@ export function NewMonitorClient() {
           </div>
 
           <div className="space-y-2">
-            <p className="text-sm font-medium text-muted-foreground">AI Agent 监控</p>
+            <p className="text-sm font-medium text-muted-foreground">{t("new.agentMonitor")}</p>
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               {AGENT_OBS_TYPES.map((type) => {
                 const Icon = AGENT_OBS_ICONS[type]
@@ -369,31 +378,31 @@ export function NewMonitorClient() {
       {step === 1 && (
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold">基础配置</h2>
+            <h2 className="text-xl font-semibold">{t("new.basicConfig")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              配置监控的基本参数
+              {t("new.basicConfigDesc")}
             </p>
           </div>
           <Card>
             <CardContent className="space-y-4 pt-6">
               <div className="space-y-2">
-                <Label htmlFor="monitor-name">监控名称</Label>
+                <Label htmlFor="monitor-name">{t("new.monitorName")}</Label>
                 <Input
                   id="monitor-name"
-                  placeholder="例如：主站可用性监控"
+                  placeholder={t("new.monitorNamePlaceholder")}
                   value={form.name}
                   onChange={(e) => update("name", e.target.value)}
                 />
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="monitor-target">目标地址</Label>
+                <Label htmlFor="monitor-target">{t("new.targetAddress")}</Label>
                 <Input
                   id="monitor-target"
                   placeholder={
                     form.type
                       ? TARGET_PLACEHOLDERS[form.type]
-                      : "请先选择监控类型"
+                      : t("new.targetAddressDefault")
                   }
                   value={form.target}
                   onChange={(e) => update("target", e.target.value)}
@@ -401,7 +410,7 @@ export function NewMonitorClient() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="monitor-interval">检测频率</Label>
+                <Label htmlFor="monitor-interval">{t("new.checkInterval")}</Label>
                 <Select
                   value={String(form.intervalSeconds)}
                   onValueChange={(v) => update("intervalSeconds", Number(v))}
@@ -410,15 +419,15 @@ export function NewMonitorClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="60">每 1 分钟</SelectItem>
-                    <SelectItem value="300">每 5 分钟</SelectItem>
-                    <SelectItem value="1800">每 30 分钟</SelectItem>
+                    <SelectItem value="60">{t("new.interval1m")}</SelectItem>
+                    <SelectItem value="300">{t("new.interval5m")}</SelectItem>
+                    <SelectItem value="1800">{t("new.interval30m")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="monitor-nodes">并发节点数</Label>
+                <Label htmlFor="monitor-nodes">{t("new.concurrentNodes")}</Label>
                 <Select
                   value={String(form.concurrentNodes)}
                   onValueChange={(v) => update("concurrentNodes", Number(v))}
@@ -427,9 +436,9 @@ export function NewMonitorClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="1">1 个节点</SelectItem>
-                    <SelectItem value="3">3 个节点</SelectItem>
-                    <SelectItem value="5">5 个节点</SelectItem>
+                    <SelectItem value="1">{t("new.node1")}</SelectItem>
+                    <SelectItem value="3">{t("new.node3")}</SelectItem>
+                    <SelectItem value="5">{t("new.node5")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -442,9 +451,9 @@ export function NewMonitorClient() {
       {step === 2 && (
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold">高级配置</h2>
+            <h2 className="text-xl font-semibold">{t("new.advancedConfig")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              可选配置，不填写则使用默认值
+              {t("new.advancedConfigDesc")}
             </p>
           </div>
 
@@ -454,7 +463,7 @@ export function NewMonitorClient() {
             className="w-full justify-between"
             onClick={() => setShowAdvanced((v) => !v)}
           >
-            <span>展开高级配置</span>
+            <span>{t("new.expandAdvanced")}</span>
             <ChevronDown
               className={[
                 "h-4 w-4 transition-transform",
@@ -469,7 +478,7 @@ export function NewMonitorClient() {
                 {(form.type === "http" || form.type === "https") && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="assert-status">断言状态码</Label>
+                      <Label htmlFor="assert-status">{t("new.assertStatus")}</Label>
                       <Input
                         id="assert-status"
                         placeholder="200"
@@ -480,10 +489,10 @@ export function NewMonitorClient() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="keyword-match">关键字匹配</Label>
+                      <Label htmlFor="keyword-match">{t("new.keywordMatch")}</Label>
                       <Input
                         id="keyword-match"
-                        placeholder="页面中必须包含的文字"
+                        placeholder={t("new.keywordPlaceholder")}
                         value={form.keywordMatch}
                         onChange={(e) =>
                           update("keywordMatch", e.target.value)
@@ -496,7 +505,7 @@ export function NewMonitorClient() {
                 {form.type === "ping" && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="timeout-ms">超时时间 (ms)</Label>
+                      <Label htmlFor="timeout-ms">{t("new.timeoutMs")}</Label>
                       <Input
                         id="timeout-ms"
                         placeholder="5000"
@@ -505,7 +514,7 @@ export function NewMonitorClient() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="packet-loss">丢包阈值 (%)</Label>
+                      <Label htmlFor="packet-loss">{t("new.packetLoss")}</Label>
                       <Input
                         id="packet-loss"
                         placeholder="10"
@@ -520,7 +529,7 @@ export function NewMonitorClient() {
 
                 {form.type === "tcp" && (
                   <div className="space-y-2">
-                    <Label htmlFor="tcp-port">端口</Label>
+                    <Label htmlFor="tcp-port">{t("new.port")}</Label>
                     <Input
                       id="tcp-port"
                       placeholder="80"
@@ -532,7 +541,7 @@ export function NewMonitorClient() {
 
                 {form.type === "dns" && (
                   <div className="space-y-2">
-                    <Label htmlFor="expected-ip">预期 IP</Label>
+                    <Label htmlFor="expected-ip">{t("new.expectedIp")}</Label>
                     <Input
                       id="expected-ip"
                       placeholder="104.21.0.1"
@@ -545,7 +554,7 @@ export function NewMonitorClient() {
                 {(form.type === "ssl_expiry" || form.type === "domain_expiry") && (
                   <div className="space-y-2">
                     <Label htmlFor="ssl-expiry-days">
-                      到期前告警天数
+                      {t("new.sslExpiryDays")}
                     </Label>
                     <Input
                       id="ssl-expiry-days"
@@ -557,7 +566,7 @@ export function NewMonitorClient() {
                       onChange={(e) => update("sslExpiryDays", e.target.value)}
                     />
                     <p className="text-xs text-muted-foreground">
-                      证书/域名到期前 N 天触发告警，默认 30 天
+                      {t("new.sslExpiryDaysHint")}
                     </p>
                   </div>
                 )}
@@ -565,7 +574,7 @@ export function NewMonitorClient() {
                 {form.type === "llm_endpoint" && (
                   <>
                     <div className="space-y-2">
-                      <Label htmlFor="agent-obs-endpoint">Endpoint URL <span className="text-destructive">*</span></Label>
+                      <Label htmlFor="agent-obs-endpoint">{t("new.endpointUrl")} <span className="text-destructive">*</span></Label>
                       <Input
                         id="agent-obs-endpoint"
                         data-testid="agent-obs-endpoint-url"
@@ -575,7 +584,7 @@ export function NewMonitorClient() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="agent-obs-model">模型名称</Label>
+                      <Label htmlFor="agent-obs-model">{t("new.modelName")}</Label>
                       <Input
                         id="agent-obs-model"
                         data-testid="agent-obs-model-name"
@@ -585,7 +594,7 @@ export function NewMonitorClient() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="agent-obs-latency">延迟 SLA (ms)</Label>
+                      <Label htmlFor="agent-obs-latency">{t("new.latencySla")}</Label>
                       <Input
                         id="agent-obs-latency"
                         data-testid="agent-obs-latency-sla"
@@ -595,7 +604,7 @@ export function NewMonitorClient() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="agent-obs-payload">Payload 模板 (JSON)</Label>
+                      <Label htmlFor="agent-obs-payload">{t("new.payloadTemplate")}</Label>
                       <Textarea
                         id="agent-obs-payload"
                         data-testid="agent-obs-payload-template"
@@ -617,7 +626,7 @@ export function NewMonitorClient() {
                   form.type !== "domain_expiry" &&
                   form.type !== "llm_endpoint" && (
                     <p className="text-sm text-muted-foreground">
-                      此类型暂无额外高级配置项
+                      {t("new.noAdvancedConfig")}
                     </p>
                   )}
               </CardContent>
@@ -630,46 +639,46 @@ export function NewMonitorClient() {
       {step === 3 && (
         <div className="space-y-4">
           <div>
-            <h2 className="text-xl font-semibold">确认并创建</h2>
+            <h2 className="text-xl font-semibold">{t("new.confirmTitle")}</h2>
             <p className="text-sm text-muted-foreground mt-1">
-              请确认以下配置信息
+              {t("new.confirmDesc")}
             </p>
           </div>
 
           <Card>
             <CardHeader>
-              <CardTitle className="text-base">配置摘要</CardTitle>
+              <CardTitle className="text-base">{t("detail.configSummary")}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">监控类型</span>
+                <span className="text-muted-foreground">{t("detail.monitorType")}</span>
                 <Badge variant="outline">
                   {form.type ? TYPE_LABELS[form.type] : "-"}
                 </Badge>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">监控名称</span>
+                <span className="text-muted-foreground">{t("detail.monitorName")}</span>
                 <span className="font-medium">{form.name || "-"}</span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">目标地址</span>
+                <span className="text-muted-foreground">{t("detail.targetUrl")}</span>
                 <span className="font-mono text-xs max-w-[200px] truncate">
                   {form.target || "-"}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">检测频率</span>
+                <span className="text-muted-foreground">{t("detail.checkInterval")}</span>
                 <span>
                   {form.intervalSeconds === 60
-                    ? "每 1 分钟"
+                    ? t("new.interval1m")
                     : form.intervalSeconds === 300
-                      ? "每 5 分钟"
-                      : "每 30 分钟"}
+                      ? t("new.interval5m")
+                      : t("new.interval30m")}
                 </span>
               </div>
               <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">并发节点数</span>
-                <span>{form.concurrentNodes} 个节点</span>
+                <span className="text-muted-foreground">{t("detail.nodeCount")}</span>
+                <span>{form.concurrentNodes}</span>
               </div>
             </CardContent>
           </Card>
@@ -678,22 +687,22 @@ export function NewMonitorClient() {
           {quotaExceeded && (
             <Alert variant="destructive" data-testid="quota-exceeded-alert">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>配额已用完</AlertTitle>
+              <AlertTitle>{t("new.quotaTitle")}</AlertTitle>
               <AlertDescription className="mt-2 space-y-3">
                 <p>
-                  您的{" "}
-                  <strong>
-                    {PLAN_LABELS[quotaExceeded.currentPlan] ?? quotaExceeded.currentPlan}
-                  </strong>{" "}
-                  档已用完 {quotaExceeded.limitCount} 个监控项。
                   {(() => {
                     const nextPlan = quotaExceeded.currentPlan === "free" ? "Pro" : null
                     const nextLimit =
                       quotaExceeded.currentPlan === "free" ? PLAN_MONITOR_LIMITS["pro"] : null
                     if (nextPlan && nextLimit) {
-                      return `升级 ${nextPlan} 可管理 ${nextLimit} 个监控项。`
+                      return t("new.quotaUsed", {
+                        plan: PLAN_LABELS[quotaExceeded.currentPlan] ?? quotaExceeded.currentPlan,
+                        limit: quotaExceeded.limitCount,
+                        nextPlan,
+                        nextLimit,
+                      })
                     }
-                    return "请升级套餐以管理更多监控项。"
+                    return t("new.quotaUpgrade")
                   })()}
                 </p>
                 <Button
@@ -701,7 +710,7 @@ export function NewMonitorClient() {
                   size="sm"
                   onClick={() => router.push("/app/billing")}
                 >
-                  升级 Pro
+                  {t("new.upgradePro")}
                 </Button>
               </AlertDescription>
             </Alert>
@@ -710,7 +719,7 @@ export function NewMonitorClient() {
           {saved && (
             <div className="flex items-center gap-2 rounded-md bg-success/10 px-4 py-3 text-sm text-success">
               <Check className="h-4 w-4" />
-              监控创建成功！正在跳转...
+              {t("new.createSuccess")}
             </div>
           )}
         </div>
@@ -723,18 +732,18 @@ export function NewMonitorClient() {
           onClick={() => (step === 0 ? router.push("/app/monitors") : setStep((s) => s - 1))}
         >
           <ArrowLeft className="mr-2 h-4 w-4" />
-          {step === 0 ? "取消" : "上一步"}
+          {step === 0 ? t("new.cancel") : t("new.prev")}
         </Button>
 
         {step < STEP_LABELS.length - 1 ? (
           <Button onClick={() => setStep((s) => s + 1)} disabled={!canProceed()}>
-            下一步
+            {t("new.next")}
             <ArrowRight className="ml-2 h-4 w-4" />
           </Button>
         ) : (
           <Button onClick={handleCreate} disabled={saved}>
             <Check className="mr-2 h-4 w-4" />
-            创建监控
+            {t("new.createMonitor")}
           </Button>
         )}
       </div>

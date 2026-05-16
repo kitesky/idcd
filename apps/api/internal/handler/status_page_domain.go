@@ -204,7 +204,7 @@ func (h *StatusPageDomainHandler) SetStatusPageDomain(w http.ResponseWriter, r *
 
 	go h.asyncVerifyDNS(updated.ID, domain)
 
-	instructions := "请添加 CNAME 记录: " + domain + " → status.idcd.com"
+	instructions := "Please add a CNAME record: " + domain + " → status.idcd.com"
 	response.JSON(w, r, http.StatusOK, DomainResponse{
 		CustomDomain: domain,
 		Verified:     updated.CustomDomainVerifiedAt.Valid,
@@ -241,9 +241,9 @@ func (h *StatusPageDomainHandler) VerifyStatusPageDomain(w http.ResponseWriter, 
 
 	cname, err := h.lookupCNAME(ctx, domain)
 	if err != nil || !strings.Contains(strings.ToLower(cname), statusPageCNAMETarget) {
-		errMsg := "CNAME 未正确配置"
+		errMsg := "CNAME not correctly configured"
 		if err != nil {
-			errMsg = "DNS 查询失败: " + err.Error()
+			errMsg = "DNS lookup failed: " + err.Error()
 		}
 		response.JSON(w, r, http.StatusOK, VerifyDomainResponse{
 			Verified: false,

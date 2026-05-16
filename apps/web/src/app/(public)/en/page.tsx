@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import { getTranslations } from 'next-intl/server'
 import { Button } from '@/components/ui'
 
 export const metadata: Metadata = {
@@ -21,20 +22,22 @@ export const metadata: Metadata = {
   },
 }
 
-const tools = [
-  { slug: 'ping', name: 'Ping Check', description: 'Global ICMP latency from 100+ locations' },
-  { slug: 'http', name: 'HTTP Check', description: 'Multi-region uptime & response time test' },
-  { slug: 'dns', name: 'DNS Lookup', description: 'Global DNS resolution + pollution detection' },
-  { slug: 'traceroute', name: 'Traceroute', description: 'Hop-by-hop network path tracing' },
-  { slug: 'ssl', name: 'SSL Check', description: 'Certificate validity & TLS configuration' },
-  { slug: 'ip', name: 'IP Lookup', description: 'Geolocation, ASN, and ISP info' },
-  { slug: 'whois', name: 'WHOIS', description: 'Domain registration details' },
-  { slug: 'icp', name: 'ICP Check', description: 'China ICP filing status lookup' },
-  { slug: 'diagnose', name: 'Diagnostics', description: 'One-click comprehensive network check' },
-  { slug: 'ipv6-check', name: 'IPv6 Check', description: 'Address validation & format conversion' },
-]
+const FEATURED_TOOL_SLUGS = [
+  'ping',
+  'http',
+  'dns',
+  'traceroute',
+  'ssl',
+  'ip',
+  'whois',
+  'icp',
+  'diagnose',
+  'ipv6-check',
+] as const
 
-export default function EnglishHomePage() {
+export default async function EnglishHomePage() {
+  const t = await getTranslations({ locale: 'en', namespace: 'tools' })
+
   return (
     <main className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-16 max-w-5xl">
@@ -57,16 +60,18 @@ export default function EnglishHomePage() {
         </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-          {tools.map((tool) => (
+          {FEATURED_TOOL_SLUGS.map((slug) => (
             <a
-              key={tool.slug}
-              href={`/en/tools/${tool.slug}`}
+              key={slug}
+              href={`/en/tools/${slug}`}
               className="group rounded-lg border bg-card p-5 hover:border-primary transition-colors"
             >
               <h2 className="font-semibold text-base mb-1 group-hover:text-primary transition-colors">
-                {tool.name}
+                {t(`${slug}.title`)}
               </h2>
-              <p className="text-sm text-muted-foreground">{tool.description}</p>
+              <p className="text-sm text-muted-foreground">
+                {t(`${slug}.description`)}
+              </p>
             </a>
           ))}
         </div>

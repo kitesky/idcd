@@ -7,6 +7,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 vi.mock("next/link", () => ({
   default: ({
     children,
@@ -65,7 +70,7 @@ describe("AlertGroupsPage", () => {
   })
 
   it("显示分组列表", async () => {
-    mockApiRequest.mockResolvedValue({ items: MOCK_GROUPS })
+    mockApiRequest.mockResolvedValue({ data: { items: MOCK_GROUPS } })
     render(<AlertGroupsPage />)
     await waitFor(() => {
       expect(screen.getByText("生产环境告警组")).toBeInTheDocument()
@@ -74,7 +79,7 @@ describe("AlertGroupsPage", () => {
   })
 
   it("空状态时显示提示", async () => {
-    mockApiRequest.mockResolvedValue({ items: [] })
+    mockApiRequest.mockResolvedValue({ data: { items: [] } })
     render(<AlertGroupsPage />)
     await waitFor(() => {
       expect(screen.getByText("暂无告警分组")).toBeInTheDocument()
@@ -82,7 +87,7 @@ describe("AlertGroupsPage", () => {
   })
 
   it("点击创建分组打开 dialog", async () => {
-    mockApiRequest.mockResolvedValue({ items: [] })
+    mockApiRequest.mockResolvedValue({ data: { items: [] } })
     render(<AlertGroupsPage />)
     // Wait for loading to finish
     await waitFor(() => {

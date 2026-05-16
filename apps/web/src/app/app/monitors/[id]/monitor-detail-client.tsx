@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import {
   ArrowLeft,
   Bell,
@@ -98,17 +99,6 @@ function checkStatusBadge(status: "up" | "down" | "degraded") {
   }
 }
 
-function relativeTime(iso: string): string {
-  const diffMs = Date.now() - new Date(iso).getTime()
-  const diffS = Math.floor(diffMs / 1000)
-  if (diffS < 10) return "刚刚"
-  if (diffS < 60) return `${diffS}秒前`
-  const diffM = Math.floor(diffS / 60)
-  if (diffM < 60) return `${diffM}分钟前`
-  const diffH = Math.floor(diffM / 60)
-  return `${diffH}小时前`
-}
-
 function statusBadge(status: MonitorStatus) {
   switch (status) {
     case "UP":
@@ -137,6 +127,7 @@ interface EditMonitorDialogProps {
 }
 
 function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
+  const t = useTranslations("monitors")
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(monitor.name)
   const [target, setTarget] = useState(monitor.target)
@@ -174,37 +165,43 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
     e.preventDefault()
     setSubmitting(true)
     try {
-      const body: Record<string, unknown> = { name, target, interval_seconds: intervalSeconds }
-      if (timeoutMs !== "") body.timeout_ms = timeoutMs
-      if (assertStatusCode !== "") body.assert_status_code = assertStatusCode
-      if (keywordMatch) body.keyword_match = keywordMatch
-      if (packetLossThreshold !== "") body.packet_loss_threshold = packetLossThreshold
-      if (port !== "") body.port = port
-      if (expectedIp) body.expected_ip = expectedIp
-      if (sslExpiryDays !== "") body.ssl_expiry_days = sslExpiryDays
-      const json = await apiRequest<{ data: Monitor }>(`/v1/monitors/${monitor.id}`, {
+      // Pack config fields into a config JSON object (matching API schema)
+      const config: Record<string, unknown> = {}
+      if (timeoutMs !== "") config.timeout_ms = timeoutMs
+      if (assertStatusCode !== "") config.assert_status_code = assertStatusCode
+      if (keywordMatch) config.keyword = keywordMatch
+      if (packetLossThreshold !== "") config.packet_loss_threshold = packetLossThreshold
+      if (port !== "") config.port = port
+      if (expectedIp) config.expected_ip = expectedIp
+      if (sslExpiryDays !== "") config.expiry_warning_days = sslExpiryDays
+
+      const body: Record<string, unknown> = { name, interval_s: intervalSeconds }
+      if (Object.keys(config).length > 0) body.config = config
+
+      const json = await apiRequest<{ data: Record<string, unknown> }>(`/v1/monitors/${monitor.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       })
-      const updated: Monitor = json?.data ?? {
+      // Prefer server response; fall back to optimistic update
+      const rawCfg = (json?.data?.config as Record<string, unknown> | null) ?? config
+      const updated: Monitor = {
         ...monitor,
         name,
-        target,
         intervalSeconds,
-        timeoutMs: timeoutMs !== "" ? timeoutMs : undefined,
-        assertStatusCode: assertStatusCode !== "" ? assertStatusCode : undefined,
-        keywordMatch: keywordMatch || undefined,
-        packetLossThreshold: packetLossThreshold !== "" ? packetLossThreshold : undefined,
-        port: port !== "" ? port : undefined,
-        expectedIp: expectedIp || undefined,
-        sslExpiryDays: sslExpiryDays !== "" ? sslExpiryDays : undefined,
+        timeoutMs: rawCfg.timeout_ms as number | undefined,
+        assertStatusCode: rawCfg.assert_status_code as number | undefined,
+        keywordMatch: (rawCfg.keyword ?? rawCfg.keyword_match) as string | undefined,
+        packetLossThreshold: rawCfg.packet_loss_threshold as number | undefined,
+        port: rawCfg.port as number | undefined,
+        expectedIp: rawCfg.expected_ip as string | undefined,
+        sslExpiryDays: (rawCfg.expiry_warning_days ?? rawCfg.ssl_expiry_days) as number | undefined,
       }
       onUpdated(updated)
       setOpen(false)
-      toast.success("监控已更新")
+      toast.success(t("detail.monitorUpdated"))
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "更新失败，请重试"
+      const msg = err instanceof Error ? err.message : t("error.updateFailed")
       toast.error(msg)
     } finally {
       setSubmitting(false)
@@ -226,36 +223,26 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
     <>
       <Button variant="outline" size="sm" onClick={() => handleOpenChange(true)}>
         <Edit className="mr-2 h-4 w-4" />
-        编辑
+        {t("actions.edit")}
       </Button>
       <Dialog open={open} onOpenChange={handleOpenChange}>
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
-            <DialogTitle>编辑监控</DialogTitle>
+            <DialogTitle>{t("edit.title")}</DialogTitle>
           </DialogHeader>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1.5">
-              <Label htmlFor="edit-name">名称</Label>
+              <Label htmlFor="edit-name">{t("edit.name")}</Label>
               <Input
                 id="edit-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 required
-                placeholder="监控名称"
+                placeholder={t("edit.name")}
               />
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="edit-target">目标 URL</Label>
-              <Input
-                id="edit-target"
-                value={target}
-                onChange={(e) => setTarget(e.target.value)}
-                required
-                placeholder="https://example.com"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label htmlFor="edit-interval">检测间隔（秒）</Label>
+              <Label htmlFor="edit-interval">{t("edit.interval")}</Label>
               <Input
                 id="edit-interval"
                 type="number"
@@ -270,14 +257,14 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
               <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
                 <CollapsibleTrigger asChild>
                   <Button type="button" variant="ghost" size="sm" className="w-full justify-between px-0 text-xs text-muted-foreground hover:text-foreground">
-                    配置选项
+                    {t("edit.advancedConfig")}
                     <ChevronDown className={`h-3.5 w-3.5 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
                   </Button>
                 </CollapsibleTrigger>
                 <CollapsibleContent className="space-y-3 pt-2">
                   {showTimeout && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-timeout" className="text-xs">超时（ms）</Label>
+                      <Label htmlFor="edit-timeout" className="text-xs">{t("edit.timeout")}</Label>
                       <Input
                         id="edit-timeout"
                         type="number"
@@ -291,7 +278,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                   )}
                   {showAssertStatus && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-assert" className="text-xs">断言状态码</Label>
+                      <Label htmlFor="edit-assert" className="text-xs">{t("edit.assertStatus")}</Label>
                       <Input
                         id="edit-assert"
                         type="number"
@@ -304,10 +291,10 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                   )}
                   {showKeyword && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-keyword" className="text-xs">关键字匹配</Label>
+                      <Label htmlFor="edit-keyword" className="text-xs">{t("edit.keywordMatch")}</Label>
                       <Input
                         id="edit-keyword"
-                        placeholder="页面必须包含的关键字"
+                        placeholder={t("edit.keywordPlaceholder")}
                         value={keywordMatch}
                         onChange={(e) => setKeywordMatch(e.target.value)}
                         className="text-xs"
@@ -316,7 +303,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                   )}
                   {showPacketLoss && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-packetloss" className="text-xs">丢包阈值（%）</Label>
+                      <Label htmlFor="edit-packetloss" className="text-xs">{t("edit.packetLoss")}</Label>
                       <Input
                         id="edit-packetloss"
                         type="number"
@@ -331,7 +318,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                   )}
                   {showPort && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-port" className="text-xs">端口</Label>
+                      <Label htmlFor="edit-port" className="text-xs">{t("edit.port")}</Label>
                       <Input
                         id="edit-port"
                         type="number"
@@ -346,7 +333,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                   )}
                   {showExpectedIp && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-expectedip" className="text-xs">期望 IP</Label>
+                      <Label htmlFor="edit-expectedip" className="text-xs">{t("edit.expectedIp")}</Label>
                       <Input
                         id="edit-expectedip"
                         placeholder="例: 104.21.0.1"
@@ -358,7 +345,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                   )}
                   {showSslExpiry && (
                     <div className="space-y-1.5">
-                      <Label htmlFor="edit-sslexpiry" className="text-xs">到期告警提前天数</Label>
+                      <Label htmlFor="edit-sslexpiry" className="text-xs">{t("edit.sslExpiryDays")}</Label>
                       <Input
                         id="edit-sslexpiry"
                         type="number"
@@ -376,10 +363,10 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)} disabled={submitting}>
-                取消
+                {t("bulk.cancel")}
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "保存中…" : "保存"}
+                {submitting ? t("edit.saving") : t("edit.save")}
               </Button>
             </DialogFooter>
           </form>
@@ -405,6 +392,7 @@ const EMPTY_BUCKETS: CheckBucket[] = Array.from({ length: 48 }, () => ({
 
 export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientProps) {
   const router = useRouter()
+  const t = useTranslations("monitors")
   const [currentMonitor, setCurrentMonitor] = useState<Monitor | null>(monitor)
   const id = monitor?.id ?? monitorId
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
@@ -435,11 +423,11 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
 
   useEffect(() => {
     setAlertsLoading(true)
-    apiRequest<{ data: AlertEvent[] }>(
+    apiRequest<{ data: { items: AlertEvent[] } }>(
       `/v1/alert-events?monitor_id=${id}&limit=10`
     )
       .then((json) => {
-        const events = json?.data
+        const events = json?.data?.items
         setAlertEvents(Array.isArray(events) ? events : [])
       })
       .catch(() => {
@@ -451,9 +439,9 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   }, [id])
 
   useEffect(() => {
-    apiRequest<{ data: PolicyItem[] }>(`/v1/alert-policies?monitor_id=${id}`)
+    apiRequest<{ data: { items: PolicyItem[] } }>(`/v1/alert-policies?monitor_id=${id}`)
       .then((json) => {
-        const items = json?.data
+        const items = json?.data?.items
         setPolicies(Array.isArray(items) ? items : [])
       })
       .catch(() => {
@@ -478,14 +466,38 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       })
   }, [id])
 
+  function relativeTime(iso: string): string {
+    const diffMs = Date.now() - new Date(iso).getTime()
+    const diffS = Math.floor(diffMs / 1000)
+    if (diffS < 10) return t("time.justNow")
+    if (diffS < 60) return t("time.secondsAgo", { count: diffS })
+    const diffM = Math.floor(diffS / 60)
+    if (diffM < 60) return t("time.minutesAgo", { count: diffM })
+    const diffH = Math.floor(diffM / 60)
+    return t("time.hoursAgo", { count: diffH })
+  }
+
+  function formatDuration(durationS: number, isOngoing: boolean): string {
+    let result: string
+    if (durationS < 60) {
+      result = t("duration.seconds", { count: durationS })
+    } else if (durationS < 3600) {
+      result = t("duration.minutes", { count: Math.floor(durationS / 60) })
+    } else {
+      result = t("duration.hours", { count: Math.floor(durationS / 3600) })
+    }
+    if (isOngoing) result += t("duration.ongoing")
+    return result
+  }
+
   async function handleDelete() {
     setDeleting(true)
     try {
       await apiRequest(`/v1/monitors/${id}`, { method: "DELETE" })
-      toast.success("监控已删除")
+      toast.success(t("detail.monitorDeleted"))
       router.push("/app/monitors")
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "删除失败，请重试"
+      const msg = err instanceof Error ? err.message : t("error.deleteFailed")
       toast.error(msg)
       setDeleting(false)
       setDeleteOpen(false)
@@ -502,8 +514,8 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   if (!currentMonitor) {
     return (
       <div className="flex flex-col items-center gap-4 py-16 text-muted-foreground">
-        <p>监控项不存在或已被删除</p>
-        <Link href="/app/monitors" className="text-sm underline">返回监控列表</Link>
+        <p>{t("detail.notFound")}</p>
+        <Link href="/app/monitors" className="text-sm underline">{t("backToList")}</Link>
       </div>
     )
   }
@@ -518,7 +530,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
             <ArrowLeft className="h-4 w-4" />
-            监控列表
+            {t("backToList")}
           </Link>
         </div>
         <div className="flex items-center gap-2">
@@ -526,19 +538,19 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
           <Button variant="outline" size="sm" asChild>
             <Link href={`/app/alerts?tab=policies&monitor=${encodeURIComponent(currentMonitor.name)}`}>
               <Bell className="mr-2 h-4 w-4" />
-              告警策略
+              {t("actions.alertPolicy")}
             </Link>
           </Button>
           <Button variant="outline" size="sm" onClick={togglePause}>
             {currentMonitor.status === "PAUSED" ? (
               <>
                 <Play className="mr-2 h-4 w-4" />
-                恢复
+                {t("actions.resume")}
               </>
             ) : (
               <>
                 <Pause className="mr-2 h-4 w-4" />
-                暂停
+                {t("actions.pause")}
               </>
             )}
           </Button>
@@ -549,26 +561,26 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             onClick={() => setDeleteOpen(true)}
           >
             <Trash2 className="mr-2 h-4 w-4" />
-            删除
+            {t("actions.delete")}
           </Button>
         </div>
 
         <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>确认删除监控？</AlertDialogTitle>
+              <AlertDialogTitle>{t("confirm.deleteTitle")}</AlertDialogTitle>
               <AlertDialogDescription>
-                此操作不可撤销，将永久删除监控项「{currentMonitor.name}」及其所有历史数据。
+                {t("confirm.deleteDesc", { name: currentMonitor.name })}
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={deleting}>取消</AlertDialogCancel>
+              <AlertDialogCancel disabled={deleting}>{t("bulk.cancel")}</AlertDialogCancel>
               <AlertDialogAction
                 onClick={handleDelete}
                 disabled={deleting}
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
-                {deleting ? "删除中…" : "确认删除"}
+                {deleting ? t("confirm.deleting") : t("confirm.confirmDelete")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>
@@ -590,13 +602,13 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         {/* 配置摘要 */}
         {(() => {
           const items: string[] = []
-          if (currentMonitor.timeoutMs) items.push(`超时 ${currentMonitor.timeoutMs}ms`)
-          if (currentMonitor.assertStatusCode) items.push(`断言 ${currentMonitor.assertStatusCode}`)
-          if (currentMonitor.keywordMatch) items.push(`关键字: ${currentMonitor.keywordMatch}`)
-          if (currentMonitor.sslExpiryDays) items.push(`告警 ${currentMonitor.sslExpiryDays}天`)
-          if (currentMonitor.packetLossThreshold) items.push(`丢包阈值 ${currentMonitor.packetLossThreshold}%`)
-          if (currentMonitor.port) items.push(`端口 ${currentMonitor.port}`)
-          if (currentMonitor.expectedIp) items.push(`期望IP ${currentMonitor.expectedIp}`)
+          if (currentMonitor.timeoutMs) items.push(t("detail.configTimeout", { value: currentMonitor.timeoutMs }))
+          if (currentMonitor.assertStatusCode) items.push(t("detail.configAssert", { value: currentMonitor.assertStatusCode }))
+          if (currentMonitor.keywordMatch) items.push(t("detail.configKeyword", { value: currentMonitor.keywordMatch }))
+          if (currentMonitor.sslExpiryDays) items.push(t("detail.configSslDays", { value: currentMonitor.sslExpiryDays }))
+          if (currentMonitor.packetLossThreshold) items.push(t("detail.configPacketLoss", { value: currentMonitor.packetLossThreshold }))
+          if (currentMonitor.port) items.push(t("detail.configPort", { value: currentMonitor.port }))
+          if (currentMonitor.expectedIp) items.push(t("detail.configExpectedIp", { value: currentMonitor.expectedIp }))
           if (items.length === 0) return null
           return (
             <div className="flex flex-wrap gap-1.5 mt-2">
@@ -611,7 +623,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       <div className="flex items-center gap-3 rounded-md border border-dashed px-4 py-3" data-testid="sse-live-check">
         <Badge variant="secondary" className="gap-1.5">
           <Radio className="h-3 w-3 animate-pulse" />
-          实时更新中
+          {t("detail.liveUpdate")}
         </Badge>
         {latestCheck ? (
           <div className="flex items-center gap-3 text-xs">
@@ -626,7 +638,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             </span>
           </div>
         ) : (
-          <span className="text-xs text-muted-foreground">等待最新检测数据…</span>
+          <span className="text-xs text-muted-foreground">{t("detail.waitingData")}</span>
         )}
       </div>
 
@@ -635,7 +647,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              24h 可用率
+              {t("detail.stats24h")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -657,7 +669,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              检测频率
+              {t("detail.interval")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -673,7 +685,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
               <Wifi className="h-4 w-4" />
-              并发节点
+              {t("detail.concurrentNodes")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -686,7 +698,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              当前状态
+              {t("detail.currentStatus")}
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-3">
@@ -698,9 +710,9 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       {/* 趋势图：最多 48 块 */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">近 24h 检测趋势</CardTitle>
+          <CardTitle className="text-base">{t("detail.trend24h")}</CardTitle>
           <p className="text-xs text-muted-foreground mt-0.5">
-            每块代表 30 分钟区间，绿=正常，红=异常，橙=降级，灰=无数据
+            {t("detail.trendDesc")}
           </p>
         </CardHeader>
         <CardContent>
@@ -735,13 +747,13 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                         {bucket.bucket_start ? (
                           <div className="text-muted-foreground">{formatDateTime(bucket.bucket_start)}</div>
                         ) : (
-                          <div className="text-muted-foreground">无数据</div>
+                          <div className="text-muted-foreground">{t("detail.noData")}</div>
                         )}
                         {bucket.total > 0 && (
                           <>
-                            <div className="text-success">成功 {bucket.success}</div>
+                            <div className="text-success">{t("detail.checkSuccess", { count: bucket.success })}</div>
                             {bucket.failure > 0 && (
-                              <div className="text-destructive">失败 {bucket.failure}</div>
+                              <div className="text-destructive">{t("detail.checkFailure", { count: bucket.failure })}</div>
                             )}
                             {bucket.avg_latency_ms > 0 && (
                               <div className="font-mono">{bucket.avg_latency_ms.toFixed(1)}ms</div>
@@ -761,39 +773,34 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       {/* 最近 10 次检测结果（取最新的 10 个非 empty bucket） */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">最近检测记录</CardTitle>
+          <CardTitle className="text-base">{t("detail.recentChecks")}</CardTitle>
         </CardHeader>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>时间</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>延迟</TableHead>
-              <TableHead>成功/失败</TableHead>
+              <TableHead>{t("detail.checkTime")}</TableHead>
+              <TableHead>{t("detail.checkStatus")}</TableHead>
+              <TableHead>{t("detail.checkLatency")}</TableHead>
+              <TableHead>{t("detail.checkSuccessFailure")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {bucketLoading ? (
               <TableRow>
                 <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
-                  加载中…
+                  {t("detail.loading")}
                 </TableCell>
               </TableRow>
-            ) : (checkBuckets && checkBuckets.length > 0
-                ? [...checkBuckets].reverse().filter((b) => b.status !== "empty").slice(0, 10)
-                : []
-              ).length === 0 ? (
-              <TableRow>
-                <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
-                  暂无检测记录
-                </TableCell>
-              </TableRow>
-            ) : (
-              [...(checkBuckets ?? [])]
-                .reverse()
-                .filter((b) => b.status !== "empty")
-                .slice(0, 10)
-                .map((bucket, i) => (
+            ) : (() => {
+              const rows = [...(checkBuckets ?? [])].reverse().filter((b) => b.status !== "empty").slice(0, 10)
+              if (rows.length === 0) return (
+                <TableRow>
+                  <TableCell colSpan={4} className="text-center text-xs text-muted-foreground py-4">
+                    {t("detail.noChecks")}
+                  </TableCell>
+                </TableRow>
+              )
+              return rows.map((bucket, i) => (
                   <TableRow key={i}>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {bucket.bucket_start ? formatDateTime(bucket.bucket_start) : "-"}
@@ -819,7 +826,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                     </TableCell>
                   </TableRow>
                 ))
-            )}
+            })()}
           </TableBody>
         </Table>
       </Card>
@@ -827,21 +834,21 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       {/* 告警策略 */}
       <Card>
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">告警策略</CardTitle>
+          <CardTitle className="text-base">{t("detail.alertPolicies")}</CardTitle>
           <Link
             href={`/app/alerts?tab=policies&monitor=${encodeURIComponent(currentMonitor.name)}`}
             className="text-xs text-muted-foreground hover:text-foreground"
           >
-            管理策略 →
+            {t("actions.managePolicy")}
           </Link>
         </CardHeader>
         <CardContent>
           {policies.length === 0 ? (
             <div className="flex items-center justify-between">
-              <p className="text-sm text-muted-foreground">暂无告警策略</p>
+              <p className="text-sm text-muted-foreground">{t("detail.noAlertPolicies")}</p>
               <Button size="sm" variant="outline" asChild>
                 <Link href={`/app/alerts?tab=policies&monitor=${encodeURIComponent(currentMonitor.name)}`}>
-                  <Plus className="mr-1 h-4 w-4" />创建策略
+                  <Plus className="mr-1 h-4 w-4" />{t("actions.createPolicy")}
                 </Link>
               </Button>
             </div>
@@ -851,7 +858,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                 <div key={policy.id} className="flex items-center justify-between text-sm">
                   <span>{policy.name}</span>
                   <Badge variant={policy.enabled ? "secondary" : "outline"}>
-                    {policy.enabled ? "启用" : "停用"}
+                    {policy.enabled ? t("detail.alertFiring") : t("detail.alertResolved")}
                   </Badge>
                 </div>
               ))}
@@ -863,31 +870,31 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       {/* 告警历史 */}
       <Card data-testid="alert-history-section">
         <CardHeader className="flex flex-row items-center justify-between">
-          <CardTitle className="text-base">告警历史</CardTitle>
+          <CardTitle className="text-base">{t("detail.alertHistory")}</CardTitle>
           <Link href="/app/alerts?tab=events" className="text-xs text-muted-foreground hover:text-foreground">
-            查看全部 →
+            {t("actions.viewAllAlerts")}
           </Link>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>状态</TableHead>
-                <TableHead>触发时间</TableHead>
-                <TableHead>持续时长</TableHead>
+                <TableHead>{t("detail.alertStatus")}</TableHead>
+                <TableHead>{t("detail.alertFiredAt")}</TableHead>
+                <TableHead>{t("detail.alertDuration")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {alertsLoading ? (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center text-xs text-muted-foreground py-4">
-                    加载中…
+                    {t("detail.loading")}
                   </TableCell>
                 </TableRow>
               ) : alertEvents.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={3} className="text-center text-xs text-muted-foreground py-4">
-                    暂无告警记录
+                    {t("detail.noAlertHistory")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -897,23 +904,15 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                     : Date.now()
                   const durationMs = endMs - new Date(event.fired_at).getTime()
                   const durationS = Math.floor(durationMs / 1000)
-                  let duration: string
-                  if (durationS < 60) {
-                    duration = `${durationS}秒`
-                  } else if (durationS < 3600) {
-                    duration = `${Math.floor(durationS / 60)}分钟`
-                  } else {
-                    duration = `${Math.floor(durationS / 3600)}小时`
-                  }
-                  if (!event.resolved_at) duration += "（持续中）"
+                  const duration = formatDuration(durationS, !event.resolved_at)
 
                   return (
                     <TableRow key={event.id}>
                       <TableCell>
                         {event.status === "firing" ? (
-                          <Badge variant="destructive">告警中</Badge>
+                          <Badge variant="destructive">{t("detail.alertFiring")}</Badge>
                         ) : (
-                          <Badge variant="success">已恢复</Badge>
+                          <Badge variant="success">{t("detail.alertResolved")}</Badge>
                         )}
                       </TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">

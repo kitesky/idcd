@@ -3,7 +3,7 @@
 import { useState, useMemo } from "react"
 import Link from "next/link"
 import { Search } from "lucide-react"
-import { Card, CardContent, CardHeader, CardTitle, Badge, Input } from "@/components/ui"
+import { Card, CardContent, CardHeader, CardTitle, Badge, Input, Button } from "@/components/ui"
 import { ALL_TOOLS } from "./tools-config"
 
 const CATEGORY_META: Record<string, { label: string; description: string }> = {
@@ -127,12 +127,9 @@ export default function ToolsPage() {
                       <p className="mb-4 text-sm text-muted-foreground">
                         {tool.description}
                       </p>
-                      <Link
-                        href={`/tools/${tool.slug}` as any}
-                        className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 w-full"
-                      >
-                        立即使用
-                      </Link>
+                      <Button asChild variant="outline" size="sm" className="w-full">
+                        <Link href={`/tools/${tool.slug}`}>立即使用</Link>
+                      </Button>
                     </CardContent>
                   </Card>
                 ))}
@@ -165,12 +162,9 @@ export default function ToolsPage() {
                       <p className="mb-4 text-sm text-muted-foreground">
                         {tool.description}
                       </p>
-                      <Link
-                        href={`/tools/${tool.slug}` as any}
-                        className="inline-flex h-8 items-center justify-center rounded-md border border-input bg-background px-3 text-sm font-medium ring-offset-background transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 w-full"
-                      >
-                        立即使用
-                      </Link>
+                      <Button asChild variant="outline" size="sm" className="w-full">
+                        <Link href={`/tools/${tool.slug}`}>立即使用</Link>
+                      </Button>
                     </CardContent>
                   </Card>
                 ))}

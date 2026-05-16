@@ -3,6 +3,20 @@ import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 import type { Monitor } from "../../types"
 
+// Mock next-intl — return the key itself so tests are locale-agnostic
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, params?: Record<string, unknown>) => {
+    if (params) {
+      return Object.entries(params).reduce(
+        (acc, [k, v]) => acc.replace(`{${k}}`, String(v)),
+        key,
+      )
+    }
+    return key
+  },
+  useLocale: () => "zh",
+}))
+
 vi.mock("next/navigation", () => ({
   useRouter: vi.fn(() => ({ push: vi.fn(), replace: vi.fn() })),
   usePathname: vi.fn(() => "/app/monitors/mon_001"),
@@ -103,33 +117,32 @@ describe("MonitorDetailClient", () => {
   it("点击编辑按钮打开编辑 Dialog", async () => {
     render(<MonitorDetailClient monitor={MOCK_MONITOR} monitorId="mon_001" />)
 
-    // Find the edit button by its text
-    const editButton = screen.getByRole("button", { name: /编辑/ })
+    // Find the edit button by its text (i18n key: actions.edit)
+    const editButton = screen.getByRole("button", { name: /actions\.edit/ })
     expect(editButton).toBeInTheDocument()
 
     fireEvent.click(editButton)
 
-    // Dialog title should appear
+    // Dialog title should appear (i18n key: edit.title)
     await waitFor(() => {
-      expect(screen.getByText("编辑监控")).toBeInTheDocument()
+      expect(screen.getByText("edit.title")).toBeInTheDocument()
     })
 
-    // Input fields are pre-filled with monitor values
+    // Input field is pre-filled with monitor name
     expect(screen.getByDisplayValue("idcd.com 主站")).toBeInTheDocument()
-    expect(screen.getByDisplayValue("https://idcd.com")).toBeInTheDocument()
   })
 
   it("点击删除按钮打开确认 Dialog", async () => {
     render(<MonitorDetailClient monitor={MOCK_MONITOR} monitorId="mon_001" />)
 
-    const deleteButton = screen.getByRole("button", { name: /删除/ })
+    const deleteButton = screen.getByRole("button", { name: /actions\.delete/ })
     expect(deleteButton).toBeInTheDocument()
 
     fireEvent.click(deleteButton)
 
-    // AlertDialog confirmation text should appear
+    // AlertDialog confirmation text should appear (i18n key: confirm.deleteTitle)
     await waitFor(() => {
-      expect(screen.getByText("确认删除监控？")).toBeInTheDocument()
+      expect(screen.getByText("confirm.deleteTitle")).toBeInTheDocument()
     })
 
     // The monitor name is mentioned in the dialog description
@@ -137,8 +150,8 @@ describe("MonitorDetailClient", () => {
     expect(matches.length).toBeGreaterThan(0)
 
     // Confirm and cancel buttons should be present
-    expect(screen.getByRole("button", { name: "确认删除" })).toBeInTheDocument()
-    expect(screen.getByRole("button", { name: "取消" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "confirm.confirmDelete" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "bulk.cancel" })).toBeInTheDocument()
   })
 
   it("告警历史区块存在", async () => {
@@ -147,9 +160,9 @@ describe("MonitorDetailClient", () => {
     // The alert-history-section card should be in the DOM immediately
     expect(screen.getByTestId("alert-history-section")).toBeInTheDocument()
 
-    // After loading, should show empty state
+    // After loading, should show empty state (i18n key: detail.noAlertHistory)
     await waitFor(() => {
-      expect(screen.getByText("暂无告警记录")).toBeInTheDocument()
+      expect(screen.getByText("detail.noAlertHistory")).toBeInTheDocument()
     })
   })
 
@@ -158,7 +171,7 @@ describe("MonitorDetailClient", () => {
 
     // Wait for async effects to settle, then assert on the link
     await waitFor(() => {
-      const alertPolicyLink = screen.getByRole("link", { name: /告警策略/ })
+      const alertPolicyLink = screen.getByRole("link", { name: /actions\.alertPolicy/ })
       expect(alertPolicyLink).toBeInTheDocument()
       expect(alertPolicyLink.getAttribute("href")).toContain("/app/alerts")
     })

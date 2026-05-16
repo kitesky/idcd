@@ -7,6 +7,19 @@ vi.mock("next/navigation", () => ({
   usePathname: () => "/app/dashboard",
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string, params?: Record<string, unknown>) => {
+    if (params && typeof params === 'object') {
+      return Object.entries(params).reduce<string>(
+        (str, [k, v]) => str.replace(new RegExp(`\\{${k}\\}`, 'g'), String(v)),
+        key
+      )
+    }
+    return key
+  },
+  useLocale: () => "zh",
+}))
+
 vi.mock("next/link", () => ({
   default: ({
     children,
@@ -70,7 +83,7 @@ function buildFetchMock(
     if (url.includes("/v1/alert-events")) {
       return Promise.resolve({
         ok: true,
-        json: () => Promise.resolve({ data: { events: alertEvents } }),
+        json: () => Promise.resolve({ data: { items: alertEvents } }),
       })
     }
     if (url.includes("/v1/monitors")) {
@@ -92,7 +105,7 @@ import DashboardPage from "../page"
 describe("DashboardPage — 真实 API 数据", () => {
   it("渲染不崩溃并显示页面标题", async () => {
     render(<DashboardPage />)
-    expect(screen.getByText("总览")).toBeInTheDocument()
+    expect(screen.getByText("title")).toBeInTheDocument()
   })
 
   it("6 个统计卡片都存在", async () => {
@@ -124,7 +137,7 @@ describe("DashboardPage — 真实 API 数据", () => {
   it("置顶监控区域存在", () => {
     render(<DashboardPage />)
     expect(screen.getByTestId("pinned-monitors-section")).toBeInTheDocument()
-    expect(screen.getByText("置顶监控")).toBeInTheDocument()
+    expect(screen.getByText("pinnedMonitors.title")).toBeInTheDocument()
   })
 
   it("置顶为空时显示空状态提示", async () => {
@@ -132,7 +145,7 @@ describe("DashboardPage — 真实 API 数据", () => {
     await waitFor(() => {
       expect(screen.getByTestId("pinned-empty")).toBeInTheDocument()
     })
-    expect(screen.getByText("暂无置顶监控，点击 + 添加")).toBeInTheDocument()
+    expect(screen.getByText("pinnedMonitors.empty")).toBeInTheDocument()
   })
 
   it("+ 添加按钮存在", () => {
@@ -142,7 +155,7 @@ describe("DashboardPage — 真实 API 数据", () => {
 
   it("快捷入口区域渲染标题", () => {
     render(<DashboardPage />)
-    expect(screen.getByText("快捷入口")).toBeInTheDocument()
+    expect(screen.getByText("quickLinks.title")).toBeInTheDocument()
   })
 
   it("有 down 监控时显示 down 监控快览区块", async () => {
@@ -187,10 +200,10 @@ describe("DashboardPage — 真实 API 数据", () => {
     )
     render(<DashboardPage />)
     await waitFor(() => {
-      expect(screen.getByText("开始监控您的第一个服务")).toBeInTheDocument()
+      expect(screen.getByText("onboarding.title")).toBeInTheDocument()
     })
-    // "创建监控" button inside the CTA card
-    const ctaLinks = screen.getAllByRole("link", { name: /创建监控/ })
+    // "createMonitor" button inside the CTA card
+    const ctaLinks = screen.getAllByRole("link", { name: /onboarding.createMonitor/ })
     expect(ctaLinks.length).toBeGreaterThan(0)
     expect(ctaLinks[0]).toHaveAttribute("href", "/app/monitors/new")
   })

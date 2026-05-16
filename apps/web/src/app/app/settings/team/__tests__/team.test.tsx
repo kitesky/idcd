@@ -6,6 +6,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 // Mock the apiRequest helper
 vi.mock("@/lib/api", () => ({
   apiRequest: vi.fn(),

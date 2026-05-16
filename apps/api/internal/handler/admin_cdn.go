@@ -25,12 +25,12 @@ var systemCDNMonitors = []struct {
 	{"cdn_fastly", "Fastly CDN", "https://www.fastly.com"},
 	{"cdn_akamai", "Akamai CDN", "https://www.akamai.com"},
 	{"cdn_aws", "AWS CloudFront", "https://aws.amazon.com/cloudfront/"},
-	{"cdn_alicloud", "阿里云 CDN", "https://www.aliyun.com"},
-	{"cdn_tencentcloud", "腾讯云 CDN", "https://cloud.tencent.com"},
-	{"cdn_huaweicloud", "华为云 CDN", "https://www.huaweicloud.com"},
-	{"cdn_baiducloud", "百度云 CDN", "https://cloud.baidu.com"},
-	{"cdn_upyun", "又拍云 CDN", "https://www.upyun.com"},
-	{"cdn_qiniu", "七牛云 CDN", "https://www.qiniu.com"},
+	{"cdn_alicloud", "Alibaba Cloud CDN", "https://www.aliyun.com"},
+	{"cdn_tencentcloud", "Tencent Cloud CDN", "https://cloud.tencent.com"},
+	{"cdn_huaweicloud", "Huawei Cloud CDN", "https://www.huaweicloud.com"},
+	{"cdn_baiducloud", "Baidu Cloud CDN", "https://cloud.baidu.com"},
+	{"cdn_upyun", "Upyun CDN", "https://www.upyun.com"},
+	{"cdn_qiniu", "Qiniu CDN", "https://www.qiniu.com"},
 }
 
 // CDNPool is the subset of pgxpool.Pool used by AdminCDNHandler.

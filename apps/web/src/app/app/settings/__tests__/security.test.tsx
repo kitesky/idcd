@@ -6,11 +6,16 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 // Default fetch mock: status=disabled, setup returns secret, verify returns backup codes, disable succeeds
 // passkeys list returns one mock passkey by default
 function mockFetch(overrides?: Record<string, { ok: boolean; body: unknown }>) {
   const defaults: Record<string, { ok: boolean; body: unknown }> = {
-    "/v1/account/2fa/status": { ok: true, body: { enabled: false } },
+    "/v1/account/2fa/status": { ok: true, body: { data: { enabled: false } } },
     "/v1/account/2fa/setup": { ok: true, body: { data: { secret: "TESTSECRET", otpauth_uri: "otpauth://totp/test?secret=TESTSECRET" } } },
     "/v1/account/2fa/verify": { ok: true, body: { data: { backup_codes: ["CODE1234", "CODE5678", "CODE9012", "CODE3456", "CODE7890", "CODE1111", "CODE2222", "CODE3333"] } } },
     "/v1/account/2fa/disable": { ok: true, body: {} },
@@ -83,15 +88,17 @@ describe("SecurityClient", () => {
     await act(async () => { render(<SecurityClient />) })
     const badge = screen.getByTestId("2fa-status-badge")
     expect(badge).toBeInTheDocument()
-    expect(badge.textContent).toContain("未启用")
+    // With i18n mock, t('security.twoFactorDisabled') returns the key
+    expect(badge.textContent).toContain("security.twoFactorDisabled")
   })
 
   it("shows enabled badge when status API returns enabled=true", async () => {
-    fetchMock = mockFetch({ "/v1/account/2fa/status": { ok: true, body: { enabled: true } } })
+    fetchMock = mockFetch({ "/v1/account/2fa/status": { ok: true, body: { data: { enabled: true } } } })
     vi.stubGlobal("fetch", fetchMock)
     await act(async () => { render(<SecurityClient />) })
     await waitFor(() => {
-      expect(screen.getByTestId("2fa-status-badge").textContent).toContain("已启用")
+      // With i18n mock, t('security.twoFactorEnabled') returns the key
+      expect(screen.getByTestId("2fa-status-badge").textContent).toContain("security.twoFactorEnabled")
     })
   })
 
@@ -150,7 +157,8 @@ describe("SecurityClient", () => {
     await act(async () => { fireEvent.click(screen.getByTestId("btn-finish-2fa")) })
     await waitFor(() => {
       const badge = screen.getByTestId("2fa-status-badge")
-      expect(badge.textContent).toContain("已启用")
+      // With i18n mock, t('security.twoFactorEnabled') returns the key
+      expect(badge.textContent).toContain("security.twoFactorEnabled")
     })
   })
 

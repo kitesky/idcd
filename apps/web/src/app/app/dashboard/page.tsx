@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Activity,
   AlertTriangle,
@@ -139,6 +140,7 @@ async function apiFetch<T>(path: string): Promise<T> {
 }
 
 export default function DashboardPage() {
+  const t = useTranslations("dashboard")
   const [summary, setSummary] = useState<DashboardSummary | null>(null)
   const [summaryLoading, setSummaryLoading] = useState(true)
 
@@ -168,8 +170,8 @@ export default function DashboardPage() {
       .then((d) => setDownMonitors(d.items ?? []))
       .catch(() => {})
 
-    apiFetch<{ events: AlertEventItem[] }>("/v1/alert-events?limit=5")
-      .then((d) => setAlertEvents(d.events ?? []))
+    apiFetch<{ items: AlertEventItem[] }>("/v1/alert-events?limit=5")
+      .then((d) => setAlertEvents(d.items ?? []))
       .catch(() => {})
   }, [])
 
@@ -217,9 +219,9 @@ export default function DashboardPage() {
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">总览</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          监控健康状态与关键指标一览
+          {t("subtitle")}
         </p>
       </div>
 
@@ -230,7 +232,7 @@ export default function DashboardPage() {
           >
             <StatCard
               testId="stat-monitors-total"
-              title="监控总数"
+              title={t("stats.totalMonitors")}
               value={m?.total ?? 0}
               icon={<Activity className="h-4 w-4" />}
               loading={summaryLoading}
@@ -238,16 +240,16 @@ export default function DashboardPage() {
 
             <StatCard
               testId="stat-monitors-up"
-              title="在线 / 总数"
+              title={t("stats.onlineRatio")}
               value={`${m?.up ?? 0} / ${m?.total ?? 0}`}
               icon={<CheckCircle2 className="h-4 w-4 text-success" />}
-              badge={<Badge variant="success">正常</Badge>}
+              badge={<Badge variant="success">{t("monitorStatus.active")}</Badge>}
               loading={summaryLoading}
             />
 
             <StatCard
               testId="stat-checks-today"
-              title="今日拨测次数"
+              title={t("stats.checksToday")}
               value={checksToday.toLocaleString()}
               icon={<TrendingUp className="h-4 w-4" />}
               loading={summaryLoading}
@@ -255,7 +257,7 @@ export default function DashboardPage() {
 
             <StatCard
               testId="stat-uptime-7d"
-              title="7 日平均可用率"
+              title={t("stats.uptime7d")}
               value={`${avgUptime7d}%`}
               icon={<Activity className="h-4 w-4 text-success" />}
               loading={summaryLoading}
@@ -263,7 +265,7 @@ export default function DashboardPage() {
 
             <StatCard
               testId="stat-incidents-open"
-              title="未解决告警"
+              title={t("stats.activeAlerts")}
               value={incidentsOpen}
               icon={<AlertTriangle className="h-4 w-4 text-destructive" />}
               badge={
@@ -276,7 +278,7 @@ export default function DashboardPage() {
 
             <StatCard
               testId="stat-status-pages"
-              title="状态页数量"
+              title={t("stats.statusPages")}
               value={statusPages}
               icon={<Globe className="h-4 w-4" />}
               loading={summaryLoading}
@@ -290,22 +292,22 @@ export default function DashboardPage() {
                   <Activity className="h-8 w-8 text-primary" />
                 </div>
                 <div className="space-y-2">
-                  <h3 className="text-lg font-semibold">开始监控您的第一个服务</h3>
+                  <h3 className="text-lg font-semibold">{t("onboarding.title")}</h3>
                   <p className="text-sm text-muted-foreground max-w-sm">
-                    添加 HTTP / HTTPS / Ping / TCP 监控，实时掌握服务可用性，配置告警在故障时第一时间通知您
+                    {t("onboarding.desc")}
                   </p>
                 </div>
                 <div className="flex flex-wrap gap-3 justify-center">
                   <Button asChild>
                     <Link href="/app/monitors/new">
                       <Plus className="mr-2 h-4 w-4" />
-                      创建监控
+                      {t("onboarding.createMonitor")}
                     </Link>
                   </Button>
                   <Button variant="outline" asChild>
                     <Link href="/app/alerts/channels">
                       <Bell className="mr-2 h-4 w-4" />
-                      配置告警通道
+                      {t("onboarding.configureAlerts")}
                     </Link>
                   </Button>
                 </div>
@@ -314,7 +316,7 @@ export default function DashboardPage() {
           )}
 
           <div>
-            <h2 className="mb-4 text-lg font-semibold">快捷入口</h2>
+            <h2 className="mb-4 text-lg font-semibold">{t("quickLinks.title")}</h2>
             <div
               className="grid grid-cols-1 gap-4 sm:grid-cols-3"
               data-testid="quick-links"
@@ -323,14 +325,14 @@ export default function DashboardPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Plus className="h-5 w-5 text-primary" />
-                    新建监控
+                    {t("quickLinks.newMonitor.title")}
                   </CardTitle>
-                  <CardDescription>添加 HTTP、Ping、SSL 或 DNS 监控项目</CardDescription>
+                  <CardDescription>{t("quickLinks.newMonitor.desc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild variant="outline" size="sm">
                     <Link href="/app/monitors/new" data-testid="link-new-monitor">
-                      立即创建
+                      {t("quickLinks.newMonitor.action")}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
@@ -341,14 +343,14 @@ export default function DashboardPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <Bell className="h-5 w-5 text-primary" />
-                    查看告警
+                    {t("quickLinks.viewAlerts.title")}
                   </CardTitle>
-                  <CardDescription>管理告警通道、策略和历史事件</CardDescription>
+                  <CardDescription>{t("quickLinks.viewAlerts.desc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild variant="outline" size="sm">
                     <Link href="/app/alerts" data-testid="link-alerts">
-                      前往告警
+                      {t("quickLinks.viewAlerts.action")}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
@@ -359,14 +361,14 @@ export default function DashboardPage() {
                 <CardHeader>
                   <CardTitle className="flex items-center gap-2 text-base">
                     <LayoutDashboard className="h-5 w-5 text-primary" />
-                    管理状态页
+                    {t("quickLinks.statusPages.title")}
                   </CardTitle>
-                  <CardDescription>发布和配置对外公开的服务状态页面</CardDescription>
+                  <CardDescription>{t("quickLinks.statusPages.desc")}</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button asChild variant="outline" size="sm">
                     <Link href="/app/status-pages" data-testid="link-status-pages">
-                      管理状态页
+                      {t("quickLinks.statusPages.action")}
                       <ArrowRight className="ml-2 h-4 w-4" />
                     </Link>
                   </Button>
@@ -377,21 +379,21 @@ export default function DashboardPage() {
 
           {summary && summary.monitors.down > 0 && (
             <div data-testid="down-monitors-section">
-              <h2 className="mb-4 text-lg font-semibold">告警中的监控</h2>
+              <h2 className="mb-4 text-lg font-semibold">{t("downMonitors.title")}</h2>
               <Card>
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>监控名称</TableHead>
-                      <TableHead className="w-24">状态</TableHead>
-                      <TableHead className="w-36 hidden sm:table-cell">上次检测</TableHead>
+                      <TableHead>{t("incidents.table.monitorName")}</TableHead>
+                      <TableHead className="w-24">{t("incidents.table.status")}</TableHead>
+                      <TableHead className="w-36 hidden sm:table-cell">{t("incidents.table.startedAt")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {downMonitors.length === 0 ? (
                       <TableRow>
                         <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
-                          加载中…
+                          {t("downMonitors.loading")}
                         </TableCell>
                       </TableRow>
                     ) : (
@@ -422,10 +424,10 @@ export default function DashboardPage() {
 
           <div data-testid="alert-events-section">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">近期告警</h2>
+              <h2 className="text-lg font-semibold">{t("recentAlerts")}</h2>
               <Button asChild variant="ghost" size="sm">
                 <Link href="/app/alerts" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
-                  查看全部
+                  {t("viewAll")}
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
@@ -433,7 +435,7 @@ export default function DashboardPage() {
             {alertEvents.length === 0 ? (
               <Card>
                 <CardContent className="py-6 text-center text-sm text-muted-foreground">
-                  最近 7 天无告警
+                  {t("noAlerts")}
                 </CardContent>
               </Card>
             ) : (
@@ -441,9 +443,9 @@ export default function DashboardPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>监控名称</TableHead>
-                      <TableHead className="w-28">状态</TableHead>
-                      <TableHead className="w-36 hidden sm:table-cell">触发时间</TableHead>
+                      <TableHead>{t("incidents.table.monitorName")}</TableHead>
+                      <TableHead className="w-28">{t("incidents.table.status")}</TableHead>
+                      <TableHead className="w-36 hidden sm:table-cell">{t("incidents.table.startedAt")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -472,7 +474,7 @@ export default function DashboardPage() {
 
           <div data-testid="pinned-monitors-section">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-lg font-semibold">置顶监控</h2>
+              <h2 className="text-lg font-semibold">{t("pinnedMonitors.title")}</h2>
               <Button
                 variant="outline"
                 size="sm"
@@ -480,7 +482,7 @@ export default function DashboardPage() {
                 data-testid="open-pin-sheet"
               >
                 <Plus className="mr-1 h-4 w-4" />
-                添加
+                {t("pinnedMonitors.add")}
               </Button>
             </div>
 
@@ -488,7 +490,7 @@ export default function DashboardPage() {
               <Card data-testid="pinned-empty">
                 <CardContent className="flex flex-col items-center justify-center py-10 text-muted-foreground">
                   <Pin className="mb-2 h-8 w-8 opacity-30" />
-                  <p className="text-sm">暂无置顶监控，点击 + 添加</p>
+                  <p className="text-sm">{t("pinnedMonitors.empty")}</p>
                 </CardContent>
               </Card>
             ) : (
@@ -503,7 +505,7 @@ export default function DashboardPage() {
                     </CardHeader>
                     <CardContent>
                       <p className="text-xs text-muted-foreground">
-                        最近检测：{formatRelative(mon.last_check_at)}
+                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at) })}
                       </p>
                     </CardContent>
                   </Card>
@@ -516,11 +518,11 @@ export default function DashboardPage() {
       <Sheet open={sheetOpen} onOpenChange={setSheetOpen}>
         <SheetContent className="flex flex-col gap-0 p-0 overflow-hidden" data-testid="pin-sheet">
           <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle>选择置顶监控（最多 6 个）</SheetTitle>
+            <SheetTitle>{t("pinnedMonitors.sheet.title")}</SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto px-6 py-6 space-y-2">
             {monitors.length === 0 ? (
-              <p className="text-sm text-muted-foreground">暂无监控项</p>
+              <p className="text-sm text-muted-foreground">{t("pinnedMonitors.sheet.noMonitors")}</p>
             ) : (
               monitors.map((mon) => (
                 <div key={mon.id} className="flex items-center gap-3 rounded-md p-2 hover:bg-muted/50">
@@ -543,10 +545,10 @@ export default function DashboardPage() {
           </div>
           <SheetFooter className="shrink-0 border-t px-6 py-4 flex-row gap-3 mt-0">
             <Button variant="outline" className="flex-1" onClick={() => setSheetOpen(false)}>
-              取消
+              {t("pinnedMonitors.sheet.cancel")}
             </Button>
             <Button className="flex-1" onClick={savePins} data-testid="save-pins">
-              保存
+              {t("pinnedMonitors.sheet.save")}
             </Button>
           </SheetFooter>
         </SheetContent>

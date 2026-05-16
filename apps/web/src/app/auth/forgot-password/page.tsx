@@ -5,6 +5,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Input,
@@ -18,16 +19,17 @@ import {
 import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
-const forgotPasswordSchema = z.object({
-  email: z.string().email({ message: "请输入有效的邮箱地址" }),
-})
-
-type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>
-
 export default function ForgotPasswordPage() {
+  const t = useTranslations("auth")
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState(false)
+
+  const forgotPasswordSchema = z.object({
+    email: z.string().email({ message: t("forgotPassword.errors.invalidEmail") }),
+  })
+
+  type ForgotPasswordFormValues = z.infer<typeof forgotPasswordSchema>
 
   const form = useForm<ForgotPasswordFormValues>({
     resolver: zodResolver(forgotPasswordSchema),
@@ -49,7 +51,7 @@ export default function ForgotPasswordPage() {
 
       setSuccess(true)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "请求失败，请稍后重试")
+      setError(err instanceof Error ? err.message : t("forgotPassword.errors.requestFailed"))
     } finally {
       setIsLoading(false)
     }
@@ -57,12 +59,12 @@ export default function ForgotPasswordPage() {
 
   return (
     <AuthLayout
-      title="忘记密码"
-      description="输入您的邮箱地址，我们将发送重置密码的链接"
+      title={t("forgotPassword.title")}
+      description={t("forgotPassword.description")}
       footer={
         <p>
           <Link href={"/auth/login" as any} className="text-primary hover:underline">
-            返回登录
+            {t("forgotPassword.backToLogin")}
           </Link>
         </p>
       }
@@ -70,10 +72,10 @@ export default function ForgotPasswordPage() {
       {success ? (
         <div className="space-y-5">
           <div className="bg-green-500/15 text-green-600 dark:text-green-400 text-sm p-3 rounded-md">
-            重置链接已发送！请检查您的邮箱并按照说明操作。
+            {t("forgotPassword.successMessage")}
           </div>
           <Button asChild className="w-full" variant="outline">
-            <Link href={"/auth/login" as any}>返回登录</Link>
+            <Link href={"/auth/login" as any}>{t("forgotPassword.backToLogin")}</Link>
           </Button>
         </div>
       ) : (
@@ -90,11 +92,11 @@ export default function ForgotPasswordPage() {
               name="email"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>邮箱</FormLabel>
+                  <FormLabel>{t("forgotPassword.email")}</FormLabel>
                   <FormControl>
                     <Input
                       type="email"
-                      placeholder="your@email.com"
+                      placeholder={t("forgotPassword.emailPlaceholder")}
                       disabled={isLoading}
                       {...field}
                     />
@@ -105,7 +107,7 @@ export default function ForgotPasswordPage() {
             />
 
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading ? "发送中..." : "发送重置链接"}
+              {isLoading ? t("forgotPassword.submitting") : t("forgotPassword.submit")}
             </Button>
           </form>
         </Form>

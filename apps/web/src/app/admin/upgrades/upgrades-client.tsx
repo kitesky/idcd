@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useState } from "react"
+import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -18,21 +19,9 @@ import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import type { UpgradeRollout } from "./page"
 
-const statusVariant: Record<UpgradeRollout["status"], "default" | "secondary" | "destructive" | "outline"> = {
-  active: "default",
-  paused: "outline",
-  completed: "secondary",
-}
-
-const statusLabel: Record<UpgradeRollout["status"], string> = {
-  active: "进行中",
-  paused: "已暂停",
-  completed: "已完成",
-}
-
 function formatDate(iso: string) {
   try {
-    return new Date(iso).toLocaleString("zh-CN", {
+    return new Date(iso).toLocaleString(undefined, {
       month: "2-digit", day: "2-digit",
       hour: "2-digit", minute: "2-digit",
     })
@@ -42,6 +31,7 @@ function formatDate(iso: string) {
 }
 
 export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRollout[] }) {
+  const t = useTranslations("admin")
   const [rollouts, setRollouts] = useState(initialRollouts)
   const [toast, setToast] = useState<{ message: string; ok: boolean } | null>(null)
   const [actionLoading, setActionLoading] = useState<Record<string, boolean>>({})
@@ -50,6 +40,12 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
   const [showCreate, setShowCreate] = useState(false)
   const [creating, setCreating] = useState(false)
   const [form, setForm] = useState({ version: "", download_url: "", checksum: "", rollout_pct: 1 })
+
+  const statusVariant: Record<UpgradeRollout["status"], "default" | "secondary" | "destructive" | "outline"> = {
+    active: "default",
+    paused: "outline",
+    completed: "secondary",
+  }
 
   const showToast = useCallback((message: string, ok = true) => {
     setToast({ message, ok })
@@ -73,13 +69,13 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
       setRollouts(p => [created.data, ...p])
       setShowCreate(false)
       setForm({ version: "", download_url: "", checksum: "", rollout_pct: 1 })
-      showToast("升级计划已创建")
+      showToast(t("upgrades.toast.created"))
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), false)
     } finally {
       setCreating(false)
     }
-  }, [form, showToast])
+  }, [form, showToast, t])
 
   const handlePatch = useCallback(async (id: string, patch: Partial<Pick<UpgradeRollout, "rollout_pct" | "status">>) => {
     setActionLoading(p => ({ ...p, [id]: true }))
@@ -95,13 +91,13 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
       }
       const updated = await res.json()
       setRollouts(p => p.map(r => r.id === id ? { ...r, ...updated.data } : r))
-      showToast("已更新")
+      showToast(t("upgrades.toast.updated"))
     } catch (err: unknown) {
       showToast(err instanceof Error ? err.message : String(err), false)
     } finally {
       setActionLoading(p => ({ ...p, [id]: false }))
     }
-  }, [showToast])
+  }, [showToast, t])
 
   return (
     <div className="space-y-4">
@@ -112,18 +108,18 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
       )}
 
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">共 {rollouts.length} 个升级计划</p>
+        <p className="text-sm text-muted-foreground">{t("upgrades.total", { count: rollouts.length })}</p>
         <Dialog open={showCreate} onOpenChange={setShowCreate}>
           <DialogTrigger asChild>
-            <Button size="sm">新建升级计划</Button>
+            <Button size="sm">{t("upgrades.create")}</Button>
           </DialogTrigger>
           <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>新建 OTA 升级计划</DialogTitle>
+              <DialogTitle>{t("upgrades.createDialog")}</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleCreate} className="space-y-4">
               <div className="space-y-1">
-                <Label htmlFor="version">版本号</Label>
+                <Label htmlFor="version">{t("upgrades.form.version")}</Label>
                 <Input
                   id="version"
                   placeholder="v1.2.0"
@@ -133,7 +129,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="download_url">下载地址</Label>
+                <Label htmlFor="download_url">{t("upgrades.form.downloadUrl")}</Label>
                 <Input
                   id="download_url"
                   placeholder="https://releases.idcd.com/agent-v1.2.0"
@@ -143,7 +139,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                 />
               </div>
               <div className="space-y-1">
-                <Label htmlFor="checksum">SHA-256 校验和</Label>
+                <Label htmlFor="checksum">{t("upgrades.form.checksum")}</Label>
                 <Input
                   id="checksum"
                   placeholder="sha256:abc123..."
@@ -153,7 +149,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                 />
               </div>
               <div className="space-y-2">
-                <Label>灰度比例: {form.rollout_pct}%</Label>
+                <Label>{t("upgrades.form.rolloutPct", { pct: form.rollout_pct })}</Label>
                 <Slider
                   min={1}
                   max={100}
@@ -168,8 +164,12 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                 </div>
               </div>
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>取消</Button>
-                <Button type="submit" disabled={creating}>{creating ? "创建中..." : "创建"}</Button>
+                <Button type="button" variant="outline" onClick={() => setShowCreate(false)}>
+                  {t("upgrades.form.cancel")}
+                </Button>
+                <Button type="submit" disabled={creating}>
+                  {creating ? t("upgrades.form.creating") : t("upgrades.form.create")}
+                </Button>
               </DialogFooter>
             </form>
           </DialogContent>
@@ -178,24 +178,24 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
 
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">升级计划列表</CardTitle>
+          <CardTitle className="text-base">{t("upgrades.listTitle")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>版本</TableHead>
-                <TableHead>灰度比例</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>创建时间</TableHead>
-                <TableHead className="text-right">操作</TableHead>
+                <TableHead>{t("upgrades.table.version")}</TableHead>
+                <TableHead>{t("upgrades.table.rolloutPct")}</TableHead>
+                <TableHead>{t("upgrades.table.status")}</TableHead>
+                <TableHead>{t("upgrades.table.createdAt")}</TableHead>
+                <TableHead className="text-right">{t("upgrades.table.actions")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {rollouts.length === 0 && (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
-                    暂无升级计划
+                    {t("upgrades.noData")}
                   </TableCell>
                 </TableRow>
               )}
@@ -220,7 +220,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                     </div>
                   </TableCell>
                   <TableCell>
-                    <Badge variant={statusVariant[r.status]}>{statusLabel[r.status]}</Badge>
+                    <Badge variant={statusVariant[r.status]}>{t(`upgrades.status.${r.status}`)}</Badge>
                   </TableCell>
                   <TableCell className="text-muted-foreground text-xs">{formatDate(r.created_at)}</TableCell>
                   <TableCell className="text-right">
@@ -232,7 +232,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                           disabled={actionLoading[r.id]}
                           onClick={() => handlePatch(r.id, { status: "paused" })}
                         >
-                          暂停
+                          {t("upgrades.actions.pause")}
                         </Button>
                       )}
                       {r.status === "paused" && (
@@ -242,7 +242,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                           disabled={actionLoading[r.id]}
                           onClick={() => handlePatch(r.id, { status: "active" })}
                         >
-                          继续
+                          {t("upgrades.actions.resume")}
                         </Button>
                       )}
                       {r.status !== "completed" && (
@@ -252,7 +252,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
                           disabled={actionLoading[r.id]}
                           onClick={() => handlePatch(r.id, { status: "completed" })}
                         >
-                          完成
+                          {t("upgrades.actions.complete")}
                         </Button>
                       )}
                     </div>

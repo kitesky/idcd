@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   Card,
   CardContent,
@@ -209,6 +210,7 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
 }
 
 export function UsageClient() {
+  const _t = useTranslations("billing")
   const [data, setData] = useState<QuotaData | null>(null)
   const [loading, setLoading] = useState(true)
   const [pointsData, setPointsData] = useState<PointsData | null>(null)

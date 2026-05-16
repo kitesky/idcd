@@ -579,18 +579,18 @@ func (h *InfoHandler) queryICP(ctx context.Context, domain string) ICPResponse {
 	apiURL := "https://icplishi.com/api/?domain=" + domain
 	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
 	if err != nil {
-		return ICPResponse{Domain: domain, Note: "ICP 备案查询需接入工信部官方 API，当前为演示模式。请访问 https://beian.miit.gov.cn/ 手动查询。"}
+		return ICPResponse{Domain: domain, Note: "ICP filing lookup requires the MIIT official API; currently in demo mode. Please visit https://beian.miit.gov.cn/ to query manually."}
 	}
 	req.Header.Set("User-Agent", "idcd-icp-tool/1.0")
 
 	resp, err := h.httpClient.Do(req)
 	if err != nil {
-		return ICPResponse{Domain: domain, Note: "ICP 备案查询服务暂时不可用，请访问 https://beian.miit.gov.cn/ 手动查询。"}
+		return ICPResponse{Domain: domain, Note: "ICP filing lookup service is temporarily unavailable. Please visit https://beian.miit.gov.cn/ to query manually."}
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return ICPResponse{Domain: domain, Note: "ICP 备案查询服务返回错误，请访问 https://beian.miit.gov.cn/ 手动查询。"}
+		return ICPResponse{Domain: domain, Note: "ICP filing lookup service returned an error. Please visit https://beian.miit.gov.cn/ to query manually."}
 	}
 
 	var apiResp struct {
@@ -603,11 +603,11 @@ func (h *InfoHandler) queryICP(ctx context.Context, domain string) ICPResponse {
 		} `json:"data"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return ICPResponse{Domain: domain, Note: "ICP 备案数据解析失败，请访问 https://beian.miit.gov.cn/ 手动查询。"}
+		return ICPResponse{Domain: domain, Note: "Failed to parse ICP filing data. Please visit https://beian.miit.gov.cn/ to query manually."}
 	}
 
 	if apiResp.Code != 0 || apiResp.Data.ICPNo == "" {
-		return ICPResponse{Domain: domain, Note: "未查询到 ICP 备案记录"}
+		return ICPResponse{Domain: domain, Note: "No ICP filing record found"}
 	}
 
 	return ICPResponse{

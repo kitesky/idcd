@@ -1,18 +1,27 @@
 import type { Metadata } from "next"
+import { getTranslations } from "next-intl/server"
+import { getLocale } from "@/i18n/locale"
 import { NewMonitorClient } from "./new-monitor-client"
 
-export const metadata: Metadata = {
-  title: "新建监控 - idcd",
-  description: "创建新的监控项目",
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale()
+  const t = await getTranslations({ locale, namespace: "monitors" })
+  return {
+    title: `${t("new.title")} - idcd`,
+    description: t("new.description"),
+  }
 }
 
-export default function NewMonitorPage() {
+export default async function NewMonitorPage() {
+  const locale = await getLocale()
+  const t = await getTranslations({ locale, namespace: "monitors" })
+
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">新建监控</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("new.title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          按步骤配置您的监控项目
+          {t("new.description")}
         </p>
       </div>
       <NewMonitorClient />

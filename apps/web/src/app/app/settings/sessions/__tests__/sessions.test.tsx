@@ -6,6 +6,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 // ── Default sessions returned by mock fetch ───────────────────────────────────
 
 const MOCK_SESSIONS = [
@@ -71,7 +76,7 @@ describe("SessionsClient", () => {
     expect(screen.getByTestId("session-row-sess_old")).toBeInTheDocument()
   })
 
-  it("shows '当前会话' badge on the current session", async () => {
+  it("shows current session badge on the current session", async () => {
     mockFetchSuccess()
     render(<SessionsClient />)
     await waitFor(() => {

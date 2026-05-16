@@ -645,9 +645,9 @@ function AlertEventsTab() {
     setLoaded(true)
     setLoading(true)
     setError(null)
-    apiRequest<{ data: { events: AlertEvent[] } }>("/v1/alert-events?limit=20")
+    apiRequest<{ data: { items: AlertEvent[] } }>("/v1/alert-events?limit=20")
       .then((res) => {
-        setEvents(res?.data?.events ?? [])
+        setEvents(res?.data?.items ?? [])
       })
       .catch((err) => {
         setError(err instanceof Error ? err.message : "加载失败")

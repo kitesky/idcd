@@ -1,3 +1,6 @@
+import { getTranslations } from "next-intl/server"
+import { cookies } from "next/headers"
+import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 
@@ -14,6 +17,12 @@ interface Metrics {
 
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ""
+
+async function getAdminLocale(): Promise<Locale> {
+  const cookieStore = await cookies()
+  const val = cookieStore.get("locale")?.value ?? ""
+  return isValidLocale(val) ? val : defaultLocale
+}
 
 async function fetchMetrics(): Promise<Metrics | null> {
   try {
@@ -59,9 +68,11 @@ function PlanBar({ label, count, total }: { label: string; count: number; total:
 }
 
 export default async function MetricsPage() {
+  const locale = await getAdminLocale()
+  const t = await getTranslations({ locale, namespace: "admin" })
   const metrics = await fetchMetrics()
 
-  if (!metrics) return <p className="text-destructive">加载失败，请稍后重试</p>
+  if (!metrics) return <p className="text-destructive">{t("metrics.loadFailed")}</p>
 
   const totalSubs =
     metrics.subscriptions.free + metrics.subscriptions.pro +
@@ -69,16 +80,32 @@ export default async function MetricsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-2xl font-bold">系统概览</h1>
+      <h1 className="text-2xl font-bold">{t("metrics.title")}</h1>
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <StatCard title="总用户数" value={metrics.total_users.toLocaleString()} sub={`近 7 日活跃 ${metrics.active_users_7d}`} />
-        <StatCard title="活跃监控" value={metrics.active_monitors} sub={`共 ${metrics.total_monitors} 个`} />
-        <StatCard title="在线节点" value={metrics.online_nodes} sub={`共 ${metrics.total_nodes} 个`} />
-        <StatCard title="估算 MRR" value={`¥${metrics.mrr_estimate_cny.toLocaleString()}`} sub="Pro+Team+Enterprise" />
+        <StatCard
+          title={t("metrics.totalUsers")}
+          value={metrics.total_users.toLocaleString()}
+          sub={t("metrics.activeUsersRecent", { count: metrics.active_users_7d })}
+        />
+        <StatCard
+          title={t("metrics.activeMonitors")}
+          value={metrics.active_monitors}
+          sub={t("metrics.totalMonitors", { total: metrics.total_monitors })}
+        />
+        <StatCard
+          title={t("metrics.onlineNodes")}
+          value={metrics.online_nodes}
+          sub={t("metrics.totalNodes", { total: metrics.total_nodes })}
+        />
+        <StatCard
+          title={t("metrics.mrrEstimate")}
+          value={`¥${metrics.mrr_estimate_cny.toLocaleString()}`}
+          sub={t("metrics.mrrSub")}
+        />
       </div>
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
         <Card>
-          <CardHeader><CardTitle className="text-base">订阅分布</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("metrics.subscriptionDist")}</CardTitle></CardHeader>
           <CardContent className="space-y-4">
             <PlanBar label="Free" count={metrics.subscriptions.free} total={totalSubs} />
             <PlanBar label="Pro" count={metrics.subscriptions.pro} total={totalSubs} />
@@ -87,16 +114,16 @@ export default async function MetricsPage() {
           </CardContent>
         </Card>
         <Card>
-          <CardHeader><CardTitle className="text-base">节点健康</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="text-base">{t("metrics.nodeHealth")}</CardTitle></CardHeader>
           <CardContent className="flex items-center gap-4 pt-2">
             <div className="text-5xl font-bold">
               {metrics.total_nodes > 0 ? Math.round((metrics.online_nodes / metrics.total_nodes) * 100) : 0}
               <span className="text-2xl text-muted-foreground">%</span>
             </div>
             <div className="space-y-1">
-              <Badge variant="default">在线 {metrics.online_nodes}</Badge>
+              <Badge variant="default">{t("metrics.online", { count: metrics.online_nodes })}</Badge>
               <br />
-              <Badge variant="secondary">离线 {metrics.total_nodes - metrics.online_nodes}</Badge>
+              <Badge variant="secondary">{t("metrics.offline", { count: metrics.total_nodes - metrics.online_nodes })}</Badge>
             </div>
           </CardContent>
         </Card>

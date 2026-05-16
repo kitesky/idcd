@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Input,
@@ -19,25 +20,8 @@ import {
 import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
-const resetPasswordSchema = z.object({
-  password: z
-    .string()
-    .min(8, { message: "密码至少需要 8 个字符" })
-    .regex(/^(?=.*[A-Za-z])(?=.*\d)/, {
-      message: "密码必须包含字母和数字",
-    }),
-  confirmPassword: z.string(),
-  code: z.string().length(6, { message: "验证码必须为 6 位数字" }).regex(/^\d+$/, {
-    message: "验证码只能包含数字",
-  }),
-}).refine((data) => data.password === data.confirmPassword, {
-  message: "两次输入的密码不一致",
-  path: ["confirmPassword"],
-})
-
-type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>
-
 function ResetPasswordForm() {
+  const t = useTranslations("auth")
   const router = useRouter()
   const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
@@ -57,6 +41,24 @@ function ResetPasswordForm() {
     setEmail(emailParam)
     setOtpId(otpIdParam)
   }, [searchParams, router])
+
+  const resetPasswordSchema = z.object({
+    password: z
+      .string()
+      .min(8, { message: t("resetPassword.errors.passwordTooShort") })
+      .regex(/^(?=.*[A-Za-z])(?=.*\d)/, {
+        message: t("resetPassword.errors.passwordWeak"),
+      }),
+    confirmPassword: z.string(),
+    code: z.string().length(6, { message: t("resetPassword.errors.codeLength") }).regex(/^\d+$/, {
+      message: t("resetPassword.errors.codeNumeric"),
+    }),
+  }).refine((data) => data.password === data.confirmPassword, {
+    message: t("resetPassword.errors.passwordMismatch"),
+    path: ["confirmPassword"],
+  })
+
+  type ResetPasswordFormValues = z.infer<typeof resetPasswordSchema>
 
   const form = useForm<ResetPasswordFormValues>({
     resolver: zodResolver(resetPasswordSchema),
@@ -86,7 +88,7 @@ function ResetPasswordForm() {
 
       router.push("/auth/login" as any)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "重置密码失败，请检查验证码是否正确")
+      setError(err instanceof Error ? err.message : t("resetPassword.errors.resetFailed"))
     } finally {
       setIsLoading(false)
     }
@@ -98,12 +100,12 @@ function ResetPasswordForm() {
 
   return (
     <AuthLayout
-      title="重置密码"
-      description={`为 ${email} 设置新密码`}
+      title={t("resetPassword.title")}
+      description={t("resetPassword.descriptionFor", { email })}
       footer={
         <p>
           <Link href={"/auth/login" as any} className="text-primary hover:underline">
-            返回登录
+            {t("resetPassword.backToLogin")}
           </Link>
         </p>
       }
@@ -121,11 +123,11 @@ function ResetPasswordForm() {
             name="code"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>验证码</FormLabel>
+                <FormLabel>{t("resetPassword.code")}</FormLabel>
                 <FormControl>
                   <Input
                     type="text"
-                    placeholder="输入邮件中的 6 位验证码"
+                    placeholder={t("resetPassword.codePlaceholder")}
                     maxLength={6}
                     disabled={isLoading}
                     {...field}
@@ -141,11 +143,11 @@ function ResetPasswordForm() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>新密码</FormLabel>
+                <FormLabel>{t("resetPassword.newPassword")}</FormLabel>
                 <FormControl>
                   <Input
                     type="password"
-                    placeholder="至少 8 位，包含字母和数字"
+                    placeholder={t("resetPassword.newPasswordPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -160,11 +162,11 @@ function ResetPasswordForm() {
             name="confirmPassword"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>确认新密码</FormLabel>
+                <FormLabel>{t("resetPassword.confirmPassword")}</FormLabel>
                 <FormControl>
                   <Input
                     type="password"
-                    placeholder="再次输入新密码"
+                    placeholder={t("resetPassword.confirmPasswordPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -175,7 +177,7 @@ function ResetPasswordForm() {
           />
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "重置中..." : "重置密码"}
+            {isLoading ? t("resetPassword.submitting") : t("resetPassword.submit")}
           </Button>
         </form>
       </Form>
@@ -184,8 +186,9 @@ function ResetPasswordForm() {
 }
 
 export default function ResetPasswordPage() {
+  const t = useTranslations("auth")
   return (
-    <Suspense fallback={<div>加载中...</div>}>
+    <Suspense fallback={<div>{t("resetPassword.loading")}</div>}>
       <ResetPasswordForm />
     </Suspense>
   )

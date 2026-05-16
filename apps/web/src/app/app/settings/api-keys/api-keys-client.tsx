@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Card,
@@ -48,6 +49,7 @@ interface APIKey {
 // ── KeyTypeBadge ──────────────────────────────────────────────────────────
 
 function KeyTypeBadge({ keyType }: { keyType: string }) {
+  const t = useTranslations("settings")
   if (keyType === "test") {
     return (
       <Badge
@@ -55,7 +57,7 @@ function KeyTypeBadge({ keyType }: { keyType: string }) {
         className="text-xs border-orange-400 text-orange-500"
         data-testid="badge-test"
       >
-        测试
+        {t("apiKeys.typeTest")}
       </Badge>
     )
   }
@@ -65,7 +67,7 @@ function KeyTypeBadge({ keyType }: { keyType: string }) {
       className="text-xs border-blue-400 text-blue-500"
       data-testid="badge-production"
     >
-      生产
+      {t("apiKeys.typeLive")}
     </Badge>
   )
 }
@@ -73,6 +75,7 @@ function KeyTypeBadge({ keyType }: { keyType: string }) {
 // ── APIKeysClient ─────────────────────────────────────────────────────────
 
 export function APIKeysClient() {
+  const t = useTranslations("settings")
   const [keys, setKeys] = useState<APIKey[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -106,7 +109,7 @@ export function APIKeysClient() {
       )
       setKeys(res.data.api_keys ?? [])
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+      setLoadError(err instanceof Error ? err.message : t("apiKeys.loadFailed"))
     } finally {
       setLoading(false)
     }
@@ -120,7 +123,7 @@ export function APIKeysClient() {
 
   async function handleCreate() {
     if (!newKeyName.trim()) {
-      setCreateError("请输入 Key 名称")
+      setCreateError(t("apiKeys.keyNameRequired"))
       return
     }
     setCreating(true)
@@ -141,7 +144,7 @@ export function APIKeysClient() {
       setCreatedKey(res.data.key)
     } catch (err) {
       setCreateError(
-        err instanceof Error ? err.message : "创建失败，请稍后重试"
+        err instanceof Error ? err.message : t("apiKeys.createFailed")
       )
     } finally {
       setCreating(false)
@@ -206,7 +209,7 @@ export function APIKeysClient() {
               onClick={() => setShowCreateDialog(true)}
             >
               <Plus className="mr-2 h-4 w-4" />
-              创建 API Key
+              {t("apiKeys.create")}
             </Button>
           </div>
         </CardHeader>
@@ -216,7 +219,7 @@ export function APIKeysClient() {
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="loading-keys-message"
             >
-              加载中...
+              {t("apiKeys.loading")}
             </p>
           ) : loadError ? (
             <Alert variant="destructive" data-testid="load-keys-error">
@@ -227,7 +230,7 @@ export function APIKeysClient() {
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="empty-keys-message"
             >
-              暂无 API Key，点击"创建 API Key"开始使用
+              {t("apiKeys.empty")}
             </p>
           ) : (
             <>
@@ -294,7 +297,7 @@ export function APIKeysClient() {
                         new Date(key.last_used_at).toLocaleDateString("zh-CN")
                       ) : (
                         <Badge variant="secondary" className="text-xs">
-                          从未使用
+                          {t("apiKeys.neverUsed")}
                         </Badge>
                       )}
                     </TableCell>
@@ -302,7 +305,7 @@ export function APIKeysClient() {
                       {revokeTarget === key.id ? (
                         <div className="flex items-center justify-end gap-2">
                           <span className="text-xs text-muted-foreground">
-                            确认撤销？
+                            {t("apiKeys.revokeConfirm")}
                           </span>
                           <Button
                             variant="destructive"
@@ -311,7 +314,7 @@ export function APIKeysClient() {
                             data-testid={`btn-confirm-revoke-${key.id}`}
                             onClick={() => handleRevoke(key.id)}
                           >
-                            {revokeLoading ? "撤销中..." : "确认"}
+                            {revokeLoading ? t("apiKeys.revoking") : t("apiKeys.confirmRevoke")}
                           </Button>
                           <Button
                             variant="outline"
@@ -320,7 +323,7 @@ export function APIKeysClient() {
                             data-testid={`btn-cancel-revoke-${key.id}`}
                             onClick={() => setRevokeTarget(null)}
                           >
-                            取消
+                            {t("apiKeys.cancelRevoke")}
                           </Button>
                         </div>
                       ) : (
@@ -332,7 +335,7 @@ export function APIKeysClient() {
                           onClick={() => setRevokeTarget(key.id)}
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
-                          撤销
+                          {t("apiKeys.revoke")}
                         </Button>
                       )}
                     </TableCell>
@@ -350,9 +353,9 @@ export function APIKeysClient() {
       <Dialog open={showCreateDialog} onOpenChange={(open) => !open && handleCloseCreateDialog()}>
         <DialogContent data-testid="create-key-dialog">
           <DialogHeader>
-            <DialogTitle>创建 API Key</DialogTitle>
+            <DialogTitle>{t("apiKeys.createTitle")}</DialogTitle>
             {!createdKey && (
-              <DialogDescription>为新 API Key 设置名称和类型</DialogDescription>
+              <DialogDescription>{t("apiKeys.createDesc")}</DialogDescription>
             )}
           </DialogHeader>
 
@@ -365,9 +368,9 @@ export function APIKeysClient() {
               )}
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">Key 名称</label>
+                <label className="text-sm font-medium">{t("apiKeys.keyNameLabel")}</label>
                 <Input
-                  placeholder="例如：生产环境、CI/CD"
+                  placeholder={t("apiKeys.keyNamePlaceholder")}
                   value={newKeyName}
                   onChange={(e) => {
                     setNewKeyName(e.target.value)
@@ -380,7 +383,7 @@ export function APIKeysClient() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">类型</label>
+                <label className="text-sm font-medium">{t("apiKeys.keyType")}</label>
                 <Select
                   value={newKeyType}
                   onValueChange={setNewKeyType}
@@ -397,7 +400,7 @@ export function APIKeysClient() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">有效期</label>
+                <label className="text-sm font-medium">{t("apiKeys.validity")}</label>
                 <Select
                   value={newKeyExpiry}
                   onValueChange={setNewKeyExpiry}
@@ -422,14 +425,14 @@ export function APIKeysClient() {
                   disabled={creating}
                   data-testid="btn-cancel-create"
                 >
-                  取消
+                  {t("apiKeys.cancel")}
                 </Button>
                 <Button
                   onClick={handleCreate}
                   disabled={creating || newKeyName.trim() === ""}
                   data-testid="btn-submit-create"
                 >
-                  {creating ? "创建中..." : "创建"}
+                  {creating ? t("apiKeys.creating") : t("apiKeys.createBtn")}
                 </Button>
               </div>
             </div>
@@ -438,7 +441,7 @@ export function APIKeysClient() {
               <Alert data-testid="new-key-reveal">
                 <AlertDescription className="space-y-2">
                   <p className="text-amber-600 dark:text-amber-400 font-medium text-sm">
-                    此 key 只显示一次，请立即复制并妥善保管
+                    {t("apiKeys.onceWarning")}
                   </p>
                   <code
                     className="block bg-muted p-2 rounded text-xs break-all"
@@ -458,12 +461,12 @@ export function APIKeysClient() {
                   {copied ? (
                     <>
                       <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-                      已复制
+                      {t("apiKeys.copied")}
                     </>
                   ) : (
                     <>
                       <Copy className="mr-2 h-4 w-4" />
-                      复制
+                      {t("apiKeys.copy")}
                     </>
                   )}
                 </Button>
@@ -471,7 +474,7 @@ export function APIKeysClient() {
                   onClick={handleCloseCreateDialog}
                   data-testid="btn-done-create"
                 >
-                  完成
+                  {t("apiKeys.done")}
                 </Button>
               </div>
             </div>

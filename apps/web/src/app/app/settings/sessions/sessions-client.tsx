@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Card,
@@ -60,6 +61,7 @@ function formatRelativeTime(iso: string): string {
   return `${diffMo} 个月前`
 }
 
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("zh-CN", {
     year: "numeric",
@@ -100,6 +102,7 @@ function DeviceIcon({
 // ── SessionsClient ────────────────────────────────────────────────────────────
 
 export function SessionsClient() {
+  const t = useTranslations("settings")
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -132,7 +135,7 @@ export function SessionsClient() {
       await revokeSession(id)
       setSessions((prev) => prev.filter((s) => s.id !== id))
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : "撤销失败，请稍后重试"
+      const msg = e instanceof Error ? e.message : t("sessions.revokeError")
       setRevokeError(msg)
     } finally {
       setRevoking(null)
@@ -148,7 +151,7 @@ export function SessionsClient() {
     )
     const failedCount = results.filter((r) => r.status === "rejected").length
     if (failedCount > 0) {
-      setRevokeError(`撤销失败 ${failedCount} 个会话，请稍后重试`)
+      setRevokeError(`${t("sessions.revokeError")} (${failedCount})`)
     }
     // Refresh list regardless to show accurate state
     try {
@@ -168,8 +171,8 @@ export function SessionsClient() {
       <Card data-testid="sessions-card">
         <CardHeader className="flex flex-row items-start justify-between gap-4">
           <div className="space-y-1">
-            <CardTitle>活跃会话</CardTitle>
-            <CardDescription>以下是您账号上目前活跃的登录会话</CardDescription>
+            <CardTitle>{t("sessions.title")}</CardTitle>
+            <CardDescription>{t("sessions.desc")}</CardDescription>
           </div>
 
           {/* Revoke all button — only shown when there are non-current sessions */}
@@ -183,23 +186,23 @@ export function SessionsClient() {
                   disabled={revokingAll}
                   data-testid="btn-revoke-all"
                 >
-                  {revokingAll ? "撤销中..." : "撤销其他所有会话"}
+                  {revokingAll ? t("sessions.revokingAll") : t("sessions.revokeAll")}
                 </Button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>撤销其他所有会话</AlertDialogTitle>
+                  <AlertDialogTitle>{t("sessions.revokeAllTitle")}</AlertDialogTitle>
                   <AlertDialogDescription>
                     将撤销除当前会话外的其他 {otherSessionCount} 个活跃会话。其他设备上的登录状态将立即失效，此操作不可撤回。
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogCancel>{t("sessions.revokeAllCancel")}</AlertDialogCancel>
                   <AlertDialogAction
                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                     onClick={handleRevokeAll}
                   >
-                    确认撤销
+                    {t("sessions.revokeAllConfirm")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -233,7 +236,7 @@ export function SessionsClient() {
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="sessions-empty"
             >
-              暂无活跃会话
+              {t("sessions.empty")}
             </p>
           ) : (
             <ul className="divide-y" data-testid="sessions-list">
@@ -259,8 +262,8 @@ export function SessionsClient() {
                         {sess.user_agent
                           ? sess.user_agent.split(" ").slice(0, 3).join(" ")
                           : sess.is_current
-                          ? "当前设备"
-                          : `会话 ${sess.id.slice(0, 8)}…`}
+                          ? t("sessions.currentDevice")
+                          : `${t("sessions.current")} ${sess.id.slice(0, 8)}…`}
                       </span>
                       {sess.is_current && (
                         <Badge
@@ -268,7 +271,7 @@ export function SessionsClient() {
                           className="text-xs shrink-0"
                           data-testid={`badge-current-${sess.id}`}
                         >
-                          当前会话
+                          {t("sessions.current")}
                         </Badge>
                       )}
                     </div>
@@ -276,10 +279,10 @@ export function SessionsClient() {
                       className="text-xs text-muted-foreground"
                       title={formatDateTime(sess.created_at)}
                     >
-                      登录于 {formatRelativeTime(sess.created_at)}
+                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at)}
                       {sess.last_seen_at && sess.last_seen_at !== sess.created_at && (
                         <span className="ml-2 text-muted-foreground/70">
-                          · 最近活跃 {formatRelativeTime(sess.last_seen_at)}
+                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at)}
                         </span>
                       )}
                     </p>
@@ -293,7 +296,7 @@ export function SessionsClient() {
                     data-testid={`btn-revoke-${sess.id}`}
                     onClick={() => handleRevoke(sess.id)}
                   >
-                    {revoking === sess.id ? "撤销中..." : "撤销"}
+                    {revoking === sess.id ? t("sessions.revoking") : t("sessions.revoke")}
                   </Button>
                 </li>
               ))}

@@ -1,17 +1,20 @@
 import Link from "next/link"
 import { ReactNode } from "react"
+import { getTranslations } from "next-intl/server"
 
-const NAV_ITEMS = [
-  { href: "/app/settings/profile", label: "个人资料" },
-  { href: "/app/settings/account", label: "账号安全" },
-  { href: "/app/settings/security", label: "安全" },
-  { href: "/app/settings/api-keys", label: "API Keys" },
-  { href: "/app/settings/tokens", label: "访问令牌" },
-  { href: "/app/settings/sessions", label: "活跃会话" },
-  { href: "/app/settings/team", label: "团队" },
-] as const
+export default async function SettingsLayout({ children }: { children: ReactNode }) {
+  const t = await getTranslations("settings")
 
-export default function SettingsLayout({ children }: { children: ReactNode }) {
+  const NAV_ITEMS = [
+    { href: "/app/settings/profile", label: t("nav.profile") },
+    { href: "/app/settings/account", label: t("nav.account") },
+    { href: "/app/settings/security", label: t("nav.security") },
+    { href: "/app/settings/api-keys", label: t("nav.apiKeys") },
+    { href: "/app/settings/tokens", label: t("nav.tokens") },
+    { href: "/app/settings/sessions", label: t("nav.sessions") },
+    { href: "/app/settings/team", label: t("nav.team") },
+  ]
+
   return (
     <div className="flex flex-col" data-testid="settings-layout">
       <div className="flex-1 flex flex-col gap-8 lg:flex-row">
@@ -19,7 +22,7 @@ export default function SettingsLayout({ children }: { children: ReactNode }) {
         <nav
           className="flex flex-row flex-wrap gap-1 lg:flex-col lg:flex-nowrap lg:w-48 shrink-0"
           data-testid="settings-nav"
-          aria-label="设置导航"
+          aria-label={t("title")}
         >
           {NAV_ITEMS.map((item) => (
             <Link

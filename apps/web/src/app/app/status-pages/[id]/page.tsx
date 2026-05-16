@@ -45,6 +45,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
+import { toast } from "sonner"
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -167,8 +168,8 @@ export default function StatusPageDetailPage() {
     setLoading(true)
     setError(null)
     try {
-      const json = await apiRequest<{ status_page: StatusPage }>(`/v1/status-pages/${id}`)
-      const found = json.status_page
+      const json = await apiRequest<{ data: { status_page: StatusPage } }>(`/v1/status-pages/${id}`)
+      const found = json.data.status_page
       if (!found) {
         setError("状态页不存在")
         return
@@ -188,10 +189,10 @@ export default function StatusPageDetailPage() {
   const fetchLinkedMonitors = useCallback(async () => {
     setLinkedLoading(true)
     try {
-      const json = await apiRequest<{ monitors: StatusPageMonitor[] }>(
+      const json = await apiRequest<{ data: { monitors: StatusPageMonitor[] } }>(
         `/v1/status-pages/${id}/monitors`,
       )
-      setLinkedMonitors(json.monitors ?? [])
+      setLinkedMonitors(json.data.monitors ?? [])
     } catch {
       // Endpoint may not exist yet — treat as empty list
       setLinkedMonitors([])
@@ -241,8 +242,7 @@ export default function StatusPageDetailPage() {
       setLinkedMonitors((prev) => prev.filter((m) => m.monitor_id !== removeTarget.monitor_id))
       setRemoveTarget(null)
     } catch (e) {
-      // Show error inline — keep dialog open on error
-      alert(e instanceof Error ? e.message : "删除失败")
+      toast.error(e instanceof Error ? e.message : "删除失败")
     } finally {
       setRemoving(false)
     }
@@ -255,9 +255,9 @@ export default function StatusPageDetailPage() {
     setAddError(null)
     setMonitorsLoading(true)
     try {
-      const json = await apiRequest<{ monitors: ApiMonitor[] }>("/v1/monitors")
+      const json = await apiRequest<{ data: { items: ApiMonitor[] } }>("/v1/monitors")
       const linked = new Set(linkedMonitors.map((m) => m.monitor_id))
-      setAllMonitors((json.monitors ?? []).filter((m) => !linked.has(m.id)))
+      setAllMonitors((json.data.items ?? []).filter((m) => !linked.has(m.id)))
     } catch (e) {
       setAddError(e instanceof Error ? e.message : "加载监控列表失败")
     } finally {

@@ -2,7 +2,9 @@
 
 import { useState, useEffect, useRef } from "react"
 import { ChevronDown, Search, Settings2, ArrowRight, MapPin, RotateCcw, Check } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { cn } from "@/lib/utils"
 import { getNodes, probeHttp, probePing, probeDns, probeTcp, probeMtr, probeTraceroute } from "@/lib/api"
 import type { Node as ProbeNode, ProbeResult } from "@/lib/api"
@@ -16,34 +18,34 @@ interface ToolTab {
   path: string
 }
 
-interface CategoryTab {
+interface CategoryConfig {
   key: string
-  label: string
-  title: string
-  subtitle: string
-  desc: string
+  labelKey: string
+  titleKey: string
+  subtitleKey: string
+  descKey: string
   tools: ToolTab[]
-  inputPlaceholder: string
+  placeholderKey: string
   showNodeSelector: boolean
 }
 
-const CATEGORIES: CategoryTab[] = [
+const CATEGORY_CONFIGS: CategoryConfig[] = [
   {
     key: "diagnose",
-    label: "一键诊断",
-    title: "一键综合诊断",
-    subtitle: "HTTP • Ping • DNS • SSL • 路由追踪",
-    desc: "一次输入，同时发起多项检测，快速定位域名/IP 的网络连通性和配置问题。",
+    labelKey: "categories.diagnose.label",
+    titleKey: "categories.diagnose.title",
+    subtitleKey: "categories.diagnose.subtitle",
+    descKey: "categories.diagnose.desc",
     tools: [],
-    inputPlaceholder: "请输入域名或 IP，如 github.com",
+    placeholderKey: "categories.diagnose.placeholder",
     showNodeSelector: false,
   },
   {
     key: "probe",
-    label: "网络拨测",
-    title: "网络拨测工具",
-    subtitle: "多节点实时拨测 • 网络连通性诊断",
-    desc: "全球 100+ 网络拨测节点，模拟用户访问域名/IP，帮助发现网络、站点可用性问题。",
+    labelKey: "categories.probe.label",
+    titleKey: "categories.probe.title",
+    subtitleKey: "categories.probe.subtitle",
+    descKey: "categories.probe.desc",
     tools: [
       { key: "http",       label: "HTTP",       path: "/tools/http" },
       { key: "ping",       label: "Ping",       path: "/tools/ping" },
@@ -52,28 +54,27 @@ const CATEGORIES: CategoryTab[] = [
       { key: "mtr",        label: "MTR",        path: "/tools/mtr" },
       { key: "traceroute", label: "Traceroute", path: "/tools/traceroute" },
     ],
-    inputPlaceholder: "请输入域名或 IP",
+    placeholderKey: "categories.probe.placeholder",
     showNodeSelector: true,
   },
   {
     key: "domain",
-    label: "域名查询",
-    title: "域名信息查询",
-    subtitle: "WHOIS • ICP • SSL • DNS 全方位查询",
-    desc: "查询域名注册信息、ICP 备案、SSL 证书状态及 DNS 解析记录。",
+    labelKey: "categories.domain.label",
+    titleKey: "categories.domain.title",
+    subtitleKey: "categories.domain.subtitle",
+    descKey: "categories.domain.desc",
     tools: [
       { key: "whois", label: "WHOIS",  path: "/tools/whois" },
       { key: "icp",   label: "ICP 备案", path: "/tools/icp" },
       { key: "ssl",   label: "SSL 证书", path: "/tools/ssl" },
       { key: "dns",   label: "DNS 解析", path: "/tools/dns" },
     ],
-    inputPlaceholder: "请输入域名，如 example.com",
+    placeholderKey: "categories.domain.placeholder",
     showNodeSelector: false,
   },
 ]
 
 // ── NodePanel ─────────────────────────────────────────────────────────────────
-// 按 country_code 分 中国 / 全球 两个 tab，多选节点，确认后回传 id 列表
 
 interface NodePanelProps {
   selectedIds: string[]
@@ -82,6 +83,7 @@ interface NodePanelProps {
 }
 
 function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
+  const t = useTranslations("home")
   const [tab, setTab] = useState<"cn" | "global">("cn")
   const [nodes, setNodes] = useState<ProbeNode[]>([])
   const [loading, setLoading] = useState(true)
@@ -98,7 +100,6 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
   const globalNodes = nodes.filter(n => n.country_code !== "CN" && n.is_active)
   const displayed   = tab === "cn" ? cnNodes : globalNodes
 
-  // 按 region / country_code 分组
   const grouped = displayed.reduce<Record<string, ProbeNode[]>>((acc, n) => {
     const key = n.region ?? n.city ?? n.country_code
     ;(acc[key] ??= []).push(n)
@@ -123,27 +124,23 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
 
   const reset = () => setPending([])
 
-  const pendingInView = pending.filter(id =>
-    displayed.some(n => n.id === id)
-  ).length
-
   return (
     <div className="absolute top-full left-0 z-50 mt-1 w-[480px] max-w-[calc(100vw-2rem)] bg-popover border rounded-lg shadow-xl overflow-hidden">
       {/* 中国 / 全球 tabs */}
       <div className="flex border-b">
-        {(["cn", "global"] as const).map(t => (
+        {(["cn", "global"] as const).map(tabKey => (
           <button
-            key={t}
+            key={tabKey}
             type="button"
-            onClick={() => setTab(t)}
+            onClick={() => setTab(tabKey)}
             className={cn(
               "flex-1 py-2.5 text-sm font-medium transition-colors",
-              tab === t
+              tab === tabKey
                 ? "text-primary border-b-2 border-primary bg-muted/30"
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            {t === "cn" ? "中国" : "全球"}
+            {tabKey === "cn" ? t("nodePanelCn") : t("nodePanelGlobal")}
           </button>
         ))}
       </div>
@@ -151,16 +148,15 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
       {/* 节点列表 */}
       <div className="max-h-72 overflow-y-auto p-4">
         {loading ? (
-          <p className="text-sm text-muted-foreground text-center py-6">加载节点中...</p>
+          <p className="text-sm text-muted-foreground text-center py-6">{t("nodePanelLoading")}</p>
         ) : displayed.length === 0 ? (
-          <p className="text-sm text-muted-foreground text-center py-6">暂无可用节点</p>
+          <p className="text-sm text-muted-foreground text-center py-6">{t("nodePanelEmpty")}</p>
         ) : (
           <div className="space-y-4">
             {Object.entries(grouped).map(([group, groupNodes]) => {
               const allSelected = groupNodes.every(n => pending.includes(n.id))
               return (
                 <div key={group}>
-                  {/* 分组标题 + 全选 */}
                   <div className="flex items-center gap-2 mb-2">
                     <label className="flex items-center gap-1.5 cursor-pointer select-none">
                       <div
@@ -177,7 +173,6 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
                       <span className="text-xs font-medium text-muted-foreground">{group}</span>
                     </label>
                   </div>
-                  {/* 节点列表 */}
                   <div className="flex flex-wrap gap-2 pl-6">
                     {groupNodes.map(node => {
                       const selected = pending.includes(node.id)
@@ -212,7 +207,7 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
       {/* 底部操作栏 */}
       <div className="flex items-center justify-between border-t px-4 py-3 bg-muted/20">
         <span className="text-xs text-muted-foreground">
-          已选 <span className="text-foreground font-medium">{pending.length}</span> 个节点发起探测
+          {t("nodePanelSelected", { count: pending.length })}
         </span>
         <div className="flex items-center gap-2">
           <button
@@ -221,10 +216,10 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
             className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
           >
             <RotateCcw className="h-3 w-3" />
-            重置
+            {t("nodePanelReset")}
           </button>
           <Button size="sm" className="h-7 px-4 text-xs" onClick={() => { onConfirm(pending); onClose() }}>
-            确认
+            {t("nodePanelConfirm")}
           </Button>
         </div>
       </div>
@@ -235,6 +230,7 @@ function NodePanel({ selectedIds, onConfirm, onClose }: NodePanelProps) {
 // ── NodeSelectorTrigger ──────────────────────────────────────────────────────
 
 function NodeSelectorTrigger({ selectedIds, onConfirm }: { selectedIds: string[]; onConfirm: (ids: string[]) => void }) {
+  const t = useTranslations("home")
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
 
@@ -250,8 +246,8 @@ function NodeSelectorTrigger({ selectedIds, onConfirm }: { selectedIds: string[]
   }, [open])
 
   const label = selectedIds.length === 0
-    ? "请选择拨测节点"
-    : `已选 ${selectedIds.length} 个节点`
+    ? t("nodeSelectorPlaceholder")
+    : t("nodeSelectorSelected", { count: selectedIds.length })
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -293,8 +289,8 @@ const PROBE_FN: Record<string, typeof probeHttp> = {
 
 // ── HeroSearch ────────────────────────────────────────────────────────────────
 
-
 export function HeroSearch() {
+  const t = useTranslations("home")
   const [activeCat, setActiveCat] = useState("probe")
   const [activeTool, setActiveTool] = useState("http")
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([])
@@ -303,13 +299,13 @@ export function HeroSearch() {
   const [probeLoading, setProbeLoading] = useState(false)
   const [probeError, setProbeError] = useState("")
 
-  const cat  = CATEGORIES.find(c => c.key === activeCat) ?? CATEGORIES[1]!
-  const tool = cat.tools.find(t => t.key === activeTool) ?? cat.tools[0]
+  const catConfig = CATEGORY_CONFIGS.find(c => c.key === activeCat) ?? CATEGORY_CONFIGS[1]!
+  const tool = catConfig.tools.find(t => t.key === activeTool) ?? catConfig.tools[0]
 
   const handleCatChange = (key: string) => {
     setActiveCat(key)
     setProbeResult(null)
-    const c = CATEGORIES.find(c => c.key === key)
+    const c = CATEGORY_CONFIGS.find(c => c.key === key)
     if (c?.tools.length) setActiveTool(c.tools[0]!.key)
   }
 
@@ -327,7 +323,7 @@ export function HeroSearch() {
       })
       setProbeResult(res)
     } catch (err) {
-      setProbeError(err instanceof Error ? err.message : "拨测失败")
+      setProbeError(err instanceof Error ? err.message : t("hero.probeError", { message: "" }))
     } finally {
       setProbeLoading(false)
     }
@@ -340,7 +336,7 @@ export function HeroSearch() {
       <div className="border-b">
         <div className="mx-auto max-w-screen-xl px-4 md:px-6 py-4">
           <div className="inline-flex items-center gap-0.5 rounded-lg bg-muted/60 border border-border/50 p-0.5">
-            {CATEGORIES.map(c => (
+            {CATEGORY_CONFIGS.map(c => (
               <button
                 key={c.key}
                 onClick={() => handleCatChange(c.key)}
@@ -351,7 +347,7 @@ export function HeroSearch() {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {c.label}
+                {t(c.labelKey)}
               </button>
             ))}
           </div>
@@ -362,26 +358,26 @@ export function HeroSearch() {
       <div className="mx-auto max-w-screen-xl px-4 md:px-6 py-6 md:py-10">
         {/* 标题区 */}
         <div className="text-center mb-6 md:mb-8">
-          <h2 className="text-xl md:text-2xl font-bold text-foreground">{cat.title}</h2>
-          <p className="mt-2 text-sm text-primary font-medium">{cat.subtitle}</p>
-          <p className="mt-1.5 text-sm text-muted-foreground max-w-xl mx-auto hidden md:block">{cat.desc}</p>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">{t(catConfig.titleKey)}</h2>
+          <p className="mt-2 text-sm text-primary font-medium">{t(catConfig.subtitleKey)}</p>
+          <p className="mt-1.5 text-sm text-muted-foreground max-w-xl mx-auto hidden md:block">{t(catConfig.descKey)}</p>
         </div>
 
         {/* 工具子 tabs */}
-        {cat.tools.length > 0 && (
+        {catConfig.tools.length > 0 && (
           <div className="flex items-center gap-0 mb-4 overflow-x-auto scrollbar-hide">
-            {cat.tools.map(t => (
+            {catConfig.tools.map(toolTab => (
               <button
-                key={t.key}
-                onClick={() => setActiveTool(t.key)}
+                key={toolTab.key}
+                onClick={() => setActiveTool(toolTab.key)}
                 className={cn(
                   "px-4 md:px-5 py-2 text-sm font-medium transition-colors border-b-2 whitespace-nowrap flex-shrink-0",
-                  activeTool === t.key
+                  activeTool === toolTab.key
                     ? "text-primary border-primary"
                     : "text-muted-foreground border-transparent hover:text-foreground"
                 )}
               >
-                {t.label}
+                {toolTab.label}
               </button>
             ))}
           </div>
@@ -390,7 +386,7 @@ export function HeroSearch() {
         {/* 输入行 — 桌面横排，移动端纵排 */}
         <div className="flex flex-col md:flex-row gap-0 rounded-md border border-border overflow-visible bg-background shadow-sm">
           {/* 节点选择器 */}
-          {cat.showNodeSelector && (
+          {catConfig.showNodeSelector && (
             <div className="w-full md:w-56 md:flex-shrink-0 border-b md:border-b-0 md:border-r">
               <NodeSelectorTrigger
                 selectedIds={selectedNodeIds}
@@ -402,13 +398,13 @@ export function HeroSearch() {
           {/* 输入框 + CTA */}
           <div className="flex flex-1 items-center gap-2 px-4 min-h-[44px]">
             <Search className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-            <input
+            <Input
               type="text"
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleGo()}
-              placeholder={cat.inputPlaceholder}
-              className="flex-1 h-11 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+              placeholder={t(catConfig.placeholderKey)}
+              className="flex-1 h-11 border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 placeholder:text-muted-foreground"
             />
           </div>
 
@@ -418,7 +414,7 @@ export function HeroSearch() {
             disabled={!query.trim() || probeLoading}
             className="h-11 px-6 text-sm font-medium w-full md:w-auto rounded-none rounded-b-md md:rounded-r-md"
           >
-            {probeLoading ? "检测中..." : "立即检测"}
+            {probeLoading ? t("hero.detecting") : t("hero.cta")}
             {!probeLoading && <ArrowRight className="h-4 w-4 ml-1" />}
           </Button>
         </div>
@@ -427,17 +423,17 @@ export function HeroSearch() {
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2 mt-3 px-0.5">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Settings2 className="h-3.5 w-3.5 flex-shrink-0" />
-            <span>高级配置</span>
+            <span>{t("hero.advancedConfig")}</span>
             <span className="mx-2 opacity-30">|</span>
             <span>
               <a href="/app/monitors/new" className="text-primary underline underline-offset-4">
-                创建定时监测任务
+                {t("hero.createMonitor")}
               </a>
-              ，持续监测不同地区用户到站点的访问连通性
+              {t("hero.createMonitorDesc")}
             </span>
           </div>
           <a href="/tools/diagnose" className="text-xs text-primary underline underline-offset-4">
-            对比检测
+            {t("hero.compareCheck")}
           </a>
         </div>
       </div>
@@ -448,7 +444,7 @@ export function HeroSearch() {
       <div className="border-b bg-background">
         {probeError ? (
           <div className="mx-auto max-w-screen-xl px-6 py-6 text-sm text-destructive">
-            拨测失败：{probeError}
+            {t("hero.probeError", { message: probeError })}
           </div>
         ) : probeResult ? (
           <ProbeResultPanel
@@ -462,7 +458,7 @@ export function HeroSearch() {
             {[1, 2, 3].map(i => (
               <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
             ))}
-            <p className="text-xs text-muted-foreground">正在发起拨测，请稍候...</p>
+            <p className="text-xs text-muted-foreground">{t("hero.probePending")}</p>
           </div>
         )}
       </div>

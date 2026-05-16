@@ -1,18 +1,23 @@
 import { Metadata } from "next"
+import { getTranslations } from "next-intl/server"
 import { AlertsClient } from "./alerts-client"
 
-export const metadata: Metadata = {
-  title: "告警管理 - idcd",
-  description: "管理告警事件、通知通道和告警策略",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getTranslations("alerts")
+  return {
+    title: `${t("title")} - idcd`,
+    description: t("metaDescription"),
+  }
 }
 
-export default function AlertsPage() {
+export default async function AlertsPage() {
+  const t = await getTranslations("alerts")
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">告警管理</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          查看告警事件历史，管理通知通道与告警策略
+          {t("description")}
         </p>
       </div>
       <AlertsClient />

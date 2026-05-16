@@ -7,6 +7,47 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: (ns: string) => (key: string) => {
+    const translations: Record<string, string> = {
+      "status.statusPages.title": "状态页管理",
+      "status.statusPages.description": "创建和管理对外公开的服务状态页",
+      "status.statusPages.create": "新建状态页",
+      "status.statusPages.list": "状态页列表",
+      "status.statusPages.empty": "暂无状态页",
+      "status.statusPages.loadFailed": "加载失败，请刷新重试",
+      "status.statusPages.visit": "访问",
+      "status.statusPages.delete": "删除",
+      "status.statusPages.deleting": "删除中...",
+      "status.statusPages.error": "错误",
+      "status.statusPages.freePlan.title": "Free 档限制",
+      "status.statusPages.freePlan.upgrade": "升级 Pro 解锁",
+      "status.statusPages.freePlan.desc": "Free 档不支持创建状态页。升级到 Pro 可获得最多 3 个状态页，Team 可获得 10 个。",
+      "status.statusPages.upgradeDialog.title": "升级解锁状态页",
+      "status.statusPages.upgradeDialog.desc": "Free 档不支持创建状态页。升级到 Pro 可创建最多 3 个状态页，支持自定义品牌与监控绑定。",
+      "status.statusPages.upgradeDialog.later": "稍后再说",
+      "status.statusPages.upgradeDialog.confirm": "升级到 Pro",
+      "status.statusPages.deleteDialog.title": "确认删除",
+      "status.statusPages.deleteDialog.desc": "此操作不可恢复，确定要删除该状态页吗？",
+      "status.statusPages.deleteDialog.cancel": "取消",
+      "status.statusPages.deleteDialog.confirm": "确认删除",
+      "status.statusPages.createSheet.title": "新建状态页",
+      "status.statusPages.createSheet.name": "页面名称",
+      "status.statusPages.createSheet.namePlaceholder": "例：acme.com 服务状态",
+      "status.statusPages.createSheet.slug": "Slug（访问路径）",
+      "status.statusPages.createSheet.slugPlaceholder": "acme",
+      "status.statusPages.createSheet.desc": "描述（可选）",
+      "status.statusPages.createSheet.descPlaceholder": "简短说明该状态页用途...",
+      "status.statusPages.createSheet.creating": "创建中...",
+      "status.statusPages.createSheet.create": "创建状态页",
+      "status.statusPages.createSheet.cancel": "取消",
+      "status.statusPages.createSheet.createFailed": "创建失败，请重试",
+    }
+    const fullKey = `${ns}.${key}`
+    return translations[fullKey] ?? key
+  },
+}))
+
 const mockStatusPages = [
   {
     id: "sp-001",

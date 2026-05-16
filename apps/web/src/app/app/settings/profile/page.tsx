@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
@@ -25,11 +26,53 @@ import {
   CardDescription,
   CardHeader,
   CardTitle,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui"
 import { apiRequest } from "@/lib/api"
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024 // 5 MB
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"]
+
+function getCurrentLocale(): string {
+  if (typeof document === "undefined") return "zh"
+  const match = document.cookie.match(/(?:^|;\s*)locale=([^;]*)/)
+  return match?.[1] === "en" ? "en" : "zh"
+}
+
+function LanguageSwitcher() {
+  const t = useTranslations("settings")
+  const [locale, setLocale] = useState<string>("zh")
+
+  useEffect(() => {
+    setLocale(getCurrentLocale())
+  }, [])
+
+  function handleChange(newLocale: "zh" | "en") {
+    document.cookie = `locale=${newLocale};path=/;max-age=31536000`
+    setLocale(newLocale)
+    window.location.reload()
+  }
+
+  return (
+    <div className="space-y-2">
+      <label className="text-sm font-medium leading-none">{t("profile.language")}</label>
+      <p className="text-xs text-muted-foreground">{t("profile.languageDesc")}</p>
+      <Select value={locale} onValueChange={(v) => handleChange(v as "zh" | "en")}>
+        <SelectTrigger className="w-48" data-testid="language-switcher">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="zh">{t("language.zh")}</SelectItem>
+          <SelectItem value="en">{t("language.en")}</SelectItem>
+        </SelectContent>
+      </Select>
+    </div>
+  )
+}
 
 const profileSchema = z.object({
   email: z.string().email(),
@@ -48,6 +91,7 @@ interface UserProfile {
 
 export default function ProfilePage() {
   const router = useRouter()
+  const t = useTranslations("settings")
   const [isLoading, setIsLoading] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -119,12 +163,12 @@ export default function ProfilePage() {
 
     // Client-side validation
     if (!ALLOWED_TYPES.includes(file.type)) {
-      setAvatarError("仅支持 JPG、PNG、GIF、WebP 格式的图片")
+      setAvatarError(t("profile.avatarFormatError"))
       e.target.value = ""
       return
     }
     if (file.size > MAX_FILE_SIZE) {
-      setAvatarError("图片大小不能超过 5MB")
+      setAvatarError(t("profile.avatarSizeError"))
       e.target.value = ""
       return
     }
@@ -149,7 +193,7 @@ export default function ProfilePage() {
       setAvatarUrl(result.data.avatar_url)
       setAvatarPreview(null)
     } catch (err) {
-      setAvatarError(err instanceof Error ? err.message : "头像上传失败，请稍后重试")
+      setAvatarError(err instanceof Error ? err.message : t("profile.avatarFailed"))
       setAvatarPreview(null)
     } finally {
       setIsUploadingAvatar(false)
@@ -174,7 +218,7 @@ export default function ProfilePage() {
       setSuccess(true)
       setTimeout(() => setSuccess(false), 3000)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "更新失败，请稍后重试")
+      setError(err instanceof Error ? err.message : t("profile.saveFailed"))
     } finally {
       setIsLoading(false)
     }
@@ -197,7 +241,7 @@ export default function ProfilePage() {
       // Cookie is cleared server-side by the delete-account endpoint.
       router.push("/")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除账号失败")
+      setError(err instanceof Error ? err.message : t("profile.deleteFailed"))
       setIsDeleting(false)
       setShowDeleteConfirm(false)
     }
@@ -207,37 +251,37 @@ export default function ProfilePage() {
     <main className="flex-1 container max-w-3xl">
       <Card>
         <CardHeader>
-          <CardTitle>个人资料</CardTitle>
-          <CardDescription>管理您的账号信息</CardDescription>
+          <CardTitle>{t("profile.title")}</CardTitle>
+          <CardDescription>{t("profile.desc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {error && (
-            <div className="bg-destructive/15 text-destructive text-sm p-3 rounded-md">
-              {error}
-            </div>
+            <Alert variant="destructive">
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
           )}
 
           {success && (
-            <div className="bg-green-500/15 text-green-600 dark:text-green-400 text-sm p-3 rounded-md">
-              资料更新成功！
-            </div>
+            <Alert>
+              <AlertDescription>{t("profile.saveSuccess")}</AlertDescription>
+            </Alert>
           )}
 
           {/* Avatar upload area */}
           <div className="flex flex-col items-start gap-3">
-            <span className="text-sm font-medium leading-none">头像</span>
+            <span className="text-sm font-medium leading-none">{t("profile.avatar")}</span>
             <div className="flex items-center gap-4">
               <button
                 type="button"
                 onClick={handleAvatarClick}
                 disabled={isUploadingAvatar}
                 className="relative group focus:outline-none focus-visible:ring-2 focus-visible:ring-ring rounded-full"
-                aria-label="点击更换头像"
+                aria-label={t("profile.avatarLabel")}
               >
                 <Avatar className="h-16 w-16 cursor-pointer ring-2 ring-border group-hover:ring-primary transition-all">
                   <AvatarImage
                     src={avatarPreview ?? avatarUrl ?? undefined}
-                    alt="用户头像"
+                    alt={t("profile.avatar")}
                   />
                   <AvatarFallback className="text-lg font-semibold">
                     {initials}
@@ -246,13 +290,13 @@ export default function ProfilePage() {
                 {/* Overlay on hover */}
                 <div className="absolute inset-0 bg-black/40 rounded-full opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
                   <span className="text-white text-xs font-medium">
-                    {isUploadingAvatar ? "上传中..." : "更换"}
+                    {isUploadingAvatar ? t("profile.avatarUploading") : t("profile.avatarChange")}
                   </span>
                 </div>
               </button>
               <div className="text-sm text-muted-foreground">
-                <p>点击头像更换图片</p>
-                <p>支持 JPG、PNG、GIF、WebP，最大 5MB</p>
+                <p>{t("profile.avatarClickHint")}</p>
+                <p>{t("profile.avatarFormatHint")}</p>
               </div>
             </div>
             {/* Hidden file input */}
@@ -262,7 +306,7 @@ export default function ProfilePage() {
               accept="image/jpeg,image/png,image/gif,image/webp"
               className="hidden"
               onChange={handleFileChange}
-              aria-label="选择头像文件"
+              aria-label={t("profile.avatarFileLabel")}
             />
             {avatarError && (
               <p className="text-sm text-destructive">{avatarError}</p>
@@ -276,7 +320,7 @@ export default function ProfilePage() {
                 name="email"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>邮箱</FormLabel>
+                    <FormLabel>{t("profile.email")}</FormLabel>
                     <FormControl>
                       <Input type="email" disabled {...field} />
                     </FormControl>
@@ -290,11 +334,11 @@ export default function ProfilePage() {
                 name="display_name"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>显示名称</FormLabel>
+                    <FormLabel>{t("profile.displayName")}</FormLabel>
                     <FormControl>
                       <Input
                         type="text"
-                        placeholder="您的显示名称"
+                        placeholder={t("profile.displayNamePlaceholder")}
                         disabled={isLoading}
                         {...field}
                       />
@@ -309,10 +353,10 @@ export default function ProfilePage() {
                 name="bio"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>个人简介</FormLabel>
+                    <FormLabel>{t("profile.bio")}</FormLabel>
                     <FormControl>
                       <Textarea
-                        placeholder="介绍一下您自己"
+                        placeholder={t("profile.bioPlaceholder")}
                         disabled={isLoading}
                         {...field}
                       />
@@ -323,42 +367,47 @@ export default function ProfilePage() {
               />
 
               <Button type="submit" disabled={isLoading}>
-                {isLoading ? "保存中..." : "保存更改"}
+                {isLoading ? t("profile.saving") : t("profile.save")}
               </Button>
             </form>
           </Form>
 
+          {/* Language Switcher */}
+          <div className="pt-2">
+            <LanguageSwitcher />
+          </div>
+
           <div className="pt-6 border-t border-border">
-            <h3 className="text-lg font-semibold text-destructive mb-2">危险区域</h3>
+            <h3 className="text-lg font-semibold text-destructive mb-2">{t("profile.dangerZone")}</h3>
             <p className="text-sm text-muted-foreground mb-4">
-              删除账号后将进入 30 天冷静期，期间可以恢复账号。
+              {t("profile.dangerZoneDesc")}
             </p>
 
             {showDeleteConfirm ? (
               <Alert variant="destructive">
                 <AlertDescription className="space-y-3">
-                  <p className="font-medium">确定要删除账号吗？此操作无法撤销（30 天冷静期后）。</p>
+                  <p className="font-medium">{t("profile.deleteConfirmMsg")}</p>
                   <div className="flex gap-3">
                     <Button
                       variant="destructive"
                       onClick={handleDeleteAccount}
                       disabled={isDeleting}
                     >
-                      {isDeleting ? "删除中..." : "确认删除"}
+                      {isDeleting ? t("profile.deleting") : t("profile.confirmDelete")}
                     </Button>
                     <Button
                       variant="outline"
                       onClick={() => setShowDeleteConfirm(false)}
                       disabled={isDeleting}
                     >
-                      取消
+                      {t("profile.cancel")}
                     </Button>
                   </div>
                 </AlertDescription>
               </Alert>
             ) : (
               <Button variant="destructive" onClick={handleDeleteAccount}>
-                删除账号
+                {t("profile.deleteAccount")}
               </Button>
             )}
           </div>

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { useTranslations } from "next-intl"
 import {
   Card,
   CardContent,
@@ -24,22 +25,12 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
-const COUNTRIES = [
-  { value: "CN", label: "中国" },
-  { value: "US", label: "美国" },
-  { value: "JP", label: "日本" },
-  { value: "SG", label: "新加坡" },
-  { value: "DE", label: "德国" },
-  { value: "OTHER", label: "其他" },
-]
+const COUNTRY_CODES = ["CN", "US", "JP", "SG", "DE", "OTHER"] as const
 
-const STEPS = [
-  { step: 1, title: "提交申请", desc: "填写服务器信息和申请理由" },
-  { step: 2, title: "14 天观察期", desc: "系统自动检测节点稳定性" },
-  { step: 3, title: "加入全球节点池", desc: "通过审核后正式成为节点" },
-]
+const STEP_NUMS = [1, 2, 3] as const
 
 export default function NodeApplyPage() {
+  const t = useTranslations("nodes")
   const [form, setForm] = useState({
     hostname: "",
     ip_address: "",
@@ -83,18 +74,18 @@ export default function NodeApplyPage() {
       })
 
       if (res.status === 401) {
-        setError("请先登录后再提交申请")
+        setError(t("apply.form.loginRequired"))
         return
       }
       if (!res.ok) {
         const json = await res.json().catch(() => ({}))
-        setError(json?.message ?? "提交失败，请稍后重试")
+        setError(json?.message ?? t("apply.form.submitFailed"))
         return
       }
 
       setSuccess(true)
     } catch {
-      setError("网络错误，请稍后重试")
+      setError(t("apply.form.networkError"))
     } finally {
       setSubmitting(false)
     }
@@ -104,20 +95,20 @@ export default function NodeApplyPage() {
     <div className="min-h-screen bg-background">
       <div className="container mx-auto px-4 py-12 max-w-3xl">
         <div className="mb-10 text-center">
-          <Badge variant="secondary" className="mb-3">社区节点计划</Badge>
-          <h1 className="text-3xl font-bold tracking-tight">贡献节点，赚取积分</h1>
+          <Badge variant="secondary" className="mb-3">{t("apply.badge")}</Badge>
+          <h1 className="text-3xl font-bold tracking-tight">{t("apply.pageTitle")}</h1>
           <p className="mt-3 text-muted-foreground">
-            将您的服务器加入 idcd 全球监控网络，每次心跳获得积分，可兑换 API 调用额度和监控套餐。
+            {t("apply.pageDesc")}
           </p>
         </div>
 
         <div className="grid grid-cols-3 gap-4 mb-10" data-testid="steps">
-          {STEPS.map((s) => (
-            <Card key={s.step} className="text-center">
+          {STEP_NUMS.map((step) => (
+            <Card key={step} className="text-center">
               <CardContent className="pt-6 pb-5">
-                <div className="text-2xl font-bold text-primary mb-1">{s.step}</div>
-                <div className="text-sm font-medium">{s.title}</div>
-                <div className="text-xs text-muted-foreground mt-1">{s.desc}</div>
+                <div className="text-2xl font-bold text-primary mb-1">{step}</div>
+                <div className="text-sm font-medium">{t(`apply.steps.${step}.title`)}</div>
+                <div className="text-xs text-muted-foreground mt-1">{t(`apply.steps.${step}.desc`)}</div>
               </CardContent>
             </Card>
           ))}
@@ -126,15 +117,15 @@ export default function NodeApplyPage() {
         {success ? (
           <Alert data-testid="success-alert">
             <AlertDescription>
-              申请已提交！我们将在 2 个工作日内审核您的申请，审核结果将通过邮件通知您。
+              {t("apply.success")}
             </AlertDescription>
           </Alert>
         ) : (
           <Card>
             <CardHeader>
-              <CardTitle>提交节点申请</CardTitle>
+              <CardTitle>{t("apply.form.title")}</CardTitle>
               <CardDescription>
-                请填写您的服务器信息，带 * 的字段为必填项
+                {t("apply.form.desc")}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -146,11 +137,11 @@ export default function NodeApplyPage() {
               <form onSubmit={handleSubmit} className="space-y-5" data-testid="apply-form">
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="hostname">服务器主机名 *</Label>
+                    <Label htmlFor="hostname">{t("apply.form.hostname")}</Label>
                     <Input
                       id="hostname"
                       name="hostname"
-                      placeholder="my-server.example.com"
+                      placeholder={t("apply.form.hostnamePlaceholder")}
                       value={form.hostname}
                       onChange={handleChange}
                       required
@@ -158,11 +149,11 @@ export default function NodeApplyPage() {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="ip_address">IP 地址 *</Label>
+                    <Label htmlFor="ip_address">{t("apply.form.ipAddress")}</Label>
                     <Input
                       id="ip_address"
                       name="ip_address"
-                      placeholder="1.2.3.4"
+                      placeholder={t("apply.form.ipPlaceholder")}
                       value={form.ip_address}
                       onChange={handleChange}
                       required
@@ -173,30 +164,30 @@ export default function NodeApplyPage() {
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="country">所在国家 *</Label>
+                    <Label htmlFor="country">{t("apply.form.country")}</Label>
                     <Select
                       value={form.country}
                       onValueChange={(v) => setForm((p) => ({ ...p, country: v }))}
                       required
                     >
                       <SelectTrigger id="country" data-testid="select-country">
-                        <SelectValue placeholder="选择国家" />
+                        <SelectValue placeholder={t("apply.form.countryPlaceholder")} />
                       </SelectTrigger>
                       <SelectContent>
-                        {COUNTRIES.map((c) => (
-                          <SelectItem key={c.value} value={c.value}>
-                            {c.label}
+                        {COUNTRY_CODES.map((code) => (
+                          <SelectItem key={code} value={code}>
+                            {t(`apply.countries.${code}`)}
                           </SelectItem>
                         ))}
                       </SelectContent>
                     </Select>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="city">城市</Label>
+                    <Label htmlFor="city">{t("apply.form.city")}</Label>
                     <Input
                       id="city"
                       name="city"
-                      placeholder="Beijing"
+                      placeholder={t("apply.form.cityPlaceholder")}
                       value={form.city}
                       onChange={handleChange}
                       data-testid="input-city"
@@ -206,24 +197,24 @@ export default function NodeApplyPage() {
 
                 <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
                   <div className="space-y-2">
-                    <Label htmlFor="isp">ISP 运营商</Label>
+                    <Label htmlFor="isp">{t("apply.form.isp")}</Label>
                     <Input
                       id="isp"
                       name="isp"
-                      placeholder="China Telecom"
+                      placeholder={t("apply.form.ispPlaceholder")}
                       value={form.isp}
                       onChange={handleChange}
                       data-testid="input-isp"
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="bandwidth_mbps">带宽 (Mbps)</Label>
+                    <Label htmlFor="bandwidth_mbps">{t("apply.form.bandwidth")}</Label>
                     <Input
                       id="bandwidth_mbps"
                       name="bandwidth_mbps"
                       type="number"
                       min="1"
-                      placeholder="100"
+                      placeholder={t("apply.form.bandwidthPlaceholder")}
                       value={form.bandwidth_mbps}
                       onChange={handleChange}
                       data-testid="input-bandwidth"
@@ -232,11 +223,11 @@ export default function NodeApplyPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="motivation">申请理由</Label>
+                  <Label htmlFor="motivation">{t("apply.form.motivation")}</Label>
                   <Textarea
                     id="motivation"
                     name="motivation"
-                    placeholder="请简述您想贡献节点的原因（可选）"
+                    placeholder={t("apply.form.motivationPlaceholder")}
                     value={form.motivation}
                     onChange={handleChange}
                     rows={3}
@@ -250,7 +241,7 @@ export default function NodeApplyPage() {
                   disabled={submitting}
                   data-testid="submit-button"
                 >
-                  {submitting ? "提交中..." : "提交申请"}
+                  {submitting ? t("apply.form.submitting") : t("apply.form.submitButton")}
                 </Button>
               </form>
             </CardContent>

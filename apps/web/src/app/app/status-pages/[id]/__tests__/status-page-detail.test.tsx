@@ -85,9 +85,9 @@ describe("StatusPageDetailPage", () => {
   it("显示状态页名称和 slug", async () => {
     // First call: GET /v1/status-pages/sp_001 → returns single status page
     mockedApiRequest
-      .mockResolvedValueOnce({ status_page: MOCK_STATUS_PAGE })
+      .mockResolvedValueOnce({ data: { status_page: MOCK_STATUS_PAGE } })
       // Second call: GET /v1/status-pages/sp_001/monitors
-      .mockResolvedValueOnce({ monitors: [] })
+      .mockResolvedValueOnce({ data: { monitors: [] } })
 
     render(<StatusPageDetailPage />)
 
@@ -103,8 +103,8 @@ describe("StatusPageDetailPage", () => {
 
   it("显示已关联监控列表", async () => {
     mockedApiRequest
-      .mockResolvedValueOnce({ status_page: MOCK_STATUS_PAGE })
-      .mockResolvedValueOnce({ monitors: MOCK_MONITORS })
+      .mockResolvedValueOnce({ data: { status_page: MOCK_STATUS_PAGE } })
+      .mockResolvedValueOnce({ data: { monitors: MOCK_MONITORS } })
 
     render(<StatusPageDetailPage />)
 
@@ -116,10 +116,10 @@ describe("StatusPageDetailPage", () => {
 
   it("点击添加监控打开 dialog", async () => {
     mockedApiRequest
-      .mockResolvedValueOnce({ status_page: MOCK_STATUS_PAGE })
-      .mockResolvedValueOnce({ monitors: [] })
+      .mockResolvedValueOnce({ data: { status_page: MOCK_STATUS_PAGE } })
+      .mockResolvedValueOnce({ data: { monitors: [] } })
       // Third call triggered by opening the dialog: GET /v1/monitors
-      .mockResolvedValueOnce({ monitors: [] })
+      .mockResolvedValueOnce({ data: { items: [] } })
 
     render(<StatusPageDetailPage />)
 

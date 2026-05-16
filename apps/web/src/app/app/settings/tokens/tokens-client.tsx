@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Card,
@@ -66,6 +67,7 @@ const EXPIRY_OPTIONS = [
 // ── TokensClient ──────────────────────────────────────────────────────────────
 
 export function TokensClient() {
+  const t = useTranslations("settings")
   const [tokens, setTokens] = useState<PAT[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -95,7 +97,7 @@ export function TokensClient() {
       )
       setTokens(res.data.tokens ?? [])
     } catch (err) {
-      setLoadError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+      setLoadError(err instanceof Error ? err.message : t("tokens.loadFailed"))
     } finally {
       setLoading(false)
     }
@@ -115,7 +117,7 @@ export function TokensClient() {
 
   async function handleCreate() {
     if (!newTokenName.trim()) {
-      setCreateError("请输入 Token 名称")
+      setCreateError(t("tokens.tokenNameRequired"))
       return
     }
     setCreating(true)
@@ -136,7 +138,7 @@ export function TokensClient() {
       setCreatedToken(res.data.token)
     } catch (err) {
       setCreateError(
-        err instanceof Error ? err.message : "创建失败，请稍后重试"
+        err instanceof Error ? err.message : t("tokens.createFailed")
       )
     } finally {
       setCreating(false)
@@ -181,7 +183,7 @@ export function TokensClient() {
     if (!expiresAt) {
       return (
         <Badge variant="secondary" className="text-xs" data-testid="badge-no-expiry">
-          永不过期
+          {t("tokens.noExpiry")}
         </Badge>
       )
     }
@@ -198,9 +200,9 @@ export function TokensClient() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>Personal Access Token</CardTitle>
+              <CardTitle>{t("tokens.title")}</CardTitle>
               <CardDescription className="mt-1">
-                用于 CLI 工具和 MCP 集成的长期访问令牌
+                {t("tokens.desc")}
               </CardDescription>
             </div>
             <Button
@@ -208,7 +210,7 @@ export function TokensClient() {
               onClick={() => setShowCreateDialog(true)}
             >
               <Plus className="mr-2 h-4 w-4" />
-              生成新 Token
+              {t("tokens.create")}
             </Button>
           </div>
         </CardHeader>
@@ -218,7 +220,7 @@ export function TokensClient() {
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="loading-tokens-message"
             >
-              加载中...
+              {t("tokens.loading")}
             </p>
           ) : loadError ? (
             <Alert variant="destructive" data-testid="load-tokens-error">
@@ -229,7 +231,7 @@ export function TokensClient() {
               className="text-sm text-muted-foreground py-4 text-center"
               data-testid="empty-tokens-message"
             >
-              暂无 Token，点击"生成新 Token"开始使用
+              {t("tokens.empty")}
             </p>
           ) : (
             <Table data-testid="tokens-table">

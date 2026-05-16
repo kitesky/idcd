@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { ArrowDown, ArrowUp, Minus, Info, Globe } from "lucide-react"
 import {
   Tabs,
@@ -249,6 +249,8 @@ function getSelectedMonthDefault(): string {
 
 export function LeaderboardClient() {
   const [lang, setLang] = useState<Lang>('zh')
+  const langRef = useRef<Lang>(lang)
+  langRef.current = lang
   const [selectedMonth, setSelectedMonth] = useState<string>(getSelectedMonthDefault)
   const [data, setData] = useState<CdnEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -282,9 +284,9 @@ export function LeaderboardClient() {
         })))
         setSampleCount(json.data?.total ?? 0)
       })
-      .catch(() => setError(lang === 'zh' ? '数据加载失败，请稍后重试' : 'Failed to load data, please try again later'))
+      .catch(() => setError(langRef.current === 'zh' ? '数据加载失败，请稍后重试' : 'Failed to load data, please try again later'))
       .finally(() => setLoading(false))
-  }, [selectedMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [selectedMonth])
 
   function renderCdnContent() {
     if (loading) {

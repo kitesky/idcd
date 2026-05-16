@@ -7,6 +7,12 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+// Mock next-intl
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 // Mock the API module
 vi.mock("@/lib/api", () => ({
   apiRequest: vi.fn(),
@@ -64,7 +70,8 @@ describe("AccountClient", () => {
     render(<AccountClient />)
     const badge = screen.getByTestId("2fa-status-badge")
     expect(badge).toBeInTheDocument()
-    expect(badge.textContent).toContain("未启用")
+    // With i18n mock, t('account.twoFactorDisabled') returns the key
+    expect(badge.textContent).toContain("account.twoFactorDisabled")
   })
 
   it("renders the enable 2FA button", () => {
@@ -79,9 +86,10 @@ describe("AccountClient", () => {
     expect(btn.closest("a")).toHaveAttribute("href", "/app/settings/security")
   })
 
-  it("2FA section shows '前往安全设置' text", () => {
+  it("2FA section shows go-to-security-settings link text", () => {
     render(<AccountClient />)
-    expect(screen.getByText("前往安全设置")).toBeInTheDocument()
+    // With i18n mock, t('account.goToSecurity') returns the key
+    expect(screen.getByText("account.goToSecurity")).toBeInTheDocument()
   })
 
   it("renders the danger zone card with destructive border", () => {
@@ -136,7 +144,8 @@ describe("AccountClient", () => {
     fireEvent.click(screen.getByTestId("btn-confirm-delete"))
     await waitFor(() => {
       expect(screen.getByTestId("delete-error")).toBeInTheDocument()
-      expect(screen.getByText(/邮箱地址不匹配/)).toBeInTheDocument()
+      // With i18n mock, t('account.emailMismatch') returns the key
+      expect(screen.getByText("account.emailMismatch")).toBeInTheDocument()
     })
   })
 

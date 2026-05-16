@@ -2,6 +2,7 @@
 
 import { useRef, useState, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import {
   Bell,
   Mail,
@@ -86,12 +87,12 @@ import { apiRequest } from "@/lib/api"
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function statusBadge(status: AlertEvent["status"]) {
+function statusBadge(status: AlertEvent["status"], t: ReturnType<typeof useTranslations<"alerts">>) {
   if (status === "firing")
-    return <Badge variant="destructive">告警中</Badge>
+    return <Badge variant="destructive">{t("events.status.firing")}</Badge>
   if (status === "resolved")
-    return <Badge variant="success">已恢复</Badge>
-  return <Badge variant="secondary">已确认</Badge>
+    return <Badge variant="success">{t("events.status.resolved")}</Badge>
+  return <Badge variant="secondary">{t("events.status.acknowledged")}</Badge>
 }
 
 function channelIcon(type: ChannelType) {
@@ -100,10 +101,10 @@ function channelIcon(type: ChannelType) {
   return <Bell className="h-4 w-4" aria-hidden />
 }
 
-function notifStatusBadge(status: AlertNotification["status"]) {
-  if (status === "sent") return <Badge variant="success">成功</Badge>
-  if (status === "failed") return <Badge variant="destructive">失败</Badge>
-  return <Badge variant="secondary">待发</Badge>
+function notifStatusBadge(status: AlertNotification["status"], t: ReturnType<typeof useTranslations<"alerts">>) {
+  if (status === "sent") return <Badge variant="success">{t("channels.notifStatus.sent")}</Badge>
+  if (status === "failed") return <Badge variant="destructive">{t("channels.notifStatus.failed")}</Badge>
+  return <Badge variant="secondary">{t("channels.notifStatus.pending")}</Badge>
 }
 
 // ─── Add Channel Form (inside Sheet) ─────────────────────────────────────────
@@ -114,13 +115,14 @@ interface AddChannelFormProps {
 }
 
 function AddChannelForm({ onSave, onCancel }: AddChannelFormProps) {
+  const t = useTranslations("alerts")
   const [type, setType] = useState<ChannelType>("email")
   const [name, setName] = useState("")
   const [config, setConfig] = useState("")
 
-  const configLabel = type === "email" ? "收件邮箱" : "Webhook URL"
+  const configLabel = type === "email" ? t("channels.form.emailLabel") : t("channels.form.webhookLabel")
   const configPlaceholder =
-    type === "email" ? "ops@example.com" : "https://your-webhook-url"
+    type === "email" ? t("channels.form.emailPlaceholder") : t("channels.form.webhookPlaceholder")
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -131,15 +133,15 @@ function AddChannelForm({ onSave, onCancel }: AddChannelFormProps) {
   return (
     <form id="add-channel-form" onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="channel-type">通道类型</Label>
+        <Label htmlFor="channel-type">{t("channels.form.type")}</Label>
         <Select value={type} onValueChange={(v) => setType(v as ChannelType)}>
           <SelectTrigger id="channel-type">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {CHANNEL_TYPES.map((t) => (
-              <SelectItem key={t} value={t}>
-                {CHANNEL_TYPE_LABELS[t]}
+            {CHANNEL_TYPES.map((ct) => (
+              <SelectItem key={ct} value={ct}>
+                {CHANNEL_TYPE_LABELS[ct]}
               </SelectItem>
             ))}
           </SelectContent>
@@ -147,10 +149,10 @@ function AddChannelForm({ onSave, onCancel }: AddChannelFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="channel-name">通道名称</Label>
+        <Label htmlFor="channel-name">{t("channels.form.name")}</Label>
         <Input
           id="channel-name"
-          placeholder="如：运维邮件组"
+          placeholder={t("channels.form.namePlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -181,6 +183,8 @@ interface PolicyFormProps {
 }
 
 function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
+  const t = useTranslations("alerts")
+  const tCommon = useTranslations("common")
   const [name, setName] = useState(initial?.name ?? "")
   const [monitorName, setMonitorName] = useState(initial?.monitorName ?? "")
   const [selectedChannels, setSelectedChannels] = useState<string[]>(initial?.channelIds ?? [])
@@ -237,10 +241,10 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
   return (
     <form id="policy-form" onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
-        <Label htmlFor="policy-name">策略名称</Label>
+        <Label htmlFor="policy-name">{t("policies.form.name")}</Label>
         <Input
           id="policy-name"
-          placeholder="如：关键服务告警"
+          placeholder={t("policies.form.namePlaceholder")}
           value={name}
           onChange={(e) => setName(e.target.value)}
           required
@@ -248,16 +252,16 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label htmlFor="policy-monitor">绑定监控</Label>
+        <Label htmlFor="policy-monitor">{t("policies.form.monitor")}</Label>
         <Select value={monitorName} onValueChange={setMonitorName} disabled={monitorsLoading}>
           <SelectTrigger id="policy-monitor" data-testid="policy-monitor-select">
-            <SelectValue placeholder={monitorsLoading ? "加载中..." : "请选择监控"} />
+            <SelectValue placeholder={monitorsLoading ? t("policies.form.loading") : t("policies.form.monitorPlaceholder")} />
           </SelectTrigger>
           <SelectContent>
             {monitorsLoading ? (
-              <SelectItem value="__loading__" disabled>加载中...</SelectItem>
+              <SelectItem value="__loading__" disabled>{t("policies.form.loading")}</SelectItem>
             ) : monitors.length === 0 ? (
-              <SelectItem value="__empty__" disabled>暂无监控</SelectItem>
+              <SelectItem value="__empty__" disabled>{tCommon("noData")}</SelectItem>
             ) : (
               monitors.map((m) => (
                 <SelectItem key={m.id} value={m.name}>
@@ -270,10 +274,10 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label>告警通道</Label>
+        <Label>{t("policies.form.channels")}</Label>
         <Card><CardContent className="space-y-2 p-3">
           {channels.length === 0 && (
-            <p className="text-sm text-muted-foreground">暂无通道，请先添加</p>
+            <p className="text-sm text-muted-foreground">{t("policies.form.noChannels")}</p>
           )}
           {channels.map((ch) => (
             <label key={ch.id} className="flex cursor-pointer items-center gap-2">
@@ -292,37 +296,37 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
       </div>
 
       <div className="space-y-2">
-        <Label>延迟告警（{delay} 分钟）</Label>
+        <Label>{t("policies.form.delay", { min: delay })}</Label>
         <Slider
           min={0}
           max={60}
           step={1}
           value={[delay]}
           onValueChange={([v]) => setDelay(v!)}
-          aria-label="延迟告警分钟数"
+          aria-label={t("policies.form.delay", { min: delay })}
         />
         <div className="flex justify-between text-xs text-muted-foreground">
-          <span>立即</span>
-          <span>60 分钟</span>
+          <span>{t("policies.form.immediately")}</span>
+          <span>{t("policies.form.maxDelay")}</span>
         </div>
       </div>
 
       <div className="space-y-2">
-        <Label>静音时段</Label>
+        <Label>{t("policies.form.muteWindow")}</Label>
         <div className="flex items-center gap-3">
           <Input
             type="time"
             value={muteFrom}
             onChange={(e) => setMuteFrom(e.target.value)}
-            aria-label="静音开始时间"
+            aria-label={t("policies.form.muteWindow")}
             className="flex-1"
           />
-          <span className="text-sm text-muted-foreground">至</span>
+          <span className="text-sm text-muted-foreground">{t("policies.form.muteTo")}</span>
           <Input
             type="time"
             value={muteTo}
             onChange={(e) => setMuteTo(e.target.value)}
-            aria-label="静音结束时间"
+            aria-label={t("silences.addDialog.endsAt")}
             className="flex-1"
           />
         </div>
@@ -334,7 +338,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
           checked={enabled}
           onCheckedChange={(v) => setEnabled(Boolean(v))}
         />
-        <Label htmlFor="policy-enabled" className="cursor-pointer text-sm">启用策略</Label>
+        <Label htmlFor="policy-enabled" className="cursor-pointer text-sm">{t("policies.form.enabled")}</Label>
       </div>
 
     </form>
@@ -348,6 +352,7 @@ interface EventsTabProps {
 }
 
 function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
+  const t = useTranslations("alerts")
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -367,9 +372,9 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
             : e
         )
       )
-      toast("告警已确认")
+      toast(t("ack.success"))
     } catch (err) {
-      toast(err instanceof Error ? err.message : "确认失败，请重试")
+      toast(err instanceof Error ? err.message : t("ack.failed"))
     }
   }
 
@@ -390,7 +395,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
     if (monitorId) params.set("monitor_id", monitorId)
     apiRequest<{ data: { events: AlertEvent[] } }>(`/v1/alert-events?${params}`)
       .then((res) => { if (!cancelled) setEvents(res.data.events ?? []) })
-      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : "加载失败") })
+      .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : t("events.loadFailed")) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
   }, [status, monitorId])
@@ -414,7 +419,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
     return (
       <Alert variant="destructive" data-testid="events-error">
         <AlertCircle className="h-4 w-4" />
-        <AlertTitle>加载失败</AlertTitle>
+        <AlertTitle>{t("events.loadFailed")}</AlertTitle>
         <AlertDescription>{error}</AlertDescription>
       </Alert>
     )
@@ -429,12 +434,12 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
           onValueChange={(v) => setStatus(v === "__all__" ? "" : (v as "firing" | "resolved"))}
         >
           <SelectTrigger className="w-36" data-testid="events-status-filter">
-            <SelectValue placeholder="全部状态" />
+            <SelectValue placeholder={t("events.filter.allStatus")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="__all__">全部状态</SelectItem>
-            <SelectItem value="firing">告警中</SelectItem>
-            <SelectItem value="resolved">已恢复</SelectItem>
+            <SelectItem value="__all__">{t("events.filter.allStatus")}</SelectItem>
+            <SelectItem value="firing">{t("events.filter.firing")}</SelectItem>
+            <SelectItem value="resolved">{t("events.filter.resolved")}</SelectItem>
           </SelectContent>
         </Select>
 
@@ -444,10 +449,10 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
             onValueChange={(v) => setMonitorId(v === "__all__" ? "" : v)}
           >
             <SelectTrigger className="w-44" data-testid="events-monitor-filter">
-              <SelectValue placeholder="全部监控" />
+              <SelectValue placeholder={t("events.filter.allMonitors")} />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="__all__">全部监控</SelectItem>
+              <SelectItem value="__all__">{t("events.filter.allMonitors")}</SelectItem>
               {monitors.map((m) => (
                 <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
               ))}
@@ -462,7 +467,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
             onClick={() => { setStatus(""); setMonitorId("") }}
             data-testid="events-clear-filter"
           >
-            清除筛选
+            {t("events.filter.clearFilter")}
           </Button>
         )}
       </div>
@@ -470,33 +475,33 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
       {firingCount > 0 && (
         <Alert variant="destructive" data-testid="firing-alert">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>活跃告警</AlertTitle>
+          <AlertTitle>{t("events.activeAlert")}</AlertTitle>
           <AlertDescription>
-            当前有 <strong>{firingCount}</strong> 个告警正在触发，请及时处理。
+            {t("events.activeAlertDesc", { count: firingCount })}
           </AlertDescription>
         </Alert>
       )}
 
       {events.length === 0 ? (
         <p className="py-8 text-center text-sm text-muted-foreground" data-testid="events-empty">
-          {status || monitorId ? "没有符合筛选条件的事件" : "暂无告警事件"}
+          {status || monitorId ? t("events.emptyFiltered") : t("events.empty")}
         </p>
       ) : (
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>监控名</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead className="hidden md:table-cell">开始时间</TableHead>
-              <TableHead className="hidden md:table-cell">持续时长</TableHead>
-              <TableHead>操作</TableHead>
+              <TableHead>{t("events.table.monitorName")}</TableHead>
+              <TableHead>{t("events.table.status")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("events.table.startedAt")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("events.table.duration")}</TableHead>
+              <TableHead>{t("events.table.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {events.map((evt) => (
               <TableRow key={evt.id} data-testid={`event-row-${evt.id}`}>
                 <TableCell className="font-medium">{evt.monitorName}</TableCell>
-                <TableCell>{statusBadge(evt.status)}</TableCell>
+                <TableCell>{statusBadge(evt.status, t)}</TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                   {new Date(evt.startedAt).toLocaleString("zh-CN", {
                     month: "numeric",
@@ -520,7 +525,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
                       data-testid={`ack-btn-${evt.id}`}
                     >
                       <CheckCheck className="mr-1 h-3 w-3" />
-                      确认告警
+                      {t("ack.label")}
                     </Button>
                   )}
                 </TableCell>
@@ -548,6 +553,7 @@ interface NotificationsResponse {
 }
 
 function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
+  const t = useTranslations("alerts")
   const [open, setOpen] = useState(false)
   const [notifications, setNotifications] = useState<AlertNotification[]>([])
   const [notifLoading, setNotifLoading] = useState(false)
@@ -581,28 +587,28 @@ function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
         onClick={handleToggle}
         data-testid={`delivery-history-toggle-${channelId}`}
       >
-        查看交付记录（{notifications.length} 条）
+        {t("channels.deliveryHistory", { count: notifications.length })}
         {open ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
       </Button>
       {open && (
         <div data-testid={`delivery-history-content-${channelId}`} className="px-4 pb-3">
           {notifLoading ? (
-            <p className="py-2 text-center text-xs text-muted-foreground">加载中...</p>
+            <p className="py-2 text-center text-xs text-muted-foreground">{t("policies.form.loading")}</p>
           ) : notifications.length === 0 ? (
-            <p className="py-2 text-center text-xs text-muted-foreground">暂无交付记录</p>
+            <p className="py-2 text-center text-xs text-muted-foreground">{t("channels.noDeliveryHistory")}</p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="text-xs">状态</TableHead>
-                  <TableHead className="text-xs">告警事件</TableHead>
-                  <TableHead className="text-xs">发送时间</TableHead>
+                  <TableHead className="text-xs">{t("channels.notifTable.status")}</TableHead>
+                  <TableHead className="text-xs">{t("channels.notifTable.eventId")}</TableHead>
+                  <TableHead className="text-xs">{t("channels.notifTable.sentAt")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {notifications.slice(0, 10).map((n) => (
                   <TableRow key={n.id} data-testid={`notif-row-${n.id}`}>
-                    <TableCell className="py-1">{notifStatusBadge(n.status)}</TableCell>
+                    <TableCell className="py-1">{notifStatusBadge(n.status, t)}</TableCell>
                     <TableCell className="py-1 font-mono text-xs text-muted-foreground">
                       {n.alert_event_id}
                     </TableCell>
@@ -628,6 +634,7 @@ function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
 }
 
 function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: ChannelsTabProps) {
+  const t = useTranslations("alerts")
   const [channelSearch, setChannelSearch] = useState("")
 
   const filteredChannels = channels.filter((c) =>
@@ -645,7 +652,7 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
         <div className="relative flex-1">
           <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索通道名称..."
+            placeholder={t("channels.search")}
             value={channelSearch}
             onChange={(e) => setChannelSearch(e.target.value)}
             className="pl-8"
@@ -654,14 +661,14 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
         </div>
         <Button size="sm" onClick={onAdd} data-testid="add-channel-btn">
           <Plus className="mr-1 h-4 w-4" />
-          添加通道
+          {t("channels.create")}
         </Button>
       </div>
 
       <p className="text-sm text-muted-foreground">
         {channelSearch
-          ? `找到 ${sortedChannels.length} / ${channels.length} 个通道`
-          : `共 ${channels.length} 个通道`}
+          ? t("channels.countWithFilter", { filtered: sortedChannels.length, total: channels.length })
+          : t("channels.countAll", { count: channels.length })}
       </p>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -676,11 +683,11 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                   {ch.verified ? (
                     <Badge variant="success" className="shrink-0 gap-1">
                       <CheckCircle2 className="h-3 w-3" />
-                      已验证
+                      {t("channels.verified")}
                     </Badge>
                   ) : (
                     <Badge variant="warning" className="shrink-0">
-                      未验证
+                      {t("channels.unverified")}
                     </Badge>
                   )}
                 </CardTitle>
@@ -688,7 +695,7 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                   {CHANNEL_TYPE_LABELS[ch.type]}
                   {!ch.verified && (
                     <span className="ml-1 text-amber-600 dark:text-amber-400">
-                      · 点击 Wifi 图标发送测试
+                      {t("channels.unverifiedHint")}
                     </span>
                   )}
                 </p>
@@ -705,7 +712,7 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                   onClick={() => onTest(ch.id)}
                   disabled={isTesting}
                   data-testid={`test-channel-btn-${ch.id}`}
-                  aria-label={`测试通道 ${ch.name}`}
+                  aria-label={`${t("channels.create")} ${ch.name}`}
                 >
                   {isTesting
                     ? <Loader2 className="h-4 w-4 animate-spin" />
@@ -717,7 +724,7 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                   className="flex-1 text-destructive hover:bg-destructive/10"
                   onClick={() => onDelete(ch.id)}
                   data-testid={`delete-channel-btn-${ch.id}`}
-                  aria-label={`删除通道 ${ch.name}`}
+                  aria-label={`${t("channels.delete.title")} ${ch.name}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -750,29 +757,30 @@ function PoliciesTab({
   onDelete,
   onAdd,
 }: PoliciesTabProps) {
+  const t = useTranslations("alerts")
   const channelName = (id: string) =>
     channels.find((c) => c.id === id)?.name ?? id
 
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">共 {policies.length} 条策略</p>
+        <p className="text-sm text-muted-foreground">{t("policies.count", { count: policies.length })}</p>
         <Button size="sm" onClick={onAdd} data-testid="add-policy-btn">
           <Plus className="mr-1 h-4 w-4" />
-          新建策略
+          {t("policies.create")}
         </Button>
       </div>
 
       <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>策略名</TableHead>
-              <TableHead className="hidden md:table-cell">绑定监控</TableHead>
-              <TableHead className="hidden md:table-cell">通道</TableHead>
-              <TableHead className="hidden md:table-cell">延迟</TableHead>
-              <TableHead className="hidden md:table-cell">静音时段</TableHead>
-              <TableHead>状态</TableHead>
-              <TableHead>操作</TableHead>
+              <TableHead>{t("policies.table.name")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("policies.table.monitor")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("policies.table.channels")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("policies.table.delay")}</TableHead>
+              <TableHead className="hidden md:table-cell">{t("policies.table.muteWindow")}</TableHead>
+              <TableHead>{t("policies.table.status")}</TableHead>
+              <TableHead>{t("policies.table.actions")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -795,7 +803,7 @@ function PoliciesTab({
                   </div>
                 </TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground tabular-nums">
-                  {pol.delayMinutes === 0 ? "立即" : `${pol.delayMinutes} 分钟`}
+                  {pol.delayMinutes === 0 ? t("policies.delay.immediately") : t("policies.delay.minutes", { min: pol.delayMinutes })}
                 </TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground tabular-nums">
                   {pol.muteFrom && pol.muteTo
@@ -807,11 +815,11 @@ function PoliciesTab({
                     <Switch
                       checked={pol.enabled}
                       onCheckedChange={() => onToggle(pol.id)}
-                      aria-label={`策略 ${pol.name} ${pol.enabled ? "已启用" : "已关闭"}`}
+                      aria-label={`${pol.name} ${pol.enabled ? t("policies.status.enabled") : t("policies.status.disabled")}`}
                       data-testid={`policy-toggle-${pol.id}`}
                     />
                     <span className="text-xs text-muted-foreground">
-                      {pol.enabled ? "启用" : "关闭"}
+                      {pol.enabled ? t("policies.status.enabled") : t("policies.status.disabled")}
                     </span>
                   </div>
                 </TableCell>
@@ -821,7 +829,7 @@ function PoliciesTab({
                       variant="ghost"
                       size="icon"
                       onClick={() => onEdit(pol)}
-                      aria-label={`编辑策略 ${pol.name}`}
+                      aria-label={`${t("policies.editSheet")} ${pol.name}`}
                       data-testid={`edit-policy-btn-${pol.id}`}
                     >
                       <Pencil className="h-4 w-4" />
@@ -831,7 +839,7 @@ function PoliciesTab({
                       size="icon"
                       className="text-destructive hover:bg-destructive/10"
                       onClick={() => onDelete(pol.id)}
-                      aria-label={`删除策略 ${pol.name}`}
+                      aria-label={`${t("policies.delete.title")} ${pol.name}`}
                       data-testid={`delete-policy-btn-${pol.id}`}
                     >
                       <Trash2 className="h-4 w-4" />
@@ -854,40 +862,42 @@ interface SilencesTabProps {
   onAdd: () => void
 }
 
-function silenceStatusBadge(status: AlertSilence["status"]) {
-  if (status === "active") return <Badge variant="destructive">生效中</Badge>
-  if (status === "upcoming") return <Badge variant="secondary">即将生效</Badge>
-  return <Badge variant="outline">已过期</Badge>
-}
-
 function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
+  const t = useTranslations("alerts")
+
+  function silenceStatusBadge(status: AlertSilence["status"]) {
+    if (status === "active") return <Badge variant="destructive">{t("silences.status.active")}</Badge>
+    if (status === "upcoming") return <Badge variant="secondary">{t("silences.status.upcoming")}</Badge>
+    return <Badge variant="outline">{t("silences.status.expired")}</Badge>
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">共 {silences.length} 条静默规则</p>
+        <p className="text-sm text-muted-foreground">{t("silences.count", { count: silences.length })}</p>
         <Button size="sm" onClick={onAdd} data-testid="add-silence-btn">
           <Plus className="h-4 w-4 mr-1" />
-          添加静默
+          {t("silences.create")}
         </Button>
       </div>
       {silences.length === 0 ? (
-        <p className="text-center text-muted-foreground py-8 text-sm">暂无静默规则</p>
+        <p className="text-center text-muted-foreground py-8 text-sm">{t("silences.empty")}</p>
       ) : (
         <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>监控</TableHead>
-                <TableHead className="hidden md:table-cell">原因</TableHead>
-                <TableHead className="hidden md:table-cell">开始时间</TableHead>
-                <TableHead className="hidden md:table-cell">结束时间</TableHead>
-                <TableHead>状态</TableHead>
+                <TableHead>{t("silences.table.monitor")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("silences.table.reason")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("silences.table.startsAt")}</TableHead>
+                <TableHead className="hidden md:table-cell">{t("silences.table.endsAt")}</TableHead>
+                <TableHead>{t("silences.table.status")}</TableHead>
                 <TableHead className="w-16" />
               </TableRow>
             </TableHeader>
             <TableBody>
               {silences.map((sil) => (
                 <TableRow key={sil.id} data-testid={`silence-row-${sil.id}`}>
-                  <TableCell>{sil.monitorName ?? "全局"}</TableCell>
+                  <TableCell>{sil.monitorName ?? t("silences.global")}</TableCell>
                   <TableCell className="hidden md:table-cell">{sil.reason}</TableCell>
                   <TableCell className="hidden md:table-cell">{new Date(sil.startsAt).toLocaleString("zh-CN")}</TableCell>
                   <TableCell className="hidden md:table-cell">{new Date(sil.endsAt).toLocaleString("zh-CN")}</TableCell>
@@ -898,7 +908,7 @@ function SilencesTab({ silences, onDelete, onAdd }: SilencesTabProps) {
                         variant="ghost"
                         size="icon"
                         onClick={() => onDelete(sil.id)}
-                        aria-label={`提前结束静默 ${sil.id}`}
+                        aria-label={`${t("silences.table.status")} ${sil.id}`}
                         data-testid={`delete-silence-btn-${sil.id}`}
                       >
                         <Trash2 className="h-4 w-4 text-muted-foreground" />
@@ -928,6 +938,7 @@ interface MonitorOption {
 }
 
 function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogProps) {
+  const t = useTranslations("alerts")
   const [monitors, setMonitors] = useState<MonitorOption[]>([])
   const [monitorsLoading, setMonitorsLoading] = useState(true)
   const [monitorId, setMonitorId] = useState<string>("__global__")
@@ -971,7 +982,7 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
       setEndsAt("")
       setMonitorId("__global__")
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败，请重试")
+      setError(err instanceof Error ? err.message : t("silences.addDialog.createFailed"))
     } finally {
       setSubmitting(false)
     }
@@ -981,7 +992,7 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="add-silence-dialog">
         <DialogHeader>
-          <DialogTitle>添加静默规则</DialogTitle>
+          <DialogTitle>{t("silences.addDialog.title")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4 mt-2">
           {error && (
@@ -991,13 +1002,13 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
             </Alert>
           )}
           <div className="space-y-2">
-            <Label htmlFor="silence-monitor">绑定监控（可选）</Label>
+            <Label htmlFor="silence-monitor">{t("silences.addDialog.monitor")}</Label>
             <Select value={monitorId} onValueChange={setMonitorId} disabled={monitorsLoading}>
               <SelectTrigger id="silence-monitor">
-                <SelectValue placeholder={monitorsLoading ? "加载中..." : "全局静默"} />
+                <SelectValue placeholder={monitorsLoading ? t("policies.form.loading") : t("silences.addDialog.globalSilence")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="__global__">全局静默</SelectItem>
+                <SelectItem value="__global__">{t("silences.addDialog.globalSilence")}</SelectItem>
                 {monitors.map((m) => (
                   <SelectItem key={m.id} value={m.id}>{m.name}</SelectItem>
                 ))}
@@ -1005,10 +1016,10 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="silence-reason">原因</Label>
+            <Label htmlFor="silence-reason">{t("silences.addDialog.reason")}</Label>
             <Textarea
               id="silence-reason"
-              placeholder="如：计划维护窗口"
+              placeholder={t("silences.addDialog.reasonPlaceholder")}
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={2}
@@ -1017,7 +1028,7 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
           </div>
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="silence-starts">开始时间</Label>
+              <Label htmlFor="silence-starts">{t("silences.addDialog.startsAt")}</Label>
               <Input
                 id="silence-starts"
                 type="datetime-local"
@@ -1027,7 +1038,7 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="silence-ends">结束时间</Label>
+              <Label htmlFor="silence-ends">{t("silences.addDialog.endsAt")}</Label>
               <Input
                 id="silence-ends"
                 type="datetime-local"
@@ -1044,13 +1055,13 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
               onClick={() => onOpenChange(false)}
               disabled={submitting}
             >
-              取消
+              {t("confirm.cancel")}
             </Button>
             <Button
               type="submit"
               disabled={submitting || !reason.trim() || !startsAt || !endsAt}
             >
-              {submitting ? "创建中..." : "创建静默"}
+              {submitting ? t("silences.addDialog.submitting") : t("silences.addDialog.submit")}
             </Button>
           </DialogFooter>
         </form>
@@ -1062,10 +1073,10 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
 // ─── API response shapes ──────────────────────────────────────────────────────
 
 interface ChannelsResponse {
-  data: { channels: AlertChannel[] }
+  data: { items: AlertChannel[] }
 }
 interface PoliciesResponse {
-  data: { policies: AlertPolicy[] }
+  data: { items: AlertPolicy[] }
 }
 
 // ─── Skeleton loaders ─────────────────────────────────────────────────────────
@@ -1107,6 +1118,7 @@ function PoliciesSkeleton() {
 // ─── Main AlertsClient ────────────────────────────────────────────────────────
 
 export function AlertsClient() {
+  const t = useTranslations("alerts")
   // URL-synced tab state
   const searchParams = useSearchParams()
   const router = useRouter()
@@ -1165,11 +1177,11 @@ export function AlertsClient() {
       const res = await apiRequest<ChannelsResponse>("/v1/alert-channels")
       setChannels(res.data.channels ?? [])
     } catch (err) {
-      setChannelsError(err instanceof Error ? err.message : "加载失败")
+      setChannelsError(err instanceof Error ? err.message : t("events.loadFailed"))
     } finally {
       setChannelsLoading(false)
     }
-  }, [])
+  }, [t])
 
   const fetchPolicies = useCallback(async () => {
     if (fetchedRef.current.policies) return
@@ -1180,11 +1192,11 @@ export function AlertsClient() {
       const res = await apiRequest<PoliciesResponse>("/v1/alert-policies")
       setPolicies(res.data.policies ?? [])
     } catch (err) {
-      setPoliciesError(err instanceof Error ? err.message : "加载失败")
+      setPoliciesError(err instanceof Error ? err.message : t("events.loadFailed"))
     } finally {
       setPoliciesLoading(false)
     }
-  }, [])
+  }, [t])
 
   const fetchSilences = useCallback(async () => {
     if (fetchedRef.current.silences) return
@@ -1195,11 +1207,11 @@ export function AlertsClient() {
       const res = await apiRequest<{ data: { silences: AlertSilence[] } }>("/v1/alert-silences")
       setSilences(res.data.silences ?? [])
     } catch (err) {
-      setSilencesError(err instanceof Error ? err.message : "加载失败")
+      setSilencesError(err instanceof Error ? err.message : t("events.loadFailed"))
     } finally {
       setSilencesLoading(false)
     }
-  }, [])
+  }, [t])
 
   // ── Tab change handler ──
 
@@ -1235,11 +1247,11 @@ export function AlertsClient() {
       setChannels((prev) =>
         prev.map((c) => (c.id === id ? { ...c, verified: true } : c))
       )
-      toast.success("测试通知已发送", {
-        description: ch?.name ? `通道「${ch.name}」已标记为已验证` : undefined,
+      toast.success(t("channels.testSent"), {
+        description: ch?.name ? t("channels.testSentDesc", { name: ch.name }) : undefined,
       })
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "发送失败，请重试")
+      toast.error(err instanceof Error ? err.message : t("channels.testFailed"))
     } finally {
       setTestingIds((prev) => {
         const next = new Set(prev)
@@ -1253,17 +1265,17 @@ export function AlertsClient() {
     const ch = channels.find((c) => c.id === id)
     setConfirm({
       open: true,
-      title: "删除通道",
-      description: `确认删除通道 "${ch?.name}"？此操作不可撤销。`,
+      title: t("channels.delete.title"),
+      description: t("channels.delete.desc", { name: ch?.name ?? "" }),
       onConfirm: async () => {
         try {
           await apiRequest(`/v1/alert-channels/${id}`, { method: "DELETE" })
           setChannels((prev) => prev.filter((c) => c.id !== id))
           setConfirm((p) => ({ ...p, open: false }))
-          toast(`通道 "${ch?.name}" 已删除`)
+          toast(t("channels.delete.success", { name: ch?.name ?? "" }))
         } catch (err) {
           setConfirm((p) => ({ ...p, open: false }))
-          toast(err instanceof Error ? err.message : "删除失败，请重试")
+          toast(err instanceof Error ? err.message : t("channels.delete.failed"))
         }
       },
     })
@@ -1285,9 +1297,9 @@ export function AlertsClient() {
       const newCh = res.data.channel
       setChannels((prev) => [...prev, newCh])
       setSheet((p) => ({ ...p, open: false }))
-      toast(`通道 "${newCh.name}" 已添加`)
+      toast(t("channels.add.success", { name: newCh.name }))
     } catch (err) {
-      toast(err instanceof Error ? err.message : "创建失败，请重试")
+      toast(err instanceof Error ? err.message : t("channels.add.failed"))
     }
   }
 
@@ -1309,7 +1321,7 @@ export function AlertsClient() {
       setPolicies((prev) =>
         prev.map((p) => (p.id === id ? { ...p, enabled: pol.enabled } : p))
       )
-      toast(err instanceof Error ? err.message : "更新失败，请重试")
+      toast(err instanceof Error ? err.message : t("policies.save.failed"))
     }
   }
 
@@ -1320,17 +1332,17 @@ export function AlertsClient() {
     const pol = policies.find((p) => p.id === id)
     setConfirm({
       open: true,
-      title: "删除策略",
-      description: `确认删除策略 "${pol?.name}"？此操作不可撤销。`,
+      title: t("policies.delete.title"),
+      description: t("policies.delete.desc", { name: pol?.name ?? "" }),
       onConfirm: async () => {
         try {
           await apiRequest(`/v1/alert-policies/${id}`, { method: "DELETE" })
           setPolicies((prev) => prev.filter((p) => p.id !== id))
           setConfirm((p) => ({ ...p, open: false }))
-          toast(`策略 "${pol?.name}" 已删除`)
+          toast(t("policies.delete.success", { name: pol?.name ?? "" }))
         } catch (err) {
           setConfirm((p) => ({ ...p, open: false }))
-          toast(err instanceof Error ? err.message : "删除失败，请重试")
+          toast(err instanceof Error ? err.message : t("policies.delete.failed"))
         }
       },
     })
@@ -1353,9 +1365,9 @@ export function AlertsClient() {
         setPolicies((prev) =>
           prev.map((p) => (p.id === sheet.policy!.id ? updated : p))
         )
-        toast("策略已更新")
+        toast(t("policies.save.success"))
       } catch (err) {
-        toast(err instanceof Error ? err.message : "更新失败，请重试")
+        toast(err instanceof Error ? err.message : t("policies.save.failed"))
       }
     } else {
       try {
@@ -1365,9 +1377,9 @@ export function AlertsClient() {
         })
         const newPol = res.data.policy
         setPolicies((prev) => [...prev, newPol])
-        toast(`策略 "${newPol.name}" 已创建`)
+        toast(t("policies.save.createSuccess", { name: newPol.name }))
       } catch (err) {
-        toast(err instanceof Error ? err.message : "创建失败，请重试")
+        toast(err instanceof Error ? err.message : t("policies.save.createFailed"))
       }
     }
     setSheet((p) => ({ ...p, open: false }))
@@ -1378,10 +1390,10 @@ export function AlertsClient() {
       {/* Tabs — navigation + panels */}
       <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="w-full">
-          <TabsTrigger value="events" className="flex-1" data-testid="tab-events">事件历史</TabsTrigger>
-          <TabsTrigger value="channels" className="flex-1" data-testid="tab-channels">告警通道</TabsTrigger>
-          <TabsTrigger value="policies" className="flex-1" data-testid="tab-policies">告警策略</TabsTrigger>
-          <TabsTrigger value="silences" className="flex-1" data-testid="tab-silences">静默规则</TabsTrigger>
+          <TabsTrigger value="events" className="flex-1" data-testid="tab-events">{t("tabs.events")}</TabsTrigger>
+          <TabsTrigger value="channels" className="flex-1" data-testid="tab-channels">{t("tabs.channels")}</TabsTrigger>
+          <TabsTrigger value="policies" className="flex-1" data-testid="tab-policies">{t("tabs.policies")}</TabsTrigger>
+          <TabsTrigger value="silences" className="flex-1" data-testid="tab-silences">{t("tabs.silences")}</TabsTrigger>
         </TabsList>
         <TabsContent value="events">
           <EventsTab initialMonitorId={initialMonitorId} />
@@ -1392,7 +1404,7 @@ export function AlertsClient() {
           ) : channelsError ? (
             <Alert variant="destructive" data-testid="channels-error">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>加载失败</AlertTitle>
+              <AlertTitle>{t("events.loadFailed")}</AlertTitle>
               <AlertDescription>{channelsError}</AlertDescription>
             </Alert>
           ) : (
@@ -1411,7 +1423,7 @@ export function AlertsClient() {
           ) : policiesError ? (
             <Alert variant="destructive" data-testid="policies-error">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>加载失败</AlertTitle>
+              <AlertTitle>{t("events.loadFailed")}</AlertTitle>
               <AlertDescription>{policiesError}</AlertDescription>
             </Alert>
           ) : (
@@ -1437,7 +1449,7 @@ export function AlertsClient() {
           ) : silencesError ? (
             <Alert variant="destructive" data-testid="silences-error">
               <AlertCircle className="h-4 w-4" />
-              <AlertTitle>加载失败</AlertTitle>
+              <AlertTitle>{t("events.loadFailed")}</AlertTitle>
               <AlertDescription>{silencesError}</AlertDescription>
             </Alert>
           ) : (
@@ -1447,9 +1459,9 @@ export function AlertsClient() {
                 try {
                   await apiRequest(`/v1/alert-silences/${id}`, { method: "DELETE" })
                   setSilences((prev) => prev.filter((s) => s.id !== id))
-                  toast("静默规则已提前结束")
+                  toast(t("silences.delete.success"))
                 } catch (err) {
-                  toast(`删除失败: ${err instanceof Error ? err.message : "请重试"}`)
+                  toast(t("silences.delete.failed", { msg: err instanceof Error ? err.message : "" }))
                 }
               }}
               onAdd={() => setShowAddSilence(true)}
@@ -1466,12 +1478,12 @@ export function AlertsClient() {
             <AlertDialogDescription>{confirm.description}</AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>取消</AlertDialogCancel>
+            <AlertDialogCancel>{t("confirm.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               onClick={confirm.onConfirm}
             >
-              删除
+              {t("confirm.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1483,10 +1495,10 @@ export function AlertsClient() {
           <SheetHeader className="shrink-0 border-b px-6 py-4">
             <SheetTitle>
               {sheet.mode === "add-channel"
-                ? "添加告警通道"
+                ? t("channels.addSheet")
                 : sheet.mode === "edit-policy"
-                ? "编辑告警策略"
-                : "新建告警策略"}
+                ? t("policies.editSheet")
+                : t("policies.addSheet")}
             </SheetTitle>
           </SheetHeader>
           <div className="flex-1 overflow-y-auto px-6 py-6">
@@ -1511,7 +1523,7 @@ export function AlertsClient() {
               form={sheet.mode === "add-channel" ? "add-channel-form" : "policy-form"}
               className="flex-1"
             >
-              {sheet.mode === "edit-policy" ? "保存更改" : sheet.mode === "add-policy" ? "创建策略" : "保存"}
+              {sheet.mode === "edit-policy" ? t("policies.sheet.saveChanges") : sheet.mode === "add-policy" ? t("policies.sheet.createPolicy") : t("policies.sheet.save")}
             </Button>
             <Button
               type="button"
@@ -1519,7 +1531,7 @@ export function AlertsClient() {
               className="flex-1"
               onClick={() => setSheet((p) => ({ ...p, open: false }))}
             >
-              取消
+              {t("confirm.cancel")}
             </Button>
           </SheetFooter>
         </SheetContent>
@@ -1531,7 +1543,7 @@ export function AlertsClient() {
         onOpenChange={setShowAddSilence}
         onCreated={(silence) => {
           setSilences((prev) => [...prev, silence])
-          toast("静默规则已创建")
+          toast(t("silences.addDialog.created"))
         }}
       />
 

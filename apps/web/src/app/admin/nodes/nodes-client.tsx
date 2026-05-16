@@ -1,5 +1,6 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
@@ -25,22 +26,23 @@ export function computeNodeStats(nodes: AdminNode[]) {
   return { online, offline, degraded, total: nodes.length }
 }
 
-function statusBadge(status: AdminNode["status"]) {
-  switch (status) {
-    case "active":   return <Badge variant="default">在线</Badge>
-    case "inactive": return <Badge variant="destructive">离线</Badge>
-    case "degraded": return <Badge variant="outline" className="border-yellow-500 text-yellow-500">降级</Badge>
-  }
-}
-
 function formatTime(iso: string): string {
   try {
-    return new Date(iso).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
+    return new Date(iso).toLocaleString(undefined, { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit" })
   } catch { return iso }
 }
 
 export function NodesClient({ nodes }: { nodes: AdminNode[] }) {
+  const t = useTranslations("admin")
   const stats = computeNodeStats(nodes)
+
+  function statusBadge(status: AdminNode["status"]) {
+    switch (status) {
+      case "active":   return <Badge variant="default">{t("nodes.status.active")}</Badge>
+      case "inactive": return <Badge variant="destructive">{t("nodes.status.inactive")}</Badge>
+      case "degraded": return <Badge variant="outline" className="border-yellow-500 text-yellow-500">{t("nodes.status.degraded")}</Badge>
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -48,7 +50,7 @@ export function NodesClient({ nodes }: { nodes: AdminNode[] }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Server className="h-4 w-4" />在线节点
+              <Server className="h-4 w-4" />{t("nodes.online")}
             </CardTitle>
           </CardHeader>
           <CardContent><p className="text-2xl font-bold text-green-500">{stats.online}</p></CardContent>
@@ -56,7 +58,7 @@ export function NodesClient({ nodes }: { nodes: AdminNode[] }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <WifiOff className="h-4 w-4" />离线节点
+              <WifiOff className="h-4 w-4" />{t("nodes.offline")}
             </CardTitle>
           </CardHeader>
           <CardContent><p className="text-2xl font-bold text-destructive">{stats.offline}</p></CardContent>
@@ -64,7 +66,7 @@ export function NodesClient({ nodes }: { nodes: AdminNode[] }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Activity className="h-4 w-4" />降级节点
+              <Activity className="h-4 w-4" />{t("nodes.degraded")}
             </CardTitle>
           </CardHeader>
           <CardContent><p className="text-2xl font-bold text-yellow-500">{stats.degraded}</p></CardContent>
@@ -72,7 +74,7 @@ export function NodesClient({ nodes }: { nodes: AdminNode[] }) {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-              <Clock className="h-4 w-4" />节点总数
+              <Clock className="h-4 w-4" />{t("nodes.total")}
             </CardTitle>
           </CardHeader>
           <CardContent><p className="text-2xl font-bold">{stats.total}</p></CardContent>
@@ -80,24 +82,26 @@ export function NodesClient({ nodes }: { nodes: AdminNode[] }) {
       </div>
 
       <Card>
-        <CardHeader><CardTitle>节点列表</CardTitle></CardHeader>
+        <CardHeader><CardTitle>{t("nodes.title")}</CardTitle></CardHeader>
         <CardContent className="p-0">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>节点 ID</TableHead>
-                <TableHead>主机名</TableHead>
-                <TableHead>系统 / 架构</TableHead>
-                <TableHead>IP 地址</TableHead>
-                <TableHead>Agent 版本</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>最后在线</TableHead>
+                <TableHead>{t("nodes.table.nodeId")}</TableHead>
+                <TableHead>{t("nodes.table.hostname")}</TableHead>
+                <TableHead>{t("nodes.table.osArch")}</TableHead>
+                <TableHead>{t("nodes.table.ip")}</TableHead>
+                <TableHead>{t("nodes.table.agentVersion")}</TableHead>
+                <TableHead>{t("nodes.table.status")}</TableHead>
+                <TableHead>{t("nodes.table.lastSeen")}</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {nodes.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">暂无节点数据</TableCell>
+                  <TableCell colSpan={7} className="py-8 text-center text-muted-foreground">
+                    {t("nodes.noData")}
+                  </TableCell>
                 </TableRow>
               )}
               {nodes.map(node => (

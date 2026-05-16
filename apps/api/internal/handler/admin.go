@@ -297,7 +297,7 @@ type AdminUserDetailMonitor struct {
 	ID     string `json:"id"`
 	Name   string `json:"name"`
 	Status string `json:"status"`
-	Kind   string `json:"kind"`
+	Type   string `json:"type"`
 }
 
 // AdminUserDetailResponse is the response for GET /internal/admin/users/{id}.
@@ -356,7 +356,7 @@ func (h *AdminHandler) AdminUserDetail(w http.ResponseWriter, r *http.Request) {
 
 	// Fetch last 5 monitors
 	monRows, err := h.pool.Query(ctx, `
-		SELECT id, name, status, kind
+		SELECT id, name, status, type
 		FROM monitors
 		WHERE user_id = $1
 		ORDER BY created_at DESC
@@ -371,7 +371,7 @@ func (h *AdminHandler) AdminUserDetail(w http.ResponseWriter, r *http.Request) {
 	detail.Monitors = make([]AdminUserDetailMonitor, 0, 5)
 	for monRows.Next() {
 		var mon AdminUserDetailMonitor
-		if err := monRows.Scan(&mon.ID, &mon.Name, &mon.Status, &mon.Kind); err != nil {
+		if err := monRows.Scan(&mon.ID, &mon.Name, &mon.Status, &mon.Type); err != nil {
 			response.Error(w, r, apperr.Internal("failed to scan monitor row", err))
 			return
 		}
@@ -395,8 +395,8 @@ func (h *AdminHandler) TestEmail(w http.ResponseWriter, r *http.Request) {
 	}
 	// AdminHandler 没有 enqueuer，简单实现：返回配置状态 + 提示
 	response.JSON(w, r, http.StatusOK, map[string]any{
-		"message": "邮件测试任务已提交，请检查 notifier 服务日志",
-		"note":    "确保 notifier 服务正在运行且 notifier.smtp 已正确配置",
+		"message": "email test task submitted, check notifier service logs",
+		"note":    "ensure notifier service is running and notifier.smtp is correctly configured",
 		"to":      to,
 	})
 }

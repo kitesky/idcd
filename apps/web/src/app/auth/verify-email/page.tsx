@@ -3,6 +3,7 @@
 import { useState, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Alert,
   AlertDescription,
@@ -13,6 +14,7 @@ import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
 function VerifyEmailForm() {
+  const t = useTranslations("auth")
   const router = useRouter()
   const searchParams = useSearchParams()
   const email = searchParams.get("email") ?? ""
@@ -25,7 +27,7 @@ function VerifyEmailForm() {
 
   async function handleVerify() {
     if (code.length !== 6) {
-      setError("请输入 6 位验证码")
+      setError(t("verifyEmail.errors.codeLength"))
       return
     }
 
@@ -44,7 +46,7 @@ function VerifyEmailForm() {
 
       router.push("/app/dashboard" as any)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "验证失败，请检查验证码是否正确")
+      setError(err instanceof Error ? err.message : t("verifyEmail.errors.verifyFailed"))
     } finally {
       setIsLoading(false)
     }
@@ -69,8 +71,8 @@ function VerifyEmailForm() {
   return (
     <div data-testid="verify-email-page">
       <AuthLayout
-        title="验证邮箱"
-        description={email ? `验证码已发送到 ${email}，请查收` : "请查收验证邮件"}
+        title={t("verifyEmail.title")}
+        description={email ? t("verifyEmail.descriptionWithEmail", { email }) : t("verifyEmail.descriptionFallback")}
         footer={
           <div className="space-y-2">
             <p>
@@ -79,7 +81,7 @@ function VerifyEmailForm() {
                 className="text-muted-foreground hover:underline text-sm"
                 data-testid="skip-verify-link"
               >
-                跳过，稍后验证
+                {t("verifyEmail.skipVerify")}
               </Link>
             </p>
           </div>
@@ -94,7 +96,7 @@ function VerifyEmailForm() {
 
           {resendStatus === "sent" && (
             <Alert>
-              <AlertDescription>已重新发送验证码，请查收邮件</AlertDescription>
+              <AlertDescription>{t("verifyEmail.resendSuccess")}</AlertDescription>
             </Alert>
           )}
 
@@ -103,14 +105,14 @@ function VerifyEmailForm() {
               htmlFor="verify-code"
               className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
             >
-              验证码
+              {t("verifyEmail.code")}
             </label>
             <Input
               id="verify-code"
               type="text"
               inputMode="numeric"
               maxLength={6}
-              placeholder="输入 6 位验证码"
+              placeholder={t("verifyEmail.codePlaceholder")}
               value={code}
               onChange={(e) => {
                 const val = e.target.value.replace(/\D/g, "")
@@ -128,7 +130,7 @@ function VerifyEmailForm() {
             onClick={handleVerify}
             data-testid="verify-submit-btn"
           >
-            {isLoading ? "验证中..." : "验证"}
+            {isLoading ? t("verifyEmail.submitting") : t("verifyEmail.submit")}
           </Button>
 
           <Button
@@ -139,7 +141,7 @@ function VerifyEmailForm() {
             onClick={handleResend}
             data-testid="resend-btn"
           >
-            {resendStatus === "loading" ? "发送中..." : "重新发送"}
+            {resendStatus === "loading" ? t("verifyEmail.resending") : t("verifyEmail.resend")}
           </Button>
         </div>
       </AuthLayout>
@@ -148,8 +150,9 @@ function VerifyEmailForm() {
 }
 
 export default function VerifyEmailPage() {
+  const t = useTranslations("auth")
   return (
-    <Suspense fallback={<div>加载中...</div>}>
+    <Suspense fallback={<div>{t("verifyEmail.loading")}</div>}>
       <VerifyEmailForm />
     </Suspense>
   )

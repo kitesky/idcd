@@ -1,7 +1,10 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { NodeEntry } from "@/lib/nodes-utils"
+import type { Topology, Objects } from "topojson-specification"
+import type { GeoProjection, GeoPath } from "d3-geo"
+import type { FeatureCollection } from "geojson"
 
 // 国家代码 → [lng, lat]
 const COUNTRY_COORDS: Record<string, [number, number]> = {
@@ -55,6 +58,7 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
   const [markers, setMarkers] = useState<Marker[]>([])
   const [tooltip, setTooltip] = useState<{ x: number; y: number; label: string } | null>(null)
   const W = 800, H = 400
+  const nodeIdKey = useMemo(() => nodes.map(n => n.id).join(","), [nodes])
 
   // 按坐标聚合节点（同一国家只打一个点，但保留所有节点名用于 tooltip）
   useEffect(() => {
@@ -63,11 +67,12 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
       import("d3-geo"),
       import("topojson-client"),
     ]).then(([topoJson, d3, topo]) => {
-      const countries = (topo as any).feature(topoJson, topoJson.objects.countries)
-      const projection = (d3 as any).geoNaturalEarth1()
+      const topology = topoJson as Topology<Objects>
+      const countries = topo.feature(topology, topology.objects["countries"]!)
+      const projection: GeoProjection = d3.geoNaturalEarth1()
         .fitExtent([[12, 12], [W - 12, H - 12]], countries)
-      const pathGen = (d3 as any).geoPath(projection)
-      setGeoPaths(countries.features.map((f: any) => pathGen(f) ?? ""))
+      const pathGen: GeoPath = d3.geoPath(projection)
+      setGeoPaths((countries as FeatureCollection).features.map(f => pathGen(f) ?? ""))
 
       // 聚合：key = "lng,lat"，value = { online, labels }
       const grouped = new Map<string, { online: boolean; names: string[] }>()
@@ -97,8 +102,7 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
       }
       setMarkers(mk)
     }).catch(console.error)
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [nodes.map(n => n.id).join(",")])
+  }, [nodeIdKey])
 
   return (
     <div className="w-full overflow-hidden rounded-b-md relative" style={{ touchAction: "pan-y" }}>

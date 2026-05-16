@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react"
 import { ExternalLink, Plus, AlertCircle } from "lucide-react"
+import { useTranslations } from "next-intl"
 import {
   Card,
   CardContent,
@@ -68,6 +69,7 @@ interface CreateSheetContentProps {
 }
 
 function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
+  const t = useTranslations("status.statusPages")
   const [name, setName] = useState("")
   const [slug, setSlug] = useState("")
   const [desc, setDesc] = useState("")
@@ -96,7 +98,7 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
       onCreated()
       onClose()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败，请重试")
+      setError(err instanceof Error ? err.message : t("createSheet.createFailed"))
     } finally {
       setSubmitting(false)
     }
@@ -112,24 +114,24 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
           </Alert>
         )}
         <div className="space-y-1.5">
-          <Label htmlFor="sp-name">页面名称</Label>
+          <Label htmlFor="sp-name">{t("createSheet.name")}</Label>
           <Input
             id="sp-name"
-            placeholder="例：acme.com 服务状态"
+            placeholder={t("createSheet.namePlaceholder")}
             value={name}
             onChange={(e) => handleNameChange(e.target.value)}
             data-testid="sp-name-input"
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="sp-slug">Slug（访问路径）</Label>
+          <Label htmlFor="sp-slug">{t("createSheet.slug")}</Label>
           <div className="flex items-center gap-2">
             <span className="text-sm text-muted-foreground shrink-0">
               .status.idcd.com/
             </span>
             <Input
               id="sp-slug"
-              placeholder="acme"
+              placeholder={t("createSheet.slugPlaceholder")}
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
               data-testid="sp-slug-input"
@@ -137,10 +139,10 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="sp-desc">描述（可选）</Label>
+          <Label htmlFor="sp-desc">{t("createSheet.desc")}</Label>
           <Textarea
             id="sp-desc"
-            placeholder="简短说明该状态页用途..."
+            placeholder={t("createSheet.descPlaceholder")}
             value={desc}
             onChange={(e) => setDesc(e.target.value)}
             rows={3}
@@ -155,10 +157,10 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
           disabled={submitting || !name.trim() || !slug.trim()}
           data-testid="create-sp-button"
         >
-          {submitting ? "创建中..." : "创建状态页"}
+          {submitting ? t("createSheet.creating") : t("createSheet.create")}
         </Button>
         <Button variant="outline" onClick={onClose} disabled={submitting} data-testid="cancel-sp-button">
-          取消
+          {t("createSheet.cancel")}
         </Button>
       </SheetFooter>
     </>
@@ -166,6 +168,7 @@ function CreateSheetContent({ onClose, onCreated }: CreateSheetContentProps) {
 }
 
 export function StatusPagesClient() {
+  const t = useTranslations("status.statusPages")
   const [statusPages, setStatusPages] = useState<StatusPage[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -183,11 +186,11 @@ export function StatusPagesClient() {
       const res = await apiRequest<{ data: { status_pages: StatusPage[] } }>("/v1/status-pages")
       setStatusPages(res.data.status_pages ?? [])
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+      setError(err instanceof Error ? err.message : t("loadFailed"))
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [t])
 
   useEffect(() => {
     fetchStatusPages()
@@ -220,7 +223,7 @@ export function StatusPagesClient() {
       await apiRequest(`/v1/status-pages/${id}`, { method: "DELETE" })
       setStatusPages((prev) => prev.filter((sp) => sp.id !== id))
     } catch (err) {
-      setError(err instanceof Error ? err.message : "删除失败，请重试")
+      setError(err instanceof Error ? err.message : t("createSheet.createFailed"))
     } finally {
       setDeletingId(null)
       setConfirmDeleteId(null)
@@ -232,13 +235,13 @@ export function StatusPagesClient() {
       {!quotaLoading && isFreePlan && (
         <Alert data-testid="free-plan-notice">
           <AlertTitle className="flex items-center gap-2">
-            Free 档限制
+            {t("freePlan.title")}
             <Badge variant="warning" className="text-xs">
-              升级 Pro 解锁
+              {t("freePlan.upgrade")}
             </Badge>
           </AlertTitle>
           <AlertDescription>
-            Free 档不支持创建状态页。升级到 Pro 可获得最多 3 个状态页，Team 可获得 10 个。
+            {t("freePlan.desc")}
           </AlertDescription>
         </Alert>
       )}
@@ -246,16 +249,16 @@ export function StatusPagesClient() {
       {error && (
         <Alert variant="destructive" data-testid="sp-error-alert">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>错误</AlertTitle>
+          <AlertTitle>{t("error")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       )}
 
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold">状态页列表</h2>
+        <h2 className="text-lg font-semibold">{t("list")}</h2>
         <Button onClick={handleNewPage} disabled={quotaLoading} data-testid="new-page-button">
           <Plus className="mr-2 h-4 w-4" />
-          新建状态页
+          {t("create")}
         </Button>
       </div>
 
@@ -264,7 +267,7 @@ export function StatusPagesClient() {
       ) : statusPages.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12 text-center" data-testid="sp-empty-state">
-            <p className="text-sm text-muted-foreground">暂无状态页</p>
+            <p className="text-sm text-muted-foreground">{t("empty")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -288,7 +291,7 @@ export function StatusPagesClient() {
                     className="inline-flex items-center gap-1 text-xs text-primary hover:underline underline-offset-4"
                     data-testid={`status-page-link-${sp.id}`}
                   >
-                    访问
+                    {t("visit")}
                     <ExternalLink className="h-3 w-3" />
                   </a>
                   <Button
@@ -299,7 +302,7 @@ export function StatusPagesClient() {
                     disabled={deletingId === sp.id}
                     data-testid={`delete-sp-btn-${sp.id}`}
                   >
-                    {deletingId === sp.id ? "删除中..." : "删除"}
+                    {deletingId === sp.id ? t("deleting") : t("delete")}
                   </Button>
                 </div>
               </CardContent>
@@ -312,14 +315,14 @@ export function StatusPagesClient() {
       <AlertDialog open={showUpgradeDialog} onOpenChange={setShowUpgradeDialog}>
         <AlertDialogContent data-testid="upgrade-dialog">
           <AlertDialogHeader>
-            <AlertDialogTitle>升级解锁状态页</AlertDialogTitle>
+            <AlertDialogTitle>{t("upgradeDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              Free 档不支持创建状态页。升级到 Pro 可创建最多 3 个状态页，支持自定义品牌与监控绑定。
+              {t("upgradeDialog.desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="upgrade-cancel-button">稍后再说</AlertDialogCancel>
-            <AlertDialogAction data-testid="upgrade-confirm-button">升级到 Pro</AlertDialogAction>
+            <AlertDialogCancel data-testid="upgrade-cancel-button">{t("upgradeDialog.later")}</AlertDialogCancel>
+            <AlertDialogAction data-testid="upgrade-confirm-button">{t("upgradeDialog.confirm")}</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -328,18 +331,18 @@ export function StatusPagesClient() {
       <AlertDialog open={!!confirmDeleteId} onOpenChange={(open) => !open && setConfirmDeleteId(null)}>
         <AlertDialogContent data-testid="delete-confirm-dialog">
           <AlertDialogHeader>
-            <AlertDialogTitle>确认删除</AlertDialogTitle>
+            <AlertDialogTitle>{t("deleteDialog.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              此操作不可恢复，确定要删除该状态页吗？
+              {t("deleteDialog.desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel data-testid="delete-cancel-button">取消</AlertDialogCancel>
+            <AlertDialogCancel data-testid="delete-cancel-button">{t("deleteDialog.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => confirmDeleteId && handleDelete(confirmDeleteId)}
               data-testid="delete-confirm-button"
             >
-              确认删除
+              {t("deleteDialog.confirm")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -349,7 +352,7 @@ export function StatusPagesClient() {
       <Sheet open={showCreateSheet} onOpenChange={(open) => !open && setShowCreateSheet(false)}>
         <SheetContent className="flex flex-col gap-0 p-0 overflow-hidden" data-testid="create-sheet">
           <SheetHeader className="shrink-0 border-b px-6 py-4">
-            <SheetTitle>新建状态页</SheetTitle>
+            <SheetTitle>{t("createSheet.title")}</SheetTitle>
           </SheetHeader>
           <CreateSheetContent
             onClose={() => setShowCreateSheet(false)}

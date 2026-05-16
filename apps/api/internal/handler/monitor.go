@@ -801,7 +801,7 @@ func (h *MonitorHandler) fetchUptimeMap(ctx context.Context, monitorIDs []string
 			) AS uptime_pct
 		FROM monitor_checks
 		WHERE monitor_id = ANY($1)
-		  AND checked_at > NOW() - INTERVAL '24 hours'
+		  AND check_at > NOW() - INTERVAL '24 hours'
 		GROUP BY monitor_id`
 
 	rows, err := h.bulkPool.Query(ctx, uptimeSQL, monitorIDs)

@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { usePathname } from "next/navigation"
+import { usePathname, useRouter } from "next/navigation"
 import { ChevronDown, Search, Globe, X, Menu } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ALL_TOOLS } from "@/app/(public)/tools/tools-config"
@@ -14,135 +14,126 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { useTranslations } from "next-intl"
 
 // ── Mega menu data ─────────────────────────────────────────────────────────
 
-const toolsMenu = {
-  categories: [
-    {
-      label: "拨测工具",
-      groups: [
-        {
-          title: "网络连通",
-          items: [
-            { name: "Ping 测试", href: "/tools/ping" },
-            { name: "TCP 端口", href: "/tools/tcp" },
-            { name: "TCPing", href: "/tools/tcping" },
-            { name: "Traceroute", href: "/tools/traceroute" },
-            { name: "MTR 路由", href: "/tools/mtr" },
-            { name: "网速测试", href: "/tools/speedtest" },
-          ],
-        },
-        {
-          title: "域名与证书",
-          items: [
-            { name: "SSL 证书检查", href: "/tools/ssl" },
-            { name: "WHOIS 查询", href: "/tools/whois" },
-            { name: "ICP 备案查询", href: "/tools/icp" },
-            { name: "DNS 查询", href: "/tools/dns" },
-            { name: "HTTP 检测", href: "/tools/http" },
-          ],
-        },
-        {
-          title: "邮件服务",
-          items: [
-            { name: "MX 记录查询", href: "/tools/mx" },
-            { name: "SPF 记录查询", href: "/tools/spf" },
-            { name: "DMARC 查询", href: "/tools/dmarc" },
-            { name: "DKIM 密钥查询", href: "/tools/dkim" },
-            { name: "SMTP 测试", href: "/tools/smtp" },
-            { name: "反向 DNS 查询", href: "/tools/rdns" },
-            { name: "NTP 服务测试", href: "/tools/ntp" },
-          ],
-        },
-        {
-          title: "IP 与路由",
-          items: [
-            { name: "IP 地理位置", href: "/tools/ip" },
-            { name: "ASN 查询", href: "/tools/asn" },
-            { name: "BGP 路由查询", href: "/tools/bgp" },
-          ],
-        },
-      ],
-      featured: [
-        { name: "Ping 测试", desc: "全球节点网络拨测", href: "/tools/ping" },
-        { name: "SSL 证书", desc: "证书有效期检查", href: "/tools/ssl" },
-        { name: "DNS 查询", desc: "全球解析诊断", href: "/tools/dns" },
-      ],
-    },
-    {
-      label: "辅助工具",
-      groups: [
-        {
-          title: "格式化",
-          items: [
-            { name: "JSON 格式化", href: "/tools/json-formatter" },
-            { name: "YAML 格式化", href: "/tools/yaml-formatter" },
-            { name: "XML 格式化", href: "/tools/xml-formatter" },
-            { name: "CSV 格式化", href: "/tools/csv-formatter" },
-          ],
-        },
-        {
-          title: "编解码",
-          items: [
-            { name: "Base64 编解码", href: "/tools/base64" },
-            { name: "URL 编解码", href: "/tools/url-encode" },
-            { name: "Hash 计算", href: "/tools/hash" },
-            { name: "HTML 实体编码", href: "/tools/html-encode" },
-          ],
-        },
-        {
-          title: "文本处理",
-          items: [
-            { name: "正则表达式", href: "/tools/regex-tester" },
-            { name: "文本对比", href: "/tools/diff" },
-            { name: "字数统计", href: "/tools/word-counter" },
-            { name: "Markdown 预览", href: "/tools/markdown" },
-            { name: "行排序", href: "/tools/line-sort" },
-          ],
-        },
-        {
-          title: "开发工具",
-          items: [
-            { name: "JWT 解码", href: "/tools/jwt-decoder" },
-            { name: "CIDR 计算器", href: "/tools/cidr-calculator" },
-            { name: "时间戳转换", href: "/tools/timestamp" },
-            { name: "IPv6 检测", href: "/tools/ipv6-converter" },
-            { name: "Cron 可视化", href: "/tools/cron-parser" },
-            { name: "QR 码生成", href: "/tools/qrcode" },
-          ],
-        },
-      ],
-      featured: [
-        { name: "JSON 格式化", desc: "格式化与压缩 JSON", href: "/tools/json-formatter" },
-        { name: "正则表达式", desc: "实时高亮匹配", href: "/tools/regex-tester" },
-        { name: "Base64", desc: "编解码与图片转换", href: "/tools/base64" },
-      ],
-    },
-  ],
+function buildToolsMenu(t: ReturnType<typeof useTranslations<"nav">>) {
+  return {
+    categories: [
+      {
+        label: t("toolCategories.probe"),
+        groups: [
+          {
+            title: t("toolGroups.network"),
+            items: [
+              { name: t("tools.ping"), href: "/tools/ping" },
+              { name: t("tools.tcp"), href: "/tools/tcp" },
+              { name: t("tools.tcping"), href: "/tools/tcping" },
+              { name: t("tools.traceroute"), href: "/tools/traceroute" },
+              { name: t("tools.mtr"), href: "/tools/mtr" },
+              { name: t("tools.speedtest"), href: "/tools/speedtest" },
+            ],
+          },
+          {
+            title: t("toolGroups.domain"),
+            items: [
+              { name: t("tools.ssl"), href: "/tools/ssl" },
+              { name: t("tools.whois"), href: "/tools/whois" },
+              { name: t("tools.icp"), href: "/tools/icp" },
+              { name: t("tools.dns"), href: "/tools/dns" },
+              { name: t("tools.http"), href: "/tools/http" },
+            ],
+          },
+          {
+            title: t("toolGroups.email"),
+            items: [
+              { name: t("tools.mx"), href: "/tools/mx" },
+              { name: t("tools.spf"), href: "/tools/spf" },
+              { name: t("tools.dmarc"), href: "/tools/dmarc" },
+              { name: t("tools.dkim"), href: "/tools/dkim" },
+              { name: t("tools.smtp"), href: "/tools/smtp" },
+              { name: t("tools.rdns"), href: "/tools/rdns" },
+              { name: t("tools.ntp"), href: "/tools/ntp" },
+            ],
+          },
+          {
+            title: t("toolGroups.ip"),
+            items: [
+              { name: t("tools.ip-geo"), href: "/tools/ip" },
+              { name: t("tools.asn"), href: "/tools/asn" },
+              { name: t("tools.bgp"), href: "/tools/bgp" },
+            ],
+          },
+        ],
+        featured: [
+          { name: t("tools.ping"), desc: t("featuredProbeDesc.ping"), href: "/tools/ping" },
+          { name: t("tools.ssl"), desc: t("featuredProbeDesc.ssl"), href: "/tools/ssl" },
+          { name: t("tools.dns"), desc: t("featuredProbeDesc.dns"), href: "/tools/dns" },
+        ],
+      },
+      {
+        label: t("toolCategories.utility"),
+        groups: [
+          {
+            title: t("toolGroups.format"),
+            items: [
+              { name: t("tools.json-formatter"), href: "/tools/json-formatter" },
+              { name: t("tools.yaml-formatter"), href: "/tools/yaml-formatter" },
+              { name: t("tools.xml-formatter"), href: "/tools/xml-formatter" },
+              { name: t("tools.csv-formatter"), href: "/tools/csv-formatter" },
+            ],
+          },
+          {
+            title: t("toolGroups.encode"),
+            items: [
+              { name: t("tools.base64"), href: "/tools/base64" },
+              { name: t("tools.url-encode"), href: "/tools/url-encode" },
+              { name: t("tools.hash"), href: "/tools/hash" },
+              { name: t("tools.html-encode"), href: "/tools/html-encode" },
+            ],
+          },
+          {
+            title: t("toolGroups.text"),
+            items: [
+              { name: t("tools.regex-tester"), href: "/tools/regex-tester" },
+              { name: t("tools.diff"), href: "/tools/diff" },
+              { name: t("tools.word-counter"), href: "/tools/word-counter" },
+              { name: t("tools.markdown"), href: "/tools/markdown" },
+              { name: t("tools.line-sort"), href: "/tools/line-sort" },
+            ],
+          },
+          {
+            title: t("toolGroups.dev"),
+            items: [
+              { name: t("tools.jwt-decoder"), href: "/tools/jwt-decoder" },
+              { name: t("tools.cidr-calculator"), href: "/tools/cidr-calculator" },
+              { name: t("tools.timestamp"), href: "/tools/timestamp" },
+              { name: t("tools.ipv6-converter"), href: "/tools/ipv6-converter" },
+              { name: t("tools.cron-parser"), href: "/tools/cron-parser" },
+              { name: t("tools.qrcode"), href: "/tools/qrcode" },
+            ],
+          },
+        ],
+        featured: [
+          { name: t("tools.json-formatter"), desc: t("featuredUtilityDesc.json"), href: "/tools/json-formatter" },
+          { name: t("tools.regex-tester"), desc: t("featuredUtilityDesc.regex"), href: "/tools/regex-tester" },
+          { name: t("tools.base64"), desc: t("featuredUtilityDesc.base64"), href: "/tools/base64" },
+        ],
+      },
+    ],
+  }
 }
-
-const navItems = [
-  { name: "工具", mega: toolsMenu },
-  { name: "AI Agent", href: "/agent" },
-  { name: "节点", href: "/nodes" },
-  { name: "成为节点", href: "/nodes/apply" },
-  { name: "定价", href: "/pricing" },
-  { name: "文档", href: "/docs/api" },
-]
 
 // ── LangToggle ──────────────────────────────────────────────────────────────
 
-const LANGS = [
-  { label: 'English', code: 'EN', href: '/en/' },
-  { label: '简体中文', code: 'ZH', href: '/' },
-]
-
 function LangToggle() {
+  const t = useTranslations("nav")
   const pathname = usePathname()
-  const isEn = pathname?.startsWith('/en') ?? false
-  const currentCode = isEn ? 'EN' : 'ZH'
-  const currentLabel = isEn ? 'English' : '简体中文'
+  const router = useRouter()
+  const isEn = pathname?.startsWith("/en") ?? false
+  const currentCode = isEn ? "EN" : "ZH"
+  const currentLabel = isEn ? t("locale.en") : t("locale.zh")
 
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -154,9 +145,38 @@ function LangToggle() {
         setOpen(false)
       }
     }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
   }, [open])
+
+  const switchLocale = (code: "EN" | "ZH") => {
+    setOpen(false)
+    if (code === currentCode) return
+
+    // Check if we're on a public page (not /app, /auth, /admin)
+    const isPublicPage = !pathname?.match(/^\/(app|auth|admin)(\/|$)/)
+
+    if (isPublicPage) {
+      if (code === "EN") {
+        // Add /en prefix
+        const withoutEn = pathname?.replace(/^\/en/, "") || "/"
+        router.push("/en" + withoutEn)
+      } else {
+        // Remove /en prefix
+        const withoutEn = pathname?.replace(/^\/en/, "") || "/"
+        router.push(withoutEn || "/")
+      }
+    } else {
+      // App/Auth pages: set cookie and reload
+      document.cookie = `locale=${code === "EN" ? "en" : "zh"};path=/;max-age=31536000`
+      router.refresh()
+    }
+  }
+
+  const langs = [
+    { label: t("locale.zh"), code: "ZH" as const },
+    { label: t("locale.en"), code: "EN" as const },
+  ]
 
   return (
     <div ref={containerRef} className="relative">
@@ -174,14 +194,13 @@ function LangToggle() {
 
       {open && (
         <div className="absolute top-full right-0 mt-1.5 w-48 bg-popover border rounded-lg shadow-lg py-2 z-50">
-          <p className="text-xs text-muted-foreground px-4 pt-1 pb-1.5">语言</p>
-          {LANGS.map(l => (
-            <a
+          <p className="text-xs text-muted-foreground px-4 pt-1 pb-1.5">{t("locale.label")}</p>
+          {langs.map(l => (
+            <button
               key={l.code}
-              href={l.href}
-              onMouseDown={() => setOpen(false)}
+              onMouseDown={() => switchLocale(l.code)}
               className={cn(
-                "block px-4 py-2 text-sm transition-colors",
+                "block w-full text-left px-4 py-2 text-sm transition-colors",
                 l.code === currentCode
                   ? "text-primary bg-muted/60"
                   : "text-foreground hover:bg-muted"
@@ -189,7 +208,7 @@ function LangToggle() {
             >
               {l.label}
               <span className="text-muted-foreground ml-1.5 text-xs">– {l.code}</span>
-            </a>
+            </button>
           ))}
         </div>
       )}
@@ -198,13 +217,12 @@ function LangToggle() {
 }
 
 // ── NavSearch ────────────────────────────────────────────────────────────────
-// 静默态：带图标的输入框（始终可见）
-// 激活态：输入框 focused + 右侧出现 × + 下方卡片下拉
 
-const POPULAR_TOOLS = ALL_TOOLS.filter(t => t.category === 'probe').slice(0, 5)
+const POPULAR_TOOLS = ALL_TOOLS.filter(t => t.category === "probe").slice(0, 5)
 
 function NavSearch() {
-  const [query, setQuery] = useState('')
+  const t = useTranslations("nav")
+  const [query, setQuery] = useState("")
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -217,28 +235,28 @@ function NavSearch() {
       }
     }
     const keyHandler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setOpen(false); setQuery('') }
+      if (e.key === "Escape") { setOpen(false); setQuery("") }
     }
-    document.addEventListener('mousedown', handler)
-    document.addEventListener('keydown', keyHandler)
+    document.addEventListener("mousedown", handler)
+    document.addEventListener("keydown", keyHandler)
     return () => {
-      document.removeEventListener('mousedown', handler)
-      document.removeEventListener('keydown', keyHandler)
+      document.removeEventListener("mousedown", handler)
+      document.removeEventListener("keydown", keyHandler)
     }
   }, [open])
 
   const results = query.trim()
-    ? ALL_TOOLS.filter(t =>
-        t.name.includes(query) || t.slug.includes(query.toLowerCase())
+    ? ALL_TOOLS.filter(tool =>
+        tool.name.includes(query) || tool.slug.includes(query.toLowerCase())
       ).slice(0, 8)
     : []
 
   const dropdownItems = results.length > 0 ? results : POPULAR_TOOLS
-  const dropdownLabel = results.length > 0 ? '工具' : '热门工具'
+  const dropdownLabel = results.length > 0 ? t("search.results") : t("search.popular")
 
   return (
     <div ref={containerRef} className="relative">
-      {/* Input — 静默态始终显示 */}
+      {/* Input */}
       <div className={cn(
         "flex items-center gap-2 h-8 px-3 rounded-md border text-sm transition-colors w-52",
         open
@@ -252,32 +270,32 @@ function NavSearch() {
           value={query}
           onChange={e => setQuery(e.target.value)}
           onFocus={() => setOpen(true)}
-          placeholder="搜索工具..."
+          placeholder={t("search.placeholder")}
           className="flex-1 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground/60 text-sm"
         />
         {open && (
           <button
-            onMouseDown={e => { e.preventDefault(); setOpen(false); setQuery('') }}
+            onMouseDown={e => { e.preventDefault(); setOpen(false); setQuery("") }}
             className="text-muted-foreground hover:text-foreground transition-colors flex-shrink-0"
-            aria-label="关闭"
+            aria-label={t("search.close")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
         )}
       </div>
 
-      {/* 下拉卡片 */}
+      {/* Dropdown */}
       {open && (
         <div className="absolute top-full right-0 mt-1.5 w-64 bg-popover border rounded-lg shadow-lg py-2 z-50">
           <p className="text-xs text-muted-foreground px-4 pt-1 pb-2">{dropdownLabel}</p>
-          {dropdownItems.map(t => (
+          {dropdownItems.map(tool => (
             <a
-              key={t.slug}
-              href={`/tools/${t.slug}`}
+              key={tool.slug}
+              href={`/tools/${tool.slug}`}
               onMouseDown={() => setOpen(false)}
               className="block px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors"
             >
-              {t.name}
+              {tool.name}
             </a>
           ))}
         </div>
@@ -288,13 +306,20 @@ function NavSearch() {
 
 // ── MegaMenu panel ──────────────────────────────────────────────────────────
 
-interface MegaMenuProps {
-  menu: typeof toolsMenu
+interface MegaMenuCategory {
+  label: string
+  groups: { title: string; items: { name: string; href: string }[] }[]
+  featured: { name: string; desc: string; href: string }[]
 }
 
-function MegaMenuPanel({ menu }: MegaMenuProps) {
+interface MegaMenuProps {
+  categories: MegaMenuCategory[]
+}
+
+function MegaMenuPanel({ categories }: MegaMenuProps) {
+  const t = useTranslations("nav")
   const [activeCat, setActiveCat] = useState(0)
-  const cat = menu.categories[activeCat] ?? menu.categories[0]
+  const cat = categories[activeCat] ?? categories[0]
 
   if (!cat) return null
 
@@ -303,7 +328,7 @@ function MegaMenuPanel({ menu }: MegaMenuProps) {
       <div className="mx-auto max-w-screen-xl px-6 py-6 flex gap-0">
         {/* Left: category list */}
         <div className="w-44 flex-shrink-0 flex flex-col gap-0.5 border-r pr-4 mr-6">
-          {menu.categories.map((c, i) => (
+          {categories.map((c, i) => (
             <button
               key={c.label}
               onMouseEnter={() => setActiveCat(i)}
@@ -349,7 +374,7 @@ function MegaMenuPanel({ menu }: MegaMenuProps) {
           {/* Featured column */}
           <div className="ml-auto pl-8 border-l min-w-[180px]">
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2.5 flex items-center gap-1.5">
-              热门工具
+              {t("featured.label")}
               <span className="inline-flex items-center rounded bg-primary/10 px-1.5 py-0.5 text-[10px] font-bold text-primary tracking-wide">
                 HOT
               </span>
@@ -370,7 +395,7 @@ function MegaMenuPanel({ menu }: MegaMenuProps) {
               href="/tools"
               className="mt-4 inline-flex items-center text-xs text-primary hover:underline"
             >
-              查看全部工具 →
+              {t("featured.viewAll")}
             </a>
           </div>
         </div>
@@ -381,7 +406,8 @@ function MegaMenuPanel({ menu }: MegaMenuProps) {
 
 // ── MobileSheet ─────────────────────────────────────────────────────────────
 
-function MobileSheet() {
+function MobileSheet({ navItems }: { navItems: ReturnType<typeof buildNavItems> }) {
+  const t = useTranslations("nav")
   const [open, setOpen] = useState(false)
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
 
@@ -390,7 +416,7 @@ function MobileSheet() {
   return (
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>
-        <Button variant="ghost" size="icon" className="md:hidden" aria-label="打开菜单">
+        <Button variant="ghost" size="icon" className="md:hidden" aria-label={t("menu.open")}>
           <Menu className="h-5 w-5" />
         </Button>
       </SheetTrigger>
@@ -399,7 +425,7 @@ function MobileSheet() {
           <SheetTitle asChild>
             <a href="/" onClick={close} className="font-mono font-bold text-foreground text-lg">idcd</a>
           </SheetTitle>
-          <SheetDescription className="sr-only">网站导航菜单</SheetDescription>
+          <SheetDescription className="sr-only">{t("menu.navigation")}</SheetDescription>
         </SheetHeader>
 
         {/* Scrollable nav body */}
@@ -446,7 +472,7 @@ function MobileSheet() {
                           ))}
                         </div>
                         <a href="/tools" onClick={close} className="mt-2 block text-xs text-primary hover:underline">
-                          查看全部工具 →
+                          {t("featured.viewAll")}
                         </a>
                       </div>
                     ))}
@@ -461,10 +487,10 @@ function MobileSheet() {
         <div className="border-t p-4 flex flex-col gap-2 flex-shrink-0">
           <LangToggle />
           <Button variant="outline" className="w-full mt-2" asChild>
-            <a href="/auth/login" onClick={close}>登录</a>
+            <a href="/auth/login" onClick={close}>{t("auth.login")}</a>
           </Button>
           <Button className="w-full" asChild>
-            <a href="/auth/register" onClick={close}>立即注册</a>
+            <a href="/auth/register" onClick={close}>{t("auth.register")}</a>
           </Button>
         </div>
       </SheetContent>
@@ -472,9 +498,26 @@ function MobileSheet() {
   )
 }
 
+// ── Nav items builder ────────────────────────────────────────────────────────
+
+function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>) {
+  const toolsMenu = buildToolsMenu(t)
+  return [
+    { name: t("links.tools"), mega: toolsMenu, href: undefined as string | undefined },
+    { name: t("links.agent"), mega: undefined as typeof toolsMenu | undefined, href: "/agent" },
+    { name: t("links.nodes"), mega: undefined, href: "/nodes" },
+    { name: t("links.becomeNode"), mega: undefined, href: "/nodes/apply" },
+    { name: t("links.pricing"), mega: undefined, href: "/pricing" },
+    { name: t("links.docs"), mega: undefined, href: "/docs/api" },
+  ]
+}
+
 // ── Nav ─────────────────────────────────────────────────────────────────────
 
 export function Nav() {
+  const t = useTranslations("nav")
+  const navItems = buildNavItems(t)
+
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -548,19 +591,19 @@ export function Nav() {
           <LangToggle />
           <div className="flex items-center gap-2 pl-2 border-l">
             <a href="/app" className="text-sm text-foreground/70 hover:text-foreground transition-colors">
-              控制台
+              {t("auth.dashboard")}
             </a>
             <Button variant="ghost" size="sm" className="h-8 px-3 text-sm" asChild>
-              <a href="/auth/login">登录</a>
+              <a href="/auth/login">{t("auth.login")}</a>
             </Button>
             <Button size="sm" className="h-8 px-4 text-sm" asChild>
-              <a href="/auth/register">立即注册</a>
+              <a href="/auth/register">{t("auth.register")}</a>
             </Button>
           </div>
         </div>
 
         {/* Mobile menu */}
-        <MobileSheet />
+        <MobileSheet navItems={navItems} />
       </nav>
 
       {/* Mega menu panels (full-width, below nav) */}
@@ -572,7 +615,7 @@ export function Nav() {
             onMouseEnter={handlePanelMouseEnter}
             onMouseLeave={handleMouseLeave}
           >
-            <MegaMenuPanel menu={item.mega} />
+            <MegaMenuPanel categories={item.mega.categories} />
           </div>
         )
       })}

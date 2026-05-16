@@ -6,6 +6,7 @@ import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod/v3"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Alert,
   AlertDescription,
@@ -22,7 +23,7 @@ import {
 import { AuthLayout } from "@/components/auth/AuthLayout"
 import { apiRequest } from "@/lib/api"
 
-async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
+async function loginWithPasskey(router: ReturnType<typeof useRouter>, cancelMsg: string) {
   const { data } = await apiRequest<{ data: { options: { challenge: string; allowCredentials?: { id: string; type: string }[]; [key: string]: unknown }; challenge_id: string } }>("/v1/auth/passkeys/begin", {
     method: "POST",
     body: JSON.stringify({}),
@@ -40,7 +41,7 @@ async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
     },
   }) as PublicKeyCredential | null
 
-  if (!credential) throw new Error("认证被取消")
+  if (!credential) throw new Error(cancelMsg)
 
   const response = credential.response as AuthenticatorAssertionResponse
   await apiRequest("/v1/auth/passkeys/complete", {
@@ -61,18 +62,19 @@ async function loginWithPasskey(router: ReturnType<typeof useRouter>) {
   router.push("/app/dashboard" as never)
 }
 
-const loginSchema = z.object({
-  email: z.string().email({ message: "请输入有效的邮箱地址" }),
-  password: z.string().min(1, { message: "请输入密码" }),
-})
-
-type LoginFormValues = z.infer<typeof loginSchema>
-
 export default function LoginPage() {
+  const t = useTranslations("auth")
   const router = useRouter()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [passkeyLoading, setPasskeyLoading] = useState(false)
+
+  const loginSchema = z.object({
+    email: z.string().email({ message: t("login.errors.invalidEmail") }),
+    password: z.string().min(1, { message: t("login.errors.passwordRequired") }),
+  })
+
+  type LoginFormValues = z.infer<typeof loginSchema>
 
   const form = useForm<LoginFormValues>({
     resolver: zodResolver(loginSchema),
@@ -95,7 +97,7 @@ export default function LoginPage() {
 
       router.push("/app/dashboard" as any)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "登录失败，请检查邮箱和密码")
+      setError(err instanceof Error ? err.message : t("login.errors.loginFailed"))
     } finally {
       setIsLoading(false)
     }
@@ -103,19 +105,19 @@ export default function LoginPage() {
 
   return (
     <AuthLayout
-      title="登录"
-      description="欢迎回到 idcd"
+      title={t("login.title")}
+      description={t("login.description")}
       footer={
         <div className="space-y-2">
           <p>
             <Link href={"/auth/forgot-password" as any} className="text-primary hover:underline">
-              忘记密码？
+              {t("login.forgotPassword")}
             </Link>
           </p>
           <p>
-            还没有账号？{" "}
+            {t("login.noAccount")}{" "}
             <Link href={"/auth/register" as any} className="text-primary hover:underline">
-              立即注册
+              {t("login.register")}
             </Link>
           </p>
         </div>
@@ -134,11 +136,11 @@ export default function LoginPage() {
             name="email"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>邮箱</FormLabel>
+                <FormLabel>{t("login.email")}</FormLabel>
                 <FormControl>
                   <Input
                     type="email"
-                    placeholder="your@email.com"
+                    placeholder={t("login.emailPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -153,11 +155,11 @@ export default function LoginPage() {
             name="password"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>密码</FormLabel>
+                <FormLabel>{t("login.password")}</FormLabel>
                 <FormControl>
                   <Input
                     type="password"
-                    placeholder="输入您的密码"
+                    placeholder={t("login.passwordPlaceholder")}
                     disabled={isLoading}
                     {...field}
                   />
@@ -168,7 +170,7 @@ export default function LoginPage() {
           />
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "登录中..." : "登录"}
+            {isLoading ? t("login.submitting") : t("login.submit")}
           </Button>
         </form>
       </Form>
@@ -182,21 +184,21 @@ export default function LoginPage() {
           setPasskeyLoading(true)
           setError(null)
           try {
-            await loginWithPasskey(router)
+            await loginWithPasskey(router, t("login.errors.passkeyCancel"))
           } catch (err) {
-            setError(err instanceof Error ? err.message : "Passkey 登录失败")
+            setError(err instanceof Error ? err.message : t("login.errors.passkeyFailed"))
           } finally {
             setPasskeyLoading(false)
           }
         }}
       >
-        {passkeyLoading ? "验证中..." : "使用 Passkey 登录"}
+        {passkeyLoading ? t("login.passkeyVerifying") : t("login.passkey")}
       </Button>
 
       <div className="relative my-6">
         <Separator />
         <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground">
-          或使用第三方登录
+          {t("login.orThirdParty")}
         </span>
       </div>
       <div className="grid grid-cols-2 gap-3">
@@ -205,7 +207,7 @@ export default function LoginPage() {
             <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
               <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.5 14.5h-2l-2.5-4-2.5 4h-2l3.5-5.5L7.5 7.5h2l2.5 3.5 2.5-3.5h2l-3.5 5 3.5 5z" />
             </svg>
-            钉钉登录
+            {t("login.dingtalk")}
           </a>
         </Button>
         <Button variant="outline" asChild>
@@ -213,7 +215,7 @@ export default function LoginPage() {
             <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14H11V8h2v8zm0-10H11V4h2v2z" />
             </svg>
-            飞书登录
+            {t("login.feishu")}
           </a>
         </Button>
       </div>

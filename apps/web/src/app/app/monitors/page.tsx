@@ -1,18 +1,27 @@
 import type { Metadata } from "next"
+import { getTranslations } from "next-intl/server"
+import { getLocale } from "@/i18n/locale"
 import { MonitorsClient } from "./monitors-client"
 
-export const metadata: Metadata = {
-  title: "监控控制台 - idcd",
-  description: "管理和查看您的所有监控项目，实时掌握目标可用性状态",
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale()
+  const t = await getTranslations({ locale, namespace: "monitors" })
+  return {
+    title: `${t("title")} - idcd`,
+    description: t("description"),
+  }
 }
 
-export default function MonitorsPage() {
+export default async function MonitorsPage() {
+  const locale = await getLocale()
+  const t = await getTranslations({ locale, namespace: "monitors" })
+
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">监控控制台</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          管理和查看您的所有监控项目，实时掌握目标可用性状态
+          {t("description")}
         </p>
       </div>
       <MonitorsClient />

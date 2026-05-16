@@ -1,7 +1,7 @@
 import { AccountClient } from "./account-client"
 
 export const metadata = {
-  title: "账号安全 — idcd",
+  title: "账号设置 — idcd",
 }
 
 export default function AccountPage() {

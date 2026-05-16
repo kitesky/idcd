@@ -142,7 +142,7 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
 
     setSubmitting(true)
     try {
-      const group = await apiRequest<AlertGroup>("/v1/alert-groups", {
+      const res = await apiRequest<{ data: AlertGroup }>("/v1/alert-groups", {
         method: "POST",
         body: JSON.stringify({
           name:         values.name.trim(),
@@ -152,7 +152,7 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
         }),
       })
       toast.success("告警分组已创建")
-      onCreated(group)
+      onCreated(res.data)
       form.reset()
       setOpen(false)
     } catch (err: unknown) {
@@ -295,8 +295,8 @@ export default function AlertGroupsPage() {
   useEffect(() => {
     async function fetchGroups() {
       try {
-        const data = await apiRequest<{ items: AlertGroup[] }>("/v1/alert-groups")
-        setGroups(data.items)
+        const res = await apiRequest<{ data: { items: AlertGroup[] } }>("/v1/alert-groups")
+        setGroups(res.data.items ?? [])
       } catch {
         toast.error("加载告警分组失败")
       } finally {

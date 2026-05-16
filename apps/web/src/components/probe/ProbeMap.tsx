@@ -1,6 +1,9 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import type { Topology, Objects } from "topojson-specification"
+import type { GeoProjection, GeoPath } from "d3-geo"
+import type { FeatureCollection } from "geojson"
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -211,6 +214,7 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
   const [geoPaths, setGeoPaths] = useState<string[]>([])
   const [markers, setMarkers] = useState<Array<{ x: number; y: number; node: MapNode }>>([])
   const W = 640, H = 380
+  const nodeNameKey = useMemo(() => nodes.map(n => n.name).join(","), [nodes])
 
   useEffect(() => {
     Promise.all([
@@ -218,10 +222,11 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
       import("d3-geo").then(m => m),
       import("topojson-client").then(m => m),
     ]).then(([topoJson, d3, topo]) => {
-      const countries = (topo as any).feature(topoJson, topoJson.objects.countries)
-      const projection = (d3 as any).geoNaturalEarth1().fitExtent([[10, 10], [W - 10, H - 10]], countries)
-      const pathGen = (d3 as any).geoPath(projection)
-      setGeoPaths(countries.features.map((f: any) => pathGen(f) ?? ""))
+      const topology = topoJson as Topology<Objects>
+      const countries = topo.feature(topology, topology.objects["countries"]!)
+      const projection: GeoProjection = d3.geoNaturalEarth1().fitExtent([[10, 10], [W - 10, H - 10]], countries)
+      const pathGen: GeoPath = d3.geoPath(projection)
+      setGeoPaths((countries as FeatureCollection).features.map(f => pathGen(f) ?? ""))
 
       const mk = nodes.flatMap(n => {
         // 优先用节点自带的经纬度，其次模糊匹配城市/州名
@@ -233,7 +238,7 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
       })
       setMarkers(mk)
     }).catch(console.error)
-  }, [nodes.map(n => n.name).join(",")])
+  }, [nodeNameKey])
 
   return (
     <div className="w-full rounded border border-slate-200 overflow-hidden">

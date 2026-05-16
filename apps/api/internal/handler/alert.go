@@ -292,7 +292,7 @@ func (h *AlertHandler) TestChannel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, r, http.StatusOK, map[string]any{
-		"message":    "测试通知已发送",
+		"message":    "test notification sent",
 		"channel_id": id,
 		"verified":   true,
 	})

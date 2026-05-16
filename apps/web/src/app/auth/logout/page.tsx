@@ -2,9 +2,11 @@
 
 import { useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { apiRequest } from "@/lib/api"
 
 export default function LogoutPage() {
+  const t = useTranslations("auth")
   const router = useRouter()
 
   useEffect(() => {
@@ -25,8 +27,8 @@ export default function LogoutPage() {
   return (
     <div className="flex-1 flex items-center justify-center">
       <div className="text-center space-y-4">
-        <h1 className="text-2xl font-semibold">正在登出...</h1>
-        <p className="text-muted-foreground">请稍候</p>
+        <h1 className="text-2xl font-semibold">{t("logout.title")}</h1>
+        <p className="text-muted-foreground">{t("logout.description")}</p>
       </div>
     </div>
   )

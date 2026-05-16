@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -127,9 +128,14 @@ func (h *NodeUpgradeHandler) List(w http.ResponseWriter, r *http.Request) {
 			&ro.ID, &ro.Version, &ro.DownloadURL, &ro.Checksum,
 			&ro.RolloutPct, &ro.Status, &ro.CreatedAt, &ro.UpdatedAt,
 		); err != nil {
-			continue
+			response.Error(w, r, apperr.Internal("failed to scan rollout row", err))
+			return
 		}
 		rollouts = append(rollouts, ro)
+	}
+	if err := rows.Err(); err != nil {
+		response.Error(w, r, apperr.Internal("failed to iterate rollouts", err))
+		return
 	}
 
 	response.JSON(w, r, http.StatusOK, rollouts)
@@ -195,7 +201,11 @@ func (h *NodeUpgradeHandler) Update(w http.ResponseWriter, r *http.Request) {
 		&rollout.RolloutPct, &rollout.Status, &rollout.CreatedAt, &rollout.UpdatedAt,
 	)
 	if err != nil {
-		response.Error(w, r, apperr.NotFound("rollout not found"))
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, r, apperr.NotFound("rollout not found"))
+		} else {
+			response.Error(w, r, apperr.Internal("failed to fetch rollout", err))
+		}
 		return
 	}
 

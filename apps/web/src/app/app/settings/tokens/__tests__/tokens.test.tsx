@@ -6,6 +6,11 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "zh",
+}))
+
 // ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const MOCK_TOKENS = [
@@ -80,7 +85,8 @@ describe("TokensClient", () => {
   it("renders the tokens card with title", async () => {
     render(<TokensClient />)
     expect(screen.getByTestId("tokens-card")).toBeInTheDocument()
-    expect(screen.getByText("Personal Access Token")).toBeInTheDocument()
+    // With i18n mock, t('tokens.title') returns the key
+    expect(screen.getByText("tokens.title")).toBeInTheDocument()
     await waitFor(() =>
       expect(screen.queryByTestId("loading-tokens-message")).not.toBeInTheDocument()
     )
@@ -90,7 +96,8 @@ describe("TokensClient", () => {
     render(<TokensClient />)
     const btn = screen.getByTestId("btn-create-token")
     expect(btn).toBeInTheDocument()
-    expect(btn.textContent).toContain("生成新 Token")
+    // With i18n mock, t('tokens.create') returns the key
+    expect(btn.textContent).toContain("tokens.create")
     await waitFor(() =>
       expect(screen.queryByTestId("loading-tokens-message")).not.toBeInTheDocument()
     )
@@ -119,13 +126,14 @@ describe("TokensClient", () => {
     expect(screen.getByText("idcd_pat_e5f6a7b8")).toBeInTheDocument()
   })
 
-  it("shows '永不过期' badge for token with no expires_at", async () => {
+  it("shows no-expiry badge for token with no expires_at", async () => {
     render(<TokensClient />)
     await waitFor(() =>
       expect(screen.getByTestId("token-row-pat_001")).toBeInTheDocument()
     )
     const row = screen.getByTestId("token-row-pat_001")
-    expect(row.textContent).toContain("永不过期")
+    // With i18n mock, t('tokens.noExpiry') returns the key
+    expect(row.textContent).toContain("tokens.noExpiry")
   })
 
   it("renders revoke button for each token", async () => {

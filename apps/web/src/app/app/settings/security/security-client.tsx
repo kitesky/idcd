@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import {
   Button,
   Input,
@@ -32,6 +33,7 @@ type PasskeyItem = {
 }
 
 export function SecurityClient() {
+  const t = useTranslations("settings")
   const [enabled, setEnabled] = useState(false)
   const [step, setStep] = useState<Step>("idle")
   const [code, setCode] = useState("")
@@ -52,8 +54,8 @@ export function SecurityClient() {
   const [passkeyError, setPasskeyError] = useState<string | null>(null)
 
   useEffect(() => {
-    apiRequest<{ enabled: boolean }>("/v1/account/2fa/status")
-      .then((res) => setEnabled(res.enabled))
+    apiRequest<{ data: { enabled: boolean } }>("/v1/account/2fa/status")
+      .then((res) => setEnabled(res.data.enabled))
       .catch(() => {
         // Silently ignore — leave default false; server may be unavailable during dev/test
       })
@@ -81,7 +83,7 @@ export function SecurityClient() {
       })
       setSecretData(res.data)
     } catch (err) {
-      setCodeError(err instanceof Error ? err.message : "获取 2FA 配置失败")
+      setCodeError(err instanceof Error ? err.message : t("security.setupFailed"))
     } finally {
       setSetupLoading(false)
     }
@@ -89,7 +91,7 @@ export function SecurityClient() {
 
   async function handleVerify() {
     if (code.length !== 6 || !/^\d+$/.test(code)) {
-      setCodeError("请输入 6 位数字验证码")
+      setCodeError(t("security.codeError"))
       return
     }
     setVerifyLoading(true)
@@ -102,7 +104,7 @@ export function SecurityClient() {
       setBackupCodes(res.data.backup_codes)
       setStep("backup")
     } catch (err) {
-      setCodeError(err instanceof Error ? err.message : "验证失败，请重试")
+      setCodeError(err instanceof Error ? err.message : t("security.verifyFailed"))
     } finally {
       setVerifyLoading(false)
     }
@@ -119,7 +121,7 @@ export function SecurityClient() {
 
   async function handleDisable() {
     if (disableCode.length !== 6 || !/^\d+$/.test(disableCode)) {
-      setDisableError("请输入 6 位数字验证码")
+      setDisableError(t("security.codeError"))
       return
     }
     setDisableLoading(true)
@@ -134,7 +136,7 @@ export function SecurityClient() {
       setDisableCode("")
       setDisableError(null)
     } catch (err) {
-      setDisableError(err instanceof Error ? err.message : "关闭失败，请重试")
+      setDisableError(err instanceof Error ? err.message : t("security.disableFailed"))
     } finally {
       setDisableLoading(false)
     }
@@ -149,7 +151,7 @@ export function SecurityClient() {
       })
 
       if (typeof window === "undefined" || !window.PublicKeyCredential) {
-        throw new Error("此浏览器不支持 Passkey")
+        throw new Error(t("security.passkeyNotSupported"))
       }
 
       const credential = await navigator.credentials.create({
@@ -163,7 +165,7 @@ export function SecurityClient() {
         } as unknown as PublicKeyCredentialCreationOptions,
       }) as PublicKeyCredential | null
 
-      if (!credential) throw new Error("注册被取消")
+      if (!credential) throw new Error(t("security.passkeyRegisterCancelled"))
 
       const response = credential.response as AuthenticatorAttestationResponse
       const { data: result } = await apiRequest<{ data: { credential_id: string; device_name: string } }>("/v1/account/passkeys/register/complete", {
@@ -188,7 +190,7 @@ export function SecurityClient() {
         last_used_at: null,
       }])
     } catch (err) {
-      setPasskeyError(err instanceof Error ? err.message : "添加 Passkey 失败")
+      setPasskeyError(err instanceof Error ? err.message : t("security.passkeyAddFailed"))
     } finally {
       setPasskeyAdding(false)
     }
@@ -200,7 +202,7 @@ export function SecurityClient() {
       await apiRequest(`/v1/account/passkeys/${id}`, { method: "DELETE" })
       setPasskeys(prev => prev.filter(p => p.id !== id))
     } catch (err) {
-      setPasskeyError(err instanceof Error ? err.message : "删除 Passkey 失败")
+      setPasskeyError(err instanceof Error ? err.message : t("security.passkeyDeleteFailed"))
     }
   }
 
@@ -211,24 +213,24 @@ export function SecurityClient() {
   return (
     <div data-testid="security-page" className="space-y-6">
       <div>
-        <h1 className="text-2xl font-semibold">安全设置</h1>
-        <p className="text-muted-foreground text-sm mt-1">管理账号安全选项</p>
+        <h1 className="text-2xl font-semibold">{t("security.title")}</h1>
+        <p className="text-muted-foreground text-sm mt-1">{t("security.desc")}</p>
       </div>
 
       <Card data-testid="2fa-card">
         <CardHeader>
-          <CardTitle>两步验证（2FA）</CardTitle>
+          <CardTitle>{t("security.twoFactor")}</CardTitle>
           <CardDescription>
-            使用 Google Authenticator、Authy 或 1Password 等应用扫码开启两步验证，为账号添加额外保护。
+            {t("security.twoFactorDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex items-center gap-3">
-            <span className="text-sm text-muted-foreground">当前状态：</span>
+            <span className="text-sm text-muted-foreground">{t("security.currentStatus")}</span>
             {enabled ? (
-              <Badge data-testid="2fa-status-badge">已启用</Badge>
+              <Badge data-testid="2fa-status-badge">{t("security.twoFactorEnabled")}</Badge>
             ) : (
-              <Badge variant="secondary" data-testid="2fa-status-badge">未启用</Badge>
+              <Badge variant="secondary" data-testid="2fa-status-badge">{t("security.twoFactorDisabled")}</Badge>
             )}
           </div>
 
@@ -239,7 +241,7 @@ export function SecurityClient() {
               onClick={openSetup}
               disabled={setupLoading}
             >
-              {setupLoading ? "加载中..." : "启用 2FA"}
+              {setupLoading ? t("security.loading") : t("security.enable2fa")}
             </Button>
           ) : (
             <Button
@@ -251,7 +253,7 @@ export function SecurityClient() {
                 setShowDisableDialog(true)
               }}
             >
-              关闭 2FA
+              {t("security.disable2fa")}
             </Button>
           )}
         </CardContent>
@@ -259,9 +261,9 @@ export function SecurityClient() {
 
       <Card data-testid="passkey-card">
         <CardHeader>
-          <CardTitle>Passkey</CardTitle>
+          <CardTitle>{t("security.passkey")}</CardTitle>
           <CardDescription>
-            使用设备生物识别（Touch ID / Face ID）无密码登录
+            {t("security.passkeyDesc")}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -276,7 +278,7 @@ export function SecurityClient() {
             onClick={handleAddPasskey}
             disabled={passkeyAdding || passkeyLoading}
           >
-            {passkeyAdding ? "添加中..." : "添加 Passkey"}
+            {passkeyAdding ? t("security.addingPasskey") : t("security.addPasskey")}
           </Button>
           {passkeyLoading && (
             <div className="space-y-2" data-testid="passkey-loading">
@@ -299,7 +301,7 @@ export function SecurityClient() {
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">{pk.device_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        添加于 {new Date(pk.created_at).toLocaleDateString("zh-CN")}
+                        {t("security.addedAt")} {new Date(pk.created_at).toLocaleDateString("zh-CN")}
                       </p>
                     </div>
                     <Button
@@ -308,7 +310,7 @@ export function SecurityClient() {
                       data-testid={`btn-delete-passkey-${pk.id}`}
                       onClick={() => handleDeletePasskey(pk.id)}
                     >
-                      删除
+                      {t("security.deletePasskey")}
                     </Button>
                   </CardContent>
                 </Card>
@@ -324,15 +326,15 @@ export function SecurityClient() {
           {step === "scan" && (
             <>
               <DialogHeader>
-                <DialogTitle>第 1 步：扫描二维码</DialogTitle>
+                <DialogTitle>{t("security.step1Title")}</DialogTitle>
                 <DialogDescription>
-                  使用 Google Authenticator、Authy 或 1Password 扫描下方二维码，或手动输入密钥。
+                  {t("security.step1Desc")}
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center gap-4 py-2">
                 {setupLoading ? (
                   <div className="flex items-center justify-center w-[200px] h-[200px] text-sm text-muted-foreground">
-                    加载中...
+                    {t("security.step1Loading")}
                   </div>
                 ) : (
                   <img
@@ -344,7 +346,7 @@ export function SecurityClient() {
                   />
                 )}
                 <div className="text-xs text-muted-foreground break-all text-center">
-                  密钥：<span data-testid="2fa-secret" className="font-mono">{secretData?.secret ?? ""}</span>
+                  {t("security.secret")}<span data-testid="2fa-secret" className="font-mono">{secretData?.secret ?? ""}</span>
                 </div>
               </div>
               {codeError && (
@@ -354,7 +356,7 @@ export function SecurityClient() {
               )}
               <DialogFooter>
                 <Button data-testid="btn-scanned" onClick={() => setStep("verify")} disabled={setupLoading}>
-                  我已扫描
+                  {t("security.scanned")}
                 </Button>
               </DialogFooter>
             </>
@@ -363,9 +365,9 @@ export function SecurityClient() {
           {step === "verify" && (
             <>
               <DialogHeader>
-                <DialogTitle>第 2 步：输入验证码</DialogTitle>
+                <DialogTitle>{t("security.step2Title")}</DialogTitle>
                 <DialogDescription>
-                  请输入验证器 App 中显示的 6 位数字验证码。
+                  {t("security.step2Desc")}
                 </DialogDescription>
               </DialogHeader>
               <div className="space-y-3 py-2">
@@ -386,9 +388,9 @@ export function SecurityClient() {
                 />
               </div>
               <DialogFooter>
-                <Button variant="outline" onClick={() => setStep("scan")}>返回</Button>
+                <Button variant="outline" onClick={() => setStep("scan")}>{t("security.back")}</Button>
                 <Button data-testid="btn-verify-code" onClick={handleVerify} disabled={verifyLoading}>
-                  {verifyLoading ? "验证中..." : "验证并启用"}
+                  {verifyLoading ? t("security.verifying") : t("security.verifyAndEnable")}
                 </Button>
               </DialogFooter>
             </>
@@ -397,9 +399,9 @@ export function SecurityClient() {
           {step === "backup" && (
             <>
               <DialogHeader>
-                <DialogTitle>第 3 步：保存备用码</DialogTitle>
+                <DialogTitle>{t("security.step3Title")}</DialogTitle>
                 <DialogDescription>
-                  请将以下备用码保存在安全的地方。每个备用码只能使用一次，丢失后无法恢复。
+                  {t("security.step3Desc")}
                 </DialogDescription>
               </DialogHeader>
               <div className="grid grid-cols-1 gap-2 py-2 sm:grid-cols-2" data-testid="backup-codes-grid">
@@ -415,7 +417,7 @@ export function SecurityClient() {
               </div>
               <DialogFooter>
                 <Button data-testid="btn-finish-2fa" onClick={handleFinish}>
-                  已保存，关闭
+                  {t("security.finish")}
                 </Button>
               </DialogFooter>
             </>
@@ -427,9 +429,9 @@ export function SecurityClient() {
       <Dialog open={showDisableDialog} onOpenChange={setShowDisableDialog}>
         <DialogContent data-testid="2fa-disable-dialog">
           <DialogHeader>
-            <DialogTitle>关闭两步验证</DialogTitle>
+            <DialogTitle>{t("security.disableTitle")}</DialogTitle>
             <DialogDescription>
-              请输入当前验证器中的 6 位验证码以确认关闭 2FA。
+              {t("security.disableDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-3 py-2">
@@ -450,9 +452,9 @@ export function SecurityClient() {
             />
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDisableDialog(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setShowDisableDialog(false)}>{t("security.disableCancel")}</Button>
             <Button variant="destructive" data-testid="btn-confirm-disable" onClick={handleDisable} disabled={disableLoading}>
-              {disableLoading ? "处理中..." : "确认关闭"}
+              {disableLoading ? t("security.disableProcessing") : t("security.disableConfirm")}
             </Button>
           </DialogFooter>
         </DialogContent>

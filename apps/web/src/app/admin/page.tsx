@@ -2,6 +2,7 @@
 
 import { useState } from "react"
 import { toast } from "sonner"
+import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -10,6 +11,7 @@ const ADMIN_TOKEN =
   typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "") : ""
 
 export default function AdminRoot() {
+  const t = useTranslations("admin")
   const [loading, setLoading] = useState(false)
 
   async function handleTestEmail() {
@@ -26,12 +28,12 @@ export default function AdminRoot() {
       )
       if (res.ok) {
         const data = await res.json()
-        toast.success(data?.data?.message ?? "邮件测试请求已发送")
+        toast.success(data?.data?.message ?? t("home.emailSent"))
       } else {
-        toast.error("请求失败，请检查 admin token 及服务状态")
+        toast.error(t("home.requestFailed"))
       }
     } catch {
-      toast.error("网络错误，请确认 API 服务已启动")
+      toast.error(t("home.networkError"))
     } finally {
       setLoading(false)
     }
@@ -40,20 +42,20 @@ export default function AdminRoot() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">管理首页</h1>
-        <p className="mt-1 text-sm text-muted-foreground">系统配置状态一览</p>
+        <h1 className="text-2xl font-bold tracking-tight">{t("home.title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("home.subtitle")}</p>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>系统配置状态</CardTitle>
+          <CardTitle>{t("home.configStatus")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
           <div className="flex items-center justify-between">
-            <span className="text-sm">邮件服务（notifier）</span>
+            <span className="text-sm">{t("home.emailService")}</span>
             <div className="flex items-center gap-2">
               <Badge variant="outline" className="text-yellow-600">
-                需配置
+                {t("home.needsConfig")}
               </Badge>
               <Button
                 size="sm"
@@ -61,7 +63,7 @@ export default function AdminRoot() {
                 onClick={handleTestEmail}
                 disabled={loading}
               >
-                {loading ? "发送中…" : "发送测试邮件"}
+                {loading ? t("home.sending") : t("home.sendTestEmail")}
               </Button>
             </div>
           </div>

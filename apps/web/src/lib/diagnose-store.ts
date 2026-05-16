@@ -9,8 +9,14 @@ export interface CheckResult {
   error?: string
 }
 
+/**
+ * Comprehensive 7-in-1 diagnose report (from `/tools/diagnose`). The `type`
+ * field is optional for backward compat with reports stored before the share
+ * feature distinguished single-tool reports.
+ */
 export interface DiagnoseReport {
   id: string
+  type?: "combo"
   domain: string
   createdAt: string
   checks: CheckResult[]
@@ -18,12 +24,33 @@ export interface DiagnoseReport {
   errorCount: number
 }
 
+/** Single-tool probe result snapshot (from ping/http/dns/traceroute share). */
+export interface SingleProbeReport {
+  id: string
+  type: "single"
+  tool: "ping" | "http" | "dns" | "traceroute"
+  target: string
+  params?: Record<string, unknown>
+  createdAt: string
+  taskId: string
+  status: string
+  result?: {
+    node_id?: string
+    success?: boolean
+    duration_ms?: number
+    error?: string
+    [key: string]: unknown
+  }
+}
+
+export type AnyReport = DiagnoseReport | SingleProbeReport
+
 const INTERNAL_API = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 
 /** Timeout for internal API calls (5 s — server-side only, fast network). */
 const INTERNAL_TIMEOUT_MS = 5_000
 
-export async function saveReport(report: DiagnoseReport): Promise<void> {
+export async function saveReport(report: AnyReport): Promise<void> {
   try {
     const controller = new AbortController()
     const id = setTimeout(() => controller.abort(), INTERNAL_TIMEOUT_MS)
@@ -38,7 +65,7 @@ export async function saveReport(report: DiagnoseReport): Promise<void> {
   }
 }
 
-export async function getReport(id: string): Promise<DiagnoseReport | null> {
+export async function getReport(id: string): Promise<AnyReport | null> {
   try {
     const controller = new AbortController()
     const timerId = setTimeout(() => controller.abort(), INTERNAL_TIMEOUT_MS)
@@ -47,8 +74,13 @@ export async function getReport(id: string): Promise<DiagnoseReport | null> {
       signal: controller.signal,
     }).finally(() => clearTimeout(timerId))
     if (!res.ok) return null
-    return res.json() as Promise<DiagnoseReport>
+    return res.json() as Promise<AnyReport>
   } catch {
     return null
   }
+}
+
+/** Type guard. Combo is the default when `type` is missing (legacy data). */
+export function isSingleReport(r: AnyReport): r is SingleProbeReport {
+  return r.type === "single"
 }

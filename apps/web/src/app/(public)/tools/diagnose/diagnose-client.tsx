@@ -78,7 +78,7 @@ export default function DiagnoseClient() {
         } else if (data.type === "complete") {
           es.close()
           setRunning(false)
-          router.push(`/report/${data.reportId as string}`)
+          router.push(`/r/${data.reportId as string}`)
         }
       } catch {
         // ignore parse errors

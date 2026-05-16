@@ -230,7 +230,9 @@ func (s *Server) setupRouter() {
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
 		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis, fieldCipher)
-		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").WithAuth(jwtSvc, sessSvc)
+		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").
+			WithAuth(jwtSvc, sessSvc).
+			WithOrigins(s.config.Server.CORSOrigins)
 		sessionH := handler.NewSessionHandler(sessSvc, s.redis)
 
 		// Multi-modal auth — accept JWT (browser sessions), PATs (idcd_pat_*),

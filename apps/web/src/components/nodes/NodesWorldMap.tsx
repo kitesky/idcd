@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import { useTheme } from "next-themes"
 import type { NodeEntry } from "@/lib/nodes-utils"
 import type { Topology, Objects } from "topojson-specification"
 import type { GeoProjection, GeoPath } from "d3-geo"
@@ -60,6 +61,16 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
   const W = 800, H = 400
   const nodeIdKey = useMemo(() => nodes.map(n => n.id).join(","), [nodes])
 
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme !== "light"
+  const c = isDark ? {
+    ocean: "#0f172a", land: "#1e293b", border: "#334155",
+    tipBg: "rgba(15,23,42,0.92)", tipBorder: "#334155", tipText: "#f1f5f9",
+  } : {
+    ocean: "#dde6f0", land: "#c8d6e8", border: "#8fa8c4",
+    tipBg: "rgba(248,250,252,0.96)", tipBorder: "#8fa8c4", tipText: "#1e293b",
+  }
+
   // 按坐标聚合节点（同一国家只打一个点，但保留所有节点名用于 tooltip）
   useEffect(() => {
     Promise.all([
@@ -108,14 +119,13 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
     <div className="w-full overflow-hidden rounded-b-md relative" style={{ touchAction: "pan-y" }}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", display: "block", touchAction: "pan-y" }}
-        className="bg-[#0f172a]"
+        style={{ width: "100%", display: "block", touchAction: "pan-y", background: c.ocean }}
         onMouseLeave={() => setTooltip(null)}
       >
-        <rect width={W} height={H} fill="#0f172a" />
+        <rect width={W} height={H} fill={c.ocean} />
 
         {geoPaths.map((d, i) => (
-          <path key={i} d={d} fill="#1e293b" stroke="#334155" strokeWidth={0.4} />
+          <path key={i} d={d} fill={c.land} stroke={c.border} strokeWidth={0.4} />
         ))}
 
         {markers.map((m, i) => (
@@ -150,10 +160,10 @@ export function NodesWorldMap({ nodes }: { nodes: NodeEntry[] }) {
             <rect
               x={tooltip.x - 4} y={tooltip.y - 16}
               width={tooltip.label.length * 7 + 16} height={22}
-              rx={4} fill="rgba(15,23,42,0.92)" stroke="#334155" strokeWidth={0.8}
+              rx={4} fill={c.tipBg} stroke={c.tipBorder} strokeWidth={0.8}
             />
             <text x={tooltip.x + 4} y={tooltip.y - 1}
-              fill="#f1f5f9" fontSize={11} fontFamily="monospace">
+              fill={c.tipText} fontSize={11} fontFamily="monospace">
               {tooltip.label}
             </text>
           </g>

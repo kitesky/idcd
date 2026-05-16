@@ -4,7 +4,7 @@ import createNextIntlPlugin from 'next-intl/plugin'
 const withNextIntl = createNextIntlPlugin('./i18n.ts')
 
 const nextConfig: NextConfig = {
-  output: 'standalone',
+  // output: 'standalone' — 改用 @opennextjs/cloudflare，不需要 standalone 模式
   // typedRoutes: true,  // 77 页面时内存开销过大，仅在 CI build 中开启
   images: {
     remotePatterns: [

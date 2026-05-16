@@ -77,14 +77,31 @@ export function proxy(request: NextRequest): NextResponse {
   const locale = detectLocale(request)
   const nonce = crypto.randomUUID().replace(/-/g, '')
 
+  const requestHeaders = new Headers({
+    ...Object.fromEntries(request.headers),
+    'x-nonce': nonce,
+    'x-locale': locale,
+  })
+
+  // Rewrite /en/<path> → /<path> for pages that don't have an explicit /en/* file.
+  // Existing file-based routes (/en and /en/tools/[slug]) are excluded so they
+  // continue to render their own page components.
+  const { pathname } = request.nextUrl
+  const isFileBasedEnRoute =
+    pathname === '/en' || pathname.startsWith('/en/tools/')
+
+  if (locale === 'en' && pathname.startsWith('/en/') && !isFileBasedEnRoute) {
+    const rewriteUrl = request.nextUrl.clone()
+    rewriteUrl.pathname = pathname.slice(3) // strip /en prefix
+    const response = NextResponse.rewrite(rewriteUrl, {
+      request: { headers: requestHeaders },
+    })
+    response.headers.set('x-locale', 'en')
+    return withSecurityHeaders(response, isDev, nonce)
+  }
+
   const response = NextResponse.next({
-    request: {
-      headers: new Headers({
-        ...Object.fromEntries(request.headers),
-        'x-nonce': nonce,
-        'x-locale': locale,
-      }),
-    },
+    request: { headers: requestHeaders },
   })
 
   response.headers.set('x-locale', locale)

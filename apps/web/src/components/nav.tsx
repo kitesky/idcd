@@ -254,7 +254,7 @@ function NavUserMenu({ mobile = false }: { mobile?: boolean }) {
           <>
             <DropdownMenuGroup>
               <DropdownMenuItem asChild>
-                <a href="/pricing">
+                <a href={`${p}/pricing`}>
                   <Sparkles className="text-primary" />
                   {t("auth.upgrade")}
                 </a>
@@ -337,13 +337,12 @@ function LangToggle() {
       return
     }
 
-    // Public pages: hard navigate so the full layout re-renders with new locale
+    // Public pages: hard navigate so the full layout re-renders with new locale.
+    // All /en/* URLs are supported via middleware rewrite in proxy.ts.
     if (code === "EN") {
-      // Only /en/tools/[slug] has an English version apart from the homepage
-      const toolsMatch = pathname?.match(/^\/tools\/(.+)$/)
-      window.location.href = toolsMatch ? `/en/tools/${toolsMatch[1]}` : "/en"
+      const withoutEn = pathname?.replace(/^\/en(\/|$)/, "/") || "/"
+      window.location.href = "/en" + (withoutEn === "/" ? "" : withoutEn)
     } else {
-      // Strip /en prefix; /en → /
       const withoutEn = pathname?.replace(/^\/en(\/|$)/, "/") || "/"
       window.location.href = withoutEn
     }
@@ -681,11 +680,11 @@ function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>, p: string) 
   const toolsMenu = buildToolsMenu(t, p)
   return [
     { name: t("links.tools"), mega: toolsMenu, href: undefined as string | undefined },
-    { name: t("links.agent"), mega: undefined as typeof toolsMenu | undefined, href: "/agent" },
-    { name: t("links.nodes"), mega: undefined, href: "/nodes" },
-    { name: t("links.becomeNode"), mega: undefined, href: "/nodes/apply" },
-    { name: t("links.pricing"), mega: undefined, href: "/pricing" },
-    { name: t("links.docs"), mega: undefined, href: "/docs/api" },
+    { name: t("links.agent"), mega: undefined as typeof toolsMenu | undefined, href: `${p}/agent` },
+    { name: t("links.nodes"), mega: undefined, href: `${p}/nodes` },
+    { name: t("links.becomeNode"), mega: undefined, href: `${p}/nodes/apply` },
+    { name: t("links.pricing"), mega: undefined, href: `${p}/pricing` },
+    { name: t("links.docs"), mega: undefined, href: `${p}/docs/api` },
   ]
 }
 

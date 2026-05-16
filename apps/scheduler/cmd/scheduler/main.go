@@ -114,14 +114,18 @@ func run() error {
 		})
 	}
 
+	// Wire the DB-backed MonitorStore so monitorPoller fires (B6 wiring).
+	monitorStore := scheduler.NewPGMonitorStore(pool)
+
 	// Create scheduler
 	sched := scheduler.New(scheduler.Config{
-		Leader:      leaderElection,
-		Queue:       taskQueue,
-		Selector:    nodeSelector,
-		Stream:      streamClient,
-		Pool:        pool,
-		WorkerCount: cfg.Worker.Count,
+		Leader:       leaderElection,
+		Queue:        taskQueue,
+		Selector:     nodeSelector,
+		Stream:       streamClient,
+		Pool:         pool,
+		MonitorStore: monitorStore,
+		WorkerCount:  cfg.Worker.Count,
 	})
 
 	// Setup signal handling

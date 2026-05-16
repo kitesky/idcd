@@ -102,17 +102,17 @@ func TestAdminMetrics_ReturnsCorrectFormat(t *testing.T) {
 	defer mockPool.Close()
 
 	// Expect queries in order
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user"`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1234))
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users WHERE created_at`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user" WHERE created_at`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(456))
 	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM monitors`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(789))
 	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM monitors WHERE status`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(650))
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM nodes`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM enrolled_nodes`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(100))
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM nodes WHERE status`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM enrolled_nodes WHERE status`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(95))
 	mockPool.ExpectQuery(`SELECT plan, COUNT\(\*\) FROM subscriptions`).
 		WillReturnRows(pgxmock.NewRows([]string{"plan", "count"}).
@@ -155,17 +155,17 @@ func TestAdminMetrics_EmptyDB(t *testing.T) {
 	h, mockPool := newAdminTestHandler(t)
 	defer mockPool.Close()
 
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user"`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users WHERE created_at`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user" WHERE created_at`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM monitors`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM monitors WHERE status`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM nodes`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM enrolled_nodes`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM nodes WHERE status`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM enrolled_nodes WHERE status`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	mockPool.ExpectQuery(`SELECT plan, COUNT\(\*\) FROM subscriptions`).
 		WillReturnRows(pgxmock.NewRows([]string{"plan", "count"}))
@@ -195,7 +195,7 @@ func TestAdminUsers_DefaultPagination(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	// Count query (no search)
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user"`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(2))
 
 	// Users query — page=1, per_page=20 → LIMIT 20 OFFSET 0
@@ -236,7 +236,7 @@ func TestAdminUsers_SearchFilter(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 
 	// Count query with ILIKE
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users WHERE email ILIKE`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user" WHERE email ILIKE`).
 		WithArgs("%alice%").
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(1))
 
@@ -268,7 +268,7 @@ func TestAdminUsers_PageTwo(t *testing.T) {
 
 	now := time.Now().UTC().Truncate(time.Second)
 
-	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM users`).
+	mockPool.ExpectQuery(`SELECT COUNT\(\*\) FROM "user"`).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(25))
 	// page=2, per_page=20 → LIMIT 20 OFFSET 20
 	mockPool.ExpectQuery(`SELECT`).

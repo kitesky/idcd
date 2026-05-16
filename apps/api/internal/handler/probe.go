@@ -233,17 +233,14 @@ func (h *ProbeHandler) createProbeTask(
 	// Normalize target
 	targetNormalized := normalizeTarget(target)
 
-	// Get user info from context (set by authn middleware, may be nil)
+	// User context is set by authn middleware; may be empty for anonymous
+	// tool-page requests. Must go through the typed-key accessor.
 	var initiatedBy *string
-	if userID, ok := r.Context().Value("user_id").(string); ok && userID != "" {
+	if userID := middleware.UserIDFromContext(r.Context()); userID != "" {
 		initiatedBy = &userID
 	}
-
-	// Get API key ID from context (if available)
-	var apiKeyID *string
-	if keyID, ok := r.Context().Value("api_key_id").(string); ok && keyID != "" {
-		apiKeyID = &keyID
-	}
+	// api_key_id stays nil until PAT/APIKey middleware lands.
+	var apiKeyID *string = nil
 
 	// Get client IP
 	clientIP := getClientIP(r)

@@ -153,6 +153,18 @@ type authResponse struct {
 	UserID      string `json:"user_id"`
 }
 
+// writeAuthSuccess installs the access_token cookie and writes the JSON
+// response. The body also carries AccessToken so non-cookie clients (CLI,
+// mobile, server-to-server) can authenticate via Authorization: Bearer.
+func writeAuthSuccess(w http.ResponseWriter, r *http.Request, status int, token, userID string) {
+	setAuthCookie(w, r, token)
+	response.JSON(w, r, status, authResponse{
+		AccessToken: token,
+		ExpiresIn:   int(accessTokenTTL.Seconds()),
+		UserID:      userID,
+	})
+}
+
 // Register handles POST /v1/auth/register.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
@@ -217,11 +229,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	setAuthCookie(w, r, token)
-	response.JSON(w, r, http.StatusCreated, authResponse{
-		ExpiresIn: int(accessTokenTTL.Seconds()),
-		UserID:    user.ID,
-	})
+	writeAuthSuccess(w, r, http.StatusCreated, token, user.ID)
 }
 
 func (h *AuthHandler) recordReferral(ctx context.Context, code, referredID string) {
@@ -290,7 +298,9 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if user.Status == "suspended" || user.Status == "deleted" {
+	// users.status enum: active / locked / pending_deletion / deleted.
+	// Anything other than 'active' must be rejected.
+	if user.Status != "active" {
 		response.Error(w, r, apperr.Forbidden("account is not active"))
 		return
 	}
@@ -316,11 +326,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.q.UpdateUserLastLogin(r.Context(), idcdmain.UpdateUserLastLoginParams{ID: user.ID})
 
-	setAuthCookie(w, r, token)
-	response.JSON(w, r, http.StatusOK, authResponse{
-		ExpiresIn: int(accessTokenTTL.Seconds()),
-		UserID:    user.ID,
-	})
+	writeAuthSuccess(w, r, http.StatusOK, token, user.ID)
 }
 
 // --- Logout ---
@@ -335,8 +341,11 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "logged out"})
 }
 
-// setAuthCookie issues the JWT as an HttpOnly, Secure, SameSite=Strict cookie.
-// Storing the token in a cookie (not localStorage) prevents XSS-based token theft.
+// setAuthCookie issues the JWT as an HttpOnly cookie. SameSite=Lax is required
+// so OAuth top-level redirects (dingtalk/feishu → idcd.com) keep the cookie;
+// Strict mode silently dropped it on first navigation. Production deployments
+// that split idcd.com/api.idcd.com onto different registrable domains need
+// SameSite=None + Secure + CORS Allow-Credentials — see docs/ARCHITECTURE.md.
 func setAuthCookie(w http.ResponseWriter, r *http.Request, token string) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     "access_token",
@@ -345,7 +354,7 @@ func setAuthCookie(w http.ResponseWriter, r *http.Request, token string) {
 		MaxAge:   int(accessTokenTTL.Seconds()),
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -358,7 +367,7 @@ func clearAuthCookie(w http.ResponseWriter, r *http.Request) {
 		MaxAge:   -1,
 		HttpOnly: true,
 		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
-		SameSite: http.SameSiteStrictMode,
+		SameSite: http.SameSiteLaxMode,
 	})
 }
 
@@ -735,9 +744,5 @@ func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
 
 	_ = h.q.UpdateUserLastLogin(r.Context(), idcdmain.UpdateUserLastLoginParams{ID: user.ID})
 
-	setAuthCookie(w, r, token)
-	response.JSON(w, r, http.StatusOK, authResponse{
-		ExpiresIn: int(accessTokenTTL.Seconds()),
-		UserID:    user.ID,
-	})
+	writeAuthSuccess(w, r, http.StatusOK, token, user.ID)
 }

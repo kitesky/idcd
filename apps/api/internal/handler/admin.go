@@ -81,7 +81,7 @@ func (h *AdminHandler) AdminMetrics(w http.ResponseWriter, r *http.Request) {
 	var metrics AdminMetricsResponse
 
 	// Total users
-	if err := h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&metrics.TotalUsers); err != nil {
+	if err := h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM "user"`).Scan(&metrics.TotalUsers); err != nil {
 		response.Error(w, r, apperr.Internal("failed to count users", err))
 		return
 	}
@@ -89,7 +89,7 @@ func (h *AdminHandler) AdminMetrics(w http.ResponseWriter, r *http.Request) {
 	// Active users in last 7 days (users who logged in or registered recently)
 	// Use created_at as proxy for now; TODO: use last_login_at once available
 	if err := h.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM users WHERE created_at > NOW() - INTERVAL '7 days'`,
+		`SELECT COUNT(*) FROM "user" WHERE created_at > NOW() - INTERVAL '7 days'`,
 	).Scan(&metrics.ActiveUsers7d); err != nil {
 		response.Error(w, r, apperr.Internal("failed to count active users", err))
 		return
@@ -110,14 +110,14 @@ func (h *AdminHandler) AdminMetrics(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Total nodes
-	if err := h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM nodes`).Scan(&metrics.TotalNodes); err != nil {
+	if err := h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM enrolled_nodes`).Scan(&metrics.TotalNodes); err != nil {
 		response.Error(w, r, apperr.Internal("failed to count nodes", err))
 		return
 	}
 
-	// Online nodes
+	// Online nodes — enrolled_nodes.status enum is pending/active/drained/offline/disabled (00030)
 	if err := h.pool.QueryRow(ctx,
-		`SELECT COUNT(*) FROM nodes WHERE status = 'online'`,
+		`SELECT COUNT(*) FROM enrolled_nodes WHERE status = 'active'`,
 	).Scan(&metrics.OnlineNodes); err != nil {
 		response.Error(w, r, apperr.Internal("failed to count online nodes", err))
 		return
@@ -208,14 +208,14 @@ func (h *AdminHandler) AdminUsers(w http.ResponseWriter, r *http.Request) {
 	if q != "" {
 		likeQ := "%" + q + "%"
 		if err := h.pool.QueryRow(ctx,
-			`SELECT COUNT(*) FROM users WHERE email ILIKE $1`,
+			`SELECT COUNT(*) FROM "user" WHERE email ILIKE $1`,
 			likeQ,
 		).Scan(&total); err != nil {
 			response.Error(w, r, apperr.Internal("failed to count users", err))
 			return
 		}
 	} else {
-		if err := h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM users`).Scan(&total); err != nil {
+		if err := h.pool.QueryRow(ctx, `SELECT COUNT(*) FROM "user"`).Scan(&total); err != nil {
 			response.Error(w, r, apperr.Internal("failed to count users", err))
 			return
 		}
@@ -234,7 +234,7 @@ func (h *AdminHandler) AdminUsers(w http.ResponseWriter, r *http.Request) {
 				COALESCE(s.plan, 'free') AS plan,
 				(SELECT COUNT(*) FROM monitors m WHERE m.user_id = u.id) AS monitor_count,
 				u.created_at
-			FROM users u
+			FROM "user" u
 			LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
 			WHERE u.email ILIKE $1
 			ORDER BY u.created_at DESC
@@ -249,7 +249,7 @@ func (h *AdminHandler) AdminUsers(w http.ResponseWriter, r *http.Request) {
 				COALESCE(s.plan, 'free') AS plan,
 				(SELECT COUNT(*) FROM monitors m WHERE m.user_id = u.id) AS monitor_count,
 				u.created_at
-			FROM users u
+			FROM "user" u
 			LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
 			ORDER BY u.created_at DESC
 			LIMIT $1 OFFSET $2
@@ -333,7 +333,7 @@ func (h *AdminHandler) AdminUserDetail(w http.ResponseWriter, r *http.Request) {
 			COALESCE(s.plan, 'free') AS plan,
 			(SELECT COUNT(*) FROM monitors m WHERE m.user_id = u.id) AS monitor_count,
 			u.created_at
-		FROM users u
+		FROM "user" u
 		LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
 		WHERE u.id = $1
 	`, userID).Scan(

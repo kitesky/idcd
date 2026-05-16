@@ -6,9 +6,7 @@ import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-
-const ADMIN_TOKEN =
-  typeof process !== "undefined" ? (process.env.NEXT_PUBLIC_ADMIN_TOKEN ?? "") : ""
+import { sendTestEmailAction } from "./actions"
 
 export default function AdminRoot() {
   const t = useTranslations("admin")
@@ -16,27 +14,13 @@ export default function AdminRoot() {
 
   async function handleTestEmail() {
     setLoading(true)
-    try {
-      const res = await fetch(
-        "/internal/admin/test-email?to=admin@example.com",
-        {
-          method: "POST",
-          headers: {
-            Authorization: `Bearer ${ADMIN_TOKEN}`,
-          },
-        }
-      )
-      if (res.ok) {
-        const data = await res.json()
-        toast.success(data?.data?.message ?? t("home.emailSent"))
-      } else {
-        toast.error(t("home.requestFailed"))
-      }
-    } catch {
-      toast.error(t("home.networkError"))
-    } finally {
-      setLoading(false)
+    const res = await sendTestEmailAction("admin@example.com")
+    if (res.ok) {
+      toast.success(res.message ?? t("home.emailSent"))
+    } else {
+      toast.error(res.message ?? t("home.requestFailed"))
     }
+    setLoading(false)
   }
 
   return (

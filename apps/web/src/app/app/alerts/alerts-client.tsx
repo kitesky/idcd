@@ -1175,7 +1175,7 @@ export function AlertsClient() {
     setChannelsError(null)
     try {
       const res = await apiRequest<ChannelsResponse>("/v1/alert-channels")
-      setChannels(res.data.channels ?? [])
+      setChannels(res.data.items ?? [])
     } catch (err) {
       setChannelsError(err instanceof Error ? err.message : t("events.loadFailed"))
     } finally {
@@ -1190,7 +1190,7 @@ export function AlertsClient() {
     setPoliciesError(null)
     try {
       const res = await apiRequest<PoliciesResponse>("/v1/alert-policies")
-      setPolicies(res.data.policies ?? [])
+      setPolicies(res.data.items ?? [])
     } catch (err) {
       setPoliciesError(err instanceof Error ? err.message : t("events.loadFailed"))
     } finally {

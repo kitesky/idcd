@@ -60,6 +60,9 @@ const (
 	wsReadDeadline  = 60 * time.Second
 	wsWriteDeadline = 10 * time.Second
 	wsPingInterval  = 54 * time.Second
+	// 单帧上限：agent 上报的 heartbeat / result / cmd_ack 都远小于 64KB；
+	// 显式 SetReadLimit 防止恶意 agent 发巨型 frame 把 gateway 内存打爆。
+	wsMaxMessageBytes = 64 * 1024
 )
 
 // Message is the WebSocket wire format.
@@ -182,6 +185,7 @@ func (h *WSHandler) readPump(c *hub.Connection) {
 		}
 	}()
 
+	c.Conn.SetReadLimit(wsMaxMessageBytes)
 	c.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline))
 	c.Conn.SetPongHandler(func(string) error {
 		c.Conn.SetReadDeadline(time.Now().Add(wsReadDeadline))

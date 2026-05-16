@@ -1,11 +1,26 @@
-import { render, screen } from "@testing-library/react"
-import { describe, it, expect, vi } from "vitest"
+import { render, screen, waitFor } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach } from "vitest"
 import { Nav } from "../nav"
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({ push: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
 }))
+
+// next-themes uses matchMedia and storage; provide a minimal mock
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ resolvedTheme: "dark", setTheme: vi.fn() }),
+}))
+
+// NavUserMenu fetches /v1/account/profile on mount. Default to 401 (logged out)
+// so the login/register buttons render. Individual tests can override.
+beforeEach(() => {
+  global.fetch = vi.fn().mockResolvedValue({
+    ok: false,
+    status: 401,
+    json: () => Promise.resolve({}),
+  }) as unknown as typeof fetch
+})
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => {
@@ -57,11 +72,15 @@ describe("Nav", () => {
     expect(screen.getByText("文档")).toBeInTheDocument()
   })
 
-  it("renders auth buttons", () => {
+  it("renders auth buttons when logged out", async () => {
     renderNav()
 
-    expect(screen.getByRole("link", { name: /登录/ })).toBeInTheDocument()
-    expect(screen.getByRole("link", { name: /注册/ })).toBeInTheDocument()
+    // NavUserMenu starts in loading state and resolves after the profile fetch.
+    // Default mock returns 401, so login/register links appear after the await.
+    await waitFor(() => {
+      expect(screen.getByRole("link", { name: /登录/ })).toBeInTheDocument()
+      expect(screen.getByRole("link", { name: /注册/ })).toBeInTheDocument()
+    })
   })
 
   it("renders mobile menu toggle", () => {

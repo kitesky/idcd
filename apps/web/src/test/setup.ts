@@ -27,7 +27,7 @@ type NestedRecord = { [key: string]: string | NestedRecord }
 function makeTranslator(messages: NestedRecord) {
   return function t(key: string, params?: Record<string, string | number>): string {
     const parts = key.split('.')
-    let value: string | NestedRecord = messages
+    let value: string | NestedRecord | undefined = messages
     for (const part of parts) {
       if (typeof value !== 'object' || value === null) return key
       value = (value as NestedRecord)[part]

@@ -21,6 +21,18 @@ function detectLocale(request: NextRequest): Locale {
   return defaultLocale
 }
 
+// NEXT_PUBLIC_API_URL is baked at build time; resolve once and cache. Malformed
+// values fall back to the prod origin (fail-closed) — never echo the raw string
+// into CSP, that would poison the entire connect-src directive.
+const API_ORIGIN: string = (() => {
+  const raw = process.env.NEXT_PUBLIC_API_URL ?? ''
+  try {
+    return raw ? new URL(raw).origin : 'https://api.idcd.com'
+  } catch {
+    return 'https://api.idcd.com'
+  }
+})()
+
 function withSecurityHeaders(
   response: NextResponse,
   isDev: boolean,
@@ -32,7 +44,7 @@ function withSecurityHeaders(
     `style-src 'self' 'unsafe-inline'`,
     `img-src 'self' data: https:`,
     `font-src 'self' data:`,
-    `connect-src 'self' https://api.idcd.com${isDev ? ' http://localhost:8080 ws://localhost:3000' : ''}`,
+    `connect-src 'self' ${API_ORIGIN}${isDev ? ' http://localhost:8080 ws://localhost:3000' : ''}`,
     `frame-ancestors 'none'`,
   ].join('; ')
 

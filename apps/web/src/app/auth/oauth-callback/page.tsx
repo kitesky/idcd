@@ -1,25 +1,17 @@
 "use client"
 
 import { Suspense, useEffect } from "react"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
 
 function OAuthCallbackContent() {
   const t = useTranslations("auth")
   const router = useRouter()
-  const searchParams = useSearchParams()
 
+  // Cookie was set by backend; just redirect into the app.
   useEffect(() => {
-    const token = searchParams.get("token")
-    if (token) {
-      try {
-        localStorage.setItem("auth_token", token)
-      } catch {
-        // localStorage may be unavailable in some environments
-      }
-    }
     router.replace("/app/dashboard" as any)
-  }, [router, searchParams])
+  }, [router])
 
   return (
     <div className="flex-1 flex items-center justify-center">

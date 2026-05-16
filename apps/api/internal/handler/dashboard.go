@@ -97,7 +97,7 @@ func (h *DashboardHandler) Summary(w http.ResponseWriter, r *http.Request) {
 		_ = h.pool.QueryRow(ctx, `
 			SELECT COUNT(*) FROM monitor_checks mc
 			JOIN monitors m ON m.id = mc.monitor_id
-			WHERE m.user_id = $1 AND mc.checked_at > NOW() - INTERVAL '24 hours'
+			WHERE m.user_id = $1 AND mc.check_at > NOW() - INTERVAL '24 hours'
 		`, userID).Scan(&checksToday)
 		data.ChecksToday = checksToday
 

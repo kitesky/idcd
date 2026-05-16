@@ -203,7 +203,7 @@ export default function LoginPage() {
       </div>
       <div className="grid grid-cols-2 gap-3">
         <Button variant="outline" asChild>
-          <a href="/api/v1/auth/dingtalk">
+          <a href={`${process.env.NEXT_PUBLIC_API_URL ?? ""}/v1/auth/dingtalk`}>
             <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
               <path d="M12 2C6.477 2 2 6.477 2 12s4.477 10 10 10 10-4.477 10-10S17.523 2 12 2zm4.5 14.5h-2l-2.5-4-2.5 4h-2l3.5-5.5L7.5 7.5h2l2.5 3.5 2.5-3.5h2l-3.5 5 3.5 5z" />
             </svg>
@@ -211,7 +211,7 @@ export default function LoginPage() {
           </a>
         </Button>
         <Button variant="outline" asChild>
-          <a href="/api/v1/auth/feishu">
+          <a href={`${process.env.NEXT_PUBLIC_API_URL ?? ""}/v1/auth/feishu`}>
             <svg viewBox="0 0 24 24" className="mr-2 h-4 w-4" fill="currentColor" aria-hidden="true">
               <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 14H11V8h2v8zm0-10H11V4h2v2z" />
             </svg>

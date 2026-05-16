@@ -58,11 +58,11 @@ describe('tools namespace', () => {
   })
 
   it('_ui.run is correct in zh', () => {
-    expect((zhTools as Record<string, Record<string, string>>)._ui?.run).toBe('开始检测')
+    expect((zhTools as unknown as Record<string, Record<string, string>>)._ui?.run).toBe('开始检测')
   })
 
   it('_ui.run is correct in en', () => {
-    expect((enTools as Record<string, Record<string, string>>)._ui?.run).toBe('Run Check')
+    expect((enTools as unknown as Record<string, Record<string, string>>)._ui?.run).toBe('Run Check')
   })
 })
 

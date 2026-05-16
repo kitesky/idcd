@@ -72,7 +72,7 @@ function setupDefaultMocks() {
 
     // Channels
     if (path === "/v1/alert-channels" && method === "GET") {
-      return { data: { channels: MOCK_ALERT_CHANNELS } }
+      return { data: { items: MOCK_ALERT_CHANNELS } }
     }
     if (path === "/v1/alert-channels" && method === "POST") {
       const body = JSON.parse(options?.body as string)
@@ -100,7 +100,7 @@ function setupDefaultMocks() {
 
     // Policies
     if (path === "/v1/alert-policies" && method === "GET") {
-      return { data: { policies: MOCK_ALERT_POLICIES } }
+      return { data: { items: MOCK_ALERT_POLICIES } }
     }
     if (path === "/v1/alert-policies" && method === "POST") {
       const body = JSON.parse(options?.body as string)

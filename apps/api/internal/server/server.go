@@ -298,6 +298,14 @@ func (s *Server) setupRouter() {
 				r.Get("/dns", infoH.DNS)
 				r.Get("/ssl", infoH.SSL)
 				r.Get("/icp", infoH.ICP)
+				// T5–T11 — handler 已存在但未挂载，导致前端 404
+				r.Get("/rdns", infoH.RDNS)
+				r.Get("/mx", infoH.MX)
+				r.Get("/spf", infoH.SPF)
+				r.Get("/dmarc", infoH.DMARC)
+				r.Get("/dkim", infoH.DKIM)
+				r.Get("/asn", infoH.ASN)
+				r.Get("/bgp", infoH.BGP)
 			})
 			// Probe endpoints
 			streamClient := stream.New(s.redis)
@@ -308,8 +316,22 @@ func (s *Server) setupRouter() {
 				r.Post("/tcp", probeH.TCP)
 				r.Post("/dns", probeH.DNS)
 				r.Post("/traceroute", probeH.Traceroute)
+				// T12–T14 + N4 — handler 已存在但未挂载
+				r.Post("/mtr", probeH.MTR)
+				r.Post("/smtp", probeH.SMTP)
+				r.Post("/ntp", probeH.NTP)
+				r.Post("/speedtest", probeH.Speedtest)
+				// T1 — async 任务结果查询
+				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)
+
+			// T2 — 一键诊断报告存档（Redis backed）
+			if s.redis != nil {
+				diagReportH := handler.NewDiagnoseReportHandler(s.redis)
+				r.Post("/diagnose/reports", diagReportH.SaveReport)
+				r.Get("/diagnose/reports/{id}", diagReportH.GetReport)
+			}
 			// Node directory endpoint
 			nodesH := handler.NewNodesHandler(s.pgxPool)
 			r.Get("/nodes", nodesH.List)
@@ -491,6 +513,7 @@ func (s *Server) setupRouter() {
 				r.Use(authnMW)
 				r.Post("/", noiseH.CreateGroup)
 				r.Get("/", noiseH.ListGroups)
+				r.Delete("/{id}", noiseH.DeleteGroup)
 			})
 
 			// Team / Org endpoints (authentication required)
@@ -571,6 +594,11 @@ func (s *Server) setupRouter() {
 		}
 		blocklistH := handler.NewAdminBlocklistHandler(blocklistHandlerStore)
 		cdnAdminH := handler.NewAdminCDNHandler(s.pgxPool)
+		// N3 — agent OTA 灰度升级 admin 端点（前端 /admin/upgrades 调用）。
+		// 注意：NodeUpgradeHandler.triggerBroadcast 走 HTTP POST 调 gateway 的
+		// /internal/broadcast-upgrade，必须传内部 HTTP URL，不能传 wss://。
+		gatewayInternalURL := s.config.AgentGateway.InternalURL
+		nodeUpgradeH := handler.NewNodeUpgradeHandler(s.pgxPool, gatewayInternalURL)
 		r.Route("/internal/admin", func(r chi.Router) {
 			r.Use(adminH.AdminAuthMiddleware)
 			r.Get("/metrics", adminH.AdminMetrics)
@@ -580,6 +608,9 @@ func (s *Server) setupRouter() {
 			r.Delete("/block-ip", blocklistH.UnblockIP)
 			r.Post("/cdn-monitors/seed", cdnAdminH.Seed)
 			r.Post("/test-email", adminH.TestEmail)
+			r.Post("/upgrade-rollouts", nodeUpgradeH.Create)
+			r.Get("/upgrade-rollouts", nodeUpgradeH.List)
+			r.Patch("/upgrade-rollouts/{id}", nodeUpgradeH.Update)
 		})
 
 		// Community node application and points endpoints.
@@ -591,6 +622,8 @@ func (s *Server) setupRouter() {
 		communityAdminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
 		r.With(communityAdminH.AdminAuthMiddleware).Get("/v1/admin/node-applications", communityH.AdminList)
 		r.With(communityAdminH.AdminAuthMiddleware).Patch("/v1/admin/node-applications/{id}", communityH.AdminUpdate)
+		// 前端实际调 PATCH .../{id}/review；保留 /review 别名以兼容（K8 路由对齐）
+		r.With(communityAdminH.AdminAuthMiddleware).Patch("/v1/admin/node-applications/{id}/review", communityH.AdminUpdate)
 
 		// On-Call rotation endpoints (authentication required)
 		oncallH := handler.NewOncallHandler(s.pgxPool)

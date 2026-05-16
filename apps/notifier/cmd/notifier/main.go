@@ -11,13 +11,15 @@ import (
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
 	"github.com/kite365/idcd/apps/notifier/internal/worker"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 	"github.com/kite365/idcd/lib/shared/logger"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 func main() {
-	// Load configuration
-	cfg := config.MustLoad("config/dev.env.yaml") // or use IDCD_CONFIG env var
+	// Load configuration. Honour IDCD_CONFIG env var so prod containers can
+	// point at /config/prod.env.yaml without rebuilding the image.
+	cfg := config.MustLoad(sharedconfig.DefaultPath())
 
 	// Initialize logger
 	log := logger.New(cfg.Server.Env)

@@ -206,7 +206,7 @@ func (h *BetaInvitationHandler) RedeemBeta(w http.ResponseWriter, r *http.Reques
 
 	if row.Email != nil && *row.Email != "" {
 		var userEmail string
-		err := h.pool.QueryRow(ctx, `SELECT email FROM users WHERE id = $1`, userID).Scan(&userEmail)
+		err := h.pool.QueryRow(ctx, `SELECT email FROM "user" WHERE id = $1`, userID).Scan(&userEmail)
 		if err != nil || userEmail != *row.Email {
 			response.Error(w, r, apperr.Forbidden("invitation code is restricted to a specific email"))
 			return

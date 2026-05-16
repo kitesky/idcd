@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/http"
 	"net/mail"
 	"net/url"
@@ -16,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
@@ -130,11 +130,15 @@ func (h *StatusSubscriptionHandler) Subscribe(w http.ResponseWriter, r *http.Req
 			response.Error(w, r, apperr.Validation("endpoint must be a valid HTTPS URL", "endpoint"))
 			return
 		}
-		host := u.Hostname()
-		if ip := net.ParseIP(host); ip != nil && isPrivateIP(req.Endpoint) {
-			response.Error(w, r, apperr.Validation("endpoint must not point to a private IP address", "endpoint"))
+		// denylist.CheckTarget covers private/loopback ranges, cloud metadata
+		// (169.254.169.254), and pins a resolved IP to defeat DNS rebinding
+		// — strictly stronger than the previous in-line check and shared with
+		// every probe handler.
+		if _, err := denylist.CheckTarget(req.Endpoint); err != nil {
+			response.Error(w, r, apperr.Validation(err.Error(), "endpoint"))
 			return
 		}
+		_ = u // url is parsed for HTTPS validation only
 	}
 
 	events := req.Events

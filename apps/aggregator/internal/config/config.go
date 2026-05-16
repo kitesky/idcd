@@ -86,7 +86,7 @@ func DefaultPath() string {
 func (c *Config) validate() error {
 	// Validate base config first
 	if c.Config != nil {
-		if err := c.Config.Database.Main.DSN; err == "" {
+		if c.Config.Database.Main.DSN == "" {
 			return fmt.Errorf("database.main.dsn is required")
 		}
 	}

@@ -21,9 +21,8 @@ function makeT(ns: unknown) {
     const raw = lookup(ns, key.split('.'))
     if (raw === undefined) return key
     if (!params) return raw
-    return Object.entries(params).reduce(
-      (s, [k, v]) => s.replaceAll(`{${k}}`, String(v)),
-      raw,
+    return raw.replace(/\{(\w+)\}/g, (_, k) =>
+      Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : `{${k}}`,
     )
   }
 }

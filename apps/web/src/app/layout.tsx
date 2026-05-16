@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google"
 import { NextIntlClientProvider } from "next-intl"
 import { ThemeProvider } from "@/components/providers"
 import { TooltipProvider } from "@/components/ui/tooltip"
+import { Toaster } from "@/components/ui/sonner"
 import { CookieBanner } from "@/components/cookie-banner"
 import { getLocale } from "@/i18n/locale"
 import { loadMessages } from "@/i18n/request"
@@ -74,6 +75,7 @@ export default async function RootLayout({
             <TooltipProvider delayDuration={200}>
               {children}
               <CookieBanner />
+              <Toaster />
             </TooltipProvider>
           </ThemeProvider>
         </NextIntlClientProvider>

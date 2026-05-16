@@ -169,7 +169,10 @@ func (h *OAuthHandler) DingTalkCallback(w http.ResponseWriter, r *http.Request) 
 	}
 
 	setAuthCookie(w, r, token)
-	http.Redirect(w, r, "/auth/oauth-callback?token="+url.QueryEscape(token), http.StatusFound)
+	// Do NOT echo the JWT back in the redirect URL: it would land in
+	// access logs / Referer headers / browser history. setAuthCookie already
+	// installed the HttpOnly cookie the frontend needs.
+	http.Redirect(w, r, "/auth/oauth-callback", http.StatusFound)
 }
 
 type oauthUserInfo struct {
@@ -322,7 +325,8 @@ func (h *OAuthHandler) FeishuCallback(w http.ResponseWriter, r *http.Request) {
 	}
 
 	setAuthCookie(w, r, token)
-	http.Redirect(w, r, "/auth/oauth-callback?token="+url.QueryEscape(token), http.StatusFound)
+	// Cookie carries the JWT; never put it in the redirect URL.
+	http.Redirect(w, r, "/auth/oauth-callback", http.StatusFound)
 }
 
 func (h *OAuthHandler) exchangeFeishuToken(ctx context.Context, code string) (string, error) {

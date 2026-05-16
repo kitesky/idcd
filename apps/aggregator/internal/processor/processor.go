@@ -69,8 +69,11 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 
 	dedupKey := taskID + ":" + nodeID
 
+	// 先做 fast-path check（命中即跳过，避免无谓 DB 写）；但只在 DB 写入成功后再
+	// MarkProcessed，否则瞬时 DB 故障会把 dedup key 锁死 24h、消息进入 PEL 后
+	// 永远被 "duplicate, skip" 静默丢弃。
 	if p.dedupr != nil {
-		dup, err := p.dedupr.IsProcessedAndMark(ctx, dedupKey)
+		dup, err := p.dedupr.IsDuplicate(ctx, dedupKey)
 		if err != nil {
 			return fmt.Errorf("processor: dedup check for %s: %w", dedupKey, err)
 		}
@@ -88,6 +91,15 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 	summaryJSON, _ := json.Marshal(result.summary)
 	if err := p.completeProbeTask(ctx, taskID, summaryJSON); err != nil {
 		return fmt.Errorf("processor: complete probe_task: %w", err)
+	}
+
+	// DB 已落库，标记 dedup（并发 consumer 已通过 ON CONFLICT 收敛，这里 SetNX 返
+	// false 也无碍——业务上已完成）。失败不影响主流程，只多一次后续 reclaim 时
+	// 的幂等 INSERT。
+	if p.dedupr != nil {
+		if err := p.dedupr.MarkProcessed(ctx, dedupKey); err != nil {
+			slog.Warn("processor: mark dedup failed (non-fatal)", "key", dedupKey, "err", err)
+		}
 	}
 
 	// If this result belongs to a monitor-originated task, write monitor_checks

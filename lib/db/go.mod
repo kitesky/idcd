@@ -2,7 +2,11 @@ module github.com/kite365/idcd/lib/db
 
 go 1.26
 
-require github.com/jackc/pgx/v5 v5.9.2
+require (
+	github.com/jackc/pgx/v5 v5.9.2
+	github.com/kite365/idcd/lib/shared v0.0.0-00010101000000-000000000000
+	github.com/pashagolub/pgxmock/v4 v4.9.0
+)
 
 require (
 	github.com/jackc/pgpassfile v1.0.0 // indirect

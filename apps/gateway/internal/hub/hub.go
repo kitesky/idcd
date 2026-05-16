@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -15,20 +16,45 @@ import (
 
 // Connection represents a single agent node WebSocket connection.
 type Connection struct {
-	NodeID      string
-	Conn        *websocket.Conn
-	LastHB      time.Time       // last heartbeat timestamp
-	SendCh      chan []byte     // outbound message channel
-	closeCh     chan struct{}   // signal connection close
-	closeOnce   sync.Once
+	NodeID    string
+	Conn      *websocket.Conn
+	LastHB    time.Time     // last heartbeat timestamp
+	SendCh    chan []byte   // outbound message channel
+	closeCh   chan struct{} // signal connection close
+	closeOnce sync.Once
+	// generation is a monotonically increasing token assigned at Register
+	// time. P2#20: a leaked api_key could be used to repeatedly re-connect
+	// the same node_id and knock the legitimate node offline; we close the
+	// previous Connection and tag the new one with a fresh generation so any
+	// in-flight messages from the old socket cannot mutate the new
+	// Connection's hub state. See Hub.ActiveGen / Hub.IsActive.
+	generation uint64
 }
 
 // Hub manages all active agent connections.
 type Hub struct {
-	mu              sync.RWMutex
-	connections     map[string]*Connection  // nodeID -> Connection
-	heartbeatTTL    time.Duration
-	logger          *slog.Logger
+	mu           sync.RWMutex
+	connections  map[string]*Connection // nodeID -> Connection
+	heartbeatTTL time.Duration
+	logger       *slog.Logger
+
+	// nextGen issues monotonically increasing generation tokens to
+	// Connections so callers can distinguish "this is still the active
+	// Connection for this node" from "I am the leftover from a replaced
+	// connection". atomic so Register can read/increment without taking
+	// the write lock.
+	nextGen atomic.Uint64
+
+	// pendingSkip tracks how many forthcoming "connection_closed"
+	// Unregister calls we expect to receive from the read pumps of
+	// Connections we already replaced via Register. Without this counter,
+	// the old readPump's deferred Unregister(nodeID, "connection_closed")
+	// would race in and delete the NEW Connection from the map, exactly
+	// the attack vector P2#20 describes. Keyed by nodeID, decremented per
+	// matching Unregister call. Only consulted when reason ==
+	// "connection_closed" — legitimate teardown reasons (e.g.
+	// "heartbeat_timeout" from CheckHeartbeats) bypass this.
+	pendingSkip map[string]int
 
 	// Metrics
 	connGauge       prometheus.Gauge
@@ -57,6 +83,7 @@ var (
 func New(heartbeatTTL time.Duration, logger *slog.Logger) *Hub {
 	return &Hub{
 		connections:     make(map[string]*Connection),
+		pendingSkip:     make(map[string]int),
 		heartbeatTTL:    heartbeatTTL,
 		logger:          logger,
 		connGauge:       connGauge,
@@ -66,34 +93,98 @@ func New(heartbeatTTL time.Duration, logger *slog.Logger) *Hub {
 }
 
 // Register adds a new connection to the hub.
+//
+// If a Connection with the same nodeID is already registered, the existing
+// Connection is closed (websocket + close/send channels) and the new
+// Connection takes its place. The new Connection is tagged with a fresh
+// monotonically-increasing generation token, accessible via ActiveGen /
+// IsActive, so callers reading messages off the OLD socket can detect that
+// they are no longer authoritative and exit before mutating shared state.
+//
+// This is the P2#20 fix: a leaked api_key could otherwise be used to
+// repeatedly re-connect the same node_id and starve the legitimate node by
+// leaving stale read pumps active.
 func (h *Hub) Register(nodeID string, conn *websocket.Conn) *Connection {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	gen := h.nextGen.Add(1)
 	c := &Connection{
-		NodeID:  nodeID,
-		Conn:    conn,
-		LastHB:  time.Now(),
-		SendCh:  make(chan []byte, 256),
-		closeCh: make(chan struct{}),
+		NodeID:     nodeID,
+		Conn:       conn,
+		LastHB:     time.Now(),
+		SendCh:     make(chan []byte, 256),
+		closeCh:    make(chan struct{}),
+		generation: gen,
+	}
+
+	if old, exists := h.connections[nodeID]; exists {
+		// Replace path. We do NOT bump the active-connections gauge — one
+		// connection leaves, one joins, net zero.
+		//
+		// We close the OLD Connection here (ws + closeCh + SendCh). Its
+		// reader goroutine will see ReadMessage return an error and fall
+		// through to its defer, which calls Unregister(nodeID,
+		// "connection_closed"). That deferred call is the dangerous one
+		// — by the time it lands the map already points at the NEW
+		// Connection. We bump pendingSkip so Unregister will absorb the
+		// stale call and leave the new Connection in place.
+		h.pendingSkip[nodeID]++
+		h.disconnectTotal.WithLabelValues("replaced").Inc()
+		// Spec-compliant metric: gateway_ws_connections_total{outcome="replaced"}
+		// counts the close-old half of a connection-replacement event.
+		MetricsWSConnections.WithLabelValues("replaced").Inc()
+		old.Close()
+		h.logger.Info("connection replaced",
+			"node_id", nodeID,
+			"old_generation", old.generation,
+			"new_generation", gen,
+		)
+	} else {
+		// Brand-new node — bump active gauges. Replacement does not touch
+		// these gauges because the count of distinct active node_ids does
+		// not change.
+		h.connGauge.Inc()
+		MetricsActiveConnections.Inc()
 	}
 
 	h.connections[nodeID] = c
-	h.connGauge.Inc()
 	// P1#19: spec-compliant metrics mirror the legacy counters/gauge so
 	// dashboards can migrate without losing data.
-	MetricsActiveConnections.Inc()
 	MetricsActiveNodes.Set(float64(len(h.connections)))
 	MetricsWSConnections.WithLabelValues("accepted").Inc()
 
-	h.logger.Info("node registered", "node_id", nodeID, "total_connections", len(h.connections))
+	h.logger.Info("node registered",
+		"node_id", nodeID,
+		"generation", gen,
+		"total_connections", len(h.connections),
+	)
 	return c
 }
 
 // Unregister removes a connection from the hub.
+//
+// If a Register-replace recently closed a previous Connection for this
+// nodeID, the closed Connection's read pump will eventually fire a deferred
+// Unregister(nodeID, "connection_closed") — we absorb that stale call here
+// (via pendingSkip) so the NEW Connection installed by Register is not
+// accidentally removed. Non-"connection_closed" reasons (e.g.
+// "heartbeat_timeout") always proceed with the normal teardown path so
+// CheckHeartbeats can still evict a stale-but-current connection.
 func (h *Hub) Unregister(nodeID string, reason string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
+
+	if reason == "connection_closed" && h.pendingSkip[nodeID] > 0 {
+		h.pendingSkip[nodeID]--
+		if h.pendingSkip[nodeID] == 0 {
+			delete(h.pendingSkip, nodeID)
+		}
+		h.logger.Debug("ignoring stale unregister from replaced connection",
+			"node_id", nodeID,
+		)
+		return
+	}
 
 	c, exists := h.connections[nodeID]
 	if !exists {
@@ -113,6 +204,41 @@ func (h *Hub) Unregister(nodeID string, reason string) {
 	c.Close()
 
 	h.logger.Info("node unregistered", "node_id", nodeID, "reason", reason, "total_connections", len(h.connections))
+}
+
+// ActiveGen returns the generation token of the Connection currently
+// registered for nodeID, or 0 if no Connection exists. A read pump (or any
+// caller holding a *Connection) can compare its own Connection.Gen() against
+// this value to detect that it has been superseded by a more recent
+// Register call and should exit before mutating shared state.
+func (h *Hub) ActiveGen(nodeID string) uint64 {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if c, ok := h.connections[nodeID]; ok {
+		return c.generation
+	}
+	return 0
+}
+
+// IsActive reports whether c is still the authoritative Connection for its
+// nodeID. Returns false if the Connection has been replaced by a newer
+// Register call or unregistered entirely. Cheap enough to call after every
+// read in a read pump.
+func (h *Hub) IsActive(c *Connection) bool {
+	if c == nil {
+		return false
+	}
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	cur, ok := h.connections[c.NodeID]
+	return ok && cur == c
+}
+
+// Gen returns the Connection's generation token. Useful for callers that
+// want to compare their captured generation against Hub.ActiveGen at a
+// later point.
+func (c *Connection) Gen() uint64 {
+	return c.generation
 }
 
 // UpdateHeartbeat updates the last heartbeat time for a node.

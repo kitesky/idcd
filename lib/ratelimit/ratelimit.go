@@ -56,8 +56,27 @@ func (l *Limiter) Allow(ctx context.Context, key string) (*Result, error) {
 	windowMs := l.config.WindowSize.Milliseconds()
 	ttlSec := int64(l.config.WindowSize.Seconds()) + 60
 
+	// Sliding-window log algorithm.
+	//
+	// IMPORTANT: ZSET members must be globally unique per ZADD, otherwise two
+	// concurrent callers that land on the same wall-clock millisecond would
+	// produce identical members and the second ZADD would be a no-op (ZSET
+	// dedups by member, only updating the score). That under-counts the window
+	// and silently leaks quota.
+	//
+	// Previous implementation used `now .. ':' .. math.random()`. Redis Lua
+	// `math.random` is *not* seeded per call — every Lua VM starts with the
+	// same default seed, so under sustained load two parallel EVALs landing on
+	// the same millisecond can also draw the same random value. Confirmed
+	// collision source for the SLO drift seen in P2#23.
+	//
+	// Fix: use a monotonic per-key counter (INCR on a sibling key) appended
+	// to the member. INCR is atomic in Redis, so members are guaranteed
+	// unique across all concurrent EVALs touching the same window. The
+	// counter key shares the window's TTL so it self-cleans.
 	luaScript := `
 		local key = KEYS[1]
+		local seq_key = KEYS[2]
 		local now = tonumber(ARGV[1])
 		local window = tonumber(ARGV[2])
 		local max = tonumber(ARGV[3])
@@ -68,7 +87,9 @@ func (l *Limiter) Allow(ctx context.Context, key string) (*Result, error) {
 		local count = redis.call('ZCARD', key)
 
 		if count < max then
-			local member = now .. ':' .. math.random()
+			local seq = redis.call('INCR', seq_key)
+			redis.call('EXPIRE', seq_key, ttl)
+			local member = now .. ':' .. seq
 			redis.call('ZADD', key, now, member)
 			redis.call('EXPIRE', key, ttl)
 			return {1, max - count - 1}
@@ -77,7 +98,8 @@ func (l *Limiter) Allow(ctx context.Context, key string) (*Result, error) {
 		end
 	`
 
-	cmd := l.rdb.Eval(ctx, luaScript, []string{fullKey}, nowMs, windowMs, l.config.MaxRequests, ttlSec)
+	seqKey := fullKey + ":seq"
+	cmd := l.rdb.Eval(ctx, luaScript, []string{fullKey, seqKey}, nowMs, windowMs, l.config.MaxRequests, ttlSec)
 	if err := cmd.Err(); err != nil {
 		return nil, fmt.Errorf("rate limit check failed: %w", err)
 	}

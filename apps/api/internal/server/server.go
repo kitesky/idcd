@@ -135,6 +135,24 @@ func (a *asynqEnqueuer) EnqueueTask(ctx context.Context, taskType string, payloa
 	return err
 }
 
+// buildJWTService constructs the JWT service used by auth handlers and the
+// authn middleware. When Redis is wired we attach a Redis-backed JTI
+// blocklist so refresh / logout actually revokes the old token across all
+// API replicas; without this the legacy NewService() path would skip
+// revocation entirely and a leaked JWT would remain valid until its
+// natural exp. See lib/auth/jwt/blocklist.go for the contract.
+//
+// When s.redis is nil (test / minimal harness), no blocklist is attached
+// and the Service falls back to the legacy "no revocation" behavior so
+// existing callers that don't run Redis still work.
+func (s *Server) buildJWTService() (*jwt.Service, error) {
+	cfg := jwt.Config{SecretKey: s.config.JWT.Secret}
+	if s.redis == nil {
+		return jwt.NewServiceWithOptions(cfg)
+	}
+	return jwt.NewServiceWithOptions(cfg, jwt.WithBlocklist(jwt.NewRedisBlocklist(s.redis)))
+}
+
 // setupRouter configures the chi router with middleware and routes.
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
@@ -193,7 +211,7 @@ func (s *Server) setupRouter() {
 
 	// Auth & Account routes (requires pgxPool and JWT config)
 	if s.pgxPool != nil && s.config.JWT.Secret != "" {
-		jwtSvc, err := jwt.NewService(jwt.Config{SecretKey: s.config.JWT.Secret})
+		jwtSvc, err := s.buildJWTService()
 		if err != nil {
 			panic("invalid JWT config: " + err.Error())
 		}

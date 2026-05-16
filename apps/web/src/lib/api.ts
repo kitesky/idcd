@@ -303,23 +303,26 @@ export interface SubscribeResponse {
 
 export async function getSubscription(): Promise<Subscription | null> {
   try {
-    return await apiRequest<Subscription>("/v1/billing/subscription")
+    const res = await apiRequest<{ data: Subscription }>("/v1/billing/subscription")
+    return res.data
   } catch {
     return null
   }
 }
 
 export async function getInvoices(page = 1, pageSize = 20): Promise<InvoicesResponse> {
-  return apiRequest<InvoicesResponse>(
+  const res = await apiRequest<{ data: InvoicesResponse }>(
     `/v1/billing/invoices?page=${page}&page_size=${pageSize}`
   )
+  return res.data
 }
 
 export async function subscribePlan(plan: string, channel?: string): Promise<SubscribeResponse> {
-  return apiRequest<SubscribeResponse>("/v1/billing/subscribe", {
+  const res = await apiRequest<{ data: SubscribeResponse }>("/v1/billing/subscribe", {
     method: "POST",
     body: JSON.stringify({ plan, ...(channel ? { channel } : {}) }),
   })
+  return res.data
 }
 
 export async function cancelSubscription(): Promise<void> {

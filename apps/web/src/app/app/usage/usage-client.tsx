@@ -112,7 +112,7 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
     try {
       await apiRequest("/v1/account/points/redeem", {
         method: "POST",
-        body: JSON.stringify({ redeem_type: redeemType }),
+        body: JSON.stringify({ reward_type: redeemType, points: selected?.points ?? 0 }),
       })
       setDialogOpen(false)
       setRedeemType("")

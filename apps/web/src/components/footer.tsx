@@ -63,7 +63,7 @@ function AccordionSection({ title, links }: { title: string; links: { name: stri
       </div>
       {/* desktop: always visible */}
       <div className="hidden md:block">
-        <h3 className="text-sm font-semibold text-foreground mb-3">{title}</h3>
+        <p className="text-sm font-semibold text-foreground mb-3">{title}</p>
         <ul className="space-y-2.5">
           {links.map(link => (
             <li key={link.name}>
@@ -104,7 +104,7 @@ export function Footer() {
 
           {/* 联系我们 — always expanded */}
           <div className="py-6 md:py-0 border-b md:border-b-0">
-            <h3 className="text-sm font-semibold text-foreground mb-3">联系我们</h3>
+            <p className="text-sm font-semibold text-foreground mb-3">联系我们</p>
             <p className="text-sm text-muted-foreground mb-1">
               邮箱：<a href="mailto:hi@idcd.com" className="hover:text-foreground transition-colors">hi@idcd.com</a>
             </p>

@@ -88,7 +88,7 @@ func setDefaults(n *NotifierConfig) {
 	}
 
 	if n.AsynqDSN == "" {
-		n.AsynqDSN = "redis://localhost:6379/0" // default Redis connection
+		n.AsynqDSN = "localhost:6379" // default Redis host:port (no auth)
 	}
 
 	// SMTP defaults

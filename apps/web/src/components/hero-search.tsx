@@ -262,7 +262,7 @@ function NodeSelectorTrigger({ selectedIds, onConfirm }: { selectedIds: string[]
       >
         <div className="flex items-center gap-2 min-w-0">
           <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-          <span className={cn("truncate", selectedIds.length === 0 && "text-muted-foreground/70")}>
+          <span className={cn("truncate", selectedIds.length === 0 && "text-muted-foreground")}>
             {label}
           </span>
         </div>
@@ -408,7 +408,7 @@ export function HeroSearch() {
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleGo()}
               placeholder={cat.inputPlaceholder}
-              className="flex-1 h-11 bg-transparent text-sm outline-none placeholder:text-muted-foreground/60"
+              className="flex-1 h-11 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
             />
           </div>
 
@@ -430,13 +430,13 @@ export function HeroSearch() {
             <span>高级配置</span>
             <span className="mx-2 opacity-30">|</span>
             <span>
-              <a href="/app/monitors/new" className="text-primary hover:underline">
+              <a href="/app/monitors/new" className="text-primary underline underline-offset-4">
                 创建定时监测任务
               </a>
               ，持续监测不同地区用户到站点的访问连通性
             </span>
           </div>
-          <a href="/tools/diagnose" className="text-xs text-primary hover:underline">
+          <a href="/tools/diagnose" className="text-xs text-primary underline underline-offset-4">
             对比检测
           </a>
         </div>

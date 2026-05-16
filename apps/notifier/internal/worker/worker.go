@@ -5,6 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/url"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -21,11 +24,23 @@ type Worker struct {
 
 // NewWorker creates a new Worker instance.
 func NewWorker(cfg *config.NotifierConfig, handlers *Handlers, logger *slog.Logger) (*Worker, error) {
+	// Parse Redis DSN (supports both "host:port" and "redis://[:password@]host:port[/db]")
+	redisOpt := asynq.RedisClientOpt{Addr: cfg.AsynqDSN}
+	if strings.HasPrefix(cfg.AsynqDSN, "redis://") || strings.HasPrefix(cfg.AsynqDSN, "rediss://") {
+		if u, err := url.Parse(cfg.AsynqDSN); err == nil {
+			redisOpt.Addr = u.Host
+			if u.User != nil {
+				redisOpt.Password, _ = u.User.Password()
+			}
+			if db, err := strconv.Atoi(strings.TrimPrefix(u.Path, "/")); err == nil {
+				redisOpt.DB = db
+			}
+		}
+	}
+
 	// Configure asynq server
 	server := asynq.NewServer(
-		asynq.RedisClientOpt{
-			Addr: cfg.AsynqDSN,
-		},
+		redisOpt,
 		asynq.Config{
 			// Queue configuration with priorities
 			Queues: cfg.Queues,

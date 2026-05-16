@@ -5,42 +5,29 @@ export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = "https://idcd.com"
   const now = new Date()
 
-  const mainPages = ["/", "/nodes", "/about", "/terms", "/privacy", "/aup"]
-  const staticToolSlugs = [
-    "diagnose",
-    "http",
-    "ping",
-    "tcping",
-    "dns",
-    "traceroute",
-    "json-formatter",
-    "base64",
-    "timestamp",
-    "hash",
-    "jwt-decoder",
-    "regex-tester",
-    "cron-parser",
-    "qrcode",
-    "cidr-calculator",
-    "ipv6-converter",
+  const mainPages: { url: string; priority: number }[] = [
+    { url: "/", priority: 1.0 },
+    { url: "/nodes", priority: 0.8 },
+    { url: "/about", priority: 0.8 },
+    { url: "/pricing", priority: 0.9 },
+    { url: "/agent", priority: 0.9 },
+    { url: "/leaderboard", priority: 0.8 },
+    { url: "/transparency", priority: 0.7 },
+    { url: "/en", priority: 0.7 },
+    { url: "/terms", priority: 0.8 },
+    { url: "/privacy", priority: 0.8 },
+    { url: "/aup", priority: 0.8 },
   ]
 
   return [
     // 主要落地页
-    ...mainPages.map((url) => ({
+    ...mainPages.map(({ url, priority }) => ({
       url: baseUrl + url,
       lastModified: now,
       changeFrequency: "weekly" as const,
-      priority: url === "/" ? 1.0 : 0.8,
+      priority,
     })),
-    // 静态工具页
-    ...staticToolSlugs.map((slug) => ({
-      url: `${baseUrl}/tools/${slug}`,
-      lastModified: now,
-      changeFrequency: "monthly" as const,
-      priority: 0.7,
-    })),
-    // 动态工具页（ALL_TOOLS 中的 50 个）
+    // 工具页（ALL_TOOLS，无重复）
     ...ALL_TOOLS.map((tool) => ({
       url: `${baseUrl}/tools/${tool.slug}`,
       lastModified: now,

@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react"
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
 import type { StatusPageData, ServiceStatus, MonitorHistory } from "./types"
 
@@ -187,12 +189,17 @@ export function StatusClient({ data }: { data: StatusPageData }) {
               </div>
             ) : (
               <form onSubmit={handleSubscribe} className="flex gap-2">
-                <input type="email" placeholder="your@email.com" value={email} onChange={e => setEmail(e.target.value)} required
-                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring" />
-                <button type="submit" disabled={subStatus === "loading"}
-                  className="inline-flex h-9 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 disabled:pointer-events-none disabled:opacity-50">
+                <Input
+                  type="email"
+                  placeholder="your@email.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  required
+                  className="h-9"
+                />
+                <Button type="submit" disabled={subStatus === "loading"} size="sm">
                   {subStatus === "loading" ? "发送中…" : "订阅"}
-                </button>
+                </Button>
               </form>
             )}
             {subStatus === "error" && <p className="mt-2 text-xs text-destructive">{subError}</p>}

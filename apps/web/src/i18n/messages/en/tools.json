@@ -1,0 +1,304 @@
+{
+  "ping": {
+    "title": "Ping Check",
+    "description": "Global multi-node ICMP ping from 100+ locations — measure latency and packet loss",
+    "meta": {
+      "title": "Ping Check — Global ICMP Latency Test | idcd",
+      "description": "Test ICMP ping latency and packet loss from 100+ real probe nodes worldwide. Identify network issues in seconds."
+    }
+  },
+  "http": {
+    "title": "HTTP Check",
+    "description": "Multi-region HTTP/HTTPS connectivity test — verify uptime and response times worldwide",
+    "meta": {
+      "title": "HTTP Check — Multi-Region Uptime Test | idcd",
+      "description": "Verify HTTP/HTTPS availability and response times from multiple global regions. Catch downtime before your users do."
+    }
+  },
+  "dns": {
+    "title": "DNS Lookup",
+    "description": "Global DNS resolution with DNS pollution detection across multiple resolvers",
+    "meta": {
+      "title": "DNS Lookup — Global DNS Resolution Test | idcd",
+      "description": "Query DNS records from resolvers worldwide and detect DNS pollution or hijacking. Supports A, AAAA, MX, TXT, CNAME."
+    }
+  },
+  "traceroute": {
+    "title": "Traceroute",
+    "description": "Trace the network path and each hop from global nodes to your target",
+    "meta": {
+      "title": "Traceroute — Global Network Path Tracing | idcd",
+      "description": "Trace the route your packets take to any destination from global nodes. Pinpoint latency bottlenecks hop by hop."
+    }
+  },
+  "ssl": {
+    "title": "SSL Certificate Check",
+    "description": "Inspect SSL/TLS certificate validity, issuer, and security configuration",
+    "meta": {
+      "title": "SSL Certificate Check — TLS Validity & Config | idcd",
+      "description": "Verify your domain's SSL/TLS certificate expiry, issuer chain, and cipher configuration. Get alerted before certs expire."
+    }
+  },
+  "ip": {
+    "title": "IP Geolocation",
+    "description": "Look up IP address geolocation, ASN, and ISP information",
+    "meta": {
+      "title": "IP Geolocation — IP Address Lookup | idcd",
+      "description": "Look up any IP address for geolocation, ASN, ISP, and organization data. Supports IPv4 and IPv6."
+    }
+  },
+  "whois": {
+    "title": "WHOIS Lookup",
+    "description": "Query domain registration details, registrar, and expiry date",
+    "meta": {
+      "title": "WHOIS Lookup — Domain Registration Info | idcd",
+      "description": "Query domain WHOIS records for registrar, registrant, creation date, expiry date, and name servers."
+    }
+  },
+  "icp": {
+    "title": "ICP Filing Check",
+    "description": "Check China ICP (Internet Content Provider) filing status for a domain",
+    "meta": {
+      "title": "ICP Filing Check — China ICP Beian Lookup | idcd",
+      "description": "Check whether a domain has a valid China ICP (Internet Content Provider) filing (ICP 备案). Required for hosting in mainland China."
+    }
+  },
+  "diagnose": {
+    "title": "Network Diagnostics",
+    "description": "One-click comprehensive network diagnostics — automatically detect common issues",
+    "meta": {
+      "title": "Network Diagnostics — One-Click Network Check | idcd",
+      "description": "Run a comprehensive network diagnostic in one click. Automatically detects DNS failures, latency spikes, routing issues, and more."
+    }
+  },
+  "ipv6-check": {
+    "title": "IPv6 Check",
+    "description": "Validate, expand, and compress IPv6 addresses with format conversion",
+    "meta": {
+      "title": "IPv6 Check — Address Validation & Conversion | idcd",
+      "description": "Validate IPv6 addresses, convert between expanded and compressed formats, and detect address type (global, link-local, loopback)."
+    }
+  },
+  "tcp": {
+    "title": "TCP Port Test",
+    "description": "Test TCP port reachability and connection latency",
+    "meta": {
+      "title": "TCP Port Test — Connectivity Check | idcd",
+      "description": "Test whether a TCP port on a target host is reachable and measure connection latency."
+    }
+  },
+  "tcping": {
+    "title": "TCP Ping",
+    "description": "Test TCP port reachability and measure connection latency from global probe nodes",
+    "meta": {
+      "title": "TCP Ping — Port Connectivity Tester | idcd",
+      "description": "Test TCP port reachability and measure connection latency to any host from global probe nodes. Instantly detect blocked or closed ports."
+    }
+  },
+  "mtr": {
+    "title": "MTR Test",
+    "description": "Combined ping + traceroute network path diagnostics",
+    "meta": {
+      "title": "MTR Network Test — Combined Path Diagnostics | idcd",
+      "description": "MTR combines ping and traceroute to continuously diagnose network path issues from global nodes."
+    }
+  },
+  "smtp": {
+    "title": "SMTP Test",
+    "description": "Test SMTP mail server connectivity",
+    "meta": {
+      "title": "SMTP Mail Server Test — Connectivity Check | idcd",
+      "description": "Test whether an SMTP mail server is reachable and diagnose email delivery issues."
+    }
+  },
+  "rdns": {
+    "title": "Reverse DNS Lookup",
+    "description": "Query reverse DNS (PTR) records for an IP address",
+    "meta": {
+      "title": "Reverse DNS Lookup — PTR Record Query | idcd",
+      "description": "Look up the PTR record for any IP address to find its associated hostname."
+    }
+  },
+  "asn": {
+    "title": "ASN Lookup",
+    "description": "Query network information for an Autonomous System Number",
+    "meta": {
+      "title": "ASN Lookup — Autonomous System Info | idcd",
+      "description": "Query ASN details including carrier name, IP prefixes, and network organization."
+    }
+  },
+  "mx": {
+    "title": "MX Record Lookup",
+    "description": "Query domain mail exchanger records",
+    "meta": {
+      "title": "MX Record Lookup — Mail Server Query | idcd",
+      "description": "Query MX records to verify mail server configuration and routing."
+    }
+  },
+  "spf": {
+    "title": "SPF Record Lookup",
+    "description": "Query domain SPF email authentication records",
+    "meta": {
+      "title": "SPF Record Lookup — Sender Policy Check | idcd",
+      "description": "Query and validate SPF (Sender Policy Framework) records for a domain."
+    }
+  },
+  "dmarc": {
+    "title": "DMARC Lookup",
+    "description": "Query domain DMARC email authentication policy",
+    "meta": {
+      "title": "DMARC Lookup — Email Auth Policy Check | idcd",
+      "description": "Query DMARC records and validate email authentication reporting and compliance policy."
+    }
+  },
+  "ntp": {
+    "title": "NTP Test",
+    "description": "Test NTP time synchronization server",
+    "meta": {
+      "title": "NTP Server Test — Time Sync Check | idcd",
+      "description": "Test NTP server connectivity and measure time offset."
+    }
+  },
+  "dkim": {
+    "title": "DKIM Key Lookup",
+    "description": "Query domain DKIM public key records",
+    "meta": {
+      "title": "DKIM Key Lookup — Email Signing Key Check | idcd",
+      "description": "Query DKIM public key records for a domain to verify email signing configuration."
+    }
+  },
+  "bgp": {
+    "title": "BGP Route Lookup",
+    "description": "Query BGP routing information for an IP or prefix",
+    "meta": {
+      "title": "BGP Route Lookup — Prefix & Path Info | idcd",
+      "description": "Query BGP routing data including AS path and prefix announcements for any IP."
+    }
+  },
+  "speedtest": {
+    "title": "Speed Test",
+    "description": "Test network download and upload bandwidth",
+    "meta": {
+      "title": "Speed Test — Network Bandwidth Test | idcd",
+      "description": "Measure network download and upload speed (Mbps) via multi-node HTTP throughput testing."
+    }
+  },
+  "base64": {
+    "title": "Base64 Encoder/Decoder",
+    "description": "Encode or decode Base64 strings and files online",
+    "meta": {
+      "title": "Base64 Encoder/Decoder — Encode & Decode Online | idcd",
+      "description": "Instantly encode or decode Base64 strings and files in your browser. Supports URL-safe Base64 with no data ever leaving your device."
+    }
+  },
+  "cidr-calculator": {
+    "title": "CIDR Calculator",
+    "description": "Calculate subnet masks, host ranges, and broadcast addresses",
+    "meta": {
+      "title": "CIDR Calculator — Subnet & IP Range Tool | idcd",
+      "description": "Calculate subnet masks, broadcast addresses, and host ranges from any CIDR notation. Supports IPv4 and IPv6 supernetting."
+    }
+  },
+  "cron-parser": {
+    "title": "Cron Expression Parser",
+    "description": "Parse and visualize cron schedule expressions",
+    "meta": {
+      "title": "Cron Expression Parser — Schedule Visualizer | idcd",
+      "description": "Parse and visualize any cron expression with a human-readable schedule preview. See the next 10 run times at a glance."
+    }
+  },
+  "hash": {
+    "title": "Hash Generator",
+    "description": "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes",
+    "meta": {
+      "title": "Hash Generator — MD5, SHA-1, SHA-256 & More | idcd",
+      "description": "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes from text or files instantly. All computation runs locally in your browser."
+    }
+  },
+  "ipv6-converter": {
+    "title": "IPv6 Converter",
+    "description": "Convert IPv6 addresses between full, compressed, and mixed notations",
+    "meta": {
+      "title": "IPv6 Converter — Format & Notation Converter | idcd",
+      "description": "Convert IPv6 addresses between full, compressed, and mixed notations. Also converts between IPv6 and decimal or hex representations."
+    }
+  },
+  "json-formatter": {
+    "title": "JSON Formatter",
+    "description": "Format, minify, and validate JSON with syntax highlighting",
+    "meta": {
+      "title": "JSON Formatter — Beautify & Validate JSON | idcd",
+      "description": "Format, minify, and validate JSON with syntax highlighting and error detection. Supports large payloads with instant client-side processing."
+    }
+  },
+  "jwt-decoder": {
+    "title": "JWT Decoder",
+    "description": "Decode and inspect JWT headers, payloads, and signatures",
+    "meta": {
+      "title": "JWT Decoder — Decode & Inspect JWTs | idcd",
+      "description": "Decode JWT headers, payloads, and signatures without sending tokens to any server. Verify expiry and claims in one click."
+    }
+  },
+  "qrcode": {
+    "title": "QR Code Generator",
+    "description": "Create QR codes for URLs, text, or contact info",
+    "meta": {
+      "title": "QR Code Generator — Create QR Codes Online | idcd",
+      "description": "Generate QR codes for URLs, text, or contact info with customizable size and error correction. Download as PNG or SVG instantly."
+    }
+  },
+  "regex-tester": {
+    "title": "Regex Tester",
+    "description": "Live regular expression testing with match highlighting",
+    "meta": {
+      "title": "Regex Tester — Live Regular Expression Editor | idcd",
+      "description": "Test and debug regular expressions with real-time match highlighting and group capture display. Supports PCRE, JavaScript, and Python flavors."
+    }
+  },
+  "timestamp": {
+    "title": "Timestamp Converter",
+    "description": "Convert Unix timestamps to readable dates and back across any timezone",
+    "meta": {
+      "title": "Timestamp Converter — Unix Time Converter | idcd",
+      "description": "Convert Unix timestamps to human-readable dates and back, across any timezone. Supports seconds, milliseconds, and ISO 8601 formats."
+    }
+  },
+  "_ui": {
+    "run": "Run Check",
+    "result": "Results",
+    "loading": "Checking...",
+    "copy": "Copy",
+    "copied": "Copied",
+    "export": "Export",
+    "share": "Share",
+    "refresh": "Refresh",
+    "clear": "Clear",
+    "input": "Input",
+    "output": "Output",
+    "submit": "Submit",
+    "selectNode": "Select Node",
+    "allNodes": "All Nodes",
+    "globalAvg": "Global Avg",
+    "nodeCount": "nodes",
+    "latency": "Latency",
+    "packetLoss": "Packet Loss",
+    "status": "Status",
+    "online": "Online",
+    "offline": "Offline",
+    "timeout": "Timeout",
+    "error": "Error",
+    "success": "Success",
+    "noData": "No data",
+    "probeFrom": "Probe from",
+    "target": "Target",
+    "protocol": "Protocol",
+    "port": "Port",
+    "ttl": "TTL",
+    "hops": "Hops",
+    "responseTime": "Response Time",
+    "statusCode": "Status Code",
+    "encoding": "Encoding",
+    "decode": "Decode",
+    "encode": "Encode"
+  }
+}

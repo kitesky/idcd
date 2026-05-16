@@ -1,0 +1,304 @@
+{
+  "ping": {
+    "title": "多地 Ping 测试",
+    "description": "全球多节点 ICMP Ping 拨测，检测网络延迟和丢包率",
+    "meta": {
+      "title": "多地 Ping 测试 - 全球延迟检测 | idcd",
+      "description": "全球 100+ 真实探测节点 ICMP Ping 测试，检测网络延迟和丢包率。"
+    }
+  },
+  "http": {
+    "title": "HTTP/HTTPS 拨测",
+    "description": "多地点 HTTP/HTTPS 连通性测试，检测响应时间",
+    "meta": {
+      "title": "HTTP/HTTPS 拨测 - 多地点可用性测试 | idcd",
+      "description": "从全球多个节点测试 HTTP/HTTPS 可用性和响应时间。"
+    }
+  },
+  "dns": {
+    "title": "DNS 查询",
+    "description": "全球 DNS 解析 + 污染对比检测",
+    "meta": {
+      "title": "DNS 查询 - 全球 DNS 解析检测 | idcd",
+      "description": "从全球多个 DNS 解析器查询域名，检测 DNS 污染和劫持。"
+    }
+  },
+  "traceroute": {
+    "title": "路由追踪",
+    "description": "追踪数据包经过的网络路径和节点",
+    "meta": {
+      "title": "路由追踪 - 全球网络路径追踪 | idcd",
+      "description": "从全球节点追踪数据包路径，逐跳定位网络延迟瓶颈。"
+    }
+  },
+  "ssl": {
+    "title": "SSL 证书检查",
+    "description": "检查域名 SSL/TLS 证书有效期和配置",
+    "meta": {
+      "title": "SSL 证书检查 - 域名证书有效期查询 | idcd",
+      "description": "检查域名 SSL/TLS 证书有效期、颁发机构和安全配置。"
+    }
+  },
+  "ip": {
+    "title": "IP 地理位置",
+    "description": "查询 IP 地址的地理位置和 ASN 信息",
+    "meta": {
+      "title": "IP 地理位置查询 - IP 归属地查询 | idcd",
+      "description": "查询 IP 地址的地理位置、运营商、ASN 和归属地信息。"
+    }
+  },
+  "whois": {
+    "title": "WHOIS 查询",
+    "description": "查询域名注册信息和持有者",
+    "meta": {
+      "title": "WHOIS 查询 - 域名注册信息查询 | idcd",
+      "description": "查询域名注册信息、注册商、过期时间和持有者联系方式。"
+    }
+  },
+  "icp": {
+    "title": "ICP 备案查询",
+    "description": "查询域名 ICP 备案状态",
+    "meta": {
+      "title": "ICP 备案查询 - 网站备案号查询 | idcd",
+      "description": "查询域名 ICP 备案号、备案主体和审核状态。"
+    }
+  },
+  "diagnose": {
+    "title": "一键诊断",
+    "description": "综合网络诊断，自动检测常见问题",
+    "meta": {
+      "title": "一键网络诊断 - 综合网络检测 | idcd",
+      "description": "一键运行综合网络诊断，自动检测 DNS 故障、延迟异常、路由问题等。"
+    }
+  },
+  "ipv6-check": {
+    "title": "IPv6 检测",
+    "description": "IPv6 地址检测与格式转换",
+    "meta": {
+      "title": "IPv6 地址检测 - IPv6 格式转换 | idcd",
+      "description": "IPv6 地址格式验证、扩展/压缩格式转换和类型检测。"
+    }
+  },
+  "tcp": {
+    "title": "TCP 端口测试",
+    "description": "测试 TCP 端口的连通性",
+    "meta": {
+      "title": "TCP 端口测试 - TCP 连通性检测 | idcd",
+      "description": "测试目标主机 TCP 端口是否可访问，检测端口连通性。"
+    }
+  },
+  "tcping": {
+    "title": "TCPing 测试",
+    "description": "通过 TCP 协议测量网络延迟",
+    "meta": {
+      "title": "TCPing - TCP 延迟测试 | idcd",
+      "description": "从全球探测节点测试 TCP 端口可达性和连接延迟，即时发现被封锁的端口。"
+    }
+  },
+  "mtr": {
+    "title": "MTR 路由测试",
+    "description": "结合 Ping 和 Traceroute 的网络诊断",
+    "meta": {
+      "title": "MTR 路由测试 - 网络路径诊断 | idcd",
+      "description": "MTR 网络路由测试工具，结合 Ping 和 Traceroute 功能，诊断网络路径问题。"
+    }
+  },
+  "smtp": {
+    "title": "SMTP 邮件测试",
+    "description": "测试 SMTP 邮件服务器连通性",
+    "meta": {
+      "title": "SMTP 邮件服务器测试 - 邮件连通性检测 | idcd",
+      "description": "测试 SMTP 邮件服务器是否可访问，检测邮件发送服务。"
+    }
+  },
+  "rdns": {
+    "title": "反向 DNS 查询",
+    "description": "查询 IP 的反向 DNS 记录（PTR）",
+    "meta": {
+      "title": "反向 DNS 查询 - IP 反查域名 | idcd",
+      "description": "通过 IP 地址反查对应的域名（PTR 记录）。"
+    }
+  },
+  "asn": {
+    "title": "ASN 查询",
+    "description": "查询 AS 号对应的网络信息",
+    "meta": {
+      "title": "ASN 自治系统查询 - ASN 信息查询 | idcd",
+      "description": "查询 ASN 自治系统号对应的网络运营商和 IP 段信息。"
+    }
+  },
+  "mx": {
+    "title": "MX 记录查询",
+    "description": "查询域名邮件交换记录",
+    "meta": {
+      "title": "MX 邮件记录查询 - 域名 MX 记录检测 | idcd",
+      "description": "查询域名 MX 邮件交换记录，验证邮件服务配置。"
+    }
+  },
+  "spf": {
+    "title": "SPF 记录查询",
+    "description": "查询域名 SPF 邮件认证记录",
+    "meta": {
+      "title": "SPF 记录查询 - 邮件发送策略检测 | idcd",
+      "description": "查询和验证域名 SPF 发件人策略框架记录。"
+    }
+  },
+  "dmarc": {
+    "title": "DMARC 记录查询",
+    "description": "查询域名 DMARC 邮件认证策略",
+    "meta": {
+      "title": "DMARC 记录查询 - 邮件认证策略检测 | idcd",
+      "description": "查询域名 DMARC 邮件认证报告和合规策略配置。"
+    }
+  },
+  "ntp": {
+    "title": "NTP 服务测试",
+    "description": "测试 NTP 时间同步服务器",
+    "meta": {
+      "title": "NTP 服务测试 - 时间同步服务检测 | idcd",
+      "description": "测试 NTP 网络时间协议服务器的连通性和时间偏差。"
+    }
+  },
+  "dkim": {
+    "title": "DKIM 密钥查询",
+    "description": "查询域名 DKIM 公钥记录",
+    "meta": {
+      "title": "DKIM 密钥查询 - 邮件签名密钥检测 | idcd",
+      "description": "查询域名 DKIM 域名密钥识别邮件公钥记录。"
+    }
+  },
+  "bgp": {
+    "title": "BGP 路由查询",
+    "description": "查询 IP 或前缀的 BGP 路由信息",
+    "meta": {
+      "title": "BGP 路由查询 - IP 前缀路由信息 | idcd",
+      "description": "查询 IP 地址或网络前缀的 BGP 路由路径和 AS 路径信息。"
+    }
+  },
+  "speedtest": {
+    "title": "网速测试",
+    "description": "测试网络下载和上传带宽速度",
+    "meta": {
+      "title": "网速测试 - 下载上传带宽测试 | idcd",
+      "description": "通过多节点 HTTP 大包测速，测量网络下载和上传带宽（Mbps）。"
+    }
+  },
+  "base64": {
+    "title": "Base64 编解码",
+    "description": "Base64 字符串和文件编码/解码",
+    "meta": {
+      "title": "Base64 编解码工具 - 在线 Base64 转换 | idcd",
+      "description": "在线 Base64 编码和解码，支持 URL-safe Base64，所有计算在本地完成。"
+    }
+  },
+  "cidr-calculator": {
+    "title": "CIDR 计算器",
+    "description": "IP 子网和 CIDR 范围计算",
+    "meta": {
+      "title": "CIDR 子网计算器 - IP 段计算工具 | idcd",
+      "description": "计算 CIDR 网段的主机数量、广播地址、子网掩码等信息。"
+    }
+  },
+  "cron-parser": {
+    "title": "Cron 表达式解析",
+    "description": "Cron 表达式解析与执行时间可视化",
+    "meta": {
+      "title": "Cron 表达式解析 - Cron 执行时间预览 | idcd",
+      "description": "解析 Cron 定时表达式，显示未来 10 次执行时间，支持标准 5 段格式。"
+    }
+  },
+  "hash": {
+    "title": "哈希生成器",
+    "description": "MD5、SHA-1、SHA-256 等哈希计算",
+    "meta": {
+      "title": "哈希生成器 - MD5/SHA256 在线计算 | idcd",
+      "description": "在线计算 MD5、SHA-1、SHA-256、SHA-512 哈希值，所有计算在本地完成。"
+    }
+  },
+  "ipv6-converter": {
+    "title": "IPv6 格式转换",
+    "description": "IPv6 地址全展开/压缩格式互转",
+    "meta": {
+      "title": "IPv6 格式转换 - IPv6 表示法转换 | idcd",
+      "description": "IPv6 地址全展开、压缩及混合表示法互转，支持十六进制和十进制转换。"
+    }
+  },
+  "json-formatter": {
+    "title": "JSON 格式化",
+    "description": "JSON 美化、压缩和验证",
+    "meta": {
+      "title": "JSON 格式化工具 - 在线 JSON 美化 | idcd",
+      "description": "在线 JSON 格式化、压缩和语法验证，支持语法高亮和错误提示。"
+    }
+  },
+  "jwt-decoder": {
+    "title": "JWT 解码",
+    "description": "JWT Token 解析与验证",
+    "meta": {
+      "title": "JWT 解码工具 - JSON Web Token 解析 | idcd",
+      "description": "在线解码 JWT Header、Payload 和签名，不向任何服务器发送 Token。"
+    }
+  },
+  "qrcode": {
+    "title": "二维码生成器",
+    "description": "在线生成 QR 二维码",
+    "meta": {
+      "title": "二维码生成器 - 在线 QR Code 生成 | idcd",
+      "description": "为 URL、文本或联系方式生成二维码，支持自定义大小，可下载 PNG/SVG。"
+    }
+  },
+  "regex-tester": {
+    "title": "正则表达式测试",
+    "description": "正则表达式实时测试与调试",
+    "meta": {
+      "title": "正则表达式测试 - 在线 RegEx 测试 | idcd",
+      "description": "在线正则表达式实时测试工具，高亮匹配结果，支持全局/多行等标志。"
+    }
+  },
+  "timestamp": {
+    "title": "时间戳转换",
+    "description": "Unix 时间戳与可读日期互转",
+    "meta": {
+      "title": "时间戳转换工具 - Unix 时间转换 | idcd",
+      "description": "Unix 时间戳与可读日期互转，跨时区支持，支持秒/毫秒/ISO 8601 格式。"
+    }
+  },
+  "_ui": {
+    "run": "开始检测",
+    "result": "检测结果",
+    "loading": "检测中...",
+    "copy": "复制",
+    "copied": "已复制",
+    "export": "导出",
+    "share": "分享",
+    "refresh": "刷新",
+    "clear": "清除",
+    "input": "输入",
+    "output": "输出",
+    "submit": "提交",
+    "selectNode": "选择节点",
+    "allNodes": "全部节点",
+    "globalAvg": "全球平均",
+    "nodeCount": "个节点",
+    "latency": "延迟",
+    "packetLoss": "丢包率",
+    "status": "状态",
+    "online": "在线",
+    "offline": "离线",
+    "timeout": "超时",
+    "error": "错误",
+    "success": "成功",
+    "noData": "暂无数据",
+    "probeFrom": "探测来源",
+    "target": "目标",
+    "protocol": "协议",
+    "port": "端口",
+    "ttl": "TTL",
+    "hops": "跳数",
+    "responseTime": "响应时间",
+    "statusCode": "状态码",
+    "encoding": "编码",
+    "decode": "解码",
+    "encode": "编码"
+  }
+}

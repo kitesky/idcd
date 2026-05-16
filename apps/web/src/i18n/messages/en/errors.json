@@ -1,0 +1,13 @@
+{
+  "NOT_FOUND": "Resource not found",
+  "DUPLICATE": "Already exists, please do not submit again",
+  "CONFLICT": "Operation conflict, please refresh and retry",
+  "VALIDATION": "Invalid input, please check and try again",
+  "UNAUTHORIZED": "Please sign in to continue",
+  "FORBIDDEN": "You do not have permission to perform this action",
+  "RATE_LIMIT": "Too many requests, please try again later",
+  "INTERNAL": "Internal server error, please try again later",
+  "UNAVAILABLE": "Service temporarily unavailable, please try again later",
+  "NETWORK": "Network connection failed, please check your connection",
+  "UNKNOWN": "An unknown error occurred, please try again later"
+}

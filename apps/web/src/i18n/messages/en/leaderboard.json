@@ -1,0 +1,36 @@
+{
+  "title": "Global CDN & Network Performance Leaderboard",
+  "subtitle": "real probe nodes, updated monthly",
+  "dataCycle": "Data period",
+  "updateFreq": "Probed every 5 minutes, aggregated monthly",
+  "tabs": {
+    "cdn": "CDN Response Speed",
+    "regions": "Global Node Latency",
+    "availability": "Availability Stats"
+  },
+  "table": {
+    "rank": "Rank",
+    "provider": "Provider",
+    "globalP50": "Global P50",
+    "chinaP50": "China P50",
+    "overseasP50": "Overseas P50",
+    "trend": "24h Trend",
+    "change": "Change",
+    "isp": "ISP / Carrier",
+    "region": "Region",
+    "availability30d": "30-Day Uptime",
+    "sla": "SLA Target",
+    "datacenterCount": "PoPs"
+  },
+  "info": {
+    "cdn": "Data collected across all probes in month {month}, sorted by global P50 ascending. P50 is the median response time — lower is better.",
+    "regions": "Average latency for top 5 countries per continent, sourced from distributed real-node probe data, updated monthly.",
+    "availability": "30-day availability statistics per ISP/carrier, based on health checks running every 5 minutes."
+  },
+  "flat": "Unchanged",
+  "disclaimer": {
+    "title": "Data Disclosure",
+    "methodology": "All latency data is collected from idcd's global real probe nodes using HTTP GET requests to each CDN's standard benchmark endpoint, measuring TCP-handshake-to-first-byte time (TTFB). Each node probes every 5 minutes; monthly figures use P50 (median) to eliminate jitter. Availability is derived from DNS resolution success rate and TCP reachability.",
+    "notice": "This leaderboard reflects network performance measured from idcd probe nodes to CDN points of presence. It does not constitute a commercial recommendation nor imply any partnership with CDN vendors. Actual performance may vary by region and workload."
+  }
+}

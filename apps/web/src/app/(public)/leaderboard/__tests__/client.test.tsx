@@ -33,8 +33,20 @@ const MOCK_CDN_DATA = [
 
 const mockApiRequest = vi.mocked(apiRequest)
 
+// Adapt MOCK_CDN_DATA to the ApiEntry shape the component expects
+const MOCK_API_ENTRIES = MOCK_CDN_DATA.map(e => ({
+  rank: e.rank,
+  name: e.name,
+  target: "https://example.com",
+  avg_latency_ms: e.globalP50,
+  p50_latency_ms: e.globalP50,
+  p95_latency_ms: e.globalP50 * 2,
+  uptime_pct: 99.9,
+  check_count: 1000,
+}))
+
 beforeEach(() => {
-  mockApiRequest.mockResolvedValue({ data: MOCK_CDN_DATA, month: "2026-05", sample_count: 12000 })
+  mockApiRequest.mockResolvedValue({ data: { entries: MOCK_API_ENTRIES, total: MOCK_API_ENTRIES.length } })
 })
 
 describe("LeaderboardClient — Tab 触发器渲染", () => {

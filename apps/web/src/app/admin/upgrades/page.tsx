@@ -3,19 +3,9 @@ import { getT } from "@/i18n/getT"
 import { cookies } from "next/headers"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { UpgradesClient } from "./upgrades-client"
+import type { UpgradeRollout } from "./types"
 
 export const metadata: Metadata = { title: "OTA Rollout — idcd Admin" }
-
-export interface UpgradeRollout {
-  id: string
-  version: string
-  download_url: string
-  checksum: string
-  rollout_pct: number
-  status: "active" | "paused" | "completed"
-  created_at: string
-  updated_at: string
-}
 
 const INTERNAL_API_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 const ADMIN_TOKEN = process.env.ADMIN_TOKEN ?? ""

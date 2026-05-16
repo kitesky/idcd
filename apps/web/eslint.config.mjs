@@ -12,7 +12,7 @@ export default [
       "import/no-unresolved": "error",
       "import/named": "error",
       "import/no-duplicates": "error",
-      "import/no-cycle": ["warn", { maxDepth: 5 }]
+      "import/no-cycle": ["error", { maxDepth: 5 }]
     }
   }
 ]

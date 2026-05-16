@@ -58,6 +58,23 @@ interface MonitorItem {
   last_check_at?: string
 }
 
+interface DownMonitor {
+  id: string
+  name: string
+  status: string
+  last_check_at?: string
+}
+
+type AlertEventStatus = "firing" | "resolved" | "acknowledged"
+
+interface AlertEventItem {
+  id: string
+  monitorName: string
+  status: AlertEventStatus
+  startedAt: string
+  resolvedAt?: string
+}
+
 interface StatCardProps {
   title: string
   value: string | number
@@ -130,6 +147,9 @@ export default function DashboardPage() {
   const [sheetOpen, setSheetOpen] = useState(false)
   const [selected, setSelected] = useState<Set<string>>(new Set())
 
+  const [downMonitors, setDownMonitors] = useState<DownMonitor[]>([])
+  const [alertEvents, setAlertEvents] = useState<AlertEventItem[]>([])
+
   useEffect(() => {
     apiFetch<DashboardSummary>("/v1/dashboard/summary")
       .then(setSummary)
@@ -142,6 +162,14 @@ export default function DashboardPage() {
 
     apiFetch<{ items: MonitorItem[] }>("/v1/monitors")
       .then((d) => setMonitors(d.items ?? []))
+      .catch(() => {})
+
+    apiFetch<{ items: DownMonitor[] }>("/v1/monitors?status=DOWN&limit=5")
+      .then((d) => setDownMonitors(d.items ?? []))
+      .catch(() => {})
+
+    apiFetch<{ events: AlertEventItem[] }>("/v1/alert-events?limit=5")
+      .then((d) => setAlertEvents(d.events ?? []))
       .catch(() => {})
   }, [])
 
@@ -315,6 +343,101 @@ export default function DashboardPage() {
                 </CardContent>
               </Card>
             </div>
+          </div>
+
+          {summary && summary.monitors.down > 0 && (
+            <div data-testid="down-monitors-section">
+              <h2 className="mb-4 text-lg font-semibold">告警中的监控</h2>
+              <Card>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>监控名称</TableHead>
+                      <TableHead className="w-24">状态</TableHead>
+                      <TableHead className="w-36 hidden sm:table-cell">上次检测</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {downMonitors.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={3} className="text-center text-muted-foreground py-6">
+                          加载中…
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      downMonitors.map((mon) => (
+                        <TableRow key={mon.id}>
+                          <TableCell>
+                            <Link
+                              href={`/app/monitors/${mon.id}`}
+                              className="font-medium hover:underline"
+                            >
+                              {mon.name}
+                            </Link>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="destructive">DOWN</Badge>
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
+                            {formatRelative(mon.last_check_at)}
+                          </TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </Card>
+            </div>
+          )}
+
+          <div data-testid="alert-events-section">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-lg font-semibold">近期告警</h2>
+              <Button asChild variant="ghost" size="sm">
+                <Link href="/app/alerts" className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+                  查看全部
+                  <ArrowRight className="h-4 w-4" />
+                </Link>
+              </Button>
+            </div>
+            {alertEvents.length === 0 ? (
+              <Card>
+                <CardContent className="py-6 text-center text-sm text-muted-foreground">
+                  最近 7 天无告警
+                </CardContent>
+              </Card>
+            ) : (
+              <Card>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>监控名称</TableHead>
+                      <TableHead className="w-28">状态</TableHead>
+                      <TableHead className="w-36 hidden sm:table-cell">触发时间</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {alertEvents.map((evt) => (
+                      <TableRow key={evt.id}>
+                        <TableCell className="font-medium">{evt.monitorName}</TableCell>
+                        <TableCell>
+                          {evt.status === "firing" ? (
+                            <Badge variant="destructive">FIRING</Badge>
+                          ) : evt.status === "resolved" ? (
+                            <Badge variant="success">RESOLVED</Badge>
+                          ) : (
+                            <Badge variant="secondary">ACK</Badge>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
+                          {formatRelative(evt.startedAt)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </Card>
+            )}
           </div>
 
           <div data-testid="pinned-monitors-section">

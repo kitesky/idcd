@@ -14,6 +14,8 @@ import {
   ChevronUp,
   Wifi,
   Loader2,
+  CheckCircle2,
+  Search,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -621,18 +623,44 @@ function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
 }
 
 function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: ChannelsTabProps) {
+  const [channelSearch, setChannelSearch] = useState("")
+
+  const filteredChannels = channels.filter((c) =>
+    c.name.toLowerCase().includes(channelSearch.toLowerCase())
+  )
+
+  const sortedChannels = [...filteredChannels].sort((a, b) => {
+    if (a.verified === b.verified) return 0
+    return a.verified ? 1 : -1 // unverified first
+  })
+
   return (
     <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">共 {channels.length} 个通道</p>
+      <div className="flex items-center gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            placeholder="搜索通道名称..."
+            value={channelSearch}
+            onChange={(e) => setChannelSearch(e.target.value)}
+            className="pl-8"
+            data-testid="channel-search-input"
+          />
+        </div>
         <Button size="sm" onClick={onAdd} data-testid="add-channel-btn">
           <Plus className="mr-1 h-4 w-4" />
           添加通道
         </Button>
       </div>
 
+      <p className="text-sm text-muted-foreground">
+        {channelSearch
+          ? `找到 ${sortedChannels.length} / ${channels.length} 个通道`
+          : `共 ${channels.length} 个通道`}
+      </p>
+
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {channels.map((ch) => {
+        {sortedChannels.map((ch) => {
           const isTesting = testingIds.has(ch.id)
           return (
             <Card key={ch.id} data-testid={`channel-card-${ch.id}`}>
@@ -640,12 +668,24 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                 <CardTitle className="flex items-center gap-2 text-sm font-semibold">
                   {channelIcon(ch.type)}
                   <span className="flex-1 truncate">{ch.name}</span>
-                  <Badge variant={ch.verified ? "success" : "warning"} className="shrink-0">
-                    {ch.verified ? "已验证" : "未验证"}
-                  </Badge>
+                  {ch.verified ? (
+                    <Badge variant="success" className="shrink-0 gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      已验证
+                    </Badge>
+                  ) : (
+                    <Badge variant="warning" className="shrink-0">
+                      未验证
+                    </Badge>
+                  )}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
                   {CHANNEL_TYPE_LABELS[ch.type]}
+                  {!ch.verified && (
+                    <span className="ml-1 text-amber-600 dark:text-amber-400">
+                      · 点击 Wifi 图标发送测试
+                    </span>
+                  )}
                 </p>
               </CardHeader>
               <CardContent className="pb-2">

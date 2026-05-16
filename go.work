@@ -4,12 +4,14 @@ use (
 	./apps/agent
 	./apps/aggregator
 	./apps/api
+	./apps/cert-svc
 	./apps/cli
 	./apps/gateway
 	./apps/mcp
 	./apps/notifier
 	./apps/scheduler
 	./lib/auth
+	./lib/cert
 	./lib/db
 	./lib/ratelimit
 	./lib/shared

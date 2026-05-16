@@ -172,7 +172,7 @@ func (s *Server) setupRouter() {
 
 	// CDN leaderboard — public, no auth required
 	leaderboardH := handler.NewLeaderboardHandler(s.pgxPool)
-	r.Get("/v1/leaderboard/cdn", leaderboardH.CdnRanking)
+	r.Get("/v1/leaderboard/cdn", leaderboardH.CDNLeaderboard)
 
 	// Prometheus metrics are served on a separate internal port (see startMetricsServer).
 	// Do NOT expose /metrics on the public router.
@@ -298,13 +298,6 @@ func (s *Server) setupRouter() {
 				r.Get("/dns", infoH.DNS)
 				r.Get("/ssl", infoH.SSL)
 				r.Get("/icp", infoH.ICP)
-				r.Get("/rdns", infoH.RDNS)
-				r.Get("/spf", infoH.SPF)
-				r.Get("/dmarc", infoH.DMARC)
-				r.Get("/mx", infoH.MX)
-				r.Get("/dkim", infoH.DKIM)
-				r.Get("/asn", infoH.ASN)
-				r.Get("/bgp", infoH.BGP)
 			})
 			// Probe endpoints
 			streamClient := stream.New(s.redis)
@@ -315,17 +308,8 @@ func (s *Server) setupRouter() {
 				r.Post("/tcp", probeH.TCP)
 				r.Post("/dns", probeH.DNS)
 				r.Post("/traceroute", probeH.Traceroute)
-				r.Post("/smtp", probeH.SMTP)
-				r.Post("/ntp", probeH.NTP)
-				r.Post("/mtr", probeH.MTR)
-				r.Post("/speedtest", probeH.Speedtest)
-				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)
-			// Diagnose report storage (Redis-backed, no auth — called server-side by Next.js)
-			diagReportH := handler.NewDiagnoseReportHandler(s.redis)
-			r.Post("/diagnose/reports", diagReportH.SaveReport)
-			r.Get("/diagnose/reports/{id}", diagReportH.GetReport)
 			// Node directory endpoint
 			nodesH := handler.NewNodesHandler(s.pgxPool)
 			r.Get("/nodes", nodesH.List)
@@ -363,21 +347,21 @@ func (s *Server) setupRouter() {
 				r.Use(apiQuotaMW)
 				r.Post("/", monitorH.Create)
 				r.Get("/", monitorH.List)
-				r.Post("/bulk", monitorH.BulkAction)
+				r.With(authnMW).Post("/bulk", monitorH.BulkAction)
 				r.Get("/{id}", monitorH.Get)
 				r.Patch("/{id}", monitorH.Update)
 				r.Delete("/{id}", monitorH.Delete)
 				r.Post("/{id}/pause", monitorH.Pause)
 				r.Post("/{id}/resume", monitorH.Resume)
-				r.Get("/{id}/stream", monitorStreamH.Stream)
-				r.Get("/{id}/checks", monitorChecksH.List)
-				r.Get("/{id}/baseline", anchorH.GetBaseline)
-				r.Get("/{id}/deviations", anchorH.ListDeviations)
-				r.Post("/{id}/agent-obs", agentObsH.CreateConfig)
-				r.Get("/{id}/agent-obs", agentObsH.GetConfig)
-				r.Patch("/{id}/agent-obs", agentObsH.UpdateConfig)
-				r.Delete("/{id}/agent-obs", agentObsH.DeleteConfig)
-				r.Get("/{id}/agent-obs/checks", agentObsH.ListChecks)
+				r.With(authnMW).Get("/{id}/stream", monitorStreamH.Stream)
+				r.With(authnMW).Get("/{id}/checks", monitorChecksH.List)
+				r.With(authnMW).Get("/{id}/baseline", anchorH.GetBaseline)
+				r.With(authnMW).Get("/{id}/deviations", anchorH.ListDeviations)
+				r.With(authnMW).Post("/{id}/agent-obs", agentObsH.CreateConfig)
+				r.With(authnMW).Get("/{id}/agent-obs", agentObsH.GetConfig)
+				r.With(authnMW).Patch("/{id}/agent-obs", agentObsH.UpdateConfig)
+				r.With(authnMW).Delete("/{id}/agent-obs", agentObsH.DeleteConfig)
+				r.With(authnMW).Get("/{id}/agent-obs/checks", agentObsH.ListChecks)
 			})
 
 			// Admin billing endpoints — require admin token via Authorization: Bearer header.
@@ -421,15 +405,6 @@ func (s *Server) setupRouter() {
 				r.Use(authnMW)
 				r.Use(apiQuotaMW)
 				r.Get("/", quotaH.GetQuota)
-			})
-
-			// Status page user CRUD (authentication required)
-			statusPageUserH := handler.NewStatusPageUserHandler(s.pgxPool)
-			r.Route("/status-pages", func(r chi.Router) {
-				r.Use(authnMW)
-				r.Get("/", statusPageUserH.List)
-				r.Post("/", statusPageUserH.Create)
-				r.Delete("/{id}", statusPageUserH.Delete)
 			})
 
 			// Status page custom domain endpoints (authentication required)
@@ -480,7 +455,7 @@ func (s *Server) setupRouter() {
 				r.Get("/", alertH.ListChannels)
 				r.Delete("/{id}", alertH.DeleteChannel)
 				r.Post("/{id}/test", alertH.TestChannel)
-				r.Get("/{id}/notifications", alertNotifH.List)
+				r.With(authnMW).Get("/{id}/notifications", alertNotifH.List)
 			})
 			r.Route("/alert-policies", func(r chi.Router) {
 				r.Use(authnMW)
@@ -506,7 +481,6 @@ func (s *Server) setupRouter() {
 				r.Use(authnMW)
 				r.Post("/", noiseH.CreateGroup)
 				r.Get("/", noiseH.ListGroups)
-				r.Delete("/{id}", noiseH.DeleteGroup)
 			})
 
 			// Team / Org endpoints (authentication required)
@@ -586,8 +560,7 @@ func (s *Server) setupRouter() {
 			blocklistHandlerStore = &redisBlocklistAdapter{client: s.redis}
 		}
 		blocklistH := handler.NewAdminBlocklistHandler(blocklistHandlerStore)
-		gatewayInternalURL := s.config.AgentGateway.InternalURL
-		upgradeH := handler.NewNodeUpgradeHandler(s.pgxPool, gatewayInternalURL)
+		cdnAdminH := handler.NewAdminCDNHandler(s.pgxPool)
 		r.Route("/internal/admin", func(r chi.Router) {
 			r.Use(adminH.AdminAuthMiddleware)
 			r.Get("/metrics", adminH.AdminMetrics)
@@ -595,9 +568,7 @@ func (s *Server) setupRouter() {
 			r.Get("/users/{id}", adminH.AdminUserDetail)
 			r.Post("/block-ip", blocklistH.BlockIP)
 			r.Delete("/block-ip", blocklistH.UnblockIP)
-			r.Post("/upgrade-rollouts", upgradeH.Create)
-			r.Get("/upgrade-rollouts", upgradeH.List)
-			r.Patch("/upgrade-rollouts/{id}", upgradeH.Update)
+			r.Post("/cdn-monitors/seed", cdnAdminH.Seed)
 		})
 
 		// Community node application and points endpoints.
@@ -620,8 +591,6 @@ func (s *Server) setupRouter() {
 			r.Post("/{id}/participants", oncallH.AddParticipant)
 			r.Delete("/{id}/participants/{user_id}", oncallH.RemoveParticipant)
 			r.Post("/{id}/overrides", oncallH.CreateOverride)
-			r.Get("/{id}/overrides", oncallH.ListOverrides)
-			r.Delete("/{id}/overrides/{override_id}", oncallH.DeleteOverride)
 			r.Get("/{id}/current", oncallH.GetCurrentOnCall)
 		})
 

@@ -1,3 +1,4 @@
+// Package handler implements HTTP handlers for the API server.
 package handler
 
 import (
@@ -6,142 +7,125 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/kite365/idcd/apps/api/internal/response"
+	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
-// LeaderboardPool is the minimal DB interface required by LeaderboardHandler.
-// *pgxpool.Pool satisfies this interface.
+// LeaderboardPool is the subset of pgxpool.Pool used by LeaderboardHandler.
+// It is satisfied by both *pgxpool.Pool and pgxmock.PgxPoolIface.
 type LeaderboardPool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// cdnPatterns are ILIKE patterns used to identify CDN monitors by name.
-var cdnPatterns = []string{
-	"%cloudflare%", "%fastly%", "%akamai%", "%cloudfront%",
-	"%阿里%", "%alicdn%", "%腾讯%", "%qcloud%", "%华为%",
-	"%百度%", "%又拍%", "%七牛%",
-}
-
-// CdnEntry represents a single CDN provider's performance entry.
-type CdnEntry struct {
-	Rank        int       `json:"rank"`
-	Name        string    `json:"name"`
-	ShortName   string    `json:"short_name"`
-	GlobalP50   float64   `json:"global_p50"`
-	ChinaP50    float64   `json:"china_p50"`
-	OverseasP50 float64   `json:"overseas_p50"`
-	Trend       []float64 `json:"trend"`
-	Change      float64   `json:"change"`
-}
-
-type cdnLeaderboardResponse struct {
-	Data        []CdnEntry `json:"data"`
-	Month       string     `json:"month"`
-	SampleCount int        `json:"sample_count"`
-}
-
-// LeaderboardHandler serves the public CDN leaderboard endpoint.
+// LeaderboardHandler handles the public CDN leaderboard endpoints.
 type LeaderboardHandler struct {
 	pool LeaderboardPool
 }
 
 // NewLeaderboardHandler creates a new LeaderboardHandler.
-// pool may be nil, in which case an empty list is returned.
-func NewLeaderboardHandler(pool *pgxpool.Pool) *LeaderboardHandler {
-	if pool == nil {
-		return &LeaderboardHandler{pool: nil}
-	}
+func NewLeaderboardHandler(pool LeaderboardPool) *LeaderboardHandler {
 	return &LeaderboardHandler{pool: pool}
 }
 
-// CdnRanking handles GET /v1/leaderboard/cdn?month=YYYY-MM
-func (h *LeaderboardHandler) CdnRanking(w http.ResponseWriter, r *http.Request) {
-	// Parse optional month query param; default to current month.
-	monthStr := r.URL.Query().Get("month")
-	var monthStart, monthEnd time.Time
-	if monthStr == "" {
-		now := time.Now().UTC()
-		monthStart = time.Date(now.Year(), now.Month(), 1, 0, 0, 0, 0, time.UTC)
-	} else {
-		t, err := time.Parse("2006-01", monthStr)
-		if err != nil {
-			response.JSON(w, r, http.StatusBadRequest, map[string]string{
-				"error": "invalid month format, expected YYYY-MM",
-			})
-			return
-		}
-		monthStart = time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
-	}
-	monthEnd = monthStart.AddDate(0, 1, 0)
-	monthLabel := monthStart.Format("2006-01")
+// LeaderboardEntry represents a single CDN provider in the leaderboard.
+type LeaderboardEntry struct {
+	Rank       int     `json:"rank"`
+	MonitorID  string  `json:"monitor_id"`
+	Name       string  `json:"name"`
+	Target     string  `json:"target"`
+	AvgLatency float64 `json:"avg_latency_ms"`
+	P50Latency float64 `json:"p50_latency_ms"`
+	P95Latency float64 `json:"p95_latency_ms"`
+	Uptime     float64 `json:"uptime_pct"`
+	CheckCount int64   `json:"check_count"`
+}
 
-	emptyResp := cdnLeaderboardResponse{
-		Data:        []CdnEntry{},
-		Month:       monthLabel,
-		SampleCount: 0,
-	}
+// LeaderboardResponse is the JSON response for GET /v1/leaderboard/cdn.
+type LeaderboardResponse struct {
+	Entries     []LeaderboardEntry `json:"entries"`
+	Total       int                `json:"total"`
+	WindowHours int                `json:"window_hours"`
+	GeneratedAt string             `json:"generated_at"`
+}
 
-	if h.pool == nil {
-		response.JSON(w, r, http.StatusOK, emptyResp)
-		return
-	}
+// CDNLeaderboard handles GET /v1/leaderboard/cdn.
+// Returns CDN provider latency ranking based on real monitor_checks data.
+// Only includes monitors owned by systemUserID (idcd_system).
+func (h *LeaderboardHandler) CDNLeaderboard(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
 
-	ctx := r.Context()
+	windowHours := 24
 
+	// Query aggregated latency stats from monitor_checks for system CDN monitors.
+	// We compute p50 manually using percentile_disc (available in standard PostgreSQL).
+	// Uptime is the percentage of checks with status='up'.
 	rows, err := h.pool.Query(ctx, `
 		SELECT
+			m.id,
 			m.name,
-			PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY mc.response_ms) AS p50
-		FROM monitor_checks mc
-		JOIN monitors m ON m.id = mc.monitor_id
-		WHERE mc.checked_at >= $1
-		  AND mc.checked_at < $2
-		  AND m.name ILIKE ANY($3)
-		GROUP BY m.name
-		ORDER BY p50 ASC
-		LIMIT 50
-	`, monthStart, monthEnd, cdnPatterns)
+			m.target,
+			COUNT(c.latency_ms)                                         AS check_count,
+			COALESCE(AVG(c.latency_ms), 0)                             AS avg_latency_ms,
+			COALESCE(PERCENTILE_DISC(0.5) WITHIN GROUP (ORDER BY c.latency_ms), 0) AS p50_latency_ms,
+			COALESCE(PERCENTILE_DISC(0.95) WITHIN GROUP (ORDER BY c.latency_ms), 0) AS p95_latency_ms,
+			COALESCE(
+				100.0 * SUM(CASE WHEN c.status = 'up' THEN 1 ELSE 0 END)::float / NULLIF(COUNT(*), 0),
+				0
+			) AS uptime_pct
+		FROM monitors m
+		LEFT JOIN monitor_checks c
+			ON c.monitor_id = m.id
+			AND c.check_at >= NOW() - ($1::int * INTERVAL '1 hour')
+		WHERE m.user_id = $2
+		  AND m.status  = 'active'
+		GROUP BY m.id, m.name, m.target
+		ORDER BY avg_latency_ms ASC
+	`, windowHours, systemUserID)
 	if err != nil {
-		// Fallback to empty list on error.
-		response.JSON(w, r, http.StatusOK, emptyResp)
+		response.Error(w, r, apperr.Internal("failed to query leaderboard", err))
 		return
 	}
 	defer rows.Close()
 
-	var entries []CdnEntry
+	var entries []LeaderboardEntry
 	rank := 1
 	for rows.Next() {
-		var name string
-		var p50 float64
-		if err := rows.Scan(&name, &p50); err != nil {
-			continue
+		var e LeaderboardEntry
+		if err := rows.Scan(
+			&e.MonitorID,
+			&e.Name,
+			&e.Target,
+			&e.CheckCount,
+			&e.AvgLatency,
+			&e.P50Latency,
+			&e.P95Latency,
+			&e.Uptime,
+		); err != nil {
+			response.Error(w, r, apperr.Internal("failed to scan leaderboard row", err))
+			return
 		}
-		entries = append(entries, CdnEntry{
-			Rank:        rank,
-			Name:        name,
-			ShortName:   name,
-			GlobalP50:   p50,
-			ChinaP50:    0,
-			OverseasP50: 0,
-			Trend:       []float64{},
-			Change:      0.0,
-		})
+		e.Rank = rank
 		rank++
+		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {
-		response.JSON(w, r, http.StatusOK, emptyResp)
+		response.Error(w, r, apperr.Internal("row iteration error", err))
 		return
 	}
 
 	if entries == nil {
-		entries = []CdnEntry{}
+		entries = []LeaderboardEntry{}
 	}
 
-	response.JSON(w, r, http.StatusOK, cdnLeaderboardResponse{
-		Data:        entries,
-		Month:       monthLabel,
-		SampleCount: len(entries),
+	response.JSON(w, r, http.StatusOK, LeaderboardResponse{
+		Entries:     entries,
+		Total:       len(entries),
+		WindowHours: windowHours,
+		GeneratedAt: time.Now().UTC().Format(time.RFC3339),
 	})
 }

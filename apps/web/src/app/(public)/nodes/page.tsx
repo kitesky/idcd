@@ -1,13 +1,11 @@
 import { Metadata } from "next"
-import { getTranslations } from "next-intl/server"
-import { getLocale } from "@/i18n/locale"
+import { getT } from "@/i18n/getT"
 import { NodesClient } from "./nodes-client"
 import type { NodeEntry } from "@/lib/nodes-utils"
 import type { Node } from "@/lib/api"
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale()
-  const t = await getTranslations({ locale, namespace: "nodes" })
+  const t = await getT("nodes")
   return {
     title: `${t("publicTitle")} - idcd`,
     description: t("publicSubtitle"),
@@ -27,7 +25,7 @@ function mapApiNode(n: Node): NodeEntry {
   }
 }
 
-async function fetchNodes(t: Awaited<ReturnType<typeof getTranslations>>): Promise<{ nodes: NodeEntry[]; error?: string }> {
+async function fetchNodes(t: (key: string, params?: Record<string, string | number>) => string): Promise<{ nodes: NodeEntry[]; error?: string }> {
   try {
     const res = await fetch(
       `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"}/v1/nodes`,
@@ -45,8 +43,7 @@ async function fetchNodes(t: Awaited<ReturnType<typeof getTranslations>>): Promi
 }
 
 export default async function NodesPage() {
-  const locale = await getLocale()
-  const t = await getTranslations({ locale, namespace: "nodes" })
+  const t = await getT("nodes")
   const { nodes, error } = await fetchNodes(t)
 
   return (

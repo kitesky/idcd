@@ -1,9 +1,9 @@
 import Link from "next/link"
 import { ReactNode } from "react"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 
 export default async function SettingsLayout({ children }: { children: ReactNode }) {
-  const t = await getTranslations("settings")
+  const t = await getT("settings")
 
   const NAV_ITEMS = [
     { href: "/app/settings/profile", label: t("nav.profile") },

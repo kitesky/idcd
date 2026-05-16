@@ -1,8 +1,7 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
-import { getTranslations } from 'next-intl/server'
+import { getT } from '@/i18n/getT'
 import { ALL_TOOLS, getToolBySlug } from '@/app/(public)/tools/tools-config'
-import { getLocale } from '@/i18n/locale'
 import ToolRenderer from './tool-renderer'
 
 type Props = {
@@ -15,11 +14,10 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
-  const locale = await getLocale()
   const tool = getToolBySlug(slug)
 
   try {
-    const t = await getTranslations({ locale, namespace: 'tools' })
+    const t = await getT('tools')
     // t.has() is not available; use try/catch to handle missing keys gracefully
     const metaTitle = t(`${slug}.meta.title`)
     const metaDescription = t(`${slug}.meta.description`)
@@ -49,13 +47,12 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 export default async function ToolSlugPage({ params }: Props) {
   const { slug } = await params
   const tool = getToolBySlug(slug)
-  const locale = await getLocale()
 
   let toolName = tool?.name ?? slug
   let toolMetaDescription = tool?.description ?? ''
 
   try {
-    const t = await getTranslations({ locale, namespace: 'tools' })
+    const t = await getT('tools')
     toolName = t(`${slug}.title`)
     toolMetaDescription = t(`${slug}.meta.description`)
   } catch {

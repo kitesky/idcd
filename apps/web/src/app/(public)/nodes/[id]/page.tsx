@@ -1,7 +1,7 @@
 import type { Metadata } from "next"
 import Link from "next/link"
 import { ArrowLeft, Activity, Clock, Wifi } from "lucide-react"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { getLocale } from "@/i18n/locale"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -50,7 +50,7 @@ interface Props {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
   const locale = await getLocale()
-  const t = await getTranslations({ locale, namespace: "nodes" })
+  const t = await getT("nodes", locale)
   return {
     title: `${t("detail.title")} ${id} - idcd`,
     description: `${t("detail.uptime24h")} ${t("detail.p50Latency")}`,
@@ -82,7 +82,7 @@ const LATENCY_BARS = [
 export default async function NodeDetailPage({ params }: Props) {
   const { id } = await params
   const locale = await getLocale()
-  const t = await getTranslations({ locale, namespace: "nodes" })
+  const t = await getT("nodes", locale)
   const result = await getNodeDiagnostics(id)
 
   const STATUS_MAP: Record<string, { label: string; variant: "success" | "warning" | "destructive" | "secondary" }> = {

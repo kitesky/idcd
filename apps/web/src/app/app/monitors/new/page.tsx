@@ -1,11 +1,9 @@
 import type { Metadata } from "next"
-import { getTranslations } from "next-intl/server"
-import { getLocale } from "@/i18n/locale"
+import { getT } from "@/i18n/getT"
 import { NewMonitorClient } from "./new-monitor-client"
 
 export async function generateMetadata(): Promise<Metadata> {
-  const locale = await getLocale()
-  const t = await getTranslations({ locale, namespace: "monitors" })
+  const t = await getT("monitors")
   return {
     title: `${t("new.title")} - idcd`,
     description: t("new.description"),
@@ -13,8 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function NewMonitorPage() {
-  const locale = await getLocale()
-  const t = await getTranslations({ locale, namespace: "monitors" })
+  const t = await getT("monitors")
 
   return (
     <>

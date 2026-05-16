@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { cookies } from "next/headers"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { NodesClient } from "./nodes-client"
@@ -30,7 +30,7 @@ async function fetchNodes(): Promise<AdminNode[]> {
 
 export default async function NodesPage() {
   const locale = await getAdminLocale()
-  const t = await getTranslations({ locale, namespace: "admin" })
+  const t = await getT("admin", locale)
   const nodes = await fetchNodes()
 
   return (

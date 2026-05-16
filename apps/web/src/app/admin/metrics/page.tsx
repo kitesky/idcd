@@ -1,4 +1,4 @@
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { cookies } from "next/headers"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -69,7 +69,7 @@ function PlanBar({ label, count, total }: { label: string; count: number; total:
 
 export default async function MetricsPage() {
   const locale = await getAdminLocale()
-  const t = await getTranslations({ locale, namespace: "admin" })
+  const t = await getT("admin", locale)
   const metrics = await fetchMetrics()
 
   if (!metrics) return <p className="text-destructive">{t("metrics.loadFailed")}</p>

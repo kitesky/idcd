@@ -2,11 +2,11 @@ import type { Metadata, Viewport } from "next"
 import { headers } from "next/headers"
 import { Geist, Geist_Mono } from "next/font/google"
 import { NextIntlClientProvider } from "next-intl"
-import { getMessages } from "next-intl/server"
 import { ThemeProvider } from "@/components/providers"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { CookieBanner } from "@/components/cookie-banner"
 import { getLocale } from "@/i18n/locale"
+import { loadMessages } from "@/i18n/request"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -58,18 +58,18 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  const [headersList, locale, messages] = await Promise.all([
+  const [headersList, locale] = await Promise.all([
     headers(),
     getLocale(),
-    getMessages(),
   ])
+  const messages = await loadMessages(locale)
   const nonce = headersList.get("x-nonce") ?? undefined
   const htmlLang = locale === 'en' ? 'en' : 'zh-CN'
 
   return (
     <html lang={htmlLang} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
-        <NextIntlClientProvider locale={locale} messages={messages}>
+        <NextIntlClientProvider locale={locale} messages={messages} timeZone="Asia/Shanghai" now={new Date()}>
           <ThemeProvider nonce={nonce}>
             <TooltipProvider delayDuration={200}>
               {children}

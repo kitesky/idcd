@@ -2,7 +2,7 @@ import { getRequestConfig } from 'next-intl/server'
 import { headers } from 'next/headers'
 import { defaultLocale, isValidLocale, type Locale } from './routing'
 
-async function loadMessages(locale: Locale) {
+export async function loadMessages(locale: Locale) {
   if (locale === 'en') {
     const [nav, tools, auth, home, leaderboard, nodes, pricing, errors, common,
       monitors, alerts, settings, billing, dashboard, status, admin] = await Promise.all([

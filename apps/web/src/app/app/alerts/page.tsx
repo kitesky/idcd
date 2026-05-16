@@ -1,9 +1,9 @@
 import { Metadata } from "next"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { AlertsClient } from "./alerts-client"
 
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("alerts")
+  const t = await getT("alerts")
   return {
     title: `${t("title")} - idcd`,
     description: t("metaDescription"),
@@ -11,7 +11,7 @@ export async function generateMetadata(): Promise<Metadata> {
 }
 
 export default async function AlertsPage() {
-  const t = await getTranslations("alerts")
+  const t = await getT("alerts")
   return (
     <>
       <div>

@@ -1,6 +1,6 @@
 import Link from "next/link"
 import { cookies } from "next/headers"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { LanguageSwitcher } from "./lang-switcher"
 
@@ -12,7 +12,7 @@ async function getAdminLocale(): Promise<Locale> {
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const locale = await getAdminLocale()
-  const t = await getTranslations({ locale, namespace: "admin" })
+  const t = await getT("admin", locale)
 
   const NAV = [
     { href: "/admin/metrics",          label: t("nav.metrics") },

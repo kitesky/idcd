@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { getTranslations } from 'next-intl/server'
+import { getT } from '@/i18n/getT'
 import { Button } from '@/components/ui'
 
 export const metadata: Metadata = {
@@ -36,7 +36,7 @@ const FEATURED_TOOL_SLUGS = [
 ] as const
 
 export default async function EnglishHomePage() {
-  const t = await getTranslations({ locale: 'en', namespace: 'tools' })
+  const t = await getT('tools', 'en')
 
   return (
     <main className="min-h-screen bg-background">

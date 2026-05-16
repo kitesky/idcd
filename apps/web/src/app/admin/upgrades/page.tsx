@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { cookies } from "next/headers"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { UpgradesClient } from "./upgrades-client"
@@ -42,7 +42,7 @@ async function fetchRollouts(): Promise<UpgradeRollout[]> {
 
 export default async function UpgradesPage() {
   const locale = await getAdminLocale()
-  const t = await getTranslations({ locale, namespace: "admin" })
+  const t = await getT("admin", locale)
   const rollouts = await fetchRollouts()
   return (
     <div>

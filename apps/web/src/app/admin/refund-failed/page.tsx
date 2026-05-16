@@ -1,5 +1,5 @@
 import type { Metadata } from "next"
-import { getTranslations } from "next-intl/server"
+import { getT } from "@/i18n/getT"
 import { cookies } from "next/headers"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { RefundClient, type RefundFailedPayment } from "./refund-client"
@@ -25,7 +25,7 @@ async function fetchRefundFailed(): Promise<RefundFailedPayment[]> {
 
 export default async function RefundFailedPage() {
   const locale = await getAdminLocale()
-  const t = await getTranslations({ locale, namespace: "admin" })
+  const t = await getT("admin", locale)
   const payments = await fetchRefundFailed()
   return (
     <div>

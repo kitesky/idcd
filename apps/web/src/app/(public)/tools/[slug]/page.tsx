@@ -1,7 +1,10 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
 import { getT } from '@/i18n/getT'
+import { getLocale } from '@/i18n/locale'
 import { ALL_TOOLS, getToolBySlug } from '@/app/(public)/tools/tools-config'
+import { generateAlternates, localizedUrl } from '@/lib/seo'
+import { bcp47Of } from '@/i18n/registry'
 import ToolRenderer from './tool-renderer'
 
 type Props = {
@@ -15,62 +18,54 @@ export async function generateStaticParams() {
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { slug } = await params
   const tool = getToolBySlug(slug)
+  const locale = await getLocale()
+  const path = `/tools/${slug}`
 
-  try {
-    const t = await getT('tools')
-    // t.has() is not available; use try/catch to handle missing keys gracefully
-    const metaTitle = t(`${slug}.meta.title`)
-    const metaDescription = t(`${slug}.meta.description`)
-    return {
+  const t = await getT('tools', locale)
+  // `getT` returns the key itself when the lookup misses, so detect that to
+  // decide whether we have a usable translation.
+  const titleKey = `${slug}.meta.title`
+  const descKey = `${slug}.meta.description`
+  const rawTitle = t(titleKey)
+  const rawDesc = t(descKey)
+  const metaTitle = rawTitle !== titleKey ? rawTitle : (tool ? `${slug} | idcd` : `${slug} | idcd`)
+  const metaDescription = rawDesc !== descKey ? rawDesc : ''
+
+  return {
+    title: metaTitle,
+    description: metaDescription,
+    alternates: generateAlternates(path, locale),
+    openGraph: {
       title: metaTitle,
       description: metaDescription,
-      openGraph: {
-        title: metaTitle,
-        description: metaDescription,
-        type: 'website',
-      },
-    }
-  } catch {
-    // Fallback for slugs not yet in translation files
-    return {
-      title: tool?.name ? `${tool.name} | idcd` : `${slug} | idcd 工具`,
-      description: tool?.description ?? `idcd 在线工具：${slug}`,
-      openGraph: {
-        title: tool?.name ? `${tool.name} | idcd` : `${slug} | idcd`,
-        description: tool?.description ?? '',
-        type: 'website',
-      },
-    }
+      url: localizedUrl(path, locale),
+      siteName: 'idcd',
+      type: 'website',
+    },
   }
 }
 
 export default async function ToolSlugPage({ params }: Props) {
   const { slug } = await params
-  const tool = getToolBySlug(slug)
+  const locale = await getLocale()
+  const t = await getT('tools', locale)
 
-  let toolName = tool?.name ?? slug
-  let toolMetaDescription = tool?.description ?? ''
-
-  try {
-    const t = await getT('tools')
-    toolName = t(`${slug}.title`)
-    toolMetaDescription = t(`${slug}.meta.description`)
-  } catch {
-    // fallback to config values
-  }
+  const toolName = t(`${slug}.title`)
+  const toolMetaDescription = t(`${slug}.meta.description`)
 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
-    name: toolName,
-    description: toolMetaDescription,
-    url: `https://idcd.com/tools/${slug}`,
+    name: toolName === `${slug}.title` ? slug : toolName,
+    description: toolMetaDescription === `${slug}.meta.description` ? '' : toolMetaDescription,
+    url: localizedUrl(`/tools/${slug}`, locale),
     applicationCategory: 'UtilityApplication',
     operatingSystem: 'Web',
+    inLanguage: bcp47Of(locale),
     offers: {
       '@type': 'Offer',
       price: '0',
-      priceCurrency: 'CNY',
+      priceCurrency: locale === 'cn' ? 'CNY' : 'USD',
     },
     publisher: {
       '@type': 'Organization',

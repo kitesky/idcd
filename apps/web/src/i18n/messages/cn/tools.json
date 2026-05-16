@@ -37,6 +37,21 @@
     "meta": {
       "title": "SSL 证书检查 - 域名证书有效期查询 | idcd",
       "description": "检查域名 SSL/TLS 证书有效期、颁发机构和安全配置。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com",
+      "placeholderRows": [
+        { "label": "域名", "value": "{target}" },
+        { "label": "证书状态", "value": "有效" },
+        { "label": "颁发机构", "value": "Let's Encrypt" },
+        { "label": "协议", "value": "TLS 1.3" }
+      ],
+      "helpTips": [
+        "检查 HTTPS 证书的有效期和安全配置",
+        "支持 IPv4 和 IPv6 双栈",
+        "显示证书链完整性"
+      ]
     }
   },
   "ip": {
@@ -45,6 +60,22 @@
     "meta": {
       "title": "IP 地理位置查询 - IP 归属地查询 | idcd",
       "description": "查询 IP 地址的地理位置、运营商、ASN 和归属地信息。"
+    },
+    "probe": {
+      "label": "IP 地址",
+      "placeholder": "1.1.1.1 或 2606:4700:4700::1111",
+      "placeholderRows": [
+        { "label": "IP", "value": "{target}" },
+        { "label": "国家/地区", "value": "美国" },
+        { "label": "城市", "value": "San Francisco" },
+        { "label": "ISP", "value": "Cloudflare, Inc." },
+        { "label": "ASN", "value": "AS13335" }
+      ],
+      "helpTips": [
+        "输入 IPv4 或 IPv6 地址",
+        "显示地理位置和运营商",
+        "支持私有 IP 检测"
+      ]
     }
   },
   "whois": {
@@ -53,6 +84,23 @@
     "meta": {
       "title": "WHOIS 查询 - 域名注册信息查询 | idcd",
       "description": "查询域名注册信息、注册商、过期时间和持有者联系方式。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com",
+      "placeholderRows": [
+        { "label": "域名", "value": "{target}" },
+        { "label": "注册商", "value": "Cloudflare, Inc." },
+        { "label": "注册日期", "value": "2010-01-01" },
+        { "label": "到期日期", "value": "2026-01-01" },
+        { "label": "名称服务器", "value": "ns1.cloudflare.com" },
+        { "label": "状态", "value": "clientTransferProhibited" }
+      ],
+      "helpTips": [
+        "查询域名注册商和持有者信息",
+        "显示注册和到期日期",
+        "数据来源 ICANN Whois"
+      ]
     }
   },
   "icp": {
@@ -61,6 +109,22 @@
     "meta": {
       "title": "ICP 备案查询 - 网站备案号查询 | idcd",
       "description": "查询域名 ICP 备案号、备案主体和审核状态。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com.cn",
+      "placeholderRows": [
+        { "label": "域名", "value": "{target}" },
+        { "label": "备案号", "value": "京ICP备XXXXXXXX号" },
+        { "label": "备案类型", "value": "企业" },
+        { "label": "主办单位", "value": "示例科技有限公司" },
+        { "label": "备案状态", "value": "正常" }
+      ],
+      "helpTips": [
+        "查询网站 ICP 备案信息",
+        "支持 .cn/.com/.net 等域名",
+        "数据来自工信部"
+      ]
     }
   },
   "diagnose": {
@@ -85,6 +149,13 @@
     "meta": {
       "title": "TCP 端口测试 - TCP 连通性检测 | idcd",
       "description": "测试目标主机 TCP 端口是否可访问，检测端口连通性。"
+    },
+    "probe": {
+      "label": "主机:端口",
+      "placeholder": "example.com:443",
+      "extraHint": "格式: host:port",
+      "extraFieldLabel": "端口（可选，已含在地址中则忽略）",
+      "extraFieldPlaceholder": "443"
     }
   },
   "tcping": {
@@ -101,6 +172,10 @@
     "meta": {
       "title": "MTR 路由测试 - 网络路径诊断 | idcd",
       "description": "MTR 网络路由测试工具，结合 Ping 和 Traceroute 功能，诊断网络路径问题。"
+    },
+    "probe": {
+      "label": "目标地址",
+      "placeholder": "example.com 或 1.1.1.1"
     }
   },
   "smtp": {
@@ -109,6 +184,11 @@
     "meta": {
       "title": "SMTP 邮件服务器测试 - 邮件连通性检测 | idcd",
       "description": "测试 SMTP 邮件服务器是否可访问，检测邮件发送服务。"
+    },
+    "probe": {
+      "label": "SMTP 服务器",
+      "placeholder": "smtp.example.com",
+      "extraHint": "默认端口 25/465/587"
     }
   },
   "rdns": {
@@ -117,6 +197,10 @@
     "meta": {
       "title": "反向 DNS 查询 - IP 反查域名 | idcd",
       "description": "通过 IP 地址反查对应的域名（PTR 记录）。"
+    },
+    "probe": {
+      "label": "IP 地址",
+      "placeholder": "8.8.8.8"
     }
   },
   "asn": {
@@ -125,6 +209,10 @@
     "meta": {
       "title": "ASN 自治系统查询 - ASN 信息查询 | idcd",
       "description": "查询 ASN 自治系统号对应的网络运营商和 IP 段信息。"
+    },
+    "probe": {
+      "label": "ASN 号码",
+      "placeholder": "AS13335 或 13335"
     }
   },
   "mx": {
@@ -133,6 +221,10 @@
     "meta": {
       "title": "MX 邮件记录查询 - 域名 MX 记录检测 | idcd",
       "description": "查询域名 MX 邮件交换记录，验证邮件服务配置。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com"
     }
   },
   "spf": {
@@ -141,6 +233,10 @@
     "meta": {
       "title": "SPF 记录查询 - 邮件发送策略检测 | idcd",
       "description": "查询和验证域名 SPF 发件人策略框架记录。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com"
     }
   },
   "dmarc": {
@@ -149,6 +245,10 @@
     "meta": {
       "title": "DMARC 记录查询 - 邮件认证策略检测 | idcd",
       "description": "查询域名 DMARC 邮件认证报告和合规策略配置。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com"
     }
   },
   "ntp": {
@@ -157,6 +257,10 @@
     "meta": {
       "title": "NTP 服务测试 - 时间同步服务检测 | idcd",
       "description": "测试 NTP 网络时间协议服务器的连通性和时间偏差。"
+    },
+    "probe": {
+      "label": "NTP 服务器",
+      "placeholder": "pool.ntp.org 或 time.cloudflare.com"
     }
   },
   "dkim": {
@@ -165,6 +269,13 @@
     "meta": {
       "title": "DKIM 密钥查询 - 邮件签名密钥检测 | idcd",
       "description": "查询域名 DKIM 域名密钥识别邮件公钥记录。"
+    },
+    "probe": {
+      "label": "域名",
+      "placeholder": "example.com",
+      "extraHint": "DKIM 选择器（如 default、google）",
+      "extraFieldLabel": "DKIM 选择器",
+      "extraFieldPlaceholder": "default"
     }
   },
   "bgp": {
@@ -173,6 +284,10 @@
     "meta": {
       "title": "BGP 路由查询 - IP 前缀路由信息 | idcd",
       "description": "查询 IP 地址或网络前缀的 BGP 路由路径和 AS 路径信息。"
+    },
+    "probe": {
+      "label": "IP 或前缀",
+      "placeholder": "1.1.1.0/24 或 1.1.1.1"
     }
   },
   "speedtest": {
@@ -501,6 +616,45 @@
     "meta": {
       "title": "JSON 键排序工具 - JSON 格式整理 | idcd",
       "description": "将 JSON 对象的键按字母顺序排序，方便对比和版本管理。"
+    }
+  },
+  "_page": {
+    "title": "专业网络工具站",
+    "subtitle": "拨测检测、格式转换、文本处理、生成与查询，一站搞定",
+    "searchPlaceholder": "搜索工具名称或描述…",
+    "toolCount": "{count} 个工具",
+    "useNow": "立即使用",
+    "noResult": "未找到 “{query}”，试试其他关键词",
+    "resultCount": "找到 {count} 个结果",
+    "categories": {
+      "probe": {
+        "label": "拨测检测",
+        "description": "从全球节点检测延迟、证书、DNS 和协议可用性"
+      },
+      "utility": {
+        "label": "实用工具",
+        "description": "格式转换、编解码、文本处理、生成与查询"
+      }
+    }
+  },
+  "_probe": {
+    "queryParams": "查询参数",
+    "results": "查询结果",
+    "sampleData": "示例数据",
+    "runQuery": "开始查询",
+    "querying": "查询中…",
+    "copyLink": "复制链接",
+    "usage": "使用说明",
+    "status": "状态",
+    "targetLabel": "目标",
+    "note": "说明",
+    "fallbackStatus": "查询完成",
+    "fallbackNote": "实际数据将由后端拨测节点返回",
+    "fallbackTip1": "拨测请求通过全球分布式节点执行",
+    "fallbackTip2": "结果仅供参考",
+    "defaults": {
+      "label": "目标",
+      "placeholder": "example.com"
     }
   },
   "_ui": {

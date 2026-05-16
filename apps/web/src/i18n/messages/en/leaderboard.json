@@ -1,4 +1,9 @@
 {
+  "meta": {
+    "title": "Global CDN & Network Performance Leaderboard — idcd",
+    "description": "Real-probe-node CDN performance leaderboard covering Cloudflare, Akamai, Tencent Cloud, Aliyun, and more — global latency, China latency, and availability data, updated monthly.",
+    "keywords": "CDN speed test, global latency, network performance ranking, CDN leaderboard, Cloudflare latency, Aliyun CDN, Tencent Cloud CDN, P50 latency, network diagnostics, TTFB"
+  },
   "title": "Global CDN & Network Performance Leaderboard",
   "subtitle": "real probe nodes, updated monthly",
   "dataCycle": "Data period",

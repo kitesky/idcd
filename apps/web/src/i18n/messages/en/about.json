@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "title": "About idcd — Global Network Diagnostics Platform",
+    "description": "idcd is a professional multi-node network diagnostics platform offering global probing, DNS/SSL/IP lookups, and one-click diagnostics."
+  },
+  "hero": {
+    "title": "About idcd",
+    "subtitle": "A professional multi-node network diagnostics platform — making network quality visible, measurable, and trustworthy."
+  },
+  "features": {
+    "global": {
+      "title": "Global Node Coverage",
+      "description": "Probe nodes distributed worldwide deliver true user-perspective network quality data."
+    },
+    "diagnostics": {
+      "title": "Real-time Diagnostics",
+      "description": "Ping, HTTP, TCP, traceroute, DNS, SSL certificate checks and more diagnostic tools."
+    },
+    "evidence": {
+      "title": "Evidence Service",
+      "description": "KMS-signed Verdict reports provide verifiable network quality evidence for compliance audits."
+    }
+  },
+  "intro": {
+    "title": "Overview",
+    "p1": "idcd is a professional network diagnostics and monitoring platform that delivers global multi-node probing services for developers, SRE teams, and enterprises.",
+    "p2": "Core features include:",
+    "featureList": {
+      "probe": { "label": "Multi-node probing", "desc": " — Launch network diagnostics from many geographies simultaneously for a complete view of network quality." },
+      "tools": { "label": "Rich diagnostic toolset", "desc": " — Ping, HTTP probing, TCP connection tests, traceroute, DNS lookups, SSL cert checks, and more." },
+      "monitor": { "label": "Real-time monitoring", "desc": " — Create scheduled monitoring tasks that automatically check service availability and performance." },
+      "diagnose": { "label": "One-click diagnostics", "desc": " — Run a comprehensive network health report in a single click." },
+      "evidence": { "label": "Evidence service", "desc": " — KMS-signed Verdict reports give publicly verifiable network quality evidence." },
+      "utils": { "label": "Developer utilities", "desc": " — JSON formatter, regex tester, Base64 codec, timestamp converter, CIDR calculator, and more." }
+    },
+    "p3": "Whether you're monitoring global CDN performance, verifying SLA compliance, troubleshooting network outages, or needing trusted network quality evidence, idcd has you covered."
+  },
+  "tech": {
+    "title": "Architecture",
+    "p1": "idcd is built on a modern technology stack designed for high performance, availability, and great UX:",
+    "stack": {
+      "backend": { "label": "Backend", "desc": " — Go, delivering high-performance APIs and the probing engine." },
+      "frontend": { "label": "Frontend", "desc": " — Next.js (App Router) + TypeScript + shadcn/ui for a polished UI." },
+      "db": { "label": "Database", "desc": " — PostgreSQL 16 with multi-schema data isolation." },
+      "cache": { "label": "Cache", "desc": " — Redis 7, used for sessions and high-frequency query optimization." },
+      "security": { "label": "Security", "desc": " — KMS signing, TLS 1.3 in transit, and defense in depth." },
+      "nodes": { "label": "Node management", "desc": " — Globally distributed probe nodes with horizontal scaling." }
+    },
+    "p2": "The whole system follows microservice principles: clear module boundaries, easy to maintain and extend."
+  },
+  "contact": {
+    "title": "Contact Us",
+    "email": "Email",
+    "website": "Website",
+    "github": "GitHub",
+    "footer": "Reach us by email or via GitHub Issues — for product feedback, feature requests, or technical support. We'd love to hear from you."
+  }
+}

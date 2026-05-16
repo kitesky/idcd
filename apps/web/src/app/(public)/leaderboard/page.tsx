@@ -1,6 +1,7 @@
 import { Metadata } from "next"
 import { LeaderboardClient } from "./leaderboard-client"
 import { NODE_COUNT, getCurrentMonthLabel } from "./leaderboard-data"
+import { generateAlternates } from "@/lib/seo"
 
 export const metadata: Metadata = {
   title: "全球 CDN & 网络性能排行榜 - idcd",
@@ -18,6 +19,7 @@ export const metadata: Metadata = {
     "网络诊断",
     "TTFB",
   ],
+  alternates: generateAlternates('/leaderboard'),
   openGraph: {
     title: "全球 CDN & 网络性能排行榜 - idcd",
     description:

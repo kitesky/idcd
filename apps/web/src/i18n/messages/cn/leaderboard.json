@@ -1,4 +1,9 @@
 {
+  "meta": {
+    "title": "全球 CDN & 网络性能排行榜 - idcd",
+    "description": "基于真实探测节点的 CDN 测速排行榜，涵盖 Cloudflare、Akamai、腾讯云、阿里云等主流 CDN 全球延迟、中国大陆延迟及可用性数据，每月更新。",
+    "keywords": "CDN 测速, 全球延迟, 网络性能排行, CDN 排行榜, Cloudflare 延迟, 阿里云 CDN, 腾讯云 CDN, P50 延迟, 网络诊断, TTFB"
+  },
   "title": "全球 CDN & 网络性能排行榜",
   "subtitle": "个真实探测节点，月度更新",
   "dataCycle": "数据周期",

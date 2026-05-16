@@ -35,6 +35,9 @@
     "open": "打开菜单",
     "navigation": "网站导航菜单"
   },
+  "theme": {
+    "toggle": "切换主题"
+  },
   "toolCategories": {
     "probe": "拨测工具",
     "utility": "辅助工具"

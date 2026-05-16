@@ -1,6 +1,5 @@
 import { describe, it, expect } from 'vitest'
 import { locales, defaultLocale, isValidLocale } from '../routing'
-import { EN_TOOLS_META, getEnToolMeta } from '../en-tools-meta'
 
 import cnTools from '../messages/cn/tools.json'
 import enTools from '../messages/en/tools.json'
@@ -116,31 +115,34 @@ describe('leaderboard namespace', () => {
   })
 })
 
-describe('EN_TOOLS_META', () => {
-  it('contains 21 tools', () => {
-    expect(EN_TOOLS_META).toHaveLength(21)
-  })
+describe('tools meta (en)', () => {
+  // The legacy `en-tools-meta.ts` data table has been migrated into the
+  // `tools.<slug>.meta` translation keys. These assertions guard that the
+  // canonical English tool metadata still lives in tools.json (covers the SEO
+  // `<head>` titles served by /en/tools/[slug]).
+  const requiredMetaSlugs = [
+    'ping', 'http', 'dns', 'traceroute', 'ssl', 'ip', 'whois', 'icp',
+    'diagnose', 'ipv6-check', 'base64', 'cidr-calculator', 'cron-parser',
+    'hash', 'ipv6-converter', 'json-formatter', 'jwt-decoder', 'qrcode',
+    'regex-tester', 'tcping', 'timestamp',
+  ]
 
-  it('each tool has title, description, and schemaName', () => {
-    for (const tool of EN_TOOLS_META) {
-      expect(tool.title).toBeTruthy()
-      expect(tool.description).toBeTruthy()
-      expect(tool.schemaName).toBeTruthy()
+  it('every required slug ships en meta.title + meta.description', () => {
+    type Tool = { meta?: { title?: string; description?: string } }
+    const tools = enTools as Record<string, Tool>
+    for (const slug of requiredMetaSlugs) {
+      const meta = tools[slug]?.meta
+      expect(meta?.title, `en.tools.${slug}.meta.title`).toBeTruthy()
+      expect(meta?.description, `en.tools.${slug}.meta.description`).toBeTruthy()
     }
   })
 
-  it('getEnToolMeta returns correct entry for ping', () => {
-    const tool = getEnToolMeta('ping')
-    expect(tool?.slug).toBe('ping')
-  })
-
-  it('getEnToolMeta returns undefined for unknown slug', () => {
-    expect(getEnToolMeta('nonexistent-tool')).toBeUndefined()
-  })
-
-  it('each title includes | idcd suffix', () => {
-    for (const tool of EN_TOOLS_META) {
-      expect(tool.title).toContain('| idcd')
+  it('every en meta.title carries the | idcd brand suffix', () => {
+    type Tool = { meta?: { title?: string } }
+    const tools = enTools as Record<string, Tool>
+    for (const slug of requiredMetaSlugs) {
+      const title = tools[slug]?.meta?.title
+      expect(title, `en.tools.${slug}.meta.title`).toContain('| idcd')
     }
   })
 })

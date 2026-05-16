@@ -3,41 +3,15 @@
 import { useState } from "react"
 import Link from "next/link"
 import { ChevronDown } from "lucide-react"
+import { useTranslations } from "next-intl"
 import { cn } from "@/lib/utils"
 
-const sections = [
-  {
-    title: "关于我们",
-    links: [
-      { name: "为什么选 idcd", href: "/about" },
-      { name: "文档中心", href: "/docs/api" },
-      { name: "AI Agent 接入", href: "/agent" },
-      { name: "透明度报告", href: "/transparency" },
-      { name: "加入我们", href: "/about" },
-    ],
-  },
-  {
-    title: "拨测",
-    links: [
-      { name: "Ping 测试", href: "/tools/ping" },
-      { name: "HTTP 检测", href: "/tools/http" },
-      { name: "DNS 查询", href: "/tools/dns" },
-      { name: "TCP 端口", href: "/tools/tcp" },
-      { name: "Traceroute", href: "/tools/traceroute" },
-      { name: "MTR 路由", href: "/tools/mtr" },
-    ],
-  },
-  {
-    title: "监控",
-    links: [
-      { name: "监控", href: "/app/monitors" },
-      { name: "告警配置", href: "/app/alerts" },
-      { name: "多维分析", href: "/app/reports" },
-    ],
-  },
-]
+interface FooterLink {
+  name: string
+  href: string
+}
 
-function AccordionSection({ title, links }: { title: string; links: { name: string; href: string }[] }) {
+function AccordionSection({ title, links }: { title: string; links: FooterLink[] }) {
   const [open, setOpen] = useState(false)
   return (
     <div className="border-b md:border-b-0">
@@ -79,6 +53,40 @@ function AccordionSection({ title, links }: { title: string; links: { name: stri
 }
 
 export function Footer() {
+  const t = useTranslations("nav")
+
+  const sections = [
+    {
+      title: t("footer.sections.about.title"),
+      links: [
+        { name: t("footer.sections.about.whyIdcd"), href: "/about" },
+        { name: t("footer.sections.about.docs"), href: "/docs/api" },
+        { name: t("footer.sections.about.agent"), href: "/agent" },
+        { name: t("footer.sections.about.transparency"), href: "/transparency" },
+        { name: t("footer.sections.about.join"), href: "/about" },
+      ],
+    },
+    {
+      title: t("footer.sections.probe.title"),
+      links: [
+        { name: t("footer.sections.probe.ping"), href: "/tools/ping" },
+        { name: t("footer.sections.probe.http"), href: "/tools/http" },
+        { name: t("footer.sections.probe.dns"), href: "/tools/dns" },
+        { name: t("footer.sections.probe.tcp"), href: "/tools/tcp" },
+        { name: t("footer.sections.probe.traceroute"), href: "/tools/traceroute" },
+        { name: t("footer.sections.probe.mtr"), href: "/tools/mtr" },
+      ],
+    },
+    {
+      title: t("footer.sections.monitoring.title"),
+      links: [
+        { name: t("footer.sections.monitoring.monitors"), href: "/app/monitors" },
+        { name: t("footer.sections.monitoring.alerts"), href: "/app/alerts" },
+        { name: t("footer.sections.monitoring.reports"), href: "/app/reports" },
+      ],
+    },
+  ]
+
   return (
     <footer className="border-t bg-background">
       <div className="mx-auto max-w-screen-xl px-4 sm:px-6 lg:px-8 pt-0 md:pt-10 pb-0">
@@ -104,14 +112,15 @@ export function Footer() {
 
           {/* 联系我们 — always expanded */}
           <div className="py-6 md:py-0 border-b md:border-b-0">
-            <p className="text-sm font-semibold text-foreground mb-3">联系我们</p>
+            <p className="text-sm font-semibold text-foreground mb-3">{t("footer.sections.contact.title")}</p>
             <p className="text-sm text-muted-foreground mb-1">
-              邮箱：<a href="mailto:hi@idcd.com" className="hover:text-foreground transition-colors">hi@idcd.com</a>
+              {t("footer.sections.contact.email")}
+              <a href="mailto:hi@idcd.com" className="hover:text-foreground transition-colors">hi@idcd.com</a>
             </p>
             <div className="flex gap-4 mt-3 flex-wrap">
               {[
-                { label: "微信公众号", text: "微信公众号\n二维码" },
-                { label: "视频号",    text: "视频号\n二维码" },
+                { label: t("footer.sections.contact.wechat"), text: t("footer.sections.contact.wechatQr") },
+                { label: t("footer.sections.contact.video"), text: t("footer.sections.contact.videoQr") },
               ].map(({ label, text }) => (
                 <div key={label} className="flex flex-col items-center gap-1.5 group relative">
                   {/* 放大气泡 */}
@@ -135,13 +144,13 @@ export function Footer() {
 
         {/* Bottom bar */}
         <div className="mt-0 md:mt-8 py-4 border-t flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-muted-foreground">
-          <span>© 2026 idcd.com. 保留所有权利。</span>
+          <span>{t("footer.copyright")}</span>
           <div className="flex items-center gap-4 flex-wrap justify-center sm:justify-end">
             <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
-              蜀ICP备19009987号-2
+              {t("footer.icp")}
             </a>
             <a href="https://www.beian.gov.cn/portal/registerSystemInfo?recordcode=51010702001950" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
-              川公网安备 51010702001950号
+              {t("footer.beian")}
             </a>
           </div>
         </div>

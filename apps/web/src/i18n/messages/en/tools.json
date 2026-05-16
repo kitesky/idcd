@@ -37,6 +37,21 @@
     "meta": {
       "title": "SSL Certificate Check — TLS Validity & Config | idcd",
       "description": "Verify your domain's SSL/TLS certificate expiry, issuer chain, and cipher configuration. Get alerted before certs expire."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com",
+      "placeholderRows": [
+        { "label": "Domain", "value": "{target}" },
+        { "label": "Cert status", "value": "Valid" },
+        { "label": "Issuer", "value": "Let's Encrypt" },
+        { "label": "Protocol", "value": "TLS 1.3" }
+      ],
+      "helpTips": [
+        "Check HTTPS certificate validity and security configuration",
+        "Supports IPv4 and IPv6 dual stack",
+        "Displays certificate chain integrity"
+      ]
     }
   },
   "ip": {
@@ -45,6 +60,22 @@
     "meta": {
       "title": "IP Geolocation — IP Address Lookup | idcd",
       "description": "Look up any IP address for geolocation, ASN, ISP, and organization data. Supports IPv4 and IPv6."
+    },
+    "probe": {
+      "label": "IP address",
+      "placeholder": "1.1.1.1 or 2606:4700:4700::1111",
+      "placeholderRows": [
+        { "label": "IP", "value": "{target}" },
+        { "label": "Country/Region", "value": "United States" },
+        { "label": "City", "value": "San Francisco" },
+        { "label": "ISP", "value": "Cloudflare, Inc." },
+        { "label": "ASN", "value": "AS13335" }
+      ],
+      "helpTips": [
+        "Enter an IPv4 or IPv6 address",
+        "Shows geolocation and ISP information",
+        "Detects private IP addresses"
+      ]
     }
   },
   "whois": {
@@ -53,6 +84,23 @@
     "meta": {
       "title": "WHOIS Lookup — Domain Registration Info | idcd",
       "description": "Query domain WHOIS records for registrar, registrant, creation date, expiry date, and name servers."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com",
+      "placeholderRows": [
+        { "label": "Domain", "value": "{target}" },
+        { "label": "Registrar", "value": "Cloudflare, Inc." },
+        { "label": "Registered", "value": "2010-01-01" },
+        { "label": "Expires", "value": "2026-01-01" },
+        { "label": "Name servers", "value": "ns1.cloudflare.com" },
+        { "label": "Status", "value": "clientTransferProhibited" }
+      ],
+      "helpTips": [
+        "Query domain registrar and registrant information",
+        "Shows registration and expiry dates",
+        "Data sourced from ICANN WHOIS"
+      ]
     }
   },
   "icp": {
@@ -61,6 +109,22 @@
     "meta": {
       "title": "ICP Filing Check — China ICP Beian Lookup | idcd",
       "description": "Check whether a domain has a valid China ICP (Internet Content Provider) filing (ICP 备案). Required for hosting in mainland China."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com.cn",
+      "placeholderRows": [
+        { "label": "Domain", "value": "{target}" },
+        { "label": "Filing No.", "value": "京ICP备XXXXXXXX号" },
+        { "label": "Filing type", "value": "Enterprise" },
+        { "label": "Sponsor", "value": "Sample Tech Co., Ltd." },
+        { "label": "Status", "value": "Active" }
+      ],
+      "helpTips": [
+        "Query China ICP filing information for a domain",
+        "Supports .cn / .com / .net domains",
+        "Data sourced from MIIT"
+      ]
     }
   },
   "diagnose": {
@@ -85,6 +149,13 @@
     "meta": {
       "title": "TCP Port Test — Connectivity Check | idcd",
       "description": "Test whether a TCP port on a target host is reachable and measure connection latency."
+    },
+    "probe": {
+      "label": "host:port",
+      "placeholder": "example.com:443",
+      "extraHint": "Format: host:port",
+      "extraFieldLabel": "Port (optional, ignored if already in the address)",
+      "extraFieldPlaceholder": "443"
     }
   },
   "tcping": {
@@ -101,6 +172,10 @@
     "meta": {
       "title": "MTR Network Test — Combined Path Diagnostics | idcd",
       "description": "MTR combines ping and traceroute to continuously diagnose network path issues from global nodes."
+    },
+    "probe": {
+      "label": "Target",
+      "placeholder": "example.com or 1.1.1.1"
     }
   },
   "smtp": {
@@ -109,6 +184,11 @@
     "meta": {
       "title": "SMTP Mail Server Test — Connectivity Check | idcd",
       "description": "Test whether an SMTP mail server is reachable and diagnose email delivery issues."
+    },
+    "probe": {
+      "label": "SMTP server",
+      "placeholder": "smtp.example.com",
+      "extraHint": "Default ports 25 / 465 / 587"
     }
   },
   "rdns": {
@@ -117,6 +197,10 @@
     "meta": {
       "title": "Reverse DNS Lookup — PTR Record Query | idcd",
       "description": "Look up the PTR record for any IP address to find its associated hostname."
+    },
+    "probe": {
+      "label": "IP address",
+      "placeholder": "8.8.8.8"
     }
   },
   "asn": {
@@ -125,6 +209,10 @@
     "meta": {
       "title": "ASN Lookup — Autonomous System Info | idcd",
       "description": "Query ASN details including carrier name, IP prefixes, and network organization."
+    },
+    "probe": {
+      "label": "ASN",
+      "placeholder": "AS13335 or 13335"
     }
   },
   "mx": {
@@ -133,6 +221,10 @@
     "meta": {
       "title": "MX Record Lookup — Mail Server Query | idcd",
       "description": "Query MX records to verify mail server configuration and routing."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
     }
   },
   "spf": {
@@ -141,6 +233,10 @@
     "meta": {
       "title": "SPF Record Lookup — Sender Policy Check | idcd",
       "description": "Query and validate SPF (Sender Policy Framework) records for a domain."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
     }
   },
   "dmarc": {
@@ -149,6 +245,10 @@
     "meta": {
       "title": "DMARC Lookup — Email Auth Policy Check | idcd",
       "description": "Query DMARC records and validate email authentication reporting and compliance policy."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
     }
   },
   "ntp": {
@@ -157,6 +257,10 @@
     "meta": {
       "title": "NTP Server Test — Time Sync Check | idcd",
       "description": "Test NTP server connectivity and measure time offset."
+    },
+    "probe": {
+      "label": "NTP server",
+      "placeholder": "pool.ntp.org or time.cloudflare.com"
     }
   },
   "dkim": {
@@ -165,6 +269,13 @@
     "meta": {
       "title": "DKIM Key Lookup — Email Signing Key Check | idcd",
       "description": "Query DKIM public key records for a domain to verify email signing configuration."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com",
+      "extraHint": "DKIM selector (e.g. default, google)",
+      "extraFieldLabel": "DKIM selector",
+      "extraFieldPlaceholder": "default"
     }
   },
   "bgp": {
@@ -173,6 +284,10 @@
     "meta": {
       "title": "BGP Route Lookup — Prefix & Path Info | idcd",
       "description": "Query BGP routing data including AS path and prefix announcements for any IP."
+    },
+    "probe": {
+      "label": "IP or prefix",
+      "placeholder": "1.1.1.0/24 or 1.1.1.1"
     }
   },
   "speedtest": {
@@ -501,6 +616,45 @@
     "meta": {
       "title": "JSON Key Sorter — Alphabetical JSON Keys | idcd",
       "description": "Sort JSON object keys alphabetically for easier comparison and version control diffs."
+    }
+  },
+  "_page": {
+    "title": "Network Tools Hub",
+    "subtitle": "Probe checks, format converters, text utilities, generators & lookups — one stop",
+    "searchPlaceholder": "Search tool name or description…",
+    "toolCount": "{count} tools",
+    "useNow": "Open tool",
+    "noResult": "No results for “{query}”. Try a different keyword",
+    "resultCount": "{count} results",
+    "categories": {
+      "probe": {
+        "label": "Probe Tools",
+        "description": "Check latency, certificates, DNS, and protocol availability from global nodes"
+      },
+      "utility": {
+        "label": "Utilities",
+        "description": "Format converters, encoders/decoders, text processing, generators & lookups"
+      }
+    }
+  },
+  "_probe": {
+    "queryParams": "Query parameters",
+    "results": "Results",
+    "sampleData": "Sample data",
+    "runQuery": "Run query",
+    "querying": "Querying…",
+    "copyLink": "Copy link",
+    "usage": "Usage",
+    "status": "Status",
+    "targetLabel": "Target",
+    "note": "Note",
+    "fallbackStatus": "Query complete",
+    "fallbackNote": "Real data will be returned by the backend probe nodes",
+    "fallbackTip1": "Probe requests run on globally distributed nodes",
+    "fallbackTip2": "Results are for reference only",
+    "defaults": {
+      "label": "Target",
+      "placeholder": "example.com"
     }
   },
   "_ui": {

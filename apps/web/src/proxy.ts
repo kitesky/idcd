@@ -149,22 +149,16 @@ export function proxy(request: NextRequest): NextResponse {
   })
 
   // When the URL carries a non-default locale prefix, rewrite to the un-prefixed
-  // path so the same page components render. File-based `/en/*` routes (e.g.
-  // pre-rendered tool pages) are excluded so they keep serving their own files.
+  // path so the same page components render — the locale header drives
+  // next-intl message loading inside the (shared) component tree.
   if (prefixMatch && PREFIXED_LOCALES_SET.has(prefixMatch.code)) {
-    const isFileBasedRoute =
-      pathname === `/${prefixMatch.code}` ||
-      pathname.startsWith(`/${prefixMatch.code}/tools/`)
-
-    if (!isFileBasedRoute) {
-      const rewriteUrl = request.nextUrl.clone()
-      rewriteUrl.pathname = prefixMatch.rest
-      const response = NextResponse.rewrite(rewriteUrl, {
-        request: { headers: requestHeaders },
-      })
-      response.headers.set('x-locale', locale)
-      return withSecurityHeaders(response, isDev, nonce)
-    }
+    const rewriteUrl = request.nextUrl.clone()
+    rewriteUrl.pathname = prefixMatch.rest
+    const response = NextResponse.rewrite(rewriteUrl, {
+      request: { headers: requestHeaders },
+    })
+    response.headers.set('x-locale', locale)
+    return withSecurityHeaders(response, isDev, nonce)
   }
 
   const response = NextResponse.next({

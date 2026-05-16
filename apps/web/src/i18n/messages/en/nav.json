@@ -35,6 +35,9 @@
     "open": "Open menu",
     "navigation": "Website navigation menu"
   },
+  "theme": {
+    "toggle": "Toggle theme"
+  },
   "toolCategories": {
     "probe": "Probe Tools",
     "utility": "Utility Tools"

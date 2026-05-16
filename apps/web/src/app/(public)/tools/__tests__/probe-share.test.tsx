@@ -36,6 +36,7 @@ describe('ProbeToolClient — 分享链接功能', () => {
     render(<ProbeToolClient slug="ssl" />)
     const btn = screen.getByTestId('copy-link-button')
     expect(btn).toBeTruthy()
+    // tools._probe.copyLink → "复制链接" via the cn mock translations
     expect(btn.textContent).toContain('复制链接')
   })
 
@@ -73,12 +74,14 @@ describe('ProbeToolClient — 分享链接功能', () => {
     )
   })
 
-  it('button text changes to 已复制！ after click', async () => {
+  it('button text changes to common.copied after click', async () => {
     render(<ProbeToolClient slug="ssl" />)
     const input = screen.getByRole('textbox', { name: /域名/i })
     fireEvent.change(input, { target: { value: 'example.com' } })
     const btn = screen.getByTestId('copy-link-button')
     fireEvent.click(btn)
-    expect(btn.textContent).toContain('已复制！')
+    // After i18n migration, the success label comes from common.copied which
+    // maps to "已复制" (no trailing exclamation mark) in cn messages.
+    expect(btn.textContent).toContain('已复制')
   })
 })

@@ -140,11 +140,12 @@ function buildToolsMenu(t: ReturnType<typeof useTranslations<"nav">>, p: string)
 // ── ThemeToggle ─────────────────────────────────────────────────────────────
 
 function ThemeToggle() {
+  const t = useTranslations("nav")
   const { resolvedTheme, setTheme } = useTheme()
   return (
     <button
       onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-      aria-label="切换主题"
+      aria-label={t("theme.toggle")}
       className="relative h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
     >
       <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
@@ -467,10 +468,13 @@ function NavSearch() {
     }
   }, [open])
 
-  const results = query.trim()
-    ? ALL_TOOLS.filter(tool =>
-        tool.name.includes(query) || tool.slug.includes(query.toLowerCase())
-      ).slice(0, 8)
+  const tTools = useTranslations("tools")
+  const lowerQuery = query.trim().toLowerCase()
+  const results = lowerQuery
+    ? ALL_TOOLS.filter(tool => {
+        const title = String(tTools(`${tool.slug}.title`) ?? "").toLowerCase()
+        return title.includes(lowerQuery) || tool.slug.includes(lowerQuery)
+      }).slice(0, 8)
     : []
 
   const dropdownItems = results.length > 0 ? results : POPULAR_TOOLS
@@ -517,7 +521,7 @@ function NavSearch() {
               onMouseDown={() => setOpen(false)}
               className="block px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors"
             >
-              {tool.name}
+              {tTools(`${tool.slug}.title`)}
             </a>
           ))}
         </div>

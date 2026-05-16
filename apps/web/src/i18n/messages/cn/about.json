@@ -1,0 +1,58 @@
+{
+  "meta": {
+    "title": "关于 idcd - 全球网络诊断平台",
+    "description": "idcd 是专业的多节点网络诊断平台，提供全球拨测、DNS/SSL/IP 查询、一键诊断等功能"
+  },
+  "hero": {
+    "title": "关于 idcd",
+    "subtitle": "专业的多节点网络诊断平台，让网络质量可见、可测、可信"
+  },
+  "features": {
+    "global": {
+      "title": "全球节点覆盖",
+      "description": "分布于全球多个地区的拨测节点，提供真实的用户视角网络质量数据"
+    },
+    "diagnostics": {
+      "title": "实时诊断",
+      "description": "支持 Ping、HTTP、TCP、Traceroute、DNS、SSL 证书检查等多种诊断工具"
+    },
+    "evidence": {
+      "title": "Evidence 证据服务",
+      "description": "基于 KMS 签名的 Verdict 报告，提供可验证的网络质量证据用于合规审计"
+    }
+  },
+  "intro": {
+    "title": "产品简介",
+    "p1": "idcd 是一个专业的网络诊断和监控平台，为开发者、运维团队和企业提供全球多节点拨测服务。",
+    "p2": "我们的核心功能包括：",
+    "featureList": {
+      "probe": { "label": "多节点拨测", "desc": "：从全球多个地理位置同时发起网络诊断，获得全面的网络质量视图" },
+      "tools": { "label": "丰富的诊断工具", "desc": "：Ping、HTTP 探测、TCP 连接测试、Traceroute 路由跟踪、DNS 查询、SSL 证书检查等" },
+      "monitor": { "label": "实时监控", "desc": "：创建定时监控任务，自动检测服务可用性和性能指标" },
+      "diagnose": { "label": "一键诊断", "desc": "：综合多种诊断工具，一次执行获取完整的网络健康报告" },
+      "evidence": { "label": "Evidence 证据服务", "desc": "：通过 KMS 签名的 Verdict 报告，提供可公开验证的网络质量证据" },
+      "utils": { "label": "实用工具集", "desc": "：JSON 格式化、正则测试、Base64 编解码、时间戳转换、CIDR 计算器等开发者工具" }
+    },
+    "p3": "无论您是需要监控全球 CDN 性能、验证 SLA 达成情况、诊断网络故障，还是需要获取可信的网络质量证据，idcd 都能满足您的需求。"
+  },
+  "tech": {
+    "title": "技术架构",
+    "p1": "idcd 采用现代化的技术栈构建，确保高性能、高可用性和良好的用户体验：",
+    "stack": {
+      "backend": { "label": "后端", "desc": "：Go 语言开发，提供高性能的 API 服务和拨测引擎" },
+      "frontend": { "label": "前端", "desc": "：Next.js (App Router) + TypeScript + shadcn/ui，提供流畅的用户界面" },
+      "db": { "label": "数据库", "desc": "：PostgreSQL 16，支持多 schema 数据隔离" },
+      "cache": { "label": "缓存", "desc": "：Redis 7，用于会话管理和高频查询优化" },
+      "security": { "label": "安全", "desc": "：KMS 签名系统、TLS 1.3 加密传输、多层安全防护" },
+      "nodes": { "label": "节点管理", "desc": "：全球分布式拨测节点，支持水平扩展" }
+    },
+    "p2": "整个系统设计遵循微服务架构理念，各模块职责清晰，便于维护和扩展。"
+  },
+  "contact": {
+    "title": "联系我们",
+    "email": "邮箱",
+    "website": "网站",
+    "github": "GitHub",
+    "footer": "欢迎通过邮件或 GitHub Issues 联系我们，无论是产品建议、功能需求还是技术支持，我们都期待听到您的反馈。"
+  }
+}

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
@@ -19,6 +19,14 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Checkbox } from "@/components/ui/checkbox"
+import { Input } from "@/components/ui/input"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
@@ -148,28 +156,39 @@ export function MonitorsClient() {
   >(null)
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+  const [search, setSearch] = useState("")
+  const [statusFilter, setStatusFilter] = useState("")
+  // Debounce timer ref for search input
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   // ── Data fetching ───────────────────────────────────────────────────────────
 
-  const fetchMonitors = useCallback(async (p = page) => {
+  const fetchMonitors = useCallback(async (p: number, q: string, st: string) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await apiRequest<{ data: { monitors: ApiMonitor[]; total: number } }>(
-        `/v1/monitors?page=${p}&limit=${PAGE_SIZE}`
+      const params = new URLSearchParams({ page: String(p), limit: String(PAGE_SIZE) })
+      if (q) params.set("search", q)
+      if (st) params.set("status", st)
+      const res = await apiRequest<{ data: { items: ApiMonitor[]; total: number } }>(
+        `/v1/monitors?${params.toString()}`
       )
-      setMonitors((res.data?.monitors ?? []).map(fromApi))
+      setMonitors((res.data?.items ?? []).map(fromApi))
       setTotal(res.data?.total ?? 0)
     } catch (err) {
       setError(err instanceof Error ? err.message : "加载失败")
     } finally {
       setLoading(false)
     }
-  }, [page])
+  }, [])
 
+  // Initial load and re-fetch when page/search/status change
   useEffect(() => {
-    fetchMonitors()
-  }, [fetchMonitors])
+    fetchMonitors(page, search, statusFilter)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, statusFilter])
+
+  // Search is debounced separately; statusFilter and page changes trigger immediately above.
 
   // ── Derived stats ───────────────────────────────────────────────────────────
 
@@ -221,7 +240,7 @@ export function MonitorsClient() {
       })
     } catch {
       // Roll back on failure
-      await fetchMonitors()
+      await fetchMonitors(page, search, statusFilter)
     }
   }
 
@@ -238,7 +257,7 @@ export function MonitorsClient() {
     try {
       await apiRequest(`/v1/monitors/${id}`, { method: "DELETE" })
     } catch {
-      await fetchMonitors()
+      await fetchMonitors(page, search, statusFilter)
     }
   }
 
@@ -271,7 +290,7 @@ export function MonitorsClient() {
       })
     } catch {
       // On error re-fetch to restore consistent state
-      await fetchMonitors()
+      await fetchMonitors(page, search, statusFilter)
     }
   }
 
@@ -369,14 +388,50 @@ export function MonitorsClient() {
       )}
 
       {/* 操作栏 */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h2 className="text-lg font-semibold">监控项目</h2>
-        <Button asChild>
-          <Link href="/app/monitors/new">
-            <Plus className="mr-2 h-4 w-4" />
-            新建监控
-          </Link>
-        </Button>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          {/* 搜索框 */}
+          <Input
+            placeholder="搜索监控名称..."
+            value={search}
+            onChange={(e) => {
+              const val = e.target.value
+              setSearch(val)
+              if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current)
+              searchDebounceRef.current = setTimeout(() => {
+                setPage(1)
+                fetchMonitors(1, val, statusFilter)
+              }, 300)
+            }}
+            className="h-8 w-full sm:w-48"
+          />
+          {/* 状态筛选 */}
+          <Select
+            value={statusFilter || "all"}
+            onValueChange={(val) => {
+              const st = val === "all" ? "" : val
+              setStatusFilter(st)
+              setPage(1)
+            }}
+          >
+            <SelectTrigger className="h-8 w-full sm:w-32">
+              <SelectValue placeholder="全部状态" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="UP">UP</SelectItem>
+              <SelectItem value="DOWN">DOWN</SelectItem>
+              <SelectItem value="PAUSED">PAUSED</SelectItem>
+            </SelectContent>
+          </Select>
+          <Button asChild className="h-8">
+            <Link href="/app/monitors/new">
+              <Plus className="mr-2 h-4 w-4" />
+              新建监控
+            </Link>
+          </Button>
+        </div>
       </div>
 
       {/* 监控列表表格 */}
@@ -538,7 +593,7 @@ export function MonitorsClient() {
             <Button
               variant="outline" size="icon" className="h-7 w-7"
               disabled={page <= 1 || loading}
-              onClick={() => { setPage(p => p - 1); fetchMonitors(page - 1) }}
+              onClick={() => setPage(p => p - 1)}
             >
               <ChevronLeft className="h-4 w-4" />
             </Button>
@@ -546,7 +601,7 @@ export function MonitorsClient() {
             <Button
               variant="outline" size="icon" className="h-7 w-7"
               disabled={page >= Math.ceil(total / PAGE_SIZE) || loading}
-              onClick={() => { setPage(p => p + 1); fetchMonitors(page + 1) }}
+              onClick={() => setPage(p => p + 1)}
             >
               <ChevronRight className="h-4 w-4" />
             </Button>

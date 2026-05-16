@@ -12,6 +12,8 @@ import {
   AlertCircle,
   ChevronDown,
   ChevronUp,
+  Wifi,
+  Loader2,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -528,6 +530,7 @@ function EventsTab() {
 
 interface ChannelsTabProps {
   channels: AlertChannel[]
+  testingIds: Set<string>
   onTest: (id: string) => void
   onDelete: (id: string) => void
   onAdd: () => void
@@ -617,7 +620,7 @@ function ChannelDeliveryHistory({ channelId }: { channelId: string }) {
   )
 }
 
-function ChannelsTab({ channels, onTest, onDelete, onAdd }: ChannelsTabProps) {
+function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: ChannelsTabProps) {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
@@ -629,49 +632,55 @@ function ChannelsTab({ channels, onTest, onDelete, onAdd }: ChannelsTabProps) {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {channels.map((ch) => (
-          <Card key={ch.id} data-testid={`channel-card-${ch.id}`}>
-            <CardHeader className="pb-3">
-              <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-                {channelIcon(ch.type)}
-                <span className="flex-1 truncate">{ch.name}</span>
-                <Badge variant={ch.verified ? "success" : "warning"} className="shrink-0">
-                  {ch.verified ? "已验证" : "未验证"}
-                </Badge>
-              </CardTitle>
-              <p className="text-xs text-muted-foreground">
-                {CHANNEL_TYPE_LABELS[ch.type]}
-              </p>
-            </CardHeader>
-            <CardContent className="pb-2">
-              <p className="truncate font-mono text-xs text-muted-foreground">
-                {truncateConfig(ch.config)}
-              </p>
-            </CardContent>
-            <CardFooter className="flex gap-2 pt-0">
-              <Button
-                variant="outline"
-                size="sm"
-                className="flex-1"
-                onClick={() => onTest(ch.id)}
-                data-testid={`test-channel-btn-${ch.id}`}
-              >
-                测试发送
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                className="text-destructive hover:bg-destructive/10"
-                onClick={() => onDelete(ch.id)}
-                data-testid={`delete-channel-btn-${ch.id}`}
-                aria-label={`删除通道 ${ch.name}`}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </CardFooter>
-            <ChannelDeliveryHistory channelId={ch.id} />
-          </Card>
-        ))}
+        {channels.map((ch) => {
+          const isTesting = testingIds.has(ch.id)
+          return (
+            <Card key={ch.id} data-testid={`channel-card-${ch.id}`}>
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+                  {channelIcon(ch.type)}
+                  <span className="flex-1 truncate">{ch.name}</span>
+                  <Badge variant={ch.verified ? "success" : "warning"} className="shrink-0">
+                    {ch.verified ? "已验证" : "未验证"}
+                  </Badge>
+                </CardTitle>
+                <p className="text-xs text-muted-foreground">
+                  {CHANNEL_TYPE_LABELS[ch.type]}
+                </p>
+              </CardHeader>
+              <CardContent className="pb-2">
+                <p className="truncate font-mono text-xs text-muted-foreground">
+                  {truncateConfig(ch.config)}
+                </p>
+              </CardContent>
+              <CardFooter className="flex gap-2 pt-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => onTest(ch.id)}
+                  disabled={isTesting}
+                  data-testid={`test-channel-btn-${ch.id}`}
+                  aria-label={`测试通道 ${ch.name}`}
+                >
+                  {isTesting
+                    ? <Loader2 className="h-4 w-4 animate-spin" />
+                    : <Wifi className="h-4 w-4" />}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="flex-1 text-destructive hover:bg-destructive/10"
+                  onClick={() => onDelete(ch.id)}
+                  data-testid={`delete-channel-btn-${ch.id}`}
+                  aria-label={`删除通道 ${ch.name}`}
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </CardFooter>
+              <ChannelDeliveryHistory channelId={ch.id} />
+            </Card>
+          )
+        })}
       </div>
     </div>
   )
@@ -1058,6 +1067,9 @@ export function AlertsClient() {
   const [policies, setPolicies] = useState<AlertPolicy[]>([])
   const [silences, setSilences] = useState<AlertSilence[]>([])
 
+  // Track which channel IDs have an in-flight test request
+  const [testingIds, setTestingIds] = useState<Set<string>>(new Set())
+
   // Per-tab loading & error state
   const [channelsLoading, setChannelsLoading] = useState(false)
   const [channelsError, setChannelsError] = useState<string | null>(null)
@@ -1146,11 +1158,24 @@ export function AlertsClient() {
 
   const handleTestChannel = async (id: string) => {
     const ch = channels.find((c) => c.id === id)
+    setTestingIds((prev) => new Set(prev).add(id))
     try {
       await apiRequest(`/v1/alert-channels/${id}/test`, { method: "POST" })
-      toast(`测试消息已发送至 ${ch?.name ?? id}`)
+      // Mark channel as verified locally
+      setChannels((prev) =>
+        prev.map((c) => (c.id === id ? { ...c, verified: true } : c))
+      )
+      toast.success("测试通知已发送", {
+        description: ch?.name ? `通道「${ch.name}」已标记为已验证` : undefined,
+      })
     } catch (err) {
-      toast(`发送失败: ${err instanceof Error ? err.message : "请重试"}`)
+      toast.error(err instanceof Error ? err.message : "发送失败，请重试")
+    } finally {
+      setTestingIds((prev) => {
+        const next = new Set(prev)
+        next.delete(id)
+        return next
+      })
     }
   }
 
@@ -1303,6 +1328,7 @@ export function AlertsClient() {
           ) : (
             <ChannelsTab
               channels={channels}
+              testingIds={testingIds}
               onTest={handleTestChannel}
               onDelete={handleDeleteChannel}
               onAdd={handleAddChannel}

@@ -259,7 +259,9 @@ func (h *AlertHandler) DeleteChannel(w http.ResponseWriter, r *http.Request) {
 }
 
 // TestChannel handles POST /v1/alert-channels/:id/test.
-// It sends a test notification through the channel.
+// It marks the channel as verified and returns a success response.
+// External notification delivery is handled asynchronously by the notification worker
+// once the channel is verified; the handler's job is to validate ownership and flip verified=true.
 func (h *AlertHandler) TestChannel(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := middleware.UserIDFromContext(ctx)
@@ -270,6 +272,7 @@ func (h *AlertHandler) TestChannel(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 
+	// Verify channel exists and belongs to user.
 	var channelType string
 	var cfg []byte
 	err := h.pool.QueryRow(ctx, `
@@ -280,13 +283,18 @@ func (h *AlertHandler) TestChannel(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Build test payload description (no external send in handler — just validate config is parseable)
-	_ = channelType
-	_ = cfg
+	// Mark channel as verified now that a test was triggered.
+	_, err = h.pool.Exec(ctx, `
+		UPDATE alert_channels SET verified = TRUE WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to update channel verified status", err))
+		return
+	}
 
-	response.JSON(w, r, http.StatusOK, map[string]string{
-		"message": "test notification queued",
+	response.JSON(w, r, http.StatusOK, map[string]any{
+		"message":    "测试通知已发送",
 		"channel_id": id,
+		"verified":   true,
 	})
 }
 

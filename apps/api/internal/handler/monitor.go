@@ -296,7 +296,7 @@ func (h *MonitorHandler) Create(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusCreated, monitorToResponse(m))
 }
 
-// List handles GET /v1/monitors?page=1&limit=20.
+// List handles GET /v1/monitors?page=1&limit=20&search=xxx&status=UP.
 func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	userID := middleware.UserIDFromContext(ctx)
@@ -306,7 +306,96 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page, limit := parsePagination(r)
+	search := r.URL.Query().Get("search")
+	statusFilter := r.URL.Query().Get("status")
 
+	// Normalise frontend status labels (UP/DOWN/PAUSED) → DB values.
+	switch statusFilter {
+	case "UP":
+		statusFilter = "active"
+	case "DOWN":
+		statusFilter = "down"
+	case "PAUSED":
+		statusFilter = "paused"
+	}
+
+	// If search or status filter is present and bulkPool is available, use raw SQL
+	// so we can apply dynamic WHERE clauses that sqlc-generated code doesn't support.
+	if (search != "" || statusFilter != "") && h.bulkPool != nil {
+		rawSQL := `SELECT id, user_id, name, type, target, config, interval_s, node_count, status,
+		                   last_check_at, next_check_at, created_at, updated_at
+		            FROM monitors
+		            WHERE user_id = $1 AND status != 'archived'`
+		args := []any{userID}
+		argIdx := 2
+		if search != "" {
+			rawSQL += fmt.Sprintf(" AND name ILIKE $%d", argIdx)
+			args = append(args, "%"+search+"%")
+			argIdx++
+		}
+		if statusFilter != "" {
+			rawSQL += fmt.Sprintf(" AND status = $%d", argIdx)
+			args = append(args, statusFilter)
+			argIdx++
+		}
+
+		// Count total matching rows first.
+		countSQL := `SELECT COUNT(*) FROM monitors WHERE user_id = $1 AND status != 'archived'`
+		countArgs := []any{userID}
+		countArgIdx := 2
+		if search != "" {
+			countSQL += fmt.Sprintf(" AND name ILIKE $%d", countArgIdx)
+			countArgs = append(countArgs, "%"+search+"%")
+			countArgIdx++
+		}
+		if statusFilter != "" {
+			countSQL += fmt.Sprintf(" AND status = $%d", countArgIdx)
+			countArgs = append(countArgs, statusFilter)
+		}
+		var total int
+		_ = h.bulkPool.QueryRow(ctx, countSQL, countArgs...).Scan(&total)
+
+		rawSQL += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
+		args = append(args, int32(limit), int32((page-1)*limit))
+
+		rows, err := h.bulkPool.Query(ctx, rawSQL, args...)
+		if err != nil {
+			response.Error(w, r, apperr.Internal("failed to list monitors", err))
+			return
+		}
+		defer rows.Close()
+
+		var items []MonitorResponse
+		for rows.Next() {
+			var m idcdmain.Monitor
+			if err := rows.Scan(
+				&m.ID, &m.UserID, &m.Name, &m.Type, &m.Target, &m.Config,
+				&m.IntervalS, &m.NodeCount, &m.Status,
+				&m.LastCheckAt, &m.NextCheckAt, &m.CreatedAt, &m.UpdatedAt,
+			); err != nil {
+				response.Error(w, r, apperr.Internal("failed to scan monitor", err))
+				return
+			}
+			items = append(items, monitorToResponse(m))
+		}
+		if err := rows.Err(); err != nil {
+			response.Error(w, r, apperr.Internal("failed to iterate monitors", err))
+			return
+		}
+		if items == nil {
+			items = []MonitorResponse{}
+		}
+
+		response.JSON(w, r, http.StatusOK, MonitorListResponse{
+			Items: items,
+			Total: total,
+			Page:  page,
+			Limit: limit,
+		})
+		return
+	}
+
+	// No filters — use the fast sqlc-generated path.
 	ms, err := h.q.ListMonitorsByUser(ctx, idcdmain.ListMonitorsByUserParams{
 		UserID: userID,
 		Limit:  int32(limit),
@@ -322,9 +411,20 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 		items[i] = monitorToResponse(m)
 	}
 
+	// Count total for accurate pagination.
+	var total int
+	if h.bulkPool != nil {
+		_ = h.bulkPool.QueryRow(ctx,
+			`SELECT COUNT(*) FROM monitors WHERE user_id = $1 AND status != 'archived'`,
+			userID,
+		).Scan(&total)
+	} else {
+		total = len(items)
+	}
+
 	response.JSON(w, r, http.StatusOK, MonitorListResponse{
 		Items: items,
-		Total: len(items),
+		Total: total,
 		Page:  page,
 		Limit: limit,
 	})

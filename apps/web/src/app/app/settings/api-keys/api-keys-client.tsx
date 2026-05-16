@@ -87,6 +87,10 @@ export function APIKeysClient() {
   const [createdKey, setCreatedKey] = useState<string | null>(null)
   const [copied, setCopied] = useState(false)
 
+  // ── Search / filter state ─────────────────────────────────────────────────
+  const [search, setSearch] = useState("")
+  const [typeFilter, setTypeFilter] = useState<string>("all")
+
   // ── Revoke confirm state ─────────────────────────────────────────────────
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
   const [revokeLoading, setRevokeLoading] = useState(false)
@@ -178,6 +182,14 @@ export function APIKeysClient() {
     }
   }
 
+  // ── Derived: filtered keys ────────────────────────────────────────────────
+
+  const filteredKeys = keys.filter((k) => {
+    const matchesSearch = k.name.toLowerCase().includes(search.toLowerCase())
+    const matchesType = typeFilter === "all" || k.type === typeFilter
+    return matchesSearch && matchesType
+  })
+
   return (
     <div data-testid="api-keys-page" className="space-y-6">
       <Card data-testid="api-keys-card">
@@ -218,6 +230,39 @@ export function APIKeysClient() {
               暂无 API Key，点击"创建 API Key"开始使用
             </p>
           ) : (
+            <>
+              {/* ── Search & type filter bar ── */}
+              <div className="flex gap-3 mb-4" data-testid="keys-filter-bar">
+                <Input
+                  placeholder="搜索 API Key 名称..."
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  className="max-w-xs"
+                  data-testid="input-search-keys"
+                />
+                <Select
+                  value={typeFilter}
+                  onValueChange={setTypeFilter}
+                >
+                  <SelectTrigger className="w-36" data-testid="select-filter-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">全部类型</SelectItem>
+                    <SelectItem value="live">生产（Live）</SelectItem>
+                    <SelectItem value="test">测试（Test）</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {filteredKeys.length === 0 ? (
+                <p
+                  className="text-sm text-muted-foreground py-6 text-center"
+                  data-testid="no-match-keys-message"
+                >
+                  没有匹配的 API Key
+                </p>
+              ) : (
             <Table data-testid="api-keys-table">
               <TableHeader>
                 <TableRow>
@@ -230,7 +275,7 @@ export function APIKeysClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {keys.map((key) => (
+                {filteredKeys.map((key) => (
                   <TableRow key={key.id} data-testid={`key-row-${key.id}`}>
                     <TableCell className="font-medium">{key.name}</TableCell>
                     <TableCell>
@@ -295,6 +340,8 @@ export function APIKeysClient() {
                 ))}
               </TableBody>
             </Table>
+              )}
+            </>
           )}
         </CardContent>
       </Card>

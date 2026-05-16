@@ -11,41 +11,10 @@
   },
   "home": {
     "title": "Admin Home",
-    "subtitle": "System configuration overview",
-    "configStatus": "System Configuration Status",
-    "emailService": "Email Service (notifier)",
-    "needsConfig": "Needs Config",
-    "sendTestEmail": "Send Test Email",
-    "sending": "Sending…",
-    "emailSent": "Test email request sent",
-    "requestFailed": "Request failed, check admin token and service status",
-    "networkError": "Network error, make sure the API service is running"
+    "subtitle": "System configuration overview"
   },
   "users": {
     "title": "Users",
-    "search": "Search users",
-    "searchPlaceholder": "Search by email…",
-    "clearSearch": "Clear",
-    "totalUsers": "{total} users total",
-    "loading": "Loading…",
-    "noUsers": "No users found",
-    "table": {
-      "id": "User ID",
-      "email": "Email",
-      "name": "Name",
-      "plan": "Plan",
-      "status": "Status",
-      "monitorCount": "Monitors",
-      "createdAt": "Registered",
-      "lastLogin": "Last Login",
-      "actions": "Actions"
-    },
-    "status": {
-      "active": "Active",
-      "suspended": "Suspended",
-      "unverified": "Unverified",
-      "deleted": "Deleted"
-    },
     "actions": {
       "view": "View Details",
       "suspend": "Suspend",
@@ -53,223 +22,41 @@
       "resetPassword": "Reset Password",
       "impersonate": "Impersonate"
     },
-    "confirm": {
-      "suspend": "Confirm suspend this user?",
-      "unsuspend": "Confirm unsuspend this user?"
-    },
     "pagination": {
       "prev": "Previous",
       "next": "Next"
     }
   },
   "nodes": {
-    "title": "Node List",
-    "dashboard": "Node Health Dashboard",
-    "dashboardSubtitle": "Global node online status, latency, and heartbeat monitoring",
-    "approve": "Approve",
-    "reject": "Reject",
-    "online": "Online Nodes",
-    "offline": "Offline Nodes",
-    "degraded": "Degraded Nodes",
-    "total": "Total Nodes",
-    "noData": "No node data available",
-    "table": {
-      "nodeId": "Node ID",
-      "hostname": "Hostname",
-      "osArch": "OS / Arch",
-      "ip": "IP Address",
-      "agentVersion": "Agent Version",
-      "status": "Status",
-      "lastSeen": "Last Seen"
-    },
-    "status": {
-      "active": "Online",
-      "inactive": "Offline",
-      "degraded": "Degraded"
-    }
+    "title": "Node List"
   },
   "upgrades": {
     "title": "OTA Rollout",
-    "subtitle": "Manage node binary upgrade plans (3-tier rollout: 1% / 10% / 100%)",
-    "total": "{count} upgrade plans",
-    "create": "New Upgrade Plan",
-    "createDialog": "New OTA Upgrade Plan",
-    "listTitle": "Upgrade Plans",
-    "noData": "No upgrade plans",
-    "manual": "Manual Upgrade",
-    "plan": "Plan",
-    "amount": "Amount",
-    "paymentMethod": "Payment Method",
-    "form": {
-      "version": "Version",
-      "downloadUrl": "Download URL",
-      "checksum": "SHA-256 Checksum",
-      "rolloutPct": "Rollout: {pct}%",
-      "cancel": "Cancel",
-      "create": "Create",
-      "creating": "Creating..."
-    },
-    "table": {
-      "version": "Version",
-      "rolloutPct": "Rollout %",
-      "status": "Status",
-      "createdAt": "Created",
-      "actions": "Actions"
-    },
     "actions": {
       "pause": "Pause",
       "resume": "Resume",
       "complete": "Complete"
-    },
-    "status": {
-      "active": "Active",
-      "paused": "Paused",
-      "completed": "Completed"
-    },
-    "toast": {
-      "created": "Upgrade plan created",
-      "updated": "Updated"
     }
   },
   "betaInvitations": {
     "title": "Beta Invitation Codes",
-    "total": "{count} invitation codes",
-    "generate": "Create Invitation",
-    "createDialog": "Create Invitation Code",
-    "noData": "No invitation codes",
-    "code": "Code",
-    "emailLimit": "Email Restriction",
-    "used": "Used",
-    "unused": "Unused",
-    "expiresAt": "Expires At",
-    "applicant": "Applicant",
-    "form": {
-      "emailLabel": "Email Restriction (optional)",
-      "emailPlaceholder": "user@example.com",
-      "emailHint": "Leave blank to allow anyone to redeem",
-      "expiryLabel": "Validity",
-      "cancel": "Cancel",
-      "confirm": "Confirm Create",
-      "creating": "Creating…",
-      "days7": "7 Days",
-      "days30": "30 Days",
-      "days90": "90 Days",
-      "permanent": "Permanent"
-    },
     "actions": {
       "approve": "Approve",
       "revoke": "Revoke",
       "processing": "Processing…"
-    },
-    "filter": {
-      "all": "All"
-    },
-    "toast": {
-      "approved": "Approved",
-      "revoked": "Revoked",
-      "created": "Invitation code created"
     }
   },
   "refundFailed": {
-    "title": "Refund Failed Dashboard",
-    "subtitle": "D5 — refund_failed payment overview, supports manual retry",
-    "alertTitle": "Pending Refund Failures",
-    "alertDesc": "{count} refunds are in refund_failed status, requiring manual retry or user contact.",
-    "emptyTitle": "No Pending Records",
-    "emptyDesc": "There are no payments in refund_failed status.",
-    "listTitle": "Failed Refund Payment List",
-    "noData": "No records",
-    "retry": "Retry Refund",
-    "retrying": "Retrying…",
-    "manualRetry": "Manual Retry",
-    "userId": "User ID",
-    "amount": "Refund Amount",
-    "reason": "Failure Reason",
-    "failedAt": "Failed At",
-    "retryCount": "Retry Count",
-    "retryCountUnit": "times",
-    "retryAt": "Next Retry",
-    "table": {
-      "paymentId": "Payment ID",
-      "userId": "User ID",
-      "amount": "Amount",
-      "failedAt": "Failed At",
-      "retryCount": "Retries",
-      "actions": "Actions"
-    }
+    "title": "Refund Failed Dashboard"
   },
   "metrics": {
-    "title": "System Overview",
-    "apiLatency": "API Latency",
-    "activeUsers": "Active Users",
-    "probeCount": "Probe Count",
-    "errorRate": "Error Rate",
-    "totalUsers": "Total Users",
-    "activeUsersRecent": "Active last 7d: {count}",
-    "activeMonitors": "Active Monitors",
-    "totalMonitors": "{total} total",
-    "onlineNodes": "Online Nodes",
-    "totalNodes": "{total} total",
-    "mrrEstimate": "Est. MRR",
-    "mrrSub": "Pro+Team+Enterprise",
-    "loadFailed": "Failed to load, please try again",
-    "subscriptionDist": "Subscription Distribution",
-    "nodeHealth": "Node Health",
-    "online": "Online: {count}",
-    "offline": "Offline: {count}"
+    "title": "System Overview"
   },
   "nodeApplications": {
     "title": "Node Application Review",
-    "subtitle": "Review community node access applications, approved nodes enter a 14-day probation period",
-    "applicant": "Applicant",
-    "ip": "Node IP",
-    "location": "Location",
     "approve": "Approve",
     "reject": "Reject",
-    "noData": "No applications",
-    "pendingCount": "Pending",
-    "probation": "Probation",
-    "activated": "Activated",
-    "rejected": "Rejected",
-    "reviewDialog": "Review Node Application",
-    "reviewAction": "Action",
-    "reviewNote": "Note (optional)",
-    "reviewNotePlaceholder": "Review note…",
-    "approveOption": "Approve (enter probation)",
-    "rejectOption": "Reject",
-    "cancel": "Cancel",
-    "submit": "Submitting…",
-    "filter": {
-      "all": "All"
-    },
-    "table": {
-      "hostname": "Hostname",
-      "ip": "IP Address",
-      "location": "Location",
-      "isp": "ISP",
-      "status": "Status",
-      "appliedAt": "Applied At",
-      "actions": "Actions"
-    },
-    "status": {
-      "pending": "Pending",
-      "probation": "Probation",
-      "approved": "Approved",
-      "active": "Active",
-      "rejected": "Rejected"
-    },
-    "applicationDetail": {
-      "hostname": "Hostname:",
-      "ip": "IP:",
-      "location": "Location:",
-      "isp": "ISP:"
-    },
-    "toast": {
-      "approved": "Application approved",
-      "rejected": "Application rejected",
-      "review": "Review"
-    },
-    "listTitle": "Application List"
+    "cancel": "Cancel"
   },
   "lang": {
     "zh": "中文",

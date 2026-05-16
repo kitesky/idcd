@@ -19,7 +19,8 @@
     "sending": "发送中…",
     "emailSent": "邮件测试请求已发送",
     "requestFailed": "请求失败，请检查 admin token 及服务状态",
-    "networkError": "网络错误，请确认 API 服务已启动"
+    "networkError": "网络错误，请确认 API 服务已启动",
+    "configHelp": "配置方法：在 <configFile></configFile> 添加 <section></section> 段落（参见 <example></example>），然后启动 notifier 服务：<runCmd></runCmd>"
   },
   "users": {
     "title": "用户管理",
@@ -269,7 +270,11 @@
       "rejected": "申请已拒绝",
       "review": "审核"
     },
-    "listTitle": "申请列表"
+    "listTitle": "申请列表",
+    "errors": {
+      "reviewFailed": "操作失败",
+      "networkError": "网络错误，请重试"
+    }
   },
   "lang": {
     "zh": "中文",

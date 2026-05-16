@@ -52,15 +52,12 @@ export default function AdminRoot() {
             </div>
           </div>
           <p className="text-xs text-muted-foreground">
-            配置方法：在{" "}
-            <code className="font-mono">config/dev.env.yaml</code> 添加{" "}
-            <code className="font-mono">notifier.smtp</code>{" "}
-            段落（参见{" "}
-            <code className="font-mono">dev.env.example.yaml</code>），然后启动
-            notifier 服务：
-            <code className="font-mono">
-              go run ./apps/notifier/cmd/notifier/
-            </code>
+            {t.rich("home.configHelp", {
+              configFile: () => <code className="font-mono">config/dev.env.yaml</code>,
+              section: () => <code className="font-mono">notifier.smtp</code>,
+              example: () => <code className="font-mono">dev.env.example.yaml</code>,
+              runCmd: () => <code className="font-mono">go run ./apps/notifier/cmd/notifier/</code>,
+            })}
           </p>
         </CardContent>
       </Card>

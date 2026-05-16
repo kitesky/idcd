@@ -40,17 +40,41 @@ type Namespace = (typeof NAMESPACES)[number]
 // payload typechecks at `getRequestConfig` and `NextIntlClientProvider` call sites.
 type Messages = { [id: string]: Messages | string }
 
-async function loadNamespace(locale: string, ns: Namespace): Promise<Messages> {
-  for (const loc of fallbackChain(locale)) {
-    try {
-      const mod = await import(`./messages/${loc}/${ns}.json`)
-      return mod.default as Messages
-    } catch {
-      // Try next locale in the fallback chain — missing namespace at this
-      // locale is expected (e.g. admin in non-default locales).
+function deepMerge(base: Messages, overlay: Messages): Messages {
+  const result: Messages = { ...base }
+  for (const [key, value] of Object.entries(overlay)) {
+    const baseVal = result[key]
+    if (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof baseVal === 'object' &&
+      baseVal !== null
+    ) {
+      result[key] = deepMerge(baseVal, value)
+    } else {
+      result[key] = value
     }
   }
-  return {}
+  return result
+}
+
+async function loadNamespace(locale: string, ns: Namespace): Promise<Messages> {
+  // Walk the fallback chain back-to-front and deep-merge so that a target
+  // locale with partial coverage (e.g. admin in EN) inherits every missing
+  // key from its fallback. Per-key fallback is required by I18N-PLAN.md D2.
+  const chain = fallbackChain(locale)
+  let merged: Messages = {}
+  let hadAny = false
+  for (let i = chain.length - 1; i >= 0; i--) {
+    try {
+      const mod = await import(`./messages/${chain[i]}/${ns}.json`)
+      merged = deepMerge(merged, mod.default as Messages)
+      hadAny = true
+    } catch {
+      // Missing namespace at this locale is tolerated — keep the merge going.
+    }
+  }
+  return hadAny ? merged : {}
 }
 
 export async function loadMessages(locale: string): Promise<Messages> {

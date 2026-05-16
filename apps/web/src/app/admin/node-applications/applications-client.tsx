@@ -79,9 +79,10 @@ function ReviewDialog({ app, onDone }: ReviewDialogProps) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {
-      const err = await reviewApplicationAction(app.id, action, note.trim())
-      if (err) {
-        toast.error(err)
+      const res = await reviewApplicationAction(app.id, action, note.trim())
+      if (!res.ok) {
+        const msg = res.messageKey ? t(res.messageKey) : res.message
+        toast.error(msg ?? t("nodeApplications.errors.reviewFailed"))
       } else {
         toast.success(action === "approve" ? t("nodeApplications.toast.approved") : t("nodeApplications.toast.rejected"))
         onDone(app.id, action === "approve" ? "probation" : "rejected")

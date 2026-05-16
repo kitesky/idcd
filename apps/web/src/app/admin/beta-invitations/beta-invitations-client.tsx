@@ -8,7 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { cn } from "@/lib/utils"
-import type { BetaInvitation, InvitationStatus } from "./page"
+import type { BetaInvitation, InvitationStatus } from "./types"
 
 const statusVariant: Record<InvitationStatus, "default" | "secondary" | "destructive" | "outline"> = {
   pending: "default", approved: "outline", used: "secondary", revoked: "destructive",

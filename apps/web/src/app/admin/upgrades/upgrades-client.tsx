@@ -17,7 +17,7 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Slider } from "@/components/ui/slider"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import type { UpgradeRollout } from "./page"
+import type { UpgradeRollout } from "./types"
 
 function formatDate(iso: string) {
   try {

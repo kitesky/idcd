@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"mime"
+	"net/url"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -13,6 +16,7 @@ import (
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/i18n"
 )
 
 // Task type constants for different email types.
@@ -41,6 +45,39 @@ const (
 	RefundRetryMaxAttempts = 2
 )
 
+// catalogProvider is the test-overridable source of the shared i18n catalog
+// used for subjects / from-name / footer copy. Production callers should
+// never touch this — it exists so unit tests can swap in a hermetic catalog
+// without rewriting the world.
+var catalogProvider = func() *i18n.Catalog { return i18n.MustDefaultCatalog() }
+
+// registryProvider mirrors catalogProvider for the locale registry. Kept
+// separate so tests can swap one without the other.
+var registryProvider = func() *i18n.Registry { return i18n.MustDefault() }
+
+// SetI18nForTesting overrides both the catalog and registry providers and
+// returns a restore function. Exported so handler tests can inject a hermetic
+// catalog (without depending on lib/shared/i18n/messages on disk).
+func SetI18nForTesting(cat *i18n.Catalog, reg *i18n.Registry) func() {
+	prevCat, prevReg := catalogProvider, registryProvider
+	catalogProvider = func() *i18n.Catalog { return cat }
+	registryProvider = func() *i18n.Registry { return reg }
+	return func() {
+		catalogProvider = prevCat
+		registryProvider = prevReg
+	}
+}
+
+// resolveLocale falls back to the registry default when the payload omits a
+// locale. Keeps payload schemas backward-compatible — old tasks enqueued
+// before Phase 2b will still pick up the default locale.
+func resolveLocale(loc string) string {
+	if loc != "" {
+		return loc
+	}
+	return registryProvider().DefaultCode()
+}
+
 // RefundRetryPayload mirrors the API-side payload structure.  Kept in sync
 // manually because importing apps/api/... from notifier would create a
 // circular dependency.
@@ -54,6 +91,7 @@ type RefundRetryPayload struct {
 	Provider     string `json:"provider"`
 	Reason       string `json:"reason,omitempty"`
 	AttemptCount int    `json:"attempt_count"`
+	Locale       string `json:"locale,omitempty"`
 }
 
 // PaymentRefunder is the abstraction over the billing provider's Refund API.
@@ -81,22 +119,25 @@ type RefundRetryEnqueuer interface {
 
 // SendVerifyEmailPayload holds the payload for sending verification email.
 type SendVerifyEmailPayload struct {
-	To        string `json:"to"`         // recipient email address
-	Code      string `json:"code"`       // 6-digit OTP code
-	ExpiresIn string `json:"expires_in"` // human-readable duration
+	To        string `json:"to"`              // recipient email address
+	Code      string `json:"code"`            // 6-digit OTP code
+	ExpiresIn string `json:"expires_in"`      // human-readable duration
+	Locale    string `json:"locale,omitempty"` // selected by API at enqueue time; empty → registry default
 }
 
 // SendWelcomePayload holds the payload for sending welcome email.
 type SendWelcomePayload struct {
-	To       string `json:"to"`       // recipient email address
-	Username string `json:"username"` // user's display name
+	To       string `json:"to"`              // recipient email address
+	Username string `json:"username"`        // user's display name
+	Locale   string `json:"locale,omitempty"` // see SendVerifyEmailPayload.Locale
 }
 
 // SendResetPasswordPayload holds the payload for sending password reset email.
 type SendResetPasswordPayload struct {
-	To        string `json:"to"`         // recipient email address
-	ResetURL  string `json:"reset_url"`  // password reset URL
-	ExpiresIn string `json:"expires_in"` // human-readable duration
+	To        string `json:"to"`              // recipient email address
+	ResetURL  string `json:"reset_url"`       // password reset URL (already locale-prefixed)
+	ExpiresIn string `json:"expires_in"`      // human-readable duration
+	Locale    string `json:"locale,omitempty"` // see SendVerifyEmailPayload.Locale
 }
 
 // Handlers manages all email task handlers.
@@ -143,7 +184,6 @@ func (h *Handlers) HandleSendVerifyEmail(ctx context.Context, task *asynq.Task) 
 		return apperr.Internal("解析验证邮件任务载荷失败", err)
 	}
 
-	// Validate payload
 	if payload.To == "" {
 		return apperr.Validation("收件人地址不能为空", "")
 	}
@@ -151,8 +191,9 @@ func (h *Handlers) HandleSendVerifyEmail(ctx context.Context, task *asynq.Task) 
 		return apperr.Validation("验证码不能为空", "")
 	}
 
-	// Render template
-	html, err := h.templates.RenderVerifyEmail(template.VerifyEmailData{
+	locale := resolveLocale(payload.Locale)
+
+	html, err := h.templates.RenderVerifyEmail(locale, template.VerifyEmailData{
 		Code:      payload.Code,
 		ExpiresIn: payload.ExpiresIn,
 	})
@@ -160,19 +201,18 @@ func (h *Handlers) HandleSendVerifyEmail(ctx context.Context, task *asynq.Task) 
 		return err
 	}
 
-	// Send email
 	msg := email.Message{
 		To:      payload.To,
-		Subject: "【idcd】邮箱验证码",
+		Subject: catalogProvider().T(locale, "email.verify_email.subject", nil),
 		HTML:    html,
 	}
 
 	if err := h.sender.Send(ctx, msg); err != nil {
-		h.logger.Error("发送验证邮件失败", "to", payload.To, "error", err)
+		h.logger.Error("发送验证邮件失败", "to", payload.To, "locale", locale, "error", err)
 		return err
 	}
 
-	h.logger.Info("验证邮件发送成功", "to", payload.To)
+	h.logger.Info("验证邮件发送成功", "to", payload.To, "locale", locale)
 	return nil
 }
 
@@ -183,7 +223,6 @@ func (h *Handlers) HandleSendWelcome(ctx context.Context, task *asynq.Task) erro
 		return apperr.Internal("解析欢迎邮件任务载荷失败", err)
 	}
 
-	// Validate payload
 	if payload.To == "" {
 		return apperr.Validation("收件人地址不能为空", "")
 	}
@@ -191,27 +230,27 @@ func (h *Handlers) HandleSendWelcome(ctx context.Context, task *asynq.Task) erro
 		payload.Username = payload.To // fallback to email as username
 	}
 
-	// Render template
-	html, err := h.templates.RenderWelcome(template.WelcomeData{
+	locale := resolveLocale(payload.Locale)
+
+	html, err := h.templates.RenderWelcome(locale, template.WelcomeData{
 		Username: payload.Username,
 	})
 	if err != nil {
 		return err
 	}
 
-	// Send email
 	msg := email.Message{
 		To:      payload.To,
-		Subject: "欢迎加入 idcd！",
+		Subject: catalogProvider().T(locale, "email.welcome.subject", nil),
 		HTML:    html,
 	}
 
 	if err := h.sender.Send(ctx, msg); err != nil {
-		h.logger.Error("发送欢迎邮件失败", "to", payload.To, "error", err)
+		h.logger.Error("发送欢迎邮件失败", "to", payload.To, "locale", locale, "error", err)
 		return err
 	}
 
-	h.logger.Info("欢迎邮件发送成功", "to", payload.To)
+	h.logger.Info("欢迎邮件发送成功", "to", payload.To, "locale", locale)
 	return nil
 }
 
@@ -222,7 +261,6 @@ func (h *Handlers) HandleSendResetPassword(ctx context.Context, task *asynq.Task
 		return apperr.Internal("解析密码重置邮件任务载荷失败", err)
 	}
 
-	// Validate payload
 	if payload.To == "" {
 		return apperr.Validation("收件人地址不能为空", "")
 	}
@@ -230,8 +268,9 @@ func (h *Handlers) HandleSendResetPassword(ctx context.Context, task *asynq.Task
 		return apperr.Validation("重置链接不能为空", "")
 	}
 
-	// Render template
-	html, err := h.templates.RenderResetPassword(template.ResetPasswordData{
+	locale := resolveLocale(payload.Locale)
+
+	html, err := h.templates.RenderResetPassword(locale, template.ResetPasswordData{
 		ResetURL:  payload.ResetURL,
 		ExpiresIn: payload.ExpiresIn,
 	})
@@ -239,31 +278,35 @@ func (h *Handlers) HandleSendResetPassword(ctx context.Context, task *asynq.Task
 		return err
 	}
 
-	// Send email
 	msg := email.Message{
 		To:      payload.To,
-		Subject: "【idcd】密码重置",
+		Subject: catalogProvider().T(locale, "email.reset_password.subject", nil),
 		HTML:    html,
 	}
 
 	if err := h.sender.Send(ctx, msg); err != nil {
-		h.logger.Error("发送密码重置邮件失败", "to", payload.To, "error", err)
+		h.logger.Error("发送密码重置邮件失败", "to", payload.To, "locale", locale, "error", err)
 		return err
 	}
 
-	h.logger.Info("密码重置邮件发送成功", "to", payload.To)
+	h.logger.Info("密码重置邮件发送成功", "to", payload.To, "locale", locale)
 	return nil
 }
 
 // AlertNotificationPayload holds the payload for sending an alert notification
 // via a specific channel.
+//
+// Locale governs the channel adapters' subject / framing copy where
+// applicable. For webhook-style adapters the locale is forwarded to the
+// downstream payload so receivers can render their own translation.
 type AlertNotificationPayload struct {
 	ChannelType   string `json:"channel_type"`   // "webhook" | "wecom" | "dingtalk" | "feishu"
 	ChannelConfig []byte `json:"channel_config"` // JSON-encoded channel config
 	Title         string `json:"title"`
 	Body          string `json:"body"`
 	URL           string `json:"url"`
-	Level         string `json:"level"` // "critical" | "warning" | "info"
+	Level         string `json:"level"`            // "critical" | "warning" | "info"
+	Locale        string `json:"locale,omitempty"` // monitor owner's locale at enqueue time
 }
 
 // HandleAlertNotification processes alert notification tasks by routing to the
@@ -277,6 +320,8 @@ func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task
 	if payload.ChannelType == "" {
 		return apperr.Validation("channel_type 不能为空", "")
 	}
+
+	locale := resolveLocale(payload.Locale)
 
 	ch, err := h.buildChannel(payload.ChannelType, payload.ChannelConfig)
 	if err != nil {
@@ -293,12 +338,13 @@ func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task
 	if err := ch.Send(ctx, p); err != nil {
 		h.logger.Error("告警通知发送失败",
 			"channel_type", payload.ChannelType,
+			"locale", locale,
 			"error", err,
 		)
 		return err
 	}
 
-	h.logger.Info("告警通知发送成功", "channel_type", payload.ChannelType)
+	h.logger.Info("告警通知发送成功", "channel_type", payload.ChannelType, "locale", locale)
 	return nil
 }
 
@@ -477,35 +523,38 @@ func (h *Handlers) HandleRefundRetry(ctx context.Context, task *asynq.Task) erro
 }
 
 // sendRefundApologyEmail sends the D5 apology email after automated refund
-// retries have been exhausted.  We deliberately keep the body inline rather
-// than adding a fourth go:embed template — keeps the diff small and avoids
-// touching the template package's surface area.
+// retries have been exhausted, rendering the localized refund_failed
+// template (replaces the previous inline HTML).
 func (h *Handlers) sendRefundApologyEmail(ctx context.Context, p RefundRetryPayload) error {
-	amountYuan := float64(p.AmountCents) / 100.0
-	html := fmt.Sprintf(`<!DOCTYPE html>
-<html lang="zh-CN">
-<head><meta charset="UTF-8"><title>退款延迟通知</title></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
-  <h2 style="color: #18181b;">关于您退款延迟的致歉说明</h2>
-  <p>尊敬的用户您好，</p>
-  <p>我们注意到您订单 <code>%s</code> 的退款（金额 <strong>%.2f %s</strong>）在自动处理过程中遇到了问题，目前尚未成功完成。</p>
-  <p>对此给您带来的不便，我们深感抱歉。我们的工程师已收到此次失败告警，并将在 24 小时内人工处理您的退款请求。</p>
-  <p>如您有任何疑问，请直接回复本邮件或联系 support@idcd.com，我们会优先处理。</p>
-  <p>感谢您的耐心与理解。</p>
-  <p>— idcd 团队</p>
-  <hr style="border: 0; border-top: 1px solid #e4e4e7; margin: 24px 0;">
-  <p style="font-size: 12px; color: #71717a;">订单号：%s ｜ 交易号：%s</p>
-</body>
-</html>`,
-		p.PaymentID, amountYuan, p.Currency, p.PaymentID, p.ExtTxnID,
-	)
+	locale := resolveLocale(p.Locale)
+	amountDisplay := formatAmountDisplay(p.AmountCents, p.Currency)
+
+	html, err := h.templates.RenderRefundFailed(locale, template.RefundFailedData{
+		PaymentID:     p.PaymentID,
+		ExtTxnID:      p.ExtTxnID,
+		AmountDisplay: amountDisplay,
+	})
+	if err != nil {
+		return err
+	}
 
 	msg := email.Message{
 		To:      p.UserEmail,
-		Subject: "【idcd】关于您退款延迟的致歉说明",
+		Subject: catalogProvider().T(locale, "email.refund_failed.subject", nil),
 		HTML:    html,
 	}
 	return h.sender.Send(ctx, msg)
+}
+
+// formatAmountDisplay renders cents+currency in a locale-neutral form.
+// Phase 2b deliberately keeps this minimal: `99.00 CNY`. Locale-aware
+// currency formatting belongs to Phase 5 (golang.org/x/text/currency).
+func formatAmountDisplay(cents int64, currency string) string {
+	yuan := float64(cents) / 100.0
+	if currency == "" {
+		return fmt.Sprintf("%.2f", yuan)
+	}
+	return fmt.Sprintf("%.2f %s", yuan, currency)
 }
 
 // GetMux returns a configured ServeMux with all handlers registered.
@@ -546,4 +595,152 @@ func (h *Handlers) withRetry(handler func(context.Context, *asynq.Task) error) f
 		h.logger.Debug("邮件任务处理完成", "task_type", task.Type())
 		return nil
 	}
+}
+
+// FormatFromAddress builds an RFC 5322 / RFC 2047 compliant `From:` value
+// using the locale-specific display name from the i18n catalog.
+//
+// The SMTP / SES senders construct their own From line today; this helper
+// is exported so future call sites (or the eventual cmd-side wiring) can
+// pick the localized display name without duplicating QEncoding logic.
+//
+// Behaviour:
+//   - When name is ASCII-only, returns "name <addr>" verbatim.
+//   - When name contains non-ASCII bytes, the display portion is
+//     RFC 2047-encoded via mime.QEncoding.
+//   - addr is returned bare when name is empty.
+func FormatFromAddress(locale, addr string) string {
+	loc := resolveLocale(locale)
+	name := catalogProvider().T(loc, "email.from.name", nil)
+	if name == "" || addr == "" {
+		return addr
+	}
+	if isASCII(name) {
+		return fmt.Sprintf("%s <%s>", name, addr)
+	}
+	return fmt.Sprintf("%s <%s>", mime.QEncoding.Encode("utf-8", name), addr)
+}
+
+func isASCII(s string) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] > 127 {
+			return false
+		}
+	}
+	return true
+}
+
+// EnqueueEmail is a typed convenience helper that callers (the API auth
+// handler, future MCP enqueue paths, etc.) can use to enqueue an email task
+// with locale propagation built in. The function does not import asynq's
+// payload struct types directly to avoid coupling callers to the concrete
+// task type names; it accepts a discriminated payload via EmailPayload.
+//
+// Phase 2b ships this helper without wiring it into API handlers yet — the
+// API handlers still call asynq.Client.Enqueue with their legacy payload
+// shapes. Because every payload struct now defines `Locale string \`json:"locale,omitempty"\``,
+// old call sites continue to work (Locale is the zero value → resolveLocale
+// falls back to the registry default).
+//
+// See `docs/prd/I18N-PLAN.md` §6.5 for the long-term migration plan.
+type EmailPayload interface {
+	taskType() string
+	payload() ([]byte, error)
+}
+
+// Asynq is the narrow interface EnqueueEmail needs from *asynq.Client. We
+// keep it tiny so callers can mock for tests and so we don't import the
+// concrete client type into every reverse-dependency.
+type Asynq interface {
+	EnqueueContext(ctx context.Context, task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+}
+
+// EnqueueEmail builds the asynq task from the supplied payload and submits
+// it to the client. Locale is folded into the payload (callers cannot bypass
+// it) so producers never forget to set it.
+func EnqueueEmail(ctx context.Context, client Asynq, locale string, payload EmailPayload, opts ...asynq.Option) error {
+	if client == nil {
+		return apperr.Internal("EnqueueEmail: asynq client is nil", nil)
+	}
+	loc := strings.TrimSpace(locale)
+	body, err := payload.payload()
+	if err != nil {
+		return apperr.Internal("EnqueueEmail: marshal payload", err)
+	}
+	// Splice locale into the payload JSON if the concrete type didn't already
+	// own a Locale field. The struct constructors below all expose Locale, so
+	// this hot-path stays a no-op for typed callers; it remains for callers
+	// who hand-rolled a payload.
+	body, err = ensureLocale(body, loc)
+	if err != nil {
+		return apperr.Internal("EnqueueEmail: rewrite locale", err)
+	}
+	task := asynq.NewTask(payload.taskType(), body)
+	_, err = client.EnqueueContext(ctx, task, opts...)
+	return err
+}
+
+// ensureLocale guarantees the marshalled payload contains a "locale" field
+// set to loc. If the payload already has a non-empty locale, ensureLocale
+// keeps it (caller intent wins). If loc is empty AND no locale exists,
+// the payload is returned unchanged so the worker's resolveLocale fallback
+// applies.
+func ensureLocale(body []byte, loc string) ([]byte, error) {
+	var m map[string]any
+	if err := json.Unmarshal(body, &m); err != nil {
+		return nil, err
+	}
+	if existing, ok := m["locale"].(string); ok && existing != "" {
+		return body, nil
+	}
+	if loc == "" {
+		return body, nil
+	}
+	m["locale"] = loc
+	return json.Marshal(m)
+}
+
+// --- EmailPayload implementations ---
+
+func (p SendVerifyEmailPayload) taskType() string { return TaskSendVerifyEmail }
+func (p SendVerifyEmailPayload) payload() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p SendWelcomePayload) taskType() string { return TaskSendWelcome }
+func (p SendWelcomePayload) payload() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+func (p SendResetPasswordPayload) taskType() string { return TaskSendResetPassword }
+func (p SendResetPasswordPayload) payload() ([]byte, error) {
+	return json.Marshal(p)
+}
+
+// BuildLocalizedURL appends a locale prefix to the given path according to
+// the registry default rule (default locale → no prefix, others → /{loc}/).
+// Helper exported so future API-side code can produce links in emails or
+// SMS without duplicating the logic.
+//
+// Example (registry default = "cn"):
+//
+//	BuildLocalizedURL("https://idcd.com", "cn", "/app/dashboard") = "https://idcd.com/app/dashboard"
+//	BuildLocalizedURL("https://idcd.com", "en", "/app/dashboard") = "https://idcd.com/en/app/dashboard"
+func BuildLocalizedURL(baseURL, locale, path string) string {
+	loc := resolveLocale(locale)
+	reg := registryProvider()
+	cleanedPath := "/" + strings.TrimLeft(path, "/")
+	if loc == reg.DefaultCode() {
+		return strings.TrimRight(baseURL, "/") + cleanedPath
+	}
+	// Construct via net/url to make sure trailing-slash handling is correct.
+	u, err := url.Parse(baseURL)
+	if err != nil || u.Scheme == "" {
+		// Fall back to dumb concatenation if baseURL is malformed — the
+		// caller is responsible for providing a valid URL, but we don't
+		// want this helper to surface as a hard error path.
+		return strings.TrimRight(baseURL, "/") + "/" + loc + cleanedPath
+	}
+	u.Path = "/" + loc + cleanedPath
+	return u.String()
 }

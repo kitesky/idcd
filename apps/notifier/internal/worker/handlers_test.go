@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
@@ -47,12 +48,12 @@ func (s *stubRefunder) Calls() []refundCall {
 }
 
 type stubPaymentStore struct {
-	mu                  sync.Mutex
-	refundedIDs         []string
-	failedIDs           []string
-	failedRetryCounts   []int
-	refundedErr         error
-	failedErr           error
+	mu                sync.Mutex
+	refundedIDs       []string
+	failedIDs         []string
+	failedRetryCounts []int
+	refundedErr       error
+	failedErr         error
 }
 
 func (s *stubPaymentStore) MarkRefunded(_ context.Context, paymentID string) error {
@@ -125,11 +126,14 @@ func (s *stubRetryEnqueuer) Calls() []retryCall {
 
 // mockSender implements email.Sender for testing
 type mockSender struct {
+	mu           sync.Mutex
 	sentMessages []email.Message
 	sendError    error
 }
 
-func (m *mockSender) Send(ctx context.Context, msg email.Message) error {
+func (m *mockSender) Send(_ context.Context, msg email.Message) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if m.sendError != nil {
 		return m.sendError
 	}
@@ -137,6 +141,13 @@ func (m *mockSender) Send(ctx context.Context, msg email.Message) error {
 	return nil
 }
 
+func (m *mockSender) Messages() []email.Message {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]email.Message, len(m.sentMessages))
+	copy(out, m.sentMessages)
+	return out
+}
 
 func setupHandlers(t *testing.T) (*Handlers, *mockSender) {
 	// Create mock sender
@@ -148,8 +159,8 @@ func setupHandlers(t *testing.T) (*Handlers, *mockSender) {
 		t.Fatalf("Failed to create templates: %v", err)
 	}
 
-	// Create logger (discard output for tests)
-	logger := slog.New(slog.NewTextHandler(nil, &slog.HandlerOptions{Level: slog.LevelError + 1}))
+	// Discard log output for tests.
+	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError + 1}))
 
 	// Create handlers
 	handlers := NewHandlers(sender, templates, logger)
@@ -160,38 +171,72 @@ func setupHandlers(t *testing.T) (*Handlers, *mockSender) {
 func TestHandlers_HandleSendVerifyEmail_Success(t *testing.T) {
 	handlers, sender := setupHandlers(t)
 
-	payload := SendVerifyEmailPayload{
-		To:        "user@example.com",
-		Code:      "123456",
-		ExpiresIn: "10 分钟",
+	cases := []struct {
+		name           string
+		locale         string
+		expectSubject  string
+		expectInBody   []string
+		notInBody      []string
+	}{
+		{
+			name:          "cn explicit",
+			locale:        "cn",
+			expectSubject: "【idcd】邮箱验证码",
+			expectInBody:  []string{"验证您的邮箱地址", "123456"},
+			notInBody:     []string{"Verify your email address"},
+		},
+		{
+			name:          "en explicit",
+			locale:        "en",
+			expectSubject: "[IDCD] Verify your email address",
+			expectInBody:  []string{"Verify your email address", "123456"},
+			notInBody:     []string{"验证您的邮箱地址"},
+		},
+		{
+			name:          "empty locale falls back to default (cn)",
+			locale:        "",
+			expectSubject: "【idcd】邮箱验证码",
+			expectInBody:  []string{"验证您的邮箱地址", "123456"},
+		},
 	}
 
-	payloadBytes, _ := json.Marshal(payload)
-	task := asynq.NewTask(TaskSendVerifyEmail, payloadBytes)
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			sender.sentMessages = nil
+			payload := SendVerifyEmailPayload{
+				To:        "user@example.com",
+				Code:      "123456",
+				ExpiresIn: "10 minutes",
+				Locale:    tc.locale,
+			}
+			payloadBytes, _ := json.Marshal(payload)
+			task := asynq.NewTask(TaskSendVerifyEmail, payloadBytes)
 
-	err := handlers.HandleSendVerifyEmail(context.Background(), task)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if len(sender.sentMessages) != 1 {
-		t.Fatalf("Expected 1 sent message, got: %d", len(sender.sentMessages))
-	}
-
-	msg := sender.sentMessages[0]
-	if msg.To != payload.To {
-		t.Errorf("Expected To: %s, got: %s", payload.To, msg.To)
-	}
-	if msg.Subject != "【idcd】邮箱验证码" {
-		t.Errorf("Expected Subject: 【idcd】邮箱验证码, got: %s", msg.Subject)
-	}
-	if msg.HTML == "" {
-		t.Error("Expected non-empty HTML content")
-	}
-
-	// Check if code is in the HTML
-	if !contains(msg.HTML, payload.Code) {
-		t.Error("Expected verification code in HTML content")
+			if err := handlers.HandleSendVerifyEmail(context.Background(), task); err != nil {
+				t.Fatalf("Expected no error, got: %v", err)
+			}
+			msgs := sender.Messages()
+			if len(msgs) != 1 {
+				t.Fatalf("Expected 1 sent message, got: %d", len(msgs))
+			}
+			msg := msgs[0]
+			if msg.To != payload.To {
+				t.Errorf("To = %s, want %s", msg.To, payload.To)
+			}
+			if msg.Subject != tc.expectSubject {
+				t.Errorf("Subject = %q, want %q", msg.Subject, tc.expectSubject)
+			}
+			for _, want := range tc.expectInBody {
+				if !strings.Contains(msg.HTML, want) {
+					t.Errorf("HTML missing %q", want)
+				}
+			}
+			for _, banned := range tc.notInBody {
+				if strings.Contains(msg.HTML, banned) {
+					t.Errorf("HTML must not contain %q", banned)
+				}
+			}
+		})
 	}
 }
 
@@ -206,7 +251,7 @@ func TestHandlers_HandleSendVerifyEmail_InvalidPayload(t *testing.T) {
 		t.Error("Expected error for invalid JSON, got nil")
 	}
 
-	if len(sender.sentMessages) != 0 {
+	if len(sender.Messages()) != 0 {
 		t.Error("Expected no messages sent for invalid payload")
 	}
 
@@ -232,37 +277,43 @@ func TestHandlers_HandleSendVerifyEmail_InvalidPayload(t *testing.T) {
 func TestHandlers_HandleSendWelcome_Success(t *testing.T) {
 	handlers, sender := setupHandlers(t)
 
-	payload := SendWelcomePayload{
-		To:       "user@example.com",
-		Username: "testuser",
+	cases := []struct {
+		locale        string
+		expectSubject string
+		expectInBody  []string
+	}{
+		{locale: "cn", expectSubject: "欢迎加入 idcd！", expectInBody: []string{"欢迎加入 idcd", "testuser"}},
+		{locale: "en", expectSubject: "Welcome to idcd!", expectInBody: []string{"Welcome to idcd!", "testuser"}},
 	}
 
-	payloadBytes, _ := json.Marshal(payload)
-	task := asynq.NewTask(TaskSendWelcome, payloadBytes)
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			sender.sentMessages = nil
+			payload := SendWelcomePayload{
+				To:       "user@example.com",
+				Username: "testuser",
+				Locale:   tc.locale,
+			}
+			payloadBytes, _ := json.Marshal(payload)
+			task := asynq.NewTask(TaskSendWelcome, payloadBytes)
 
-	err := handlers.HandleSendWelcome(context.Background(), task)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if len(sender.sentMessages) != 1 {
-		t.Fatalf("Expected 1 sent message, got: %d", len(sender.sentMessages))
-	}
-
-	msg := sender.sentMessages[0]
-	if msg.To != payload.To {
-		t.Errorf("Expected To: %s, got: %s", payload.To, msg.To)
-	}
-	if msg.Subject != "欢迎加入 idcd！" {
-		t.Errorf("Expected Subject: 欢迎加入 idcd！, got: %s", msg.Subject)
-	}
-	if msg.HTML == "" {
-		t.Error("Expected non-empty HTML content")
-	}
-
-	// Check if username is in the HTML
-	if !contains(msg.HTML, payload.Username) {
-		t.Error("Expected username in HTML content")
+			if err := handlers.HandleSendWelcome(context.Background(), task); err != nil {
+				t.Fatalf("Expected no error, got: %v", err)
+			}
+			msgs := sender.Messages()
+			if len(msgs) != 1 {
+				t.Fatalf("Expected 1 sent message, got: %d", len(msgs))
+			}
+			msg := msgs[0]
+			if msg.Subject != tc.expectSubject {
+				t.Errorf("Subject = %q, want %q", msg.Subject, tc.expectSubject)
+			}
+			for _, want := range tc.expectInBody {
+				if !strings.Contains(msg.HTML, want) {
+					t.Errorf("HTML missing %q", want)
+				}
+			}
+		})
 	}
 }
 
@@ -282,13 +333,13 @@ func TestHandlers_HandleSendWelcome_EmptyUsername(t *testing.T) {
 		t.Fatalf("Expected no error, got: %v", err)
 	}
 
-	if len(sender.sentMessages) != 1 {
-		t.Fatalf("Expected 1 sent message, got: %d", len(sender.sentMessages))
+	msgs := sender.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("Expected 1 sent message, got: %d", len(msgs))
 	}
 
-	msg := sender.sentMessages[0]
 	// Should use email as username fallback
-	if !contains(msg.HTML, payload.To) {
+	if !strings.Contains(msgs[0].HTML, payload.To) {
 		t.Error("Expected email as username fallback in HTML content")
 	}
 }
@@ -296,38 +347,47 @@ func TestHandlers_HandleSendWelcome_EmptyUsername(t *testing.T) {
 func TestHandlers_HandleSendResetPassword_Success(t *testing.T) {
 	handlers, sender := setupHandlers(t)
 
-	payload := SendResetPasswordPayload{
-		To:        "user@example.com",
-		ResetURL:  "https://idcd.com/reset-password?token=abc123",
-		ExpiresIn: "30 分钟",
+	cases := []struct {
+		locale        string
+		expectSubject string
+		expectInBody  []string
+	}{
+		{locale: "cn", expectSubject: "【idcd】密码重置", expectInBody: []string{"密码重置请求"}},
+		{locale: "en", expectSubject: "[IDCD] Reset your password", expectInBody: []string{"Password reset request"}},
 	}
 
-	payloadBytes, _ := json.Marshal(payload)
-	task := asynq.NewTask(TaskSendResetPassword, payloadBytes)
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			sender.sentMessages = nil
+			payload := SendResetPasswordPayload{
+				To:        "user@example.com",
+				ResetURL:  "https://idcd.com/reset-password?token=abc123",
+				ExpiresIn: "30 分钟",
+				Locale:    tc.locale,
+			}
+			payloadBytes, _ := json.Marshal(payload)
+			task := asynq.NewTask(TaskSendResetPassword, payloadBytes)
 
-	err := handlers.HandleSendResetPassword(context.Background(), task)
-	if err != nil {
-		t.Fatalf("Expected no error, got: %v", err)
-	}
-
-	if len(sender.sentMessages) != 1 {
-		t.Fatalf("Expected 1 sent message, got: %d", len(sender.sentMessages))
-	}
-
-	msg := sender.sentMessages[0]
-	if msg.To != payload.To {
-		t.Errorf("Expected To: %s, got: %s", payload.To, msg.To)
-	}
-	if msg.Subject != "【idcd】密码重置" {
-		t.Errorf("Expected Subject: 【idcd】密码重置, got: %s", msg.Subject)
-	}
-	if msg.HTML == "" {
-		t.Error("Expected non-empty HTML content")
-	}
-
-	// Check if reset URL is in the HTML
-	if !contains(msg.HTML, payload.ResetURL) {
-		t.Error("Expected reset URL in HTML content")
+			if err := handlers.HandleSendResetPassword(context.Background(), task); err != nil {
+				t.Fatalf("Expected no error, got: %v", err)
+			}
+			msgs := sender.Messages()
+			if len(msgs) != 1 {
+				t.Fatalf("Expected 1 sent message, got: %d", len(msgs))
+			}
+			msg := msgs[0]
+			if msg.Subject != tc.expectSubject {
+				t.Errorf("Subject = %q, want %q", msg.Subject, tc.expectSubject)
+			}
+			if !strings.Contains(msg.HTML, payload.ResetURL) {
+				t.Error("HTML must include reset URL")
+			}
+			for _, want := range tc.expectInBody {
+				if !strings.Contains(msg.HTML, want) {
+					t.Errorf("HTML missing %q", want)
+				}
+			}
+		})
 	}
 }
 
@@ -352,7 +412,7 @@ func TestHandlers_HandleSendResetPassword_InvalidPayload(t *testing.T) {
 		t.Errorf("Expected validation error, got: %v", err)
 	}
 
-	if len(sender.sentMessages) != 0 {
+	if len(sender.Messages()) != 0 {
 		t.Error("Expected no messages sent for invalid payload")
 	}
 }
@@ -361,7 +421,7 @@ func TestHandlers_withRetry_ValidationError(t *testing.T) {
 	handlers, _ := setupHandlers(t)
 
 	// Create a handler that returns a validation error
-	handler := func(ctx context.Context, task *asynq.Task) error {
+	handler := func(_ context.Context, _ *asynq.Task) error {
 		return apperr.Validation("test validation error", "")
 	}
 
@@ -375,7 +435,7 @@ func TestHandlers_withRetry_ValidationError(t *testing.T) {
 	}
 
 	// Should indicate validation error (will not retry)
-	if !contains(err.Error(), "validation error, will not retry") {
+	if !strings.Contains(err.Error(), "validation error, will not retry") {
 		t.Errorf("Expected validation error message, got: %v", err)
 	}
 }
@@ -385,7 +445,7 @@ func TestHandlers_withRetry_OtherError(t *testing.T) {
 
 	// Create a handler that returns a non-validation error
 	expectedErr := apperr.Internal("test internal error", nil)
-	handler := func(ctx context.Context, task *asynq.Task) error {
+	handler := func(_ context.Context, _ *asynq.Task) error {
 		return expectedErr
 	}
 
@@ -409,23 +469,6 @@ func TestHandlers_GetMux(t *testing.T) {
 
 	// We can't easily test the registered handlers without more complex setup,
 	// but we can verify the mux was created
-}
-
-// Helper function to check if string contains substring
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && findSubstring(s, substr)
-}
-
-func findSubstring(s, substr string) bool {
-	if len(substr) == 0 {
-		return true
-	}
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }
 
 // ---- HandleRefundRetry tests (D5) ----
@@ -478,7 +521,7 @@ func TestHandlers_HandleRefundRetry_Success(t *testing.T) {
 	if len(enq.Calls()) != 0 {
 		t.Errorf("no rescheduling should happen on success, got: %v", enq.Calls())
 	}
-	if len(sender.sentMessages) != 0 {
+	if len(sender.Messages()) != 0 {
 		t.Errorf("no apology email should be sent on success")
 	}
 }
@@ -531,7 +574,7 @@ func TestHandlers_HandleRefundRetry_FailReschedules(t *testing.T) {
 	}
 
 	// No apology yet — we still have one attempt left.
-	if len(sender.sentMessages) != 0 {
+	if len(sender.Messages()) != 0 {
 		t.Errorf("apology should not fire on first retry failure")
 	}
 	if len(store.Refunded()) != 0 {
@@ -540,59 +583,87 @@ func TestHandlers_HandleRefundRetry_FailReschedules(t *testing.T) {
 }
 
 func TestHandlers_HandleRefundRetry_MaxAttemptsSendsApology(t *testing.T) {
-	handlers, sender := setupHandlers(t)
-	refunder := &stubRefunder{err: errors.New("paddle 500")}
-	store := &stubPaymentStore{}
-	enq := &stubRetryEnqueuer{}
-	handlers = handlers.WithRefundDeps(refunder, store, enq)
-
-	// Already retried once — AttemptCount=1 means this is the second
-	// automated try.  nextAttempt becomes 2 → >= RefundRetryMaxAttempts → apology.
-	payload := RefundRetryPayload{
-		PaymentID:    "pay_001",
-		ExtTxnID:     "ph_txn_001",
-		UserID:       "u_user1",
-		UserEmail:    "user@example.com",
-		AmountCents:  19900,
-		Currency:     "CNY",
-		Provider:     "payment_hub",
-		Reason:       "webhook_refund_failed",
-		AttemptCount: 1,
+	cases := []struct {
+		name             string
+		locale           string
+		expectedSubject  string
+		expectInBody     []string
+	}{
+		{
+			name:            "cn locale",
+			locale:          "cn",
+			expectedSubject: "【idcd】关于您退款延迟的致歉说明",
+			expectInBody:    []string{"致歉", "pay_001", "ph_txn_001", "199.00 CNY"},
+		},
+		{
+			name:            "en locale",
+			locale:          "en",
+			expectedSubject: "[IDCD] We're sorry about your delayed refund",
+			expectInBody:    []string{"sorry", "pay_001", "ph_txn_001", "199.00 CNY"},
+		},
+		{
+			name:            "empty locale falls back to default",
+			locale:          "",
+			expectedSubject: "【idcd】关于您退款延迟的致歉说明",
+			expectInBody:    []string{"致歉"},
+		},
 	}
 
-	err := handlers.HandleRefundRetry(context.Background(), newRetryTask(t, payload))
-	if err != nil {
-		t.Fatalf("expected nil err after sending apology, got: %v", err)
-	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handlers, sender := setupHandlers(t)
+			refunder := &stubRefunder{err: errors.New("paddle 500")}
+			store := &stubPaymentStore{}
+			enq := &stubRetryEnqueuer{}
+			handlers = handlers.WithRefundDeps(refunder, store, enq)
 
-	// No further rescheduling.
-	if len(enq.Calls()) != 0 {
-		t.Errorf("no reschedule should happen after max attempts, got: %v", enq.Calls())
-	}
+			payload := RefundRetryPayload{
+				PaymentID:    "pay_001",
+				ExtTxnID:     "ph_txn_001",
+				UserID:       "u_user1",
+				UserEmail:    "user@example.com",
+				AmountCents:  19900,
+				Currency:     "CNY",
+				Provider:     "payment_hub",
+				Reason:       "webhook_refund_failed",
+				AttemptCount: 1,
+				Locale:       tc.locale,
+			}
 
-	// Payment left in refund_failed for admin dashboard.
-	ids, counts := store.Failed()
-	if len(ids) != 1 || ids[0] != "pay_001" || counts[0] != RefundRetryMaxAttempts {
-		t.Errorf("expected MarkRefundFailed(pay_001, %d), got ids=%v counts=%v",
-			RefundRetryMaxAttempts, ids, counts)
-	}
-	if len(store.Refunded()) != 0 {
-		t.Errorf("payment must NOT be marked refunded after max attempts fail")
-	}
+			err := handlers.HandleRefundRetry(context.Background(), newRetryTask(t, payload))
+			if err != nil {
+				t.Fatalf("expected nil err after sending apology, got: %v", err)
+			}
 
-	// Apology email sent.
-	if len(sender.sentMessages) != 1 {
-		t.Fatalf("expected 1 apology email, got %d", len(sender.sentMessages))
-	}
-	msg := sender.sentMessages[0]
-	if msg.To != "user@example.com" {
-		t.Errorf("apology To mismatch: %s", msg.To)
-	}
-	if !strings.Contains(msg.Subject, "致歉") {
-		t.Errorf("apology Subject should mention 致歉, got: %s", msg.Subject)
-	}
-	if !strings.Contains(msg.HTML, "pay_001") || !strings.Contains(msg.HTML, "ph_txn_001") {
-		t.Errorf("apology HTML should include payment + ext_txn ids")
+			if len(enq.Calls()) != 0 {
+				t.Errorf("no reschedule should happen after max attempts, got: %v", enq.Calls())
+			}
+			ids, counts := store.Failed()
+			if len(ids) != 1 || ids[0] != "pay_001" || counts[0] != RefundRetryMaxAttempts {
+				t.Errorf("expected MarkRefundFailed(pay_001, %d), got ids=%v counts=%v",
+					RefundRetryMaxAttempts, ids, counts)
+			}
+			if len(store.Refunded()) != 0 {
+				t.Errorf("payment must NOT be marked refunded after max attempts fail")
+			}
+
+			msgs := sender.Messages()
+			if len(msgs) != 1 {
+				t.Fatalf("expected 1 apology email, got %d", len(msgs))
+			}
+			msg := msgs[0]
+			if msg.To != "user@example.com" {
+				t.Errorf("apology To mismatch: %s", msg.To)
+			}
+			if msg.Subject != tc.expectedSubject {
+				t.Errorf("Subject = %q, want %q", msg.Subject, tc.expectedSubject)
+			}
+			for _, want := range tc.expectInBody {
+				if !strings.Contains(msg.HTML, want) {
+					t.Errorf("apology HTML missing %q", want)
+				}
+			}
+		})
 	}
 }
 
@@ -619,7 +690,7 @@ func TestHandlers_HandleRefundRetry_MaxAttemptsNoEmailSkipsApology(t *testing.T)
 		t.Fatalf("expected nil err, got: %v", err)
 	}
 
-	if len(sender.sentMessages) != 0 {
+	if len(sender.Messages()) != 0 {
 		t.Errorf("no apology should fire without user email")
 	}
 	ids, _ := store.Failed()
@@ -686,5 +757,153 @@ func TestHandlers_HandleRefundRetry_MarkRefundedError(t *testing.T) {
 	err := handlers.HandleRefundRetry(context.Background(), newRetryTask(t, payload))
 	if err == nil {
 		t.Errorf("expected error so asynq retries when MarkRefunded fails")
+	}
+}
+
+// ---- helper tests ----
+
+func TestBuildLocalizedURL(t *testing.T) {
+	cases := []struct {
+		name    string
+		base    string
+		locale  string
+		path    string
+		want    string
+	}{
+		{
+			name:   "cn default no prefix",
+			base:   "https://idcd.com",
+			locale: "cn",
+			path:   "/app/dashboard",
+			want:   "https://idcd.com/app/dashboard",
+		},
+		{
+			name:   "en gets /en/ prefix",
+			base:   "https://idcd.com",
+			locale: "en",
+			path:   "/app/dashboard",
+			want:   "https://idcd.com/en/app/dashboard",
+		},
+		{
+			name:   "empty locale → default → no prefix",
+			base:   "https://idcd.com",
+			locale: "",
+			path:   "/app",
+			want:   "https://idcd.com/app",
+		},
+		{
+			name:   "trailing slash on base is normalised",
+			base:   "https://idcd.com/",
+			locale: "en",
+			path:   "app/dashboard",
+			want:   "https://idcd.com/en/app/dashboard",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := BuildLocalizedURL(tc.base, tc.locale, tc.path)
+			if got != tc.want {
+				t.Errorf("BuildLocalizedURL(%q,%q,%q) = %q, want %q",
+					tc.base, tc.locale, tc.path, got, tc.want)
+			}
+		})
+	}
+}
+
+func TestFormatFromAddress(t *testing.T) {
+	cases := []struct {
+		name   string
+		locale string
+		addr   string
+		// We don't pin the exact display string (the catalog owns it) but we
+		// require deterministic suffix + Q-encoding behaviour for non-ASCII.
+		mustContainAddr     bool
+		mustContainQEncoded bool
+	}{
+		{name: "cn (non-ASCII display)", locale: "cn", addr: "noreply@idcd.com", mustContainAddr: true, mustContainQEncoded: true},
+		{name: "en (ASCII display)", locale: "en", addr: "noreply@idcd.com", mustContainAddr: true, mustContainQEncoded: false},
+		{name: "empty locale → default", locale: "", addr: "noreply@idcd.com", mustContainAddr: true, mustContainQEncoded: true},
+		{name: "empty addr returns empty", locale: "en", addr: "", mustContainAddr: false},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := FormatFromAddress(tc.locale, tc.addr)
+			if tc.addr == "" {
+				if got != "" {
+					t.Errorf("empty addr should return empty, got %q", got)
+				}
+				return
+			}
+			if tc.mustContainAddr && !strings.Contains(got, tc.addr) {
+				t.Errorf("expected %q to contain %q", got, tc.addr)
+			}
+			if tc.mustContainQEncoded {
+				// RFC 2047 Q-encoded words start with =?utf-8?q? prefix.
+				if !strings.Contains(strings.ToLower(got), "=?utf-8?q?") {
+					t.Errorf("expected Q-encoded display for non-ASCII, got %q", got)
+				}
+			}
+		})
+	}
+}
+
+// ---- EnqueueEmail ----
+
+type fakeAsynq struct {
+	tasks []*asynq.Task
+}
+
+func (f *fakeAsynq) EnqueueContext(_ context.Context, task *asynq.Task, _ ...asynq.Option) (*asynq.TaskInfo, error) {
+	f.tasks = append(f.tasks, task)
+	return &asynq.TaskInfo{}, nil
+}
+
+func TestEnqueueEmail_SetsLocale(t *testing.T) {
+	client := &fakeAsynq{}
+	payload := SendVerifyEmailPayload{To: "u@example.com", Code: "123456", ExpiresIn: "10 minutes"}
+	if err := EnqueueEmail(context.Background(), client, "en", payload); err != nil {
+		t.Fatalf("EnqueueEmail: %v", err)
+	}
+	if len(client.tasks) != 1 {
+		t.Fatalf("expected 1 task enqueued, got %d", len(client.tasks))
+	}
+	task := client.tasks[0]
+	if task.Type() != TaskSendVerifyEmail {
+		t.Errorf("task type = %s, want %s", task.Type(), TaskSendVerifyEmail)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(task.Payload(), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out["locale"] != "en" {
+		t.Errorf("payload locale = %v, want en", out["locale"])
+	}
+	if out["to"] != "u@example.com" {
+		t.Errorf("payload to lost in transit")
+	}
+}
+
+func TestEnqueueEmail_RespectsExplicitPayloadLocale(t *testing.T) {
+	client := &fakeAsynq{}
+	payload := SendWelcomePayload{To: "u@example.com", Username: "u", Locale: "en"}
+	// Caller-arg locale empty, but the payload already has "en" set → keep it.
+	if err := EnqueueEmail(context.Background(), client, "", payload); err != nil {
+		t.Fatalf("EnqueueEmail: %v", err)
+	}
+	var out map[string]any
+	if err := json.Unmarshal(client.tasks[0].Payload(), &out); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if out["locale"] != "en" {
+		t.Errorf("explicit payload locale should win, got %v", out["locale"])
+	}
+}
+
+func TestEnqueueEmail_NilClient(t *testing.T) {
+	err := EnqueueEmail(context.Background(), nil, "en", SendWelcomePayload{To: "u@example.com"})
+	if err == nil {
+		t.Fatal("expected error for nil client")
 	}
 }

@@ -1,0 +1,10 @@
+{
+  "from.name": "IDCD Notifications",
+  "footer.legal": "© 2026 idcd.com · Professional network diagnostics",
+  "footer.automated": "This is an automated message — please do not reply.",
+  "verify_email.subject": "[IDCD] Verify your email address",
+  "welcome.subject": "Welcome to idcd!",
+  "reset_password.subject": "[IDCD] Reset your password",
+  "refund_failed.subject": "[IDCD] We're sorry about your delayed refund",
+  "alert_notification.subject": "[IDCD] Alert notification"
+}

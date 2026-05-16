@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Welcome to idcd</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background-color: #2563eb; padding: 20px; text-align: center; }
+        .logo { color: #ffffff; font-size: 24px; font-weight: bold; }
+        .content { padding: 40px 20px; }
+        .welcome-box { background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%); color: white; padding: 30px; border-radius: 12px; text-align: center; margin: 20px 0; }
+        .feature-list { margin: 30px 0; }
+        .feature-item { display: flex; align-items: center; margin: 15px 0; padding: 15px; background-color: #f8fafc; border-radius: 8px; }
+        .feature-icon { width: 40px; height: 40px; background-color: #2563eb; border-radius: 50%; display: flex; align-items: center; justify-content: center; margin-right: 15px; color: white; font-weight: bold; }
+        .feature-text { flex: 1; }
+        .feature-title { font-weight: bold; color: #1f2937; margin-bottom: 5px; }
+        .feature-desc { color: #6b7280; font-size: 14px; }
+        .cta-button { display: inline-block; background-color: #2563eb; color: white; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+        .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb; }
+        @media (max-width: 600px) {
+            .content { padding: 30px 15px; }
+            .feature-item { flex-direction: column; text-align: center; }
+            .feature-icon { margin: 0 0 10px 0; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">idcd</div>
+        </div>
+        <div class="content">
+            <div class="welcome-box">
+                <h1 style="margin: 0 0 10px 0; font-size: 28px;">Welcome to idcd!</h1>
+                <p style="margin: 0; font-size: 16px; opacity: 0.9;">Hi {{.Username}}, thanks for choosing professional network diagnostics.</p>
+            </div>
+
+            <p style="color: #4b5563; line-height: 1.6; margin-bottom: 30px; text-align: center;">
+                Your account is ready. Here's what you can do next:
+            </p>
+
+            <div class="feature-list">
+                <div class="feature-item">
+                    <div class="feature-icon">🌐</div>
+                    <div class="feature-text">
+                        <div class="feature-title">Global network diagnostics</div>
+                        <div class="feature-desc">HTTP/HTTPS, Ping, DNS lookups, traceroute, and more from probes around the world.</div>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📊</div>
+                    <div class="feature-text">
+                        <div class="feature-title">Real-time monitoring &amp; alerts</div>
+                        <div class="feature-desc">24/7 monitoring of your services with instant notifications when things go wrong.</div>
+                    </div>
+                </div>
+                <div class="feature-item">
+                    <div class="feature-icon">📈</div>
+                    <div class="feature-text">
+                        <div class="feature-title">Status pages &amp; reports</div>
+                        <div class="feature-desc">Polished public status pages and detailed diagnostic reports.</div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="text-align: center;">
+                <a href="https://idcd.com/en/app/dashboard" class="cta-button">Get started with idcd →</a>
+            </div>
+
+            <p style="color: #6b7280; font-size: 14px; text-align: center; margin-top: 40px;">
+                Need a hand? Check our <a href="https://docs.idcd.com" style="color: #2563eb;">documentation</a> or <a href="mailto:support@idcd.com" style="color: #2563eb;">contact support</a>.
+            </p>
+        </div>
+        <div class="footer">
+            © 2026 idcd.com — Professional network diagnostics<br>
+            <a href="https://idcd.com/en/privacy" style="color: #6b7280; text-decoration: none;">Privacy Policy</a> |
+            <a href="https://idcd.com/en/terms" style="color: #6b7280; text-decoration: none;">Terms of Service</a>
+        </div>
+    </div>
+</body>
+</html>

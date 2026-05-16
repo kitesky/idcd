@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8">
+    <title>Refund delay notice</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Helvetica Neue', sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; color: #18181b;">
+    <h2 style="color: #18181b;">We're sorry about your delayed refund</h2>
+    <p>Hello,</p>
+    <p>We noticed that the refund for your order <code>{{.PaymentID}}</code> (amount <strong>{{.AmountDisplay}}</strong>) could not be processed automatically and has not been completed yet.</p>
+    <p>We apologize for the inconvenience. Our engineers have already been alerted to this failure and a human will process your refund request within the next 24 hours.</p>
+    <p>If you have any questions, just reply to this email or write to support@idcd.com and we'll prioritize your case.</p>
+    <p>Thank you for your patience.</p>
+    <p>— The idcd team</p>
+    <hr style="border: 0; border-top: 1px solid #e4e4e7; margin: 24px 0;">
+    <p style="font-size: 12px; color: #71717a;">Order ID: {{.PaymentID}} | Transaction ID: {{.ExtTxnID}}</p>
+</body>
+</html>

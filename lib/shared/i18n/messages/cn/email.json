@@ -1,0 +1,10 @@
+{
+  "from.name": "IDCD 通知",
+  "footer.legal": "© 2026 idcd.com · 专业网络诊断工具",
+  "footer.automated": "此邮件由系统自动发送，请勿回复",
+  "verify_email.subject": "【idcd】邮箱验证码",
+  "welcome.subject": "欢迎加入 idcd！",
+  "reset_password.subject": "【idcd】密码重置",
+  "refund_failed.subject": "【idcd】关于您退款延迟的致歉说明",
+  "alert_notification.subject": "【idcd】告警通知"
+}

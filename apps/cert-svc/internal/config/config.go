@@ -22,6 +22,8 @@ const (
 	envEnv          = "CERT_ENV"
 	envLEEnv        = "CERT_LE_ENV"
 	envAccountEmail = "CERT_ACME_ACCOUNT_EMAIL"
+	envJWTSecret    = "CERT_JWT_SECRET"
+	envMasterKey    = "CERT_MASTER_KEY"
 
 	defaultPort         = 8080
 	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
@@ -43,6 +45,19 @@ type Config struct {
 	Env          string
 	LEEnv        string
 	AccountEmail string
+
+	// JWTSecret is the HMAC secret cert-svc uses to verify JWTs issued
+	// by apps/api. Must match apps/api's auth.jwt.secret in the
+	// canonical config. Empty disables JWT auth entirely (every
+	// /v1/cert request gets a 401), which is the safe default for
+	// preview / unconfigured environments.
+	JWTSecret string
+
+	// MasterKey is the base64-encoded 32-byte master key passed
+	// straight through to envmaster. Re-exposed on Config so callers
+	// (server main, worker main, tests) can decide whether to fall
+	// back to env-only lookup or fail fast on missing config.
+	MasterKey string
 }
 
 // Load reads CERT_* env vars and returns a populated Config.
@@ -91,6 +106,12 @@ func Load() (*Config, error) {
 	}
 	if v := strings.TrimSpace(os.Getenv(envAccountEmail)); v != "" {
 		cfg.AccountEmail = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envJWTSecret)); v != "" {
+		cfg.JWTSecret = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envMasterKey)); v != "" {
+		cfg.MasterKey = v
 	}
 
 	return cfg, nil

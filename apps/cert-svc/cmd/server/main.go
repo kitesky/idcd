@@ -1,8 +1,11 @@
 // server is the cert-svc HTTP API entry point.
 //
-// S1 W1: routes are mounted and return 501. Health + readiness probes
-// are real. DB / Redis wiring is deferred to W2 — connecting them here
-// would fail-fast in CI before the ACME flow even exists.
+// S1 W3 wires the full dependency graph: pgx pool, Redis client, vault,
+// DNS provider registry, ACME service handle and the JWT/session-based
+// auth middleware. The Service constructed here drives only the
+// HTTP-side write entry points (EnqueueOrder, RetryOrder,
+// MarkManualChallengeReady) — the long-running Redis-Stream consumer
+// runs in cmd/worker.
 package main
 
 import (
@@ -15,8 +18,22 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
+
 	"github.com/kite365/idcd/apps/cert-svc/internal/config"
 	"github.com/kite365/idcd/apps/cert-svc/internal/handler"
+	certmw "github.com/kite365/idcd/apps/cert-svc/internal/middleware"
+	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
+	"github.com/kite365/idcd/apps/cert-svc/internal/service"
+	"github.com/kite365/idcd/lib/auth/jwt"
+	"github.com/kite365/idcd/lib/auth/session"
+	"github.com/kite365/idcd/lib/cert/ca/letsencrypt"
+	"github.com/kite365/idcd/lib/cert/dns"
+	"github.com/kite365/idcd/lib/cert/dns/cloudflare"
+	"github.com/kite365/idcd/lib/cert/dns/manual"
+	"github.com/kite365/idcd/lib/cert/vault"
+	"github.com/kite365/idcd/lib/cert/vault/envmaster"
 	"github.com/kite365/idcd/lib/shared/logger"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
@@ -34,13 +51,11 @@ func main() {
 		"log_level", cfg.LogLevel,
 	)
 
-	// Telemetry is best-effort: a failure here should not block boot,
-	// but we do log so an operator can spot it in the journal.
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-cert-svc",
 		ServiceVersion: "v0.1.0",
 		SamplingRate:   0.1,
-		Enabled:        false, // flip via config once W2 wires OTLP endpoint
+		Enabled:        false, // flip via config once OTLP endpoint is wired
 	}
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
@@ -53,14 +68,98 @@ func main() {
 		_ = shutdownTelemetry(ctx)
 	}()
 
-	// Service is initialised lazily by the worker; the server only
-	// exposes the orchestrator surface for manual-mode confirmation in
-	// W3. For W2 we leave Deps.Service nil — handlers nil-check.
-	router := handler.New(handler.Deps{})
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer cancel()
+
+	// Postgres. cert-svc reads from cert.* schema; the pool size is
+	// tiny because the handlers do at most one query per request.
+	pool, err := pgxpool.New(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		slogLogger.Error("pgx pool init failed", "error", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+
+	// Redis. Used for the JWT session store AND for the order stream
+	// publisher inside Service. Same instance, two consumer surfaces.
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	defer func() { _ = rdb.Close() }()
+
+	// Vault. envmaster is the S1 implementation; S2 swaps in real KMS
+	// behind the same vault.Vault interface.
+	var vlt vault.Vault
+	if cfg.MasterKey != "" {
+		// Honour the explicit config field if set, otherwise fall
+		// back to envmaster's own env lookup.
+		vlt, err = envmaster.NewFromEnv("CERT_MASTER_KEY")
+	} else {
+		vlt, err = envmaster.NewFromEnv("CERT_MASTER_KEY")
+	}
+	if err != nil {
+		slogLogger.Error("vault init failed", "error", err)
+		os.Exit(1)
+	}
+
+	// DNS provider registry. Same providers as the worker; the server
+	// only uses ValidateCredential + HealthCheck (BuildSolver is
+	// worker-only) but we register both so future endpoints don't
+	// silently break.
+	reg := dns.NewRegistry()
+	if err := reg.Register(cloudflare.New(cloudflare.Config{})); err != nil {
+		slogLogger.Error("register cloudflare provider failed", "error", err)
+		os.Exit(1)
+	}
+	if err := reg.Register(manual.New(manual.Config{})); err != nil {
+		slogLogger.Error("register manual provider failed", "error", err)
+		os.Exit(1)
+	}
+
+	repos := repo.New(pool)
+
+	// Service is constructed without an AccountKey — the server never
+	// drives the orchestrator (that's worker territory). It only
+	// publishes new orders and proxies manual-ready confirmations.
+	leCA := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.Env(cfg.LEEnv)})
+	router := service.NewRouter(leCA)
+	svc := service.New(service.Config{
+		Repos:        repos,
+		Redis:        rdb,
+		Vault:        vlt,
+		DNSReg:       reg,
+		Router:       router,
+		AccountEmail: cfg.AccountEmail,
+		Logger:       slogLogger,
+	})
+
+	// Auth. cert-svc shares the JWT secret + Redis session store with
+	// apps/api, so a browser session signed in via /v1/auth/login works
+	// transparently against /v1/cert/* on this service.
+	var authnMW func(http.Handler) http.Handler
+	if cfg.JWTSecret != "" {
+		jwtSvc, jerr := jwt.NewServiceWithOptions(jwt.Config{SecretKey: cfg.JWTSecret})
+		if jerr != nil {
+			slogLogger.Error("jwt service init failed", "error", jerr)
+			os.Exit(1)
+		}
+		sessSvc := session.NewService(rdb)
+		authnMW = certmw.Authn(jwtSvc, sessSvc)
+	} else {
+		slogLogger.Warn("CERT_JWT_SECRET not set — /v1/cert/* will reject all requests")
+	}
+
+	router2 := handler.New(handler.Deps{
+		DB:              pgxPinger{pool: pool},
+		Redis:           redisPinger{client: rdb},
+		Service:         svc,
+		Repos:           repos,
+		Vault:           vlt,
+		DNSReg:          reg,
+		AuthnMiddleware: authnMW,
+	})
 
 	srv := &http.Server{
 		Addr:              cfg.Addr(),
-		Handler:           router,
+		Handler:           router2,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -73,24 +172,31 @@ func main() {
 		close(serverErr)
 	}()
 
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
 	select {
 	case err := <-serverErr:
 		if err != nil {
 			slogLogger.Error("cert-svc server failed", "error", err)
 			os.Exit(1)
 		}
-	case sig := <-sigChan:
-		slogLogger.Info("cert-svc received shutdown signal", "signal", sig.String())
+	case <-ctx.Done():
+		slogLogger.Info("cert-svc shutdown signal received")
 	}
 
-	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
+	shutdownCtx, scancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer scancel()
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slogLogger.Error("cert-svc graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
 	slogLogger.Info("cert-svc shutdown complete")
 }
+
+// pgxPinger / redisPinger adapt the pgx and redis client to the
+// handler.Pinger contract so readyz can probe them.
+type pgxPinger struct{ pool *pgxpool.Pool }
+
+func (p pgxPinger) Ping(ctx context.Context) error { return p.pool.Ping(ctx) }
+
+type redisPinger struct{ client *redis.Client }
+
+func (p redisPinger) Ping(ctx context.Context) error { return p.client.Ping(ctx).Err() }

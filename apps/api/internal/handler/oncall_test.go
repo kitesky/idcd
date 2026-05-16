@@ -213,6 +213,107 @@ func TestOncallHandler_GetCurrentOnCall_WithParticipants(t *testing.T) {
 	assert.Equal(t, "u_alice", data["user_id"])
 }
 
+func TestOncallHandler_ListOverrides_Success(t *testing.T) {
+	now := time.Now().UTC()
+	pool := &mockOncallPool{
+		queryRowQueue: []*mockOncallRow{
+			{values: []any{true}}, // EXISTS check
+		},
+		queryRowsData: &mockOncallRows{
+			rows: [][]any{
+				{"ovr_1", "sch_test", "u_alice", now.Add(-time.Hour), now.Add(time.Hour), "u_creator", now},
+				{"ovr_2", "sch_test", "u_bob", now.Add(time.Hour), now.Add(2 * time.Hour), "u_creator", now},
+			},
+		},
+	}
+	h := NewOncallHandler(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/oncall/schedules/sch_test/overrides", nil)
+	req = oncallWithUserID(req, "u_test")
+	req = oncallWithChiParam(req, "id", "sch_test")
+	rr := httptest.NewRecorder()
+
+	h.ListOverrides(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	outer := resp["data"].(map[string]any)
+	inner := outer["data"].(map[string]any)
+	overrides := inner["overrides"].([]any)
+	assert.Len(t, overrides, 2)
+}
+
+func TestOncallHandler_ListOverrides_ActiveFilter(t *testing.T) {
+	now := time.Now().UTC()
+	pool := &mockOncallPool{
+		queryRowQueue: []*mockOncallRow{
+			{values: []any{true}}, // EXISTS check
+		},
+		queryRowsData: &mockOncallRows{
+			rows: [][]any{
+				{"ovr_active", "sch_test", "u_alice", now.Add(-time.Hour), now.Add(time.Hour), "u_creator", now},
+			},
+		},
+	}
+	h := NewOncallHandler(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/oncall/schedules/sch_test/overrides?active=true", nil)
+	req = oncallWithUserID(req, "u_test")
+	req = oncallWithChiParam(req, "id", "sch_test")
+	rr := httptest.NewRecorder()
+
+	h.ListOverrides(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+	outer := resp["data"].(map[string]any)
+	inner := outer["data"].(map[string]any)
+	overrides := inner["overrides"].([]any)
+	assert.Len(t, overrides, 1)
+	first := overrides[0].(map[string]any)
+	assert.Equal(t, "u_alice", first["user_id"])
+}
+
+func TestOncallHandler_DeleteOverride_Success(t *testing.T) {
+	pool := &mockOncallPool{
+		execResult: pgconn.NewCommandTag("DELETE 1"),
+	}
+	h := NewOncallHandler(pool)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/oncall/schedules/sch_test/overrides/ovr_1", nil)
+	req = oncallWithUserID(req, "u_test")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "sch_test")
+	rctx.URLParams.Add("override_id", "ovr_1")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+
+	h.DeleteOverride(rr, req)
+
+	assert.Equal(t, http.StatusNoContent, rr.Code)
+}
+
+func TestOncallHandler_DeleteOverride_NotFound(t *testing.T) {
+	pool := &mockOncallPool{
+		execResult: pgconn.NewCommandTag("DELETE 0"),
+	}
+	h := NewOncallHandler(pool)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/oncall/schedules/sch_test/overrides/ovr_missing", nil)
+	req = oncallWithUserID(req, "u_test")
+	rctx := chi.NewRouteContext()
+	rctx.URLParams.Add("id", "sch_test")
+	rctx.URLParams.Add("override_id", "ovr_missing")
+	req = req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
+	rr := httptest.NewRecorder()
+
+	h.DeleteOverride(rr, req)
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}
+
 func TestOncallHandler_CreateSchedule_InvalidRotationType(t *testing.T) {
 	pool := &mockOncallPool{}
 	h := NewOncallHandler(pool)

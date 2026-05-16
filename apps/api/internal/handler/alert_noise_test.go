@@ -277,6 +277,38 @@ func (m *multiQueryPool) Query(_ any, _ string, _ ...any) (AlertRows, error) {
 	return &mockAlertRows{}, nil
 }
 
+// ─────────────────────────────────────────────
+// DELETE /v1/alert-groups/{id}
+// ─────────────────────────────────────────────
+
+func TestAlertNoiseHandler_DeleteGroup_Success(t *testing.T) {
+	pool := &mockAlertPool{execResult: pgconn.NewCommandTag("DELETE 1")}
+	h := NewAlertNoiseHandler(pool)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/alert-groups/agrp_1", nil)
+	req = noiseWithUserID(req, "u_test")
+	req = noiseWithChiParam(req, "id", "agrp_1")
+	w := httptest.NewRecorder()
+
+	h.DeleteGroup(w, req)
+
+	assert.Equal(t, http.StatusNoContent, w.Code)
+}
+
+func TestAlertNoiseHandler_DeleteGroup_NotFound(t *testing.T) {
+	pool := &mockAlertPool{execResult: pgconn.NewCommandTag("DELETE 0")}
+	h := NewAlertNoiseHandler(pool)
+
+	req := httptest.NewRequest(http.MethodDelete, "/v1/alert-groups/agrp_missing", nil)
+	req = noiseWithUserID(req, "u_test")
+	req = noiseWithChiParam(req, "id", "agrp_missing")
+	w := httptest.NewRecorder()
+
+	h.DeleteGroup(w, req)
+
+	assert.Equal(t, http.StatusNotFound, w.Code)
+}
+
 func TestAlertNoiseHandler_NoiseReport_WithData(t *testing.T) {
 	r := chi.NewRouter()
 	pool := &mockAlertPool{

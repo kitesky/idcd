@@ -23,6 +23,20 @@ function Hero() {
         <Badge variant="secondary">基于 MCP 标准协议</Badge>
         <Badge variant="secondary">13 个工具函数</Badge>
       </div>
+      <div className="flex flex-wrap justify-center gap-8 mb-8 text-center">
+        <div>
+          <div className="text-3xl font-bold">13</div>
+          <div className="text-sm text-muted-foreground">MCP 工具函数</div>
+        </div>
+        <div>
+          <div className="text-3xl font-bold">30+</div>
+          <div className="text-sm text-muted-foreground">全球探测节点</div>
+        </div>
+        <div>
+          <div className="text-3xl font-bold">Free</div>
+          <div className="text-sm text-muted-foreground">立即可用</div>
+        </div>
+      </div>
       <h1 className="text-4xl sm:text-5xl font-bold tracking-tight text-foreground mb-4">
         AI Agent 时代的可观测枢纽
       </h1>
@@ -41,7 +55,57 @@ function Hero() {
   )
 }
 
-// ── 2. 接入方式 ──────────────────────────────────────────────────────────────
+// ── 2. 应用场景 ──────────────────────────────────────────────────────────────
+
+const useCases = [
+  {
+    icon: "🔍",
+    title: "DevOps 故障排查",
+    desc: "让 Claude / Cursor 直接从全球节点 Ping、MTR、检测 SSL 到期，AI 自动输出根因报告，无需手动 SSH。",
+    example: "「检查 api.example.com 在日本和欧洲的延迟，给我 MTR 路由图」",
+  },
+  {
+    icon: "🤖",
+    title: "CI/CD 自动监控",
+    desc: "Service Token 接入流水线，每次部署后自动调用 probe_http + probe_ssl 验证上线健康状态，异常时 AI 写故障摘要。",
+    example: "「部署完成后验证 HTTPS 证书和 API 响应时间，超 800ms 告警」",
+  },
+  {
+    icon: "📡",
+    title: "AI 应用出口观测",
+    desc: "当你的 LLM 应用调用外部 API 时，idcd MCP 可实时测量每条出口链路质量，Agent 自动识别慢 API 并建议切换。",
+    example: "「对比 OpenAI 和 Claude API 从中国大陆的延迟，推荐最优接入点」",
+  },
+]
+
+function UseCases() {
+  return (
+    <section className="py-12 px-4 bg-muted/20">
+      <div className="max-w-screen-xl mx-auto">
+        <h2 className="text-2xl font-bold text-center mb-2">典型应用场景</h2>
+        <p className="text-center text-muted-foreground mb-8">你的 AI 助手现在能做这些</p>
+        <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
+          {useCases.map((uc) => (
+            <Card key={uc.title} className="flex flex-col">
+              <CardHeader className="pb-3">
+                <div className="text-3xl mb-2">{uc.icon}</div>
+                <CardTitle className="text-base">{uc.title}</CardTitle>
+              </CardHeader>
+              <CardContent className="flex-1 flex flex-col gap-3">
+                <p className="text-sm text-muted-foreground">{uc.desc}</p>
+                <blockquote className="text-xs italic text-muted-foreground bg-muted rounded-md px-3 py-2 border-l-2 border-primary/40">
+                  {uc.example}
+                </blockquote>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  )
+}
+
+// ── 3. 接入方式 ──────────────────────────────────────────────────────────────
 
 const integrations = [
   {
@@ -95,12 +159,18 @@ function Integrations() {
             </Card>
           ))}
         </div>
+        <p className="text-center text-sm text-muted-foreground mt-6">
+          还没有 Token？{" "}
+          <Link href="/app/settings/tokens" className="text-primary underline underline-offset-4">
+            前往控制台创建 →
+          </Link>
+        </p>
       </div>
     </section>
   )
 }
 
-// ── 3. MCP Tools 列表 ────────────────────────────────────────────────────────
+// ── 4. MCP Tools 列表 ────────────────────────────────────────────────────────
 
 const mcpTools = [
   { name: "probe_http", desc: "HTTP 可用性探测" },
@@ -145,7 +215,7 @@ function McpTools() {
   )
 }
 
-// ── 4. Token 档位说明 ────────────────────────────────────────────────────────
+// ── 5. Token 档位说明 ────────────────────────────────────────────────────────
 
 const tokenTiers = [
   {
@@ -189,12 +259,64 @@ function TokenTiers() {
             </Card>
           ))}
         </div>
+        <div className="text-center mt-8">
+          <Button asChild variant="outline">
+            <Link href="/app/settings/tokens">进入控制台创建 Token</Link>
+          </Button>
+        </div>
       </div>
     </section>
   )
 }
 
-// ── 5. CTA 底部横幅 ──────────────────────────────────────────────────────────
+// ── 6. Agent Pro 定价 ────────────────────────────────────────────────────────
+
+function AgentProSection() {
+  return (
+    <section className="py-12 px-4 bg-muted/20">
+      <div className="max-w-2xl mx-auto">
+        <Card className="border-primary/40 shadow-lg relative overflow-hidden">
+          <div className="absolute top-0 right-0 m-4">
+            <Badge className="bg-primary text-primary-foreground">推荐</Badge>
+          </div>
+          <CardHeader>
+            <CardTitle className="text-xl">Agent Pro</CardTitle>
+            <div className="flex items-baseline gap-1 mt-1">
+              <span className="text-4xl font-bold">¥299</span>
+              <span className="text-muted-foreground">/月</span>
+              <span className="text-sm text-muted-foreground ml-2">（年付 ¥239/月）</span>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-2 mb-6">
+              {[
+                "1,000,000 MCP Units/天（独立配额池）",
+                "全部 13 个 MCP 工具函数",
+                "全球 30+ 探测节点",
+                "Service Token 不限数量",
+                "SSE 并发连接 50 路",
+                "优先技术支持",
+              ].map((f) => (
+                <li key={f} className="flex items-center gap-2 text-sm">
+                  <span className="text-primary">✓</span>
+                  {f}
+                </li>
+              ))}
+            </ul>
+            <p className="text-xs text-muted-foreground mb-4">
+              MCP Units 与 API 配额完全独立，不影响现有订阅。可单独购买，无需升级主套餐。
+            </p>
+            <Button className="w-full" asChild>
+              <Link href="/auth/register">立即开通</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    </section>
+  )
+}
+
+// ── 7. CTA 底部横幅 ──────────────────────────────────────────────────────────
 
 function CtaBanner() {
   return (
@@ -204,7 +326,7 @@ function CtaBanner() {
           MCP Units 与 API 配额完全独立，Free 档即可体验
         </p>
         <p className="text-muted-foreground mb-6">
-          注册后立即获得 MCP 访问权限，无需信用卡
+          注册后立即获得 MCP 访问权限，Free 档含 10,000 MCP Units/天，无需信用卡
         </p>
         <Button size="lg" asChild>
           <Link href="/auth/register">注册免费账号</Link>
@@ -220,9 +342,11 @@ export default function AgentPage() {
   return (
     <main>
       <Hero />
+      <UseCases />
       <Integrations />
       <McpTools />
       <TokenTiers />
+      <AgentProSection />
       <CtaBanner />
     </main>
   )

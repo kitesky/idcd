@@ -1,4 +1,5 @@
 import Link from "next/link"
+import { SearchCode, Bot, Network } from "lucide-react"
 import {
   Card,
   CardContent,
@@ -59,19 +60,19 @@ function Hero() {
 
 const useCases = [
   {
-    icon: "🔍",
+    Icon: SearchCode,
     title: "DevOps 故障排查",
     desc: "让 Claude / Cursor 直接从全球节点 Ping、MTR、检测 SSL 到期，AI 自动输出根因报告，无需手动 SSH。",
     example: "「检查 api.example.com 在日本和欧洲的延迟，给我 MTR 路由图」",
   },
   {
-    icon: "🤖",
+    Icon: Bot,
     title: "CI/CD 自动监控",
     desc: "Service Token 接入流水线，每次部署后自动调用 probe_http + probe_ssl 验证上线健康状态，异常时 AI 写故障摘要。",
     example: "「部署完成后验证 HTTPS 证书和 API 响应时间，超 800ms 告警」",
   },
   {
-    icon: "📡",
+    Icon: Network,
     title: "AI 应用出口观测",
     desc: "当你的 LLM 应用调用外部 API 时，idcd MCP 可实时测量每条出口链路质量，Agent 自动识别慢 API 并建议切换。",
     example: "「对比 OpenAI 和 Claude API 从中国大陆的延迟，推荐最优接入点」",
@@ -88,7 +89,9 @@ function UseCases() {
           {useCases.map((uc) => (
             <Card key={uc.title} className="flex flex-col">
               <CardHeader className="pb-3">
-                <div className="text-3xl mb-2">{uc.icon}</div>
+                <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10">
+                  <uc.Icon className="h-5 w-5 text-primary" />
+                </div>
                 <CardTitle className="text-base">{uc.title}</CardTitle>
               </CardHeader>
               <CardContent className="flex-1 flex flex-col gap-3">

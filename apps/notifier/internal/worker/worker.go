@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"math/rand"
 	"net/url"
 	"strconv"
 	"strings"
@@ -38,14 +39,10 @@ func NewWorker(cfg *config.NotifierConfig, handlers *Handlers, logger *slog.Logg
 		}
 	}
 
-	// Configure asynq server
 	server := asynq.NewServer(
 		redisOpt,
 		asynq.Config{
-			// Queue configuration with priorities
-			Queues: cfg.Queues,
-
-			// Worker concurrency
+			Queues:      cfg.Queues,
 			Concurrency: cfg.Workers,
 
 			// Retry configuration
@@ -58,7 +55,7 @@ func NewWorker(cfg *config.NotifierConfig, handlers *Handlers, logger *slog.Logg
 
 				// Add jitter (±25%) to prevent thundering herd
 				jitterRange := time.Duration(float64(base) * 0.25)
-				return base + time.Duration(float64(jitterRange)*(2.0*0.5-1.0)) // simple jitter
+				return base + time.Duration(float64(jitterRange)*(2.0*rand.Float64()-1.0)) //nolint:gosec — non-cryptographic jitter is intentional
 			},
 
 			// Error handler

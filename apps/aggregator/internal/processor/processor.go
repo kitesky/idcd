@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"strconv"
 	"time"
 
@@ -94,10 +95,10 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 	if monitorID, _ := values["monitor_id"].(string); monitorID != "" {
 		if err := p.writeMonitorCheck(ctx, monitorID, nodeID, result); err != nil {
 			// Non-fatal: log and continue — don't fail the whole message.
-			_ = fmt.Errorf("processor: write monitor_check for %s: %w", monitorID, err)
+			slog.Warn("processor: write monitor_check failed", "monitor_id", monitorID, "err", err)
 		}
 		if err := p.advanceMonitorSchedule(ctx, monitorID, taskID); err != nil {
-			_ = fmt.Errorf("processor: advance monitor schedule for %s: %w", monitorID, err)
+			slog.Warn("processor: advance monitor schedule failed", "monitor_id", monitorID, "err", err)
 		}
 		if p.trigger != nil {
 			checkStatus := probeSuccessToCheckStatus(result.success, result.errMsg)

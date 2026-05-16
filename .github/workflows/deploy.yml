@@ -10,6 +10,8 @@ env:
   IMAGE_OWNER: ${{ github.repository_owner }}
 
 jobs:
+  # ── 后端镜像构建（6 个服务并发） ─────────────────────────────
+
   build-api:
     name: Build API
     runs-on: ubuntu-latest
@@ -17,24 +19,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-api
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/api/Dockerfile
@@ -49,24 +47,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-aggregator
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/aggregator/Dockerfile
@@ -81,24 +75,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-notifier
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/notifier/Dockerfile
@@ -113,24 +103,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-gateway
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/gateway/Dockerfile
@@ -145,24 +131,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-scheduler
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/scheduler/Dockerfile
@@ -177,24 +159,20 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Log in to Container Registry
-        uses: docker/login-action@v3
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Extract metadata
-        id: meta
+      - id: meta
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-agent
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
         with:
           context: .
           file: apps/agent/Dockerfile
@@ -202,8 +180,10 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
-  deploy-staging:
-    name: Deploy to Staging
+  # ── 数据库 Migration ─────────────────────────────────────────
+
+  migrate:
+    name: Run Migrations
     runs-on: ubuntu-latest
     needs:
       - build-api
@@ -213,7 +193,98 @@ jobs:
       - build-scheduler
       - build-agent
     steps:
-      - name: Deploy placeholder
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: true
+      - name: Run goose migrations
+        env:
+          GOOSE_DSN: ${{ secrets.PROD_DB_DSN }}
         run: |
-          echo "Deploy to staging environment"
-          echo "This will be implemented in S2"
+          go run github.com/pressly/goose/v3/cmd/goose@latest \
+            -dir lib/db/migrations/idcd_main \
+            postgres "$GOOSE_DSN" up
+
+  # ── SSH 部署到云服务器 ────────────────────────────────────────
+
+  deploy-backend:
+    name: Deploy Backend
+    runs-on: ubuntu-latest
+    needs: migrate
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Copy config files to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          source: "infra/docker/docker-compose.prod.yml,infra/nginx/nginx.conf"
+          target: /opt/idcd/
+          strip_components: 2
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          script: |
+            set -e
+            cd /opt/idcd
+
+            # 登录 ghcr.io 拉取私有镜像
+            echo "${{ secrets.GHCR_PAT }}" | \
+              docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+            # 拉取所有最新镜像
+            docker compose pull
+
+            # 滚动重启（--no-deps 避免重启数据库等基础服务）
+            docker compose up -d --remove-orphans --no-deps \
+              api aggregator notifier gateway scheduler
+
+            # 等待 api 健康检查通过
+            timeout 60 bash -c \
+              'until docker compose ps api | grep -q "healthy"; do sleep 2; done' \
+              || (docker compose logs api --tail=50 && exit 1)
+
+            # 清理旧镜像
+            docker image prune -f
+
+  # ── Vercel 前端部署 ───────────────────────────────────────────
+
+  deploy-frontend:
+    name: Deploy Frontend (Vercel)
+    runs-on: ubuntu-latest
+    needs:
+      - build-api
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+          cache-dependency-path: apps/web/pnpm-lock.yaml
+
+      - name: Deploy to Vercel
+        working-directory: apps/web
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          npm install -g vercel@latest
+          vercel pull --yes --environment=production --token=$VERCEL_TOKEN
+          vercel build --prod --token=$VERCEL_TOKEN
+          vercel deploy --prebuilt --prod --token=$VERCEL_TOKEN

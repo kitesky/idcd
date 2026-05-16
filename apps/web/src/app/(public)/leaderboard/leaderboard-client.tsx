@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { ArrowDown, ArrowUp, Minus, Info, Globe } from "lucide-react"
 import {
   Tabs,
@@ -20,10 +20,9 @@ import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
+import { apiRequest } from "@/lib/api"
 import {
-  CDN_DATA,
-  REGION_LATENCY_DATA,
-  ISP_AVAILABILITY_DATA,
   getLatencyVariant,
   type CdnEntry,
 } from "./leaderboard-data"
@@ -204,101 +203,98 @@ function CdnTable({ data, lang }: { data: CdnEntry[]; lang: Lang }) {
 }
 
 function RegionLatencyCards({ lang }: { lang: Lang }) {
-  const t = T[lang]
   return (
-    <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-      {REGION_LATENCY_DATA.map((region) => (
-        <Card key={region.continent}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <span>{t.continentName(region.continent, region.continentEn)}</span>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-2">
-              {region.countries.map((country) => (
-                <div
-                  key={country.nameEn}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span className="text-muted-foreground truncate pr-2">
-                    {t.countryName(country.name, country.nameEn)}
-                  </span>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <Badge
-                      variant={getLatencyVariant(country.p50)}
-                      className="text-xs"
-                    >
-                      P50 {country.p50}ms
-                    </Badge>
-                    <span className="text-xs text-muted-foreground w-16 text-right">
-                      P95 {country.p95}ms
-                    </span>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+    <div className="text-center py-16 text-muted-foreground">
+      <Globe className="mx-auto mb-4 h-12 w-12 opacity-30" />
+      <p className="text-lg font-medium">{lang === 'zh' ? '本月数据采集中' : 'Data collection in progress'}</p>
+      <p className="text-sm mt-1">
+        {lang === 'zh'
+          ? '全球节点延迟数据将在积累足够探测记录后显示，预计 30 天内上线'
+          : 'Global node latency data will be displayed once enough probe records are collected, expected within 30 days'}
+      </p>
     </div>
   )
 }
 
 function IspAvailabilityTable({ lang }: { lang: Lang }) {
-  const t = T[lang]
   return (
-    <div className="overflow-x-auto rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-12 text-center">{t.table.rank}</TableHead>
-            <TableHead>{t.table.isp}</TableHead>
-            <TableHead className="hidden md:table-cell">{t.table.region}</TableHead>
-            <TableHead className="text-center">{t.table.availability30d}</TableHead>
-            <TableHead className="hidden md:table-cell text-center">{t.table.sla}</TableHead>
-            <TableHead className="hidden md:table-cell text-center">{t.table.datacenterCount}</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {ISP_AVAILABILITY_DATA.map((isp) => (
-            <TableRow key={isp.isp}>
-              <TableCell className="text-center font-mono font-semibold text-muted-foreground">
-                #{isp.rank}
-              </TableCell>
-              <TableCell className="font-medium">{isp.isp}</TableCell>
-              <TableCell className="hidden md:table-cell text-muted-foreground">{isp.region}</TableCell>
-              <TableCell className="text-center">
-                <Badge
-                  variant={
-                    isp.availability30d >= 99.9
-                      ? "success"
-                      : isp.availability30d >= 99.5
-                        ? "warning"
-                        : "destructive"
-                  }
-                >
-                  {isp.availability30d.toFixed(2)}%
-                </Badge>
-              </TableCell>
-              <TableCell className="hidden md:table-cell text-center text-sm text-muted-foreground">
-                {isp.sla.toFixed(1)}%
-              </TableCell>
-              <TableCell className="hidden md:table-cell text-center text-sm">
-                {isp.datacenterCount}
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+    <div className="text-center py-16 text-muted-foreground">
+      <Globe className="mx-auto mb-4 h-12 w-12 opacity-30" />
+      <p className="text-lg font-medium">{lang === 'zh' ? '本月数据采集中' : 'Data collection in progress'}</p>
+      <p className="text-sm mt-1">
+        {lang === 'zh'
+          ? '可用性统计数据将在积累足够探测记录后显示，预计 30 天内上线'
+          : 'Availability statistics will be displayed once enough probe records are collected, expected within 30 days'}
+      </p>
     </div>
   )
 }
 
+function getSelectedMonthDefault(): string {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
 export function LeaderboardClient() {
   const [lang, setLang] = useState<Lang>('zh')
+  const [selectedMonth, setSelectedMonth] = useState<string>(getSelectedMonthDefault)
+  const [data, setData] = useState<CdnEntry[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [sampleCount, setSampleCount] = useState(0)
   const t = T[lang]
-  const month = new Date().getMonth() + 1
+  const monthNumber = parseInt(selectedMonth.split('-')[1] ?? '1', 10)
+
+  useEffect(() => {
+    setLoading(true)
+    setError(null)
+    apiRequest<{ data: CdnEntry[]; month: string; sample_count: number }>(
+      `/v1/leaderboard/cdn?month=${selectedMonth}`
+    )
+      .then((json) => {
+        setData(json.data ?? [])
+        setSampleCount(json.sample_count ?? 0)
+      })
+      .catch(() => setError(lang === 'zh' ? '数据加载失败，请稍后重试' : 'Failed to load data, please try again later'))
+      .finally(() => setLoading(false))
+  }, [selectedMonth]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function renderCdnContent() {
+    if (loading) {
+      return (
+        <div className="space-y-2">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <Skeleton key={i} className="h-12 w-full" />
+          ))}
+        </div>
+      )
+    }
+    if (error) {
+      return (
+        <Alert variant="destructive">
+          <Info className="h-4 w-4" />
+          <AlertTitle>{lang === 'zh' ? '加载失败' : 'Load Failed'}</AlertTitle>
+          <AlertDescription>{error}</AlertDescription>
+        </Alert>
+      )
+    }
+    if (data.length === 0) {
+      return (
+        <div className="text-center py-16 text-muted-foreground">
+          <Globe className="mx-auto mb-4 h-12 w-12 opacity-30" />
+          <p className="text-lg font-medium">{lang === 'zh' ? '本月数据采集中' : 'Data collection in progress'}</p>
+          <p className="text-sm mt-1">
+            {lang === 'zh'
+              ? 'CDN 排行榜将在积累足够节点数据后显示，预计 30 天内上线'
+              : 'CDN leaderboard will be displayed once enough node data is collected, expected within 30 days'}
+          </p>
+        </div>
+      )
+    }
+    return <CdnTable data={data} lang={lang} />
+  }
 
   return (
     <div className="space-y-6">
@@ -336,9 +332,14 @@ export function LeaderboardClient() {
         <TabsContent value="cdn" className="space-y-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Info className="h-4 w-4 shrink-0" />
-            <span>{t.info.cdn(month)}</span>
+            <span>{t.info.cdn(monthNumber)}</span>
           </div>
-          <CdnTable data={CDN_DATA} lang={lang} />
+          {!loading && !error && data.length > 0 && sampleCount > 0 && (
+            <p className="text-xs text-muted-foreground">
+              {lang === 'zh' ? `本月采样数：${sampleCount.toLocaleString()}` : `Sample count: ${sampleCount.toLocaleString()}`}
+            </p>
+          )}
+          {renderCdnContent()}
         </TabsContent>
 
         <TabsContent value="regions" className="space-y-4">

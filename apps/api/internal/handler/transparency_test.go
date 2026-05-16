@@ -9,7 +9,7 @@ import (
 )
 
 func TestTransparencyHandler_Get(t *testing.T) {
-	h := NewTransparencyHandler()
+	h := NewTransparencyHandler(nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/v1/transparency", nil)
 	ctx := context.WithValue(req.Context(), "request_id", "test-transparency-001")

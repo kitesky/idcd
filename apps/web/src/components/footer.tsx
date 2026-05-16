@@ -11,6 +11,7 @@ const sections = [
     links: [
       { name: "为什么选 idcd", href: "/about" },
       { name: "文档中心", href: "/docs/api" },
+      { name: "AI Agent 接入", href: "/agent" },
       { name: "透明度报告", href: "/transparency" },
       { name: "加入我们", href: "/about" },
     ],

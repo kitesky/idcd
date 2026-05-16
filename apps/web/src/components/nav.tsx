@@ -124,6 +124,7 @@ const toolsMenu = {
 
 const navItems = [
   { name: "工具", mega: toolsMenu },
+  { name: "AI Agent", href: "/agent" },
   { name: "节点", href: "/nodes" },
   { name: "成为节点", href: "/nodes/apply" },
   { name: "定价", href: "/pricing" },

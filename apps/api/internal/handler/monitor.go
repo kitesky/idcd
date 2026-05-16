@@ -157,19 +157,20 @@ type UpdateMonitorRequest struct {
 
 // MonitorResponse is the JSON representation of a monitor.
 type MonitorResponse struct {
-	ID           string          `json:"id"`
-	UserID       string          `json:"user_id"`
-	Name         string          `json:"name"`
-	Type         string          `json:"type"`
-	Target       string          `json:"target"`
-	Config       json.RawMessage `json:"config"`
-	IntervalS    int32           `json:"interval_s"`
-	NodeCount    int32           `json:"node_count"`
-	Status       string          `json:"status"`
-	LastCheckAt  *string         `json:"last_check_at,omitempty"`
-	NextCheckAt  *string         `json:"next_check_at,omitempty"`
-	CreatedAt    string          `json:"created_at"`
-	UpdatedAt    string          `json:"updated_at"`
+	ID             string          `json:"id"`
+	UserID         string          `json:"user_id"`
+	Name           string          `json:"name"`
+	Type           string          `json:"type"`
+	Target         string          `json:"target"`
+	Config         json.RawMessage `json:"config"`
+	IntervalS      int32           `json:"interval_s"`
+	NodeCount      int32           `json:"node_count"`
+	Status         string          `json:"status"`
+	LastCheckAt    *string         `json:"last_check_at,omitempty"`
+	NextCheckAt    *string         `json:"next_check_at,omitempty"`
+	CreatedAt      string          `json:"created_at"`
+	UpdatedAt      string          `json:"updated_at"`
+	UptimePercent  float64         `json:"uptime_percent"`
 }
 
 // MonitorListResponse is the paginated list response.
@@ -386,6 +387,21 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 			items = []MonitorResponse{}
 		}
 
+		// Batch-fetch 24h uptime for all returned monitors.
+		if len(items) > 0 {
+			ids := make([]string, len(items))
+			for i, item := range items {
+				ids[i] = item.ID
+			}
+			if uptimeMap := h.fetchUptimeMap(ctx, ids); uptimeMap != nil {
+				for i := range items {
+					if pct, ok := uptimeMap[items[i].ID]; ok {
+						items[i].UptimePercent = pct
+					}
+				}
+			}
+		}
+
 		response.JSON(w, r, http.StatusOK, MonitorListResponse{
 			Items: items,
 			Total: total,
@@ -409,6 +425,21 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 	items := make([]MonitorResponse, len(ms))
 	for i, m := range ms {
 		items[i] = monitorToResponse(m)
+	}
+
+	// Batch-fetch 24h uptime for all returned monitors.
+	if len(items) > 0 {
+		ids := make([]string, len(items))
+		for i, item := range items {
+			ids[i] = item.ID
+		}
+		if uptimeMap := h.fetchUptimeMap(ctx, ids); uptimeMap != nil {
+			for i := range items {
+				if pct, ok := uptimeMap[items[i].ID]; ok {
+					items[i].UptimePercent = pct
+				}
+			}
+		}
 	}
 
 	// Count total for accurate pagination.
@@ -452,7 +483,13 @@ func (h *MonitorHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusOK, monitorToResponse(m))
+	resp := monitorToResponse(m)
+	if uptimeMap := h.fetchUptimeMap(ctx, []string{m.ID}); uptimeMap != nil {
+		if pct, ok := uptimeMap[m.ID]; ok {
+			resp.UptimePercent = pct
+		}
+	}
+	response.JSON(w, r, http.StatusOK, resp)
 }
 
 // Update handles PATCH /v1/monitors/:id.
@@ -745,6 +782,43 @@ func monitorToResponse(m idcdmain.Monitor) MonitorResponse {
 		resp.NextCheckAt = &t
 	}
 	return resp
+}
+
+// fetchUptimeMap queries monitor_checks to compute 24-hour uptime percentages
+// for the provided set of monitor IDs. Returns a map[monitorID]uptimePct.
+// Returns nil (no error surfaced) when bulkPool is nil or the query fails, so
+// callers simply get 0.0 defaults.
+func (h *MonitorHandler) fetchUptimeMap(ctx context.Context, monitorIDs []string) map[string]float64 {
+	if h.bulkPool == nil || len(monitorIDs) == 0 {
+		return nil
+	}
+	const uptimeSQL = `
+		SELECT
+			monitor_id,
+			ROUND(
+				COUNT(*) FILTER (WHERE status = 'up')::numeric / NULLIF(COUNT(*), 0) * 100,
+				2
+			) AS uptime_pct
+		FROM monitor_checks
+		WHERE monitor_id = ANY($1)
+		  AND checked_at > NOW() - INTERVAL '24 hours'
+		GROUP BY monitor_id`
+
+	rows, err := h.bulkPool.Query(ctx, uptimeSQL, monitorIDs)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	result := make(map[string]float64, len(monitorIDs))
+	for rows.Next() {
+		var mid string
+		var pct float64
+		if err := rows.Scan(&mid, &pct); err == nil {
+			result[mid] = pct
+		}
+	}
+	return result
 }
 
 // parsePagination extracts page/limit from query params with sensible defaults.

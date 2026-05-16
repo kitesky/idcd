@@ -615,6 +615,8 @@ func (s *Server) setupRouter() {
 			r.Post("/{id}/participants", oncallH.AddParticipant)
 			r.Delete("/{id}/participants/{user_id}", oncallH.RemoveParticipant)
 			r.Post("/{id}/overrides", oncallH.CreateOverride)
+			r.Get("/{id}/overrides", oncallH.ListOverrides)
+			r.Delete("/{id}/overrides/{override_id}", oncallH.DeleteOverride)
 			r.Get("/{id}/current", oncallH.GetCurrentOnCall)
 		})
 

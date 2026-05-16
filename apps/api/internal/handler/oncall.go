@@ -248,7 +248,7 @@ func (h *OncallHandler) GetSchedule(w http.ResponseWriter, r *http.Request) {
 	currentOnCall, _ := oncall.CurrentOnCall(ctx, h.pool, id, now)
 
 	var preview []previewDay
-	for i := 0; i < 7; i++ {
+	for i := range 7 {
 		day := now.AddDate(0, 0, i)
 		dayUserID, _ := oncall.CurrentOnCall(ctx, h.pool, id, day)
 		preview = append(preview, previewDay{
@@ -404,6 +404,97 @@ func (h *OncallHandler) CreateOverride(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:  now.Format(time.RFC3339),
 	}
 	response.JSON(w, r, http.StatusCreated, resp)
+}
+
+func (h *OncallHandler) ListOverrides(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		response.Error(w, r, apperr.Unauthorized("authentication required"))
+		return
+	}
+
+	scheduleID := chi.URLParam(r, "id")
+
+	var exists bool
+	if err := h.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM oncall_schedules WHERE id = $1)`, scheduleID).Scan(&exists); err != nil || !exists {
+		response.Error(w, r, apperr.NotFound("oncall schedule not found"))
+		return
+	}
+
+	activeOnly := r.URL.Query().Get("active") == "true"
+
+	var rows pgx.Rows
+	var err error
+	if activeOnly {
+		now := time.Now().UTC()
+		rows, err = h.pool.Query(ctx, `
+			SELECT id, schedule_id, user_id, start_at, end_at, created_by, created_at
+			FROM oncall_overrides
+			WHERE schedule_id = $1 AND start_at <= $2 AND end_at >= $2
+			ORDER BY start_at ASC`, scheduleID, now)
+	} else {
+		rows, err = h.pool.Query(ctx, `
+			SELECT id, schedule_id, user_id, start_at, end_at, created_by, created_at
+			FROM oncall_overrides
+			WHERE schedule_id = $1
+			ORDER BY start_at ASC`, scheduleID)
+	}
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to list overrides", err))
+		return
+	}
+	defer rows.Close()
+
+	var overrides []oncallOverrideResponse
+	for rows.Next() {
+		var o oncallOverrideResponse
+		var startAt, endAt, createdAt time.Time
+		if err := rows.Scan(&o.ID, &o.ScheduleID, &o.UserID, &startAt, &endAt, &o.CreatedBy, &createdAt); err != nil {
+			response.Error(w, r, apperr.Internal("failed to scan override", err))
+			return
+		}
+		o.StartAt = startAt.UTC().Format(time.RFC3339)
+		o.EndAt = endAt.UTC().Format(time.RFC3339)
+		o.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+		overrides = append(overrides, o)
+	}
+	if err := rows.Err(); err != nil {
+		response.Error(w, r, apperr.Internal("failed to iterate overrides", err))
+		return
+	}
+	if overrides == nil {
+		overrides = []oncallOverrideResponse{}
+	}
+
+	response.JSON(w, r, http.StatusOK, map[string]any{"data": map[string]any{"overrides": overrides}})
+}
+
+func (h *OncallHandler) DeleteOverride(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		response.Error(w, r, apperr.Unauthorized("authentication required"))
+		return
+	}
+
+	scheduleID := chi.URLParam(r, "id")
+	overrideID := chi.URLParam(r, "override_id")
+
+	tag, err := h.pool.Exec(ctx, `
+		DELETE FROM oncall_overrides WHERE id = $1 AND schedule_id = $2`,
+		overrideID, scheduleID,
+	)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to delete override", err))
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		response.Error(w, r, apperr.NotFound("override not found"))
+		return
+	}
+
+	response.JSON(w, r, http.StatusNoContent, nil)
 }
 
 func (h *OncallHandler) GetCurrentOnCall(w http.ResponseWriter, r *http.Request) {

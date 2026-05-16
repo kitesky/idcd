@@ -56,6 +56,14 @@ interface LatestCheck {
   error: string
 }
 
+interface AlertEvent {
+  id: string
+  monitor_name: string
+  status: "firing" | "resolved"
+  fired_at: string
+  resolved_at?: string
+}
+
 interface CheckBucket {
   bucket_start: string
   total: number
@@ -234,6 +242,8 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   const [latestCheck, setLatestCheck] = useState<LatestCheck | null>(null)
   const [checkBuckets, setCheckBuckets] = useState<CheckBucket[] | null>(null)
   const [bucketLoading, setBucketLoading] = useState(true)
+  const [alertEvents, setAlertEvents] = useState<AlertEvent[]>([])
+  const [alertsLoading, setAlertsLoading] = useState(false)
 
   useEffect(() => {
     const url = `${API_BASE}/v1/monitors/${id}/stream`
@@ -249,6 +259,22 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
     es.addEventListener("error", () => {
     })
     return () => es.close()
+  }, [id])
+
+  useEffect(() => {
+    setAlertsLoading(true)
+    apiRequest<{ data: AlertEvent[] }>(
+      `/v1/alert-events?monitor_id=${id}&limit=10`
+    )
+      .then((json) => {
+        setAlertEvents(json?.data ?? [])
+      })
+      .catch(() => {
+        setAlertEvents([])
+      })
+      .finally(() => {
+        setAlertsLoading(false)
+      })
   }, [id])
 
   useEffect(() => {
@@ -587,6 +613,74 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             )}
           </TableBody>
         </Table>
+      </Card>
+
+      {/* 告警历史 */}
+      <Card data-testid="alert-history-section">
+        <CardHeader>
+          <CardTitle className="text-base">告警历史</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>状态</TableHead>
+                <TableHead>触发时间</TableHead>
+                <TableHead>持续时长</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {alertsLoading ? (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center text-xs text-muted-foreground py-4">
+                    加载中…
+                  </TableCell>
+                </TableRow>
+              ) : alertEvents.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={3} className="text-center text-xs text-muted-foreground py-4">
+                    暂无告警记录
+                  </TableCell>
+                </TableRow>
+              ) : (
+                alertEvents.map((event) => {
+                  const endMs = event.resolved_at
+                    ? new Date(event.resolved_at).getTime()
+                    : Date.now()
+                  const durationMs = endMs - new Date(event.fired_at).getTime()
+                  const durationS = Math.floor(durationMs / 1000)
+                  let duration: string
+                  if (durationS < 60) {
+                    duration = `${durationS}秒`
+                  } else if (durationS < 3600) {
+                    duration = `${Math.floor(durationS / 60)}分钟`
+                  } else {
+                    duration = `${Math.floor(durationS / 3600)}小时`
+                  }
+                  if (!event.resolved_at) duration += "（持续中）"
+
+                  return (
+                    <TableRow key={event.id}>
+                      <TableCell>
+                        {event.status === "firing" ? (
+                          <Badge variant="destructive">告警中</Badge>
+                        ) : (
+                          <Badge variant="success">已恢复</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">
+                        {relativeTime(event.fired_at)}
+                      </TableCell>
+                      <TableCell className="text-xs text-muted-foreground">
+                        {duration}
+                      </TableCell>
+                    </TableRow>
+                  )
+                })
+              )}
+            </TableBody>
+          </Table>
+        </CardContent>
       </Card>
     </div>
   )

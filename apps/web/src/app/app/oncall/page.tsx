@@ -61,6 +61,16 @@ interface Participant {
   order_index: number
 }
 
+interface Override {
+  id: string
+  schedule_id: string
+  user_id: string
+  start_at: string
+  end_at: string
+  created_by: string
+  created_at: string
+}
+
 interface AlertEvent {
   id: string
   monitor_name: string
@@ -247,9 +257,10 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
 interface OverrideDialogProps {
   scheduleId: string
   participants: Participant[]
+  onCreated?: () => void
 }
 
-function OverrideDialog({ scheduleId, participants }: OverrideDialogProps) {
+function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogProps) {
   const [open, setOpen] = useState(false)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
@@ -266,14 +277,15 @@ function OverrideDialog({ scheduleId, participants }: OverrideDialogProps) {
         method: "POST",
         body: JSON.stringify({
           user_id: selectedUser,
-          start_time: new Date(startDate).toISOString(),
-          end_time: new Date(endDate).toISOString(),
+          start_at: new Date(startDate).toISOString(),
+          end_at: new Date(endDate).toISOString(),
         }),
       })
       setOpen(false)
       setStartDate("")
       setEndDate("")
       setSelectedUser("")
+      onCreated?.()
     } catch (err) {
       setError(err instanceof Error ? err.message : "换班失败")
     } finally {
@@ -474,6 +486,110 @@ function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticip
   )
 }
 
+// ── Active Overrides List ──────────────────────────────────────────────────
+
+interface ActiveOverridesListProps {
+  scheduleId: string
+  refreshToken: number
+}
+
+function ActiveOverridesList({ scheduleId, refreshToken }: ActiveOverridesListProps) {
+  const [overrides, setOverrides] = useState<Override[]>([])
+  const [loading, setLoading] = useState(false)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (!scheduleId) return
+    setLoading(true)
+    apiRequest<{ data: { overrides: Override[] } }>(
+      `/v1/oncall/schedules/${scheduleId}/overrides?active=true`,
+    )
+      .then((res) => {
+        setOverrides(res?.data?.overrides ?? [])
+      })
+      .catch(() => {
+        setOverrides([])
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [scheduleId, refreshToken])
+
+  async function handleDelete(overrideId: string) {
+    setDeletingId(overrideId)
+    try {
+      await apiRequest(`/v1/oncall/schedules/${scheduleId}/overrides/${overrideId}`, {
+        method: "DELETE",
+      })
+      setOverrides((prev) => prev.filter((o) => o.id !== overrideId))
+    } catch {
+      // silently ignore
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="mt-4 space-y-2">
+        <Skeleton className="h-6 w-32" />
+        <Skeleton className="h-10 w-full" />
+      </div>
+    )
+  }
+
+  if (overrides.length === 0) return null
+
+  return (
+    <Card className="mt-4" data-testid="active-overrides-card">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base">当前覆盖规则</CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1">
+          {overrides.map((o) => (
+            <div
+              key={o.id}
+              className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
+              data-testid={`override-row-${o.id}`}
+            >
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400 shrink-0">
+                {o.user_id.charAt(0).toUpperCase()}
+              </div>
+              <span className="flex-1 font-medium truncate">{o.user_id}</span>
+              <span className="text-muted-foreground text-xs shrink-0">
+                {new Date(o.start_at).toLocaleString("zh-CN", {
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}{" "}
+                –{" "}
+                {new Date(o.end_at).toLocaleString("zh-CN", {
+                  month: "numeric",
+                  day: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                disabled={deletingId === o.id}
+                onClick={() => handleDelete(o.id)}
+                data-testid={`delete-override-${o.id}`}
+                className="shrink-0 h-7 w-7"
+              >
+                <Trash2 className="h-4 w-4 text-destructive" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 // ── Oncall Stats Card ──────────────────────────────────────────────────────
 
 interface OncallStatsCardProps {
@@ -616,6 +732,11 @@ export default function OncallPage() {
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const [overrideRefreshToken, setOverrideRefreshToken] = useState(0)
+
+  function refreshOverrides() {
+    setOverrideRefreshToken((t) => t + 1)
+  }
 
   async function loadData() {
     setLoading(true)
@@ -679,7 +800,7 @@ export default function OncallPage() {
           )}
         </div>
         <div className="flex gap-2">
-          <OverrideDialog scheduleId={schedule?.id ?? ""} participants={participants} />
+          <OverrideDialog scheduleId={schedule?.id ?? ""} participants={participants} onCreated={refreshOverrides} />
           <CreateScheduleDialog onCreated={loadData} />
         </div>
       </div>
@@ -854,6 +975,13 @@ export default function OncallPage() {
             <p className="py-8 text-center text-sm text-muted-foreground">
               暂无排班，点击右上角「创建排班」开始
             </p>
+          )}
+
+          {schedule && (
+            <ActiveOverridesList
+              scheduleId={schedule.id}
+              refreshToken={overrideRefreshToken}
+            />
           )}
 
           {schedule && participants.length > 0 && (

@@ -496,7 +496,7 @@ func (s *Server) setupRouter() {
 			// Team / Org endpoints (authentication required)
 			teamH := handler.NewTeamHandler(s.pgxPool)
 			teamKeyH := handler.NewTeamAPIKeyHandler(s.pgxPool)
-			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billing.NewStubProvider())
+			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billingProvider)
 			r.Route("/teams", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Post("/", teamH.Create)

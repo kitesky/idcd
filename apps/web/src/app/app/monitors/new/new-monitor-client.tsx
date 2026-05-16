@@ -192,7 +192,7 @@ export function NewMonitorClient() {
     setQuotaExceeded(null)
 
     try {
-      await apiRequest("/v1/monitors", {
+      const created = await apiRequest<{ id: string }>("/v1/monitors", {
         method: "POST",
         body: JSON.stringify({
           name: form.name,
@@ -205,7 +205,8 @@ export function NewMonitorClient() {
 
       setSaved(true)
       setTimeout(() => {
-        router.push("/app/monitors")
+        const id = created?.id
+        router.push(id ? `/app/monitors/${id}` : "/app/monitors")
       }, 1500)
     } catch (err) {
       const message = err instanceof Error ? err.message : "创建失败，请稍后重试"

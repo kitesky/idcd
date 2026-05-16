@@ -1,1 +1,110 @@
-{}
+{
+  "hero": {
+    "title": "全球网络诊断平台",
+    "subtitle": "100+ 真实探测节点，多地拨测、实时监控、一键诊断",
+    "searchPlaceholder": "输入域名、IP 或工具名...",
+    "cta": "立即检测",
+    "detecting": "检测中...",
+    "advancedConfig": "高级配置",
+    "createMonitor": "创建定时监测任务",
+    "createMonitorDesc": "，持续监测不同地区用户到站点的访问连通性",
+    "compareCheck": "对比检测",
+    "probeError": "拨测失败：{message}",
+    "probePending": "正在发起拨测，请稍候..."
+  },
+  "nodePanelCn": "中国",
+  "nodePanelGlobal": "全球",
+  "nodePanelLoading": "加载节点中...",
+  "nodePanelEmpty": "暂无可用节点",
+  "nodePanelSelected": "已选 {count} 个节点发起探测",
+  "nodePanelReset": "重置",
+  "nodePanelConfirm": "确认",
+  "nodeSelectorPlaceholder": "请选择拨测节点",
+  "nodeSelectorSelected": "已选 {count} 个节点",
+  "categories": {
+    "diagnose": {
+      "label": "一键诊断",
+      "title": "一键综合诊断",
+      "subtitle": "HTTP • Ping • DNS • SSL • 路由追踪",
+      "desc": "一次输入，同时发起多项检测，快速定位域名/IP 的网络连通性和配置问题。",
+      "placeholder": "请输入域名或 IP，如 github.com"
+    },
+    "probe": {
+      "label": "网络拨测",
+      "title": "网络拨测工具",
+      "subtitle": "多节点实时拨测 • 网络连通性诊断",
+      "desc": "全球 100+ 网络拨测节点，模拟用户访问域名/IP，帮助发现网络、站点可用性问题。",
+      "placeholder": "请输入域名或 IP"
+    },
+    "domain": {
+      "label": "域名查询",
+      "title": "域名信息查询",
+      "subtitle": "WHOIS • ICP • SSL • DNS 全方位查询",
+      "desc": "查询域名注册信息、ICP 备案、SSL 证书状态及 DNS 解析记录。",
+      "placeholder": "请输入域名，如 example.com"
+    }
+  },
+  "features": {
+    "title": "产品功能",
+    "networkMonitor": {
+      "title": "网络质量监控",
+      "desc": "主动探测分布在全球各地方的用户访问中心云、边缘云的网络质量，包括可达性、时延、丢包、抖动等。"
+    },
+    "dnsMonitor": {
+      "title": "DNS 监测",
+      "desc": "主动探测 DNS 的可用性、时延，分析诊断解析记录。"
+    },
+    "apiMonitor": {
+      "title": "API 监测",
+      "desc": "主动探测分布在全球各地方的用户访问 HTTP 接口的响应时间、响应码、响应内容正确性。"
+    },
+    "webMonitor": {
+      "title": "Web 页面监测",
+      "desc": "从用户视角分析页面整体加载耗时，页面元素从 CDN、源站拉取的时延、可用性，洞察用户体验。"
+    },
+    "alerts": {
+      "title": "告警",
+      "desc": "支持固定阈值、智能基线的异常检测，发现问题第一时间通知相关人。"
+    },
+    "analysis": {
+      "title": "多维分析",
+      "desc": "分析从各地区、各城市、各运营商等访问的网络质量和用户体验。"
+    },
+    "instant": {
+      "title": "即时拨测",
+      "desc": "立即发起一次探测，即刻查看结果，进行问题诊断和业务验证。"
+    },
+    "openApi": {
+      "title": "开放 API",
+      "desc": "支持 API 拉取拨测数据，用于故障转移、报告等场景。"
+    }
+  },
+  "tools": {
+    "title": "常用网络诊断工具",
+    "useTool": "使用工具",
+    "http": {
+      "name": "HTTP检测",
+      "desc": "HTTP/HTTPS 响应时间和状态检查"
+    },
+    "ping": {
+      "name": "Ping测试",
+      "desc": "多地 ICMP Ping 连通性测试"
+    },
+    "dns": {
+      "name": "DNS查询",
+      "desc": "全球 DNS 解析和污染检测"
+    },
+    "ssl": {
+      "name": "SSL检查",
+      "desc": "SSL 证书链和安全配置验证"
+    },
+    "traceroute": {
+      "name": "路由追踪",
+      "desc": "网络路径跟踪和节点分析"
+    },
+    "diagnose": {
+      "name": "一键诊断",
+      "desc": "综合网络诊断和问题定位"
+    }
+  }
+}

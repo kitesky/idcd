@@ -263,6 +263,246 @@
       "description": "Unix 时间戳与可读日期互转，跨时区支持，支持秒/毫秒/ISO 8601 格式。"
     }
   },
+  "yaml-formatter": {
+    "title": "YAML 格式化",
+    "description": "YAML 格式美化和验证",
+    "meta": {
+      "title": "YAML 格式化工具 - 在线 YAML 美化 | idcd",
+      "description": "在线 YAML 格式化、美化工具，支持 YAML 与 JSON 互转。"
+    }
+  },
+  "xml-formatter": {
+    "title": "XML 格式化",
+    "description": "XML 格式美化和验证",
+    "meta": {
+      "title": "XML 格式化工具 - 在线 XML 美化 | idcd",
+      "description": "在线 XML 格式化、美化和语法验证工具，支持 XML 压缩。"
+    }
+  },
+  "url-encode": {
+    "title": "URL 编解码",
+    "description": "URL 编码与解码",
+    "meta": {
+      "title": "URL 编解码工具 - 在线 URL 编码 | idcd",
+      "description": "在线 URL 编码解码工具，支持 encodeURIComponent 和 encodeURI 格式。"
+    }
+  },
+  "unicode": {
+    "title": "Unicode 转换",
+    "description": "Unicode 字符查询与转换",
+    "meta": {
+      "title": "Unicode 字符转换 - Unicode 码点查询 | idcd",
+      "description": "查询 Unicode 字符信息，支持字符与码点的互相转换。"
+    }
+  },
+  "color-picker": {
+    "title": "颜色格式转换",
+    "description": "颜色格式互转（HEX/RGB/HSL）",
+    "meta": {
+      "title": "颜色格式转换工具 - HEX/RGB/HSL 互转 | idcd",
+      "description": "在线颜色格式转换工具，支持 HEX、RGB、HSL 格式互相转换并预览颜色。"
+    }
+  },
+  "markdown": {
+    "title": "Markdown 预览",
+    "description": "Markdown 编辑与实时预览",
+    "meta": {
+      "title": "Markdown 预览工具 - 在线 Markdown 渲染 | idcd",
+      "description": "在线 Markdown 编辑和实时预览工具，无需安装。"
+    }
+  },
+  "diff": {
+    "title": "文本对比",
+    "description": "文本内容逐行差异比较",
+    "meta": {
+      "title": "文本对比工具 - 在线文本差异比较 | idcd",
+      "description": "在线文本差异比较工具，逐行对比两段文本内容的差异。"
+    }
+  },
+  "word-counter": {
+    "title": "字数统计",
+    "description": "文本字数、字符数、行数统计",
+    "meta": {
+      "title": "字数统计工具 - 在线文本计数 | idcd",
+      "description": "统计文本字数、字符数、行数和段落数，支持中英文混合计数。"
+    }
+  },
+  "password-gen": {
+    "title": "密码生成器",
+    "description": "安全随机密码生成",
+    "meta": {
+      "title": "密码生成器 - 随机安全密码生成 | idcd",
+      "description": "生成高强度随机密码，支持自定义长度和字符集。"
+    }
+  },
+  "uuid-gen": {
+    "title": "UUID 生成器",
+    "description": "UUID v4 批量生成工具",
+    "meta": {
+      "title": "UUID 生成器 - 在线 UUID v4 生成 | idcd",
+      "description": "在线生成 UUID v4 唯一标识符，支持批量生成。"
+    }
+  },
+  "number-convert": {
+    "title": "进制转换",
+    "description": "数字进制（二/八/十/十六）互转",
+    "meta": {
+      "title": "数字进制转换 - 二进制十六进制转换 | idcd",
+      "description": "在线进制转换工具，支持二进制、八进制、十进制、十六进制互转。"
+    }
+  },
+  "text-case": {
+    "title": "大小写转换",
+    "description": "文本大小写批量转换",
+    "meta": {
+      "title": "文本大小写转换 - camelCase/snake_case | idcd",
+      "description": "在线文本大小写转换，支持 camelCase、snake_case、PascalCase 等格式。"
+    }
+  },
+  "html-encode": {
+    "title": "HTML 实体编码",
+    "description": "HTML 实体编码与解码",
+    "meta": {
+      "title": "HTML 实体编码工具 - HTML 转义 | idcd",
+      "description": "在线 HTML 实体编码解码工具，转义特殊字符防止 XSS 攻击。"
+    }
+  },
+  "json-to-yaml": {
+    "title": "JSON ↔ YAML",
+    "description": "JSON 与 YAML 格式互转",
+    "meta": {
+      "title": "JSON/YAML 互转工具 - 格式转换 | idcd",
+      "description": "JSON 与 YAML 格式互相转换工具，支持格式验证。"
+    }
+  },
+  "url-parser": {
+    "title": "URL 解析",
+    "description": "URL 各部分解析展示",
+    "meta": {
+      "title": "URL 解析工具 - URL 结构解析 | idcd",
+      "description": "解析 URL 各个组成部分：协议、域名、路径、参数等。"
+    }
+  },
+  "user-agent": {
+    "title": "UA 解析",
+    "description": "User-Agent 字符串解析",
+    "meta": {
+      "title": "User-Agent 解析工具 - 浏览器识别 | idcd",
+      "description": "解析 User-Agent 字符串，识别浏览器、操作系统和设备类型。"
+    }
+  },
+  "http-status": {
+    "title": "HTTP 状态码",
+    "description": "HTTP 响应状态码查询",
+    "meta": {
+      "title": "HTTP 状态码查询 - HTTP 响应码大全 | idcd",
+      "description": "查询 HTTP 状态码含义，涵盖 1xx/2xx/3xx/4xx/5xx 所有状态码。"
+    }
+  },
+  "mime-type": {
+    "title": "MIME 类型",
+    "description": "文件 MIME 类型查询",
+    "meta": {
+      "title": "MIME 类型查询 - 文件类型大全 | idcd",
+      "description": "查询文件扩展名对应的 MIME 类型，或反查 MIME 类型对应的文件扩展名。"
+    }
+  },
+  "timezone": {
+    "title": "时区转换",
+    "description": "全球时区时间转换",
+    "meta": {
+      "title": "时区转换工具 - 全球时区查询 | idcd",
+      "description": "在线时区转换工具，查看全球主要时区的当前时间。"
+    }
+  },
+  "date-calc": {
+    "title": "日期计算",
+    "description": "日期差值和加减计算",
+    "meta": {
+      "title": "日期计算工具 - 日期差值计算 | idcd",
+      "description": "计算两个日期之间的天数差，或在日期上加减天数。"
+    }
+  },
+  "image-base64": {
+    "title": "图片 Base64",
+    "description": "图片转 Base64 编码",
+    "meta": {
+      "title": "图片 Base64 转换 - 图片转 Data URL | idcd",
+      "description": "将图片文件转换为 Base64 编码的 Data URL，方便内嵌使用。"
+    }
+  },
+  "csv-formatter": {
+    "title": "CSV 格式化",
+    "description": "CSV 数据解析和表格展示",
+    "meta": {
+      "title": "CSV 格式化工具 - CSV 数据解析 | idcd",
+      "description": "在线 CSV 格式化工具，将 CSV 数据转换为表格展示。"
+    }
+  },
+  "number-format": {
+    "title": "数字格式化",
+    "description": "数字千分位和货币格式化",
+    "meta": {
+      "title": "数字格式化工具 - 千分位货币格式 | idcd",
+      "description": "在线数字格式化工具，支持千分位分隔、货币格式和自定义精度。"
+    }
+  },
+  "lorem": {
+    "title": "Lorem Ipsum",
+    "description": "Lorem Ipsum 占位文本生成",
+    "meta": {
+      "title": "Lorem Ipsum 生成器 - 占位文字生成 | idcd",
+      "description": "生成 Lorem Ipsum 拉丁文占位文本，支持段落数量自定义。"
+    }
+  },
+  "line-sort": {
+    "title": "行排序",
+    "description": "文本行排序（正序/倒序）",
+    "meta": {
+      "title": "文本行排序工具 - 在线文本排序 | idcd",
+      "description": "对文本按行排序（正序/倒序），支持去重和忽略大小写。"
+    }
+  },
+  "duplicate-remover": {
+    "title": "去重工具",
+    "description": "文本行去重，保留唯一行",
+    "meta": {
+      "title": "文本去重工具 - 在线重复行删除 | idcd",
+      "description": "删除文本中的重复行，保留唯一行。"
+    }
+  },
+  "text-stats": {
+    "title": "文本统计",
+    "description": "词频统计与文本分析",
+    "meta": {
+      "title": "文本统计分析工具 - 字频统计 | idcd",
+      "description": "统计文本中的词频、字符频率、句子数量等详细信息。"
+    }
+  },
+  "escape-html": {
+    "title": "HTML 转义",
+    "description": "HTML 内容安全转义",
+    "meta": {
+      "title": "HTML 转义工具 - HTML 安全转义 | idcd",
+      "description": "将 HTML 内容转义为安全的文本格式，防止 XSS 注入。"
+    }
+  },
+  "chmod-calc": {
+    "title": "chmod 计算",
+    "description": "Unix 文件权限可视化计算",
+    "meta": {
+      "title": "chmod 权限计算器 - Unix 文件权限 | idcd",
+      "description": "可视化计算 Unix/Linux 文件权限，支持八进制和符号表示法互转。"
+    }
+  },
+  "sort-json": {
+    "title": "JSON 键排序",
+    "description": "JSON 对象键按字母序排序",
+    "meta": {
+      "title": "JSON 键排序工具 - JSON 格式整理 | idcd",
+      "description": "将 JSON 对象的键按字母顺序排序，方便对比和版本管理。"
+    }
+  },
   "_ui": {
     "run": "开始检测",
     "result": "检测结果",

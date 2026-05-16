@@ -1,1 +1,92 @@
-{}
+{
+  "title": "概览",
+  "subtitle": "监控健康状态与关键指标一览",
+  "stats": {
+    "totalMonitors": "监控总数",
+    "onlineRatio": "在线 / 总数",
+    "checksToday": "今日拨测次数",
+    "uptime7d": "7 日平均可用率",
+    "activeAlerts": "未解决告警",
+    "statusPages": "状态页数量",
+    "uptime": "整体可用率",
+    "incidents": "事件数"
+  },
+  "quickLinks": {
+    "title": "快捷入口",
+    "newMonitor": {
+      "title": "新建监控",
+      "desc": "添加 HTTP、Ping、SSL 或 DNS 监控项目",
+      "action": "立即创建"
+    },
+    "viewAlerts": {
+      "title": "查看告警",
+      "desc": "管理告警通道、策略和历史事件",
+      "action": "前往告警"
+    },
+    "statusPages": {
+      "title": "管理状态页",
+      "desc": "发布和配置对外公开的服务状态页面",
+      "action": "管理状态页"
+    }
+  },
+  "onboarding": {
+    "title": "开始监控您的第一个服务",
+    "desc": "添加 HTTP / HTTPS / Ping / TCP 监控，实时掌握服务可用性，配置告警在故障时第一时间通知您",
+    "createMonitor": "创建监控",
+    "configureAlerts": "配置告警通道"
+  },
+  "downMonitors": {
+    "title": "告警中的监控",
+    "loading": "加载中…"
+  },
+  "recentAlerts": "近期告警",
+  "viewAll": "查看全部",
+  "noAlerts": "最近 7 天无告警",
+  "allNormal": "所有监控正常",
+  "pinnedMonitors": {
+    "title": "置顶监控",
+    "add": "添加",
+    "empty": "暂无置顶监控，点击 + 添加",
+    "lastCheck": "最近检测：{time}",
+    "sheet": {
+      "title": "选择置顶监控（最多 6 个）",
+      "noMonitors": "暂无监控项",
+      "save": "保存",
+      "cancel": "取消"
+    }
+  },
+  "monitorStatus": {
+    "active": "在线",
+    "down": "离线",
+    "paused": "暂停"
+  },
+  "monitorStatusTitle": "监控状态",
+  "incidents": {
+    "title": "事件管理",
+    "create": "创建事件",
+    "table": {
+      "monitorName": "监控名称",
+      "status": "状态",
+      "startedAt": "开始时间"
+    },
+    "status": {
+      "open": "处理中",
+      "resolved": "已解决",
+      "monitoring": "观察中",
+      "firing": "告警中",
+      "acknowledged": "已确认"
+    },
+    "severity": {
+      "critical": "严重",
+      "high": "高",
+      "medium": "中",
+      "low": "低"
+    }
+  },
+  "timeAgo": {
+    "seconds": "{n}秒前",
+    "minutes": "{n}分钟前",
+    "hours": "{n}小时前",
+    "days": "{n}天前"
+  }
+}

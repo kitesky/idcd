@@ -1,1 +1,52 @@
-{}
+{
+  "title": "Simple, Transparent Pricing",
+  "subtitle": "Start free, scale flexibly as you grow. No hidden fees, cancel anytime.",
+  "billing": {
+    "monthly": "Monthly",
+    "yearly": "Yearly",
+    "yearlySave": "Save up to 20%",
+    "perMonth": "/mo",
+    "contactUs": "Contact us",
+    "originalPrice": "Was",
+    "yearlyTotal": "¥{price}/year billed annually"
+  },
+  "plans": {
+    "free": {
+      "name": "Free",
+      "description": "The perfect starting point for personal projects and small sites",
+      "cta": "Get started free"
+    },
+    "pro": {
+      "name": "Pro",
+      "description": "For professional individuals who need higher frequency and more monitors",
+      "badge": "Most popular",
+      "cta": "Start free trial"
+    },
+    "team": {
+      "name": "Team",
+      "description": "Team collaboration with WeCom and DingTalk alert channels",
+      "cta": "Start free trial"
+    },
+    "business": {
+      "name": "Business",
+      "description": "Enterprise-grade monitoring with private nodes and phone alerts",
+      "cta": "Start free trial"
+    }
+  },
+  "features": {
+    "monitors": "Monitors",
+    "checkFreq": "Check frequency",
+    "probeNodes": "Probe nodes",
+    "alertChannels": "Alert channels",
+    "apiQuota": "API quota",
+    "teamMembers": "Team members",
+    "statusPages": "Status pages",
+    "mcpUnits": "MCP Units"
+  },
+  "enterprise": {
+    "name": "Enterprise · Custom",
+    "description": "Private deployment, dedicated SLA, compliance audit, custom integration",
+    "cta": "Contact sales"
+  },
+  "trial": "All paid plans include a 14-day free trial · Cancel anytime · No credit card required"
+}

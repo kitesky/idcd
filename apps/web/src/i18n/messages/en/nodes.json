@@ -1,1 +1,192 @@
-{}
+{
+  "title": "Probe Nodes",
+  "subtitle": "Real probe nodes distributed globally",
+  "publicTitle": "Global Monitoring Nodes",
+  "publicSubtitle": "idcd has deployed monitoring nodes across the globe to provide high-quality network probing services",
+  "fetchError": "Failed to fetch node data (HTTP {status})",
+  "fetchNetworkError": "Unable to connect to backend, please try again later",
+  "apply": {
+    "title": "Apply to Become a Node",
+    "description": "Join the idcd global probe network",
+    "submit": "Submit Application",
+    "pageTitle": "Contribute a Node, Earn Points",
+    "pageDesc": "Add your server to the idcd global monitoring network — earn points with every heartbeat, redeemable for API quota and monitoring plans.",
+    "badge": "Community Node Program",
+    "steps": {
+      "1": { "title": "Submit Application", "desc": "Fill in server info and your motivation" },
+      "2": { "title": "14-Day Trial Period", "desc": "System automatically checks node stability" },
+      "3": { "title": "Join Global Node Pool", "desc": "Become an official node after approval" }
+    },
+    "form": {
+      "title": "Submit Node Application",
+      "desc": "Fields marked with * are required",
+      "hostname": "Server Hostname *",
+      "hostnamePlaceholder": "my-server.example.com",
+      "ipAddress": "IP Address *",
+      "ipPlaceholder": "1.2.3.4",
+      "country": "Country *",
+      "countryPlaceholder": "Select country",
+      "city": "City",
+      "cityPlaceholder": "San Francisco",
+      "isp": "ISP",
+      "ispPlaceholder": "Cloudflare",
+      "bandwidth": "Bandwidth (Mbps)",
+      "bandwidthPlaceholder": "100",
+      "motivation": "Motivation",
+      "motivationPlaceholder": "Briefly describe why you want to contribute a node (optional)",
+      "submitting": "Submitting...",
+      "submitButton": "Submit Application",
+      "loginRequired": "Please log in before submitting",
+      "networkError": "Network error, please try again later",
+      "submitFailed": "Submission failed, please try again"
+    },
+    "success": "Application submitted! We will review your application within 2 business days and notify you by email.",
+    "countries": {
+      "CN": "China",
+      "US": "United States",
+      "JP": "Japan",
+      "SG": "Singapore",
+      "DE": "Germany",
+      "OTHER": "Other"
+    }
+  },
+  "detail": {
+    "title": "Node Details",
+    "location": "Location",
+    "isp": "ISP",
+    "status": "Status",
+    "latency": "Latency",
+    "uptime": "Uptime",
+    "since": "Joined",
+    "backToList": "Back to Node List",
+    "notFound": "Node {id} does not exist or is offline.",
+    "loadError": "Unable to load node diagnostics, please try again later.",
+    "uptime24h": "24h Uptime",
+    "checks24h": "Check Count",
+    "p50Latency": "P50 Latency",
+    "lastSeen": "Last Seen",
+    "latencyDist": "Latency Distribution",
+    "healthTrend": "24h Health Trend",
+    "nodeInfo": "Node Information",
+    "nodeId": "Node ID",
+    "country": "Country/Region",
+    "city": "City",
+    "asn": "ASN",
+    "todayChecks": "Today's Checks",
+    "checksUnit": "",
+    "normal": "Normal",
+    "abnormal": "Degraded",
+    "hoursAgo": "24h ago",
+    "now": "Now",
+    "minLatency": "Min {val} ms",
+    "maxLatency": "Max {val} ms",
+    "statusLabels": {
+      "active": "Active",
+      "degraded": "Degraded",
+      "inactive": "Offline",
+      "unknown": "Unknown"
+    }
+  },
+  "table": {
+    "name": "Node Name",
+    "region": "Region",
+    "isp": "ISP",
+    "status": "Status",
+    "latency": "Latency",
+    "nodeId": "Node ID",
+    "asn": "ASN",
+    "carrier": "Carrier",
+    "exitIp": "Exit IP",
+    "country": "Country/Region",
+    "empty": "No nodes match the criteria",
+    "showing": "Showing {count} nodes",
+    "showingOf": " (of {total})",
+    "viewDiag": "View Diagnostics"
+  },
+  "status": {
+    "online": "Online",
+    "offline": "Offline",
+    "degraded": "Degraded"
+  },
+  "filter": {
+    "all": "All Regions",
+    "allCountries": "All Countries/Regions",
+    "allCarriers": "All Carriers",
+    "allStatus": "All Status",
+    "asia": "Asia",
+    "europe": "Europe",
+    "americas": "Americas",
+    "oceania": "Oceania",
+    "search": "Search nodes, ASN, IP...",
+    "selectCountry": "Select country/region",
+    "selectCarrier": "Select carrier",
+    "selectStatus": "Select status"
+  },
+  "map": {
+    "title": "Node Distribution Map",
+    "zoom": "Zoom",
+    "onlineNodes": "Online Nodes",
+    "offlineNodes": "Offline Nodes"
+  },
+  "stats": {
+    "total": "Total Nodes",
+    "online": "Online Nodes",
+    "countries": "Countries/Regions",
+    "carriers": "Carriers"
+  },
+  "myApplications": {
+    "title": "My Node Applications",
+    "desc": "Manage your submitted community node applications",
+    "applyNew": "Apply for New Node",
+    "empty": "No applications yet, click \"Apply for New Node\" to start contributing",
+    "table": {
+      "ip": "Node IP",
+      "country": "Country",
+      "status": "Status",
+      "submittedAt": "Submitted At"
+    },
+    "statusLabel": {
+      "pending": "Under Review",
+      "probation": "On Trial",
+      "active": "Active",
+      "rejected": "Rejected"
+    },
+    "fetchFailed": "Unable to fetch node applications",
+    "submitSuccess": "Application submitted, we will complete the review within 1-3 business days"
+  },
+  "deploy": {
+    "title": "You have an approved node — follow these steps to deploy",
+    "step1": "1. Download and install Agent",
+    "step2": "2. Configure environment variables",
+    "step3": "3. Start Agent",
+    "enrollTokenHint": "Enroll token must be obtained from an administrator. The node status will update automatically once deployment succeeds."
+  },
+  "contribute": {
+    "title": "Contribute a Community Node",
+    "heartbeatPoints": "+1 point",
+    "activationBonus": "+200 points",
+    "desc": "Earn points by contributing a node: {heartbeat} per heartbeat, {activation} activation bonus.",
+    "hint": "After approval, follow the node installation guide to deploy. Points accumulate automatically once the node is online. You will see the full deployment guide after approval. Reviews typically complete within 1-3 business days."
+  },
+  "apply2": {
+    "dialogTitle": "Apply to Contribute a Community Node",
+    "dialogDesc": "Fill in the node information and submit for review. We will complete the review within 1-3 business days.",
+    "fields": {
+      "ipAddress": "IP Address",
+      "ipRequired": "Please enter an IP address",
+      "hostname": "Hostname",
+      "hostnameRequired": "Please enter a hostname",
+      "countryCode": "Country Code",
+      "countryCodeRequired": "Please enter a country code",
+      "countryCodePlaceholder": "CN / US / SG",
+      "city": "City",
+      "isp": "ISP",
+      "bandwidth": "Bandwidth (Mbps)",
+      "motivation": "Motivation",
+      "motivationPlaceholder": "Briefly describe your motivation for contributing a node (optional)"
+    },
+    "cancel": "Cancel",
+    "submitting": "Submitting…",
+    "submit": "Submit Application"
+  }
+}

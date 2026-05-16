@@ -1,1 +1,151 @@
-{}
+{
+  "brand": {
+    "tagline": "Global Network Diagnostics Platform"
+  },
+  "links": {
+    "tools": "Tools",
+    "agent": "AI Agent",
+    "nodes": "Nodes",
+    "becomeNode": "Become a Node",
+    "pricing": "Pricing",
+    "docs": "Docs"
+  },
+  "search": {
+    "placeholder": "Search tools...",
+    "popular": "Popular Tools",
+    "results": "Tools",
+    "close": "Close"
+  },
+  "auth": {
+    "login": "Log In",
+    "register": "Sign Up Free",
+    "dashboard": "Dashboard"
+  },
+  "locale": {
+    "label": "Language",
+    "zh": "简体中文",
+    "en": "English"
+  },
+  "menu": {
+    "open": "Open menu",
+    "navigation": "Website navigation menu"
+  },
+  "toolCategories": {
+    "probe": "Probe Tools",
+    "utility": "Utility Tools"
+  },
+  "toolGroups": {
+    "network": "Network Connectivity",
+    "domain": "Domain & Certificates",
+    "email": "Email Services",
+    "ip": "IP & Routing",
+    "format": "Formatters",
+    "encode": "Encoders",
+    "text": "Text Processing",
+    "dev": "Dev Tools"
+  },
+  "tools": {
+    "ping": "Ping Test",
+    "tcp": "TCP Port",
+    "tcping": "TCPing",
+    "traceroute": "Traceroute",
+    "mtr": "MTR Route",
+    "speedtest": "Speed Test",
+    "ssl": "SSL Certificate Check",
+    "whois": "WHOIS Lookup",
+    "icp": "ICP Filing Lookup",
+    "dns": "DNS Lookup",
+    "http": "HTTP Check",
+    "mx": "MX Record Lookup",
+    "spf": "SPF Record Lookup",
+    "dmarc": "DMARC Lookup",
+    "dkim": "DKIM Key Lookup",
+    "smtp": "SMTP Test",
+    "rdns": "Reverse DNS Lookup",
+    "ntp": "NTP Service Test",
+    "ip-geo": "IP Geolocation",
+    "asn": "ASN Lookup",
+    "bgp": "BGP Route Lookup",
+    "json-formatter": "JSON Formatter",
+    "yaml-formatter": "YAML Formatter",
+    "xml-formatter": "XML Formatter",
+    "csv-formatter": "CSV Formatter",
+    "base64": "Base64 Encode/Decode",
+    "url-encode": "URL Encode/Decode",
+    "hash": "Hash Calculator",
+    "html-encode": "HTML Entity Encode",
+    "regex-tester": "Regex Tester",
+    "diff": "Text Diff",
+    "word-counter": "Word Counter",
+    "markdown": "Markdown Preview",
+    "line-sort": "Line Sorter",
+    "jwt-decoder": "JWT Decoder",
+    "cidr-calculator": "CIDR Calculator",
+    "timestamp": "Timestamp Converter",
+    "ipv6-converter": "IPv6 Checker",
+    "cron-parser": "Cron Visualizer",
+    "qrcode": "QR Code Generator"
+  },
+  "featured": {
+    "label": "Popular Tools",
+    "viewAll": "View all tools →"
+  },
+  "featuredProbeDesc": {
+    "ping": "Global node network probing",
+    "ssl": "Certificate expiry check",
+    "dns": "Global resolution diagnostics"
+  },
+  "featuredUtilityDesc": {
+    "json": "Format & minify JSON",
+    "regex": "Real-time highlight matching",
+    "base64": "Encode/decode & image convert"
+  },
+  "footer": {
+    "sections": {
+      "about": {
+        "title": "About Us",
+        "whyIdcd": "Why idcd",
+        "docs": "Documentation",
+        "agent": "AI Agent Integration",
+        "transparency": "Transparency Report",
+        "join": "Join Us"
+      },
+      "probe": {
+        "title": "Probe Tools",
+        "ping": "Ping Test",
+        "http": "HTTP Check",
+        "dns": "DNS Lookup",
+        "tcp": "TCP Port",
+        "traceroute": "Traceroute",
+        "mtr": "MTR Route"
+      },
+      "monitoring": {
+        "title": "Monitoring",
+        "monitors": "Monitors",
+        "alerts": "Alert Settings",
+        "reports": "Analytics"
+      },
+      "contact": {
+        "title": "Contact Us",
+        "email": "Email: ",
+        "wechat": "WeChat Official",
+        "wechatQr": "WeChat Official\nQR Code",
+        "video": "Video Channel",
+        "videoQr": "Video Channel\nQR Code"
+      }
+    },
+    "copyright": "© 2026 idcd.com. All rights reserved.",
+    "icp": "蜀ICP备19009987号-2",
+    "beian": "川公网安备 51010702001950号"
+  },
+  "cookie": {
+    "description": "We use cookies to provide a better user experience. By continuing to use this site, you agree to our",
+    "privacy": "Privacy Policy",
+    "and": "and",
+    "terms": "Terms of Service",
+    "essentialOnly": "Essential Only",
+    "acceptAll": "Accept All",
+    "closeLabel": "Close (accept essential cookies only)",
+    "regionLabel": "Cookie consent"
+  }
+}

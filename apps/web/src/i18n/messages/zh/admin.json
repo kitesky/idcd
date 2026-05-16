@@ -1,1 +1,279 @@
-{}
+{
+  "title": "管理后台",
+  "nav": {
+    "users": "用户管理",
+    "nodes": "节点管理",
+    "metrics": "系统指标",
+    "upgrades": "升级管理",
+    "betaInvitations": "内测邀请",
+    "refundFailed": "退款失败",
+    "nodeApplications": "节点申请"
+  },
+  "home": {
+    "title": "管理首页",
+    "subtitle": "系统配置状态一览",
+    "configStatus": "系统配置状态",
+    "emailService": "邮件服务（notifier）",
+    "needsConfig": "需配置",
+    "sendTestEmail": "发送测试邮件",
+    "sending": "发送中…",
+    "emailSent": "邮件测试请求已发送",
+    "requestFailed": "请求失败，请检查 admin token 及服务状态",
+    "networkError": "网络错误，请确认 API 服务已启动"
+  },
+  "users": {
+    "title": "用户管理",
+    "search": "搜索用户",
+    "searchPlaceholder": "搜索邮箱…",
+    "clearSearch": "清除",
+    "totalUsers": "共 {total} 名用户",
+    "loading": "加载中…",
+    "noUsers": "暂无用户",
+    "table": {
+      "id": "用户 ID",
+      "email": "邮箱",
+      "name": "名称",
+      "plan": "套餐",
+      "status": "状态",
+      "monitorCount": "监控数",
+      "createdAt": "注册时间",
+      "lastLogin": "最后登录",
+      "actions": "操作"
+    },
+    "status": {
+      "active": "正常",
+      "suspended": "已封禁",
+      "unverified": "未验证",
+      "deleted": "已删除"
+    },
+    "actions": {
+      "view": "查看详情",
+      "suspend": "封禁",
+      "unsuspend": "解封",
+      "resetPassword": "重置密码",
+      "impersonate": "代入账号"
+    },
+    "confirm": {
+      "suspend": "确认封禁该用户？",
+      "unsuspend": "确认解封该用户？"
+    },
+    "pagination": {
+      "prev": "上一页",
+      "next": "下一页"
+    }
+  },
+  "nodes": {
+    "title": "节点列表",
+    "dashboard": "节点健康看板",
+    "dashboardSubtitle": "全局节点在线状态、延迟和心跳监控",
+    "approve": "审批",
+    "reject": "拒绝",
+    "online": "在线节点",
+    "offline": "离线节点",
+    "degraded": "降级节点",
+    "total": "节点总数",
+    "noData": "暂无节点数据",
+    "table": {
+      "nodeId": "节点 ID",
+      "hostname": "主机名",
+      "osArch": "系统 / 架构",
+      "ip": "IP 地址",
+      "agentVersion": "Agent 版本",
+      "status": "状态",
+      "lastSeen": "最后在线"
+    },
+    "status": {
+      "active": "在线",
+      "inactive": "离线",
+      "degraded": "降级"
+    }
+  },
+  "upgrades": {
+    "title": "OTA 灰度升级",
+    "subtitle": "管理节点二进制升级计划（三级灰度：1% / 10% / 100%）",
+    "total": "共 {count} 个升级计划",
+    "create": "新建升级计划",
+    "createDialog": "新建 OTA 升级计划",
+    "listTitle": "升级计划列表",
+    "noData": "暂无升级计划",
+    "manual": "手动升级",
+    "plan": "套餐",
+    "amount": "金额",
+    "paymentMethod": "支付方式",
+    "form": {
+      "version": "版本号",
+      "downloadUrl": "下载地址",
+      "checksum": "SHA-256 校验和",
+      "rolloutPct": "灰度比例: {pct}%",
+      "cancel": "取消",
+      "create": "创建",
+      "creating": "创建中..."
+    },
+    "table": {
+      "version": "版本",
+      "rolloutPct": "灰度比例",
+      "status": "状态",
+      "createdAt": "创建时间",
+      "actions": "操作"
+    },
+    "actions": {
+      "pause": "暂停",
+      "resume": "继续",
+      "complete": "完成"
+    },
+    "status": {
+      "active": "进行中",
+      "paused": "已暂停",
+      "completed": "已完成"
+    },
+    "toast": {
+      "created": "升级计划已创建",
+      "updated": "已更新"
+    }
+  },
+  "betaInvitations": {
+    "title": "Beta 邀请码管理",
+    "total": "共 {count} 条邀请码",
+    "generate": "创建邀请码",
+    "createDialog": "创建邀请码",
+    "noData": "暂无邀请码",
+    "code": "邀请码",
+    "emailLimit": "邮箱限制",
+    "used": "已使用",
+    "unused": "未使用",
+    "expiresAt": "到期时间",
+    "applicant": "申请人",
+    "form": {
+      "emailLabel": "邮箱限制（可选）",
+      "emailPlaceholder": "user@example.com",
+      "emailHint": "留空则任何人可兑换",
+      "expiryLabel": "有效期",
+      "cancel": "取消",
+      "confirm": "确认创建",
+      "creating": "创建中…",
+      "days7": "7 天",
+      "days30": "30 天",
+      "days90": "90 天",
+      "permanent": "永久"
+    },
+    "actions": {
+      "approve": "审批",
+      "revoke": "撤销",
+      "processing": "处理中…"
+    },
+    "filter": {
+      "all": "全部"
+    },
+    "toast": {
+      "approved": "已审批",
+      "revoked": "已撤销",
+      "created": "邀请码已创建"
+    }
+  },
+  "refundFailed": {
+    "title": "退款失败看板",
+    "subtitle": "D5 — refund_failed 状态支付一览，支持手动触发重试",
+    "alertTitle": "待处理退款失败记录",
+    "alertDesc": "共 {count} 笔退款处于 refund_failed 状态，需要手动重试或联系用户。",
+    "emptyTitle": "无待处理记录",
+    "emptyDesc": "当前没有 refund_failed 状态的支付记录。",
+    "listTitle": "退款失败支付列表",
+    "noData": "暂无记录",
+    "retry": "重试退款",
+    "retrying": "重试中…",
+    "manualRetry": "手动重试",
+    "userId": "用户 ID",
+    "amount": "退款金额",
+    "reason": "失败原因",
+    "failedAt": "失败时间",
+    "retryCount": "重试次数",
+    "retryCountUnit": "次",
+    "retryAt": "下次重试",
+    "table": {
+      "paymentId": "Payment ID",
+      "userId": "用户 ID",
+      "amount": "金额",
+      "failedAt": "失败时间",
+      "retryCount": "重试次数",
+      "actions": "操作"
+    }
+  },
+  "metrics": {
+    "title": "系统概览",
+    "apiLatency": "API 延迟",
+    "activeUsers": "活跃用户",
+    "probeCount": "探测次数",
+    "errorRate": "错误率",
+    "totalUsers": "总用户数",
+    "activeUsersRecent": "近 7 日活跃 {count}",
+    "activeMonitors": "活跃监控",
+    "totalMonitors": "共 {total} 个",
+    "onlineNodes": "在线节点",
+    "totalNodes": "共 {total} 个",
+    "mrrEstimate": "估算 MRR",
+    "mrrSub": "Pro+Team+Enterprise",
+    "loadFailed": "加载失败，请稍后重试",
+    "subscriptionDist": "订阅分布",
+    "nodeHealth": "节点健康",
+    "online": "在线 {count}",
+    "offline": "离线 {count}"
+  },
+  "nodeApplications": {
+    "title": "节点申请审核",
+    "subtitle": "审核社区节点接入申请，批准后进入 14 天观察期",
+    "applicant": "申请人",
+    "ip": "节点 IP",
+    "location": "地区",
+    "approve": "批准",
+    "reject": "拒绝",
+    "noData": "暂无申请",
+    "pendingCount": "待审核",
+    "probation": "观察期",
+    "activated": "已激活",
+    "rejected": "已拒绝",
+    "reviewDialog": "审核节点申请",
+    "reviewAction": "操作",
+    "reviewNote": "备注（可选）",
+    "reviewNotePlaceholder": "审核备注…",
+    "approveOption": "批准（进入观察期）",
+    "rejectOption": "拒绝",
+    "cancel": "取消",
+    "submit": "提交中…",
+    "filter": {
+      "all": "全部"
+    },
+    "table": {
+      "hostname": "主机名",
+      "ip": "IP 地址",
+      "location": "位置",
+      "isp": "ISP",
+      "status": "状态",
+      "appliedAt": "申请时间",
+      "actions": "操作"
+    },
+    "status": {
+      "pending": "待审核",
+      "probation": "观察期",
+      "approved": "已批准",
+      "active": "激活",
+      "rejected": "已拒绝"
+    },
+    "applicationDetail": {
+      "hostname": "主机名：",
+      "ip": "IP：",
+      "location": "位置：",
+      "isp": "ISP："
+    },
+    "toast": {
+      "approved": "申请已批准",
+      "rejected": "申请已拒绝",
+      "review": "审核"
+    },
+    "listTitle": "申请列表"
+  },
+  "lang": {
+    "zh": "中文",
+    "en": "English",
+    "switchTo": "切换语言"
+  }
+}

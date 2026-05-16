@@ -1,1 +1,219 @@
-{}
+{
+  "statusPages": {
+    "title": "Status Pages",
+    "description": "Create and manage publicly visible service status pages",
+    "create": "New Status Page",
+    "list": "Status Page List",
+    "public": "Public",
+    "private": "Private",
+    "domain": "Custom Domain",
+    "monitors": "Linked Monitors",
+    "empty": "No status pages yet",
+    "loadFailed": "Failed to load, please refresh",
+    "visit": "Visit",
+    "delete": "Delete",
+    "deleting": "Deleting...",
+    "freePlan": {
+      "title": "Free Plan Limitation",
+      "upgrade": "Upgrade to Pro",
+      "desc": "Free plan does not support status pages. Upgrade to Pro for up to 3 status pages, or Team for up to 10."
+    },
+    "error": "Error",
+    "upgradeDialog": {
+      "title": "Upgrade to Unlock Status Pages",
+      "desc": "Free plan does not support status pages. Upgrade to Pro to create up to 3 status pages with custom branding and monitor integration.",
+      "later": "Maybe Later",
+      "confirm": "Upgrade to Pro"
+    },
+    "deleteDialog": {
+      "title": "Confirm Deletion",
+      "desc": "This action cannot be undone. Are you sure you want to delete this status page?",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "createSheet": {
+      "title": "New Status Page",
+      "name": "Page Name",
+      "namePlaceholder": "e.g. acme.com Service Status",
+      "slug": "Slug (URL Path)",
+      "slugPlaceholder": "acme",
+      "desc": "Description (optional)",
+      "descPlaceholder": "Brief description of this status page...",
+      "creating": "Creating...",
+      "create": "Create Status Page",
+      "cancel": "Cancel",
+      "createFailed": "Failed to create, please try again"
+    },
+    "detail": {
+      "backToList": "Back to Status Pages",
+      "notFound": "Status page not found",
+      "loadFailed": "Failed to load",
+      "publicUrl": "Public URL:",
+      "basicInfo": "Basic Information",
+      "basicInfoDesc": "Update the name, slug, and visibility of this status page",
+      "name": "Name",
+      "namePlaceholder": "My Service Status Page",
+      "slug": "Slug",
+      "slugHint": "Only lowercase letters, numbers, and hyphens",
+      "publicVisible": "Publicly Visible",
+      "publicVisibleDesc": "Anyone with the link can access this status page when enabled",
+      "saving": "Saving…",
+      "save": "Save",
+      "saveSuccess": "Saved successfully",
+      "nameSlugRequired": "Name and Slug cannot be empty",
+      "saveFailed": "Failed to save",
+      "linkedMonitors": "Linked Monitors",
+      "linkedMonitorsDesc": "Monitors displayed on this status page",
+      "addMonitor": "Add Monitor",
+      "noLinkedMonitors": "No monitors linked yet",
+      "addFirstMonitor": "Add First Monitor",
+      "removeMonitor": "Remove Linked Monitor",
+      "removeMonitorDesc": "Are you sure you want to remove monitor \"{name}\" from this status page? The monitor itself will not be deleted.",
+      "removing": "Removing…",
+      "confirmRemove": "Confirm Remove",
+      "addMonitorDialog": {
+        "title": "Add Monitor",
+        "desc": "Select a monitor to link to this status page",
+        "noAvailable": "All monitors are already linked, or no monitors available",
+        "loading": "Failed to load monitor list",
+        "adding": "Adding…",
+        "add": "Add",
+        "cancel": "Cancel"
+      }
+    }
+  },
+  "oncall": {
+    "title": "On-Call Schedules",
+    "noSchedule": "No schedules",
+    "schedule": "Schedule",
+    "scheduleTab": "Schedule Management",
+    "onCall": "Current On-Call",
+    "onCallCard": "Current On-Call",
+    "preview": "Next 7 Days",
+    "addMember": "Add Member",
+    "noMembers": "No members yet, click \"Add Member\" to start",
+    "noParticipants": "No on-call personnel",
+    "noSchedulePrompt": "No schedules yet, click \"Create Schedule\" in the top right",
+    "hoursUntilHandoff": "Next handoff in {hours} hours",
+    "alertsTab": "Alert History",
+    "noAlerts": "No alert events",
+    "loadFailed": "Failed to load schedule data",
+    "overrides": "Active Overrides",
+    "stats": "On-Call Statistics",
+    "timesPerMonth": "~{count} times/month",
+    "rotation": {
+      "weekly": "Weekly Rotation",
+      "daily": "Daily Rotation"
+    },
+    "create": {
+      "trigger": "Create Schedule",
+      "title": "Create New Schedule",
+      "name": "Schedule Name",
+      "namePlaceholder": "e.g. Engineering On-Call",
+      "rotationType": "Rotation Type",
+      "daily": "Daily Rotation",
+      "weekly": "Weekly Rotation",
+      "cancel": "Cancel",
+      "creating": "Creating…",
+      "submit": "Create",
+      "failed": "Failed to create"
+    },
+    "override": {
+      "trigger": "Temporary Override",
+      "title": "Temporary Override",
+      "replaceWith": "Replace With",
+      "selectPerson": "Select on-call person",
+      "startTime": "Start Time",
+      "endTime": "End Time",
+      "cancel": "Cancel",
+      "submitting": "Submitting…",
+      "confirm": "Confirm Override",
+      "failed": "Override failed"
+    },
+    "addParticipant": {
+      "trigger": "Add Member",
+      "title": "Add Schedule Member",
+      "userId": "User ID",
+      "userIdPlaceholder": "Enter User ID",
+      "cancel": "Cancel",
+      "adding": "Adding…",
+      "submit": "Add",
+      "failed": "Failed to add"
+    },
+    "alertsTable": {
+      "monitor": "Monitor",
+      "status": "Status",
+      "firedAt": "Fired At",
+      "duration": "Duration"
+    }
+  },
+  "reports": {
+    "title": "Reports",
+    "subtitle": "SLA monthly reports and alert noise analysis",
+    "slaTab": "SLA Report",
+    "noiseTab": "Alert Noise Analysis",
+    "generate": "Generate Report",
+    "period": "Report Period",
+    "download": "Download Report",
+    "exportPDF": "Export PDF",
+    "exportCSV": "Export CSV",
+    "granularity": {
+      "monthly": "Monthly",
+      "quarterly": "Quarterly",
+      "placeholder": "Granularity"
+    },
+    "monthsRange": {
+      "3": "Last 3 Months",
+      "6": "Last 6 Months",
+      "12": "Last 12 Months",
+      "placeholder": "Select months"
+    },
+    "sla": {
+      "loadFailed": "Failed to load SLA data",
+      "empty": "No SLA Data",
+      "emptyDesc": "No monitoring reports in the selected time range. Try expanding the range.",
+      "avgUptime": "Avg Uptime",
+      "period": {
+        "month": "Month",
+        "quarter": "Quarter"
+      },
+      "table": {
+        "uptime": "Uptime",
+        "totalChecks": "Total Checks",
+        "failedChecks": "Failed Checks"
+      }
+    },
+    "noise": {
+      "desc": "Analyze recent alert firing frequency to identify frequently flapping monitors",
+      "daysRange": {
+        "7": "Last 7 days",
+        "14": "Last 14 days",
+        "30": "Last 30 days",
+        "placeholder": "Time range"
+      },
+      "totalFirings": "Total Firings",
+      "totalFlaps": "Total Flaps",
+      "period": "Period",
+      "top10": "Top 10 Noisiest Monitors",
+      "loadFailed": "Failed to load noise data",
+      "empty": "No alert noise recently",
+      "emptyDesc": "No alert events in the selected time range",
+      "trend": "Last 7 Days Daily Trend",
+      "trendEmpty": "No daily trend data",
+      "table": {
+        "rank": "Rank",
+        "monitorId": "Monitor ID",
+        "firings": "Firings",
+        "flaps": "Flaps"
+      }
+    }
+  },
+  "page": {
+    "operational": "All Systems Operational",
+    "degraded": "Partial Service Degradation",
+    "outage": "Service Outage",
+    "components": "System Components",
+    "incidents": "Recent Incidents",
+    "noIncidents": "No incidents recently"
+  }
+}

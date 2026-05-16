@@ -1,1 +1,192 @@
-{}
+{
+  "title": "探测节点",
+  "subtitle": "全球分布的真实探测节点",
+  "publicTitle": "全球监控节点",
+  "publicSubtitle": "idcd 在全球部署了多个监控节点，提供高质量的网络探测服务",
+  "fetchError": "获取节点数据失败（HTTP {status}）",
+  "fetchNetworkError": "无法连接到后端服务，请稍后重试",
+  "apply": {
+    "title": "申请成为节点",
+    "description": "加入 idcd 全球探测网络",
+    "submit": "提交申请",
+    "pageTitle": "贡献节点，赚取积分",
+    "pageDesc": "将您的服务器加入 idcd 全球监控网络，每次心跳获得积分，可兑换 API 调用额度和监控套餐。",
+    "badge": "社区节点计划",
+    "steps": {
+      "1": { "title": "提交申请", "desc": "填写服务器信息和申请理由" },
+      "2": { "title": "14 天观察期", "desc": "系统自动检测节点稳定性" },
+      "3": { "title": "加入全球节点池", "desc": "通过审核后正式成为节点" }
+    },
+    "form": {
+      "title": "提交节点申请",
+      "desc": "请填写您的服务器信息，带 * 的字段为必填项",
+      "hostname": "服务器主机名 *",
+      "hostnamePlaceholder": "my-server.example.com",
+      "ipAddress": "IP 地址 *",
+      "ipPlaceholder": "1.2.3.4",
+      "country": "所在国家 *",
+      "countryPlaceholder": "选择国家",
+      "city": "城市",
+      "cityPlaceholder": "Beijing",
+      "isp": "ISP 运营商",
+      "ispPlaceholder": "China Telecom",
+      "bandwidth": "带宽 (Mbps)",
+      "bandwidthPlaceholder": "100",
+      "motivation": "申请理由",
+      "motivationPlaceholder": "请简述您想贡献节点的原因（可选）",
+      "submitting": "提交中...",
+      "submitButton": "提交申请",
+      "loginRequired": "请先登录后再提交申请",
+      "networkError": "网络错误，请稍后重试",
+      "submitFailed": "提交失败，请稍后重试"
+    },
+    "success": "申请已提交！我们将在 2 个工作日内审核您的申请，审核结果将通过邮件通知您。",
+    "countries": {
+      "CN": "中国",
+      "US": "美国",
+      "JP": "日本",
+      "SG": "新加坡",
+      "DE": "德国",
+      "OTHER": "其他"
+    }
+  },
+  "detail": {
+    "title": "节点详情",
+    "location": "位置",
+    "isp": "运营商",
+    "status": "状态",
+    "latency": "延迟",
+    "uptime": "可用率",
+    "since": "加入时间",
+    "backToList": "返回节点列表",
+    "notFound": "节点 {id} 不存在或已下线。",
+    "loadError": "暂时无法加载节点诊断数据，请稍后重试。",
+    "uptime24h": "24h 可用率",
+    "checks24h": "检测次数",
+    "p50Latency": "P50 延迟",
+    "lastSeen": "最后活跃",
+    "latencyDist": "延迟分布",
+    "healthTrend": "24h 健康趋势",
+    "nodeInfo": "节点信息",
+    "nodeId": "节点 ID",
+    "country": "国家/地区",
+    "city": "城市",
+    "asn": "ASN",
+    "todayChecks": "今日检测",
+    "checksUnit": "次",
+    "normal": "正常",
+    "abnormal": "异常",
+    "hoursAgo": "24h 前",
+    "now": "现在",
+    "minLatency": "最小 {val} ms",
+    "maxLatency": "最大 {val} ms",
+    "statusLabels": {
+      "active": "运行中",
+      "degraded": "降级",
+      "inactive": "离线",
+      "unknown": "未知"
+    }
+  },
+  "table": {
+    "name": "节点名称",
+    "region": "地区",
+    "isp": "运营商",
+    "status": "状态",
+    "latency": "延迟",
+    "nodeId": "节点 ID",
+    "asn": "ASN",
+    "carrier": "运营商",
+    "exitIp": "出口 IP",
+    "country": "国家/地区",
+    "empty": "没有符合条件的节点",
+    "showing": "显示 {count} 个节点",
+    "showingOf": "（共 {total} 个）",
+    "viewDiag": "查看诊断"
+  },
+  "status": {
+    "online": "在线",
+    "offline": "离线",
+    "degraded": "降级"
+  },
+  "filter": {
+    "all": "全部地区",
+    "allCountries": "所有国家/地区",
+    "allCarriers": "所有运营商",
+    "allStatus": "所有状态",
+    "asia": "亚洲",
+    "europe": "欧洲",
+    "americas": "美洲",
+    "oceania": "大洋洲",
+    "search": "搜索节点、ASN、IP...",
+    "selectCountry": "选择国家/地区",
+    "selectCarrier": "选择运营商",
+    "selectStatus": "选择状态"
+  },
+  "map": {
+    "title": "节点分布地图",
+    "zoom": "缩放",
+    "onlineNodes": "在线节点",
+    "offlineNodes": "离线节点"
+  },
+  "stats": {
+    "total": "总节点数",
+    "online": "在线节点",
+    "countries": "覆盖国家/地区",
+    "carriers": "运营商数量"
+  },
+  "myApplications": {
+    "title": "我的节点申请",
+    "desc": "管理你提交的社区节点申请",
+    "applyNew": "申请新节点",
+    "empty": "暂无节点申请，点击右上角「申请新节点」开始贡献",
+    "table": {
+      "ip": "节点 IP",
+      "country": "国家",
+      "status": "状态",
+      "submittedAt": "提交时间"
+    },
+    "statusLabel": {
+      "pending": "审核中",
+      "probation": "试用中",
+      "active": "已激活",
+      "rejected": "已拒绝"
+    },
+    "fetchFailed": "无法获取节点申请列表",
+    "submitSuccess": "申请已提交，我们将在 1-3 个工作日内完成审核"
+  },
+  "deploy": {
+    "title": "您有已批准的节点，请按以下步骤完成部署",
+    "step1": "1. 下载并安装 Agent",
+    "step2": "2. 配置环境变量",
+    "step3": "3. 启动 Agent",
+    "enrollTokenHint": "注册令牌需联系管理员获取。部署成功后节点状态将自动更新为在线。"
+  },
+  "contribute": {
+    "title": "贡献社区节点",
+    "heartbeatPoints": "+1 积分",
+    "activationBonus": "+200 积分",
+    "desc": "贡献社区节点即可获得积分：每次心跳 {heartbeat}，节点激活奖励 {activation}。",
+    "hint": "审核通过后，按节点安装指南完成部署，节点上线后自动开始计入积分。节点申请通过后，您将看到完整的部署指南。通常在 1-3 个工作日内审核完成。"
+  },
+  "apply2": {
+    "dialogTitle": "申请贡献社区节点",
+    "dialogDesc": "填写节点信息后提交审核，我们将在 1-3 个工作日内完成审核。",
+    "fields": {
+      "ipAddress": "IP 地址",
+      "ipRequired": "请填写 IP 地址",
+      "hostname": "主机名",
+      "hostnameRequired": "请填写主机名",
+      "countryCode": "国家代码",
+      "countryCodeRequired": "请填写国家代码",
+      "countryCodePlaceholder": "CN / US / SG",
+      "city": "城市",
+      "isp": "ISP",
+      "bandwidth": "带宽（Mbps）",
+      "motivation": "申请原因",
+      "motivationPlaceholder": "请简要说明贡献节点的动机（可选）"
+    },
+    "cancel": "取消",
+    "submitting": "提交中…",
+    "submit": "提交申请"
+  }
+}

@@ -1,1 +1,219 @@
-{}
+{
+  "statusPages": {
+    "title": "状态页管理",
+    "description": "创建和管理对外公开的服务状态页",
+    "create": "新建状态页",
+    "list": "状态页列表",
+    "public": "公开",
+    "private": "私有",
+    "domain": "自定义域名",
+    "monitors": "关联监控",
+    "empty": "暂无状态页",
+    "loadFailed": "加载失败，请刷新重试",
+    "visit": "访问",
+    "delete": "删除",
+    "deleting": "删除中...",
+    "freePlan": {
+      "title": "Free 档限制",
+      "upgrade": "升级 Pro 解锁",
+      "desc": "Free 档不支持创建状态页。升级到 Pro 可获得最多 3 个状态页，Team 可获得 10 个。"
+    },
+    "error": "错误",
+    "upgradeDialog": {
+      "title": "升级解锁状态页",
+      "desc": "Free 档不支持创建状态页。升级到 Pro 可创建最多 3 个状态页，支持自定义品牌与监控绑定。",
+      "later": "稍后再说",
+      "confirm": "升级到 Pro"
+    },
+    "deleteDialog": {
+      "title": "确认删除",
+      "desc": "此操作不可恢复，确定要删除该状态页吗？",
+      "cancel": "取消",
+      "confirm": "确认删除"
+    },
+    "createSheet": {
+      "title": "新建状态页",
+      "name": "页面名称",
+      "namePlaceholder": "例：acme.com 服务状态",
+      "slug": "Slug（访问路径）",
+      "slugPlaceholder": "acme",
+      "desc": "描述（可选）",
+      "descPlaceholder": "简短说明该状态页用途...",
+      "creating": "创建中...",
+      "create": "创建状态页",
+      "cancel": "取消",
+      "createFailed": "创建失败，请重试"
+    },
+    "detail": {
+      "backToList": "返回状态页列表",
+      "notFound": "状态页不存在",
+      "loadFailed": "加载失败",
+      "publicUrl": "公开地址：",
+      "basicInfo": "基本信息",
+      "basicInfoDesc": "修改状态页名称、Slug 和可见性",
+      "name": "名称",
+      "namePlaceholder": "我的服务状态页",
+      "slug": "Slug",
+      "slugHint": "只允许小写字母、数字和连字符",
+      "publicVisible": "公开可见",
+      "publicVisibleDesc": "开启后，任何人可通过链接访问此状态页",
+      "saving": "保存中…",
+      "save": "保存",
+      "saveSuccess": "保存成功",
+      "nameSlugRequired": "名称和 Slug 不能为空",
+      "saveFailed": "保存失败",
+      "linkedMonitors": "关联监控",
+      "linkedMonitorsDesc": "此状态页显示的监控项目",
+      "addMonitor": "添加监控",
+      "noLinkedMonitors": "暂无关联监控",
+      "addFirstMonitor": "添加第一个监控",
+      "removeMonitor": "移除关联监控",
+      "removeMonitorDesc": "确定要从此状态页移除监控「{name}」吗？此操作不会删除监控本身。",
+      "removing": "移除中…",
+      "confirmRemove": "确认移除",
+      "addMonitorDialog": {
+        "title": "添加监控",
+        "desc": "选择要关联到此状态页的监控项目",
+        "noAvailable": "所有监控均已关联，或暂无可用监控",
+        "loading": "加载监控列表失败",
+        "adding": "添加中…",
+        "add": "添加",
+        "cancel": "取消"
+      }
+    }
+  },
+  "oncall": {
+    "title": "On-Call 排班",
+    "noSchedule": "暂无排班",
+    "schedule": "排班",
+    "scheduleTab": "排班管理",
+    "onCall": "当前值班",
+    "onCallCard": "当前值班",
+    "preview": "未来 7 天排班",
+    "addMember": "添加成员",
+    "noMembers": "暂无成员，点击「添加成员」开始",
+    "noParticipants": "暂无值班人员",
+    "noSchedulePrompt": "暂无排班，点击右上角「创建排班」开始",
+    "hoursUntilHandoff": "距下次交班还有 {hours} 小时",
+    "alertsTab": "告警记录",
+    "noAlerts": "暂无告警记录",
+    "loadFailed": "加载排班数据失败",
+    "overrides": "当前覆盖规则",
+    "stats": "值班统计",
+    "timesPerMonth": "约 {count} 次/月",
+    "rotation": {
+      "weekly": "每周轮换",
+      "daily": "每日轮换"
+    },
+    "create": {
+      "trigger": "创建排班",
+      "title": "创建新排班",
+      "name": "排班名称",
+      "namePlaceholder": "例：工程师值班",
+      "rotationType": "轮换方式",
+      "daily": "每日轮换",
+      "weekly": "每周轮换",
+      "cancel": "取消",
+      "creating": "创建中…",
+      "submit": "创建",
+      "failed": "创建失败"
+    },
+    "override": {
+      "trigger": "临时换班",
+      "title": "临时换班",
+      "replaceWith": "替换为",
+      "selectPerson": "选择值班人员",
+      "startTime": "开始时间",
+      "endTime": "结束时间",
+      "cancel": "取消",
+      "submitting": "提交中…",
+      "confirm": "确认换班",
+      "failed": "换班失败"
+    },
+    "addParticipant": {
+      "trigger": "添加成员",
+      "title": "添加排班成员",
+      "userId": "用户 ID",
+      "userIdPlaceholder": "输入用户 ID",
+      "cancel": "取消",
+      "adding": "添加中…",
+      "submit": "添加",
+      "failed": "添加失败"
+    },
+    "alertsTable": {
+      "monitor": "监控名",
+      "status": "状态",
+      "firedAt": "触发时间",
+      "duration": "持续时长"
+    }
+  },
+  "reports": {
+    "title": "报告",
+    "subtitle": "SLA 月报与告警噪音分析",
+    "slaTab": "SLA 月报",
+    "noiseTab": "告警噪音分析",
+    "generate": "生成报告",
+    "period": "报告周期",
+    "download": "下载报告",
+    "exportPDF": "导出 PDF",
+    "exportCSV": "导出 CSV",
+    "granularity": {
+      "monthly": "月度",
+      "quarterly": "季度",
+      "placeholder": "显示维度"
+    },
+    "monthsRange": {
+      "3": "最近 3 个月",
+      "6": "最近 6 个月",
+      "12": "最近 12 个月",
+      "placeholder": "选择月数"
+    },
+    "sla": {
+      "loadFailed": "加载 SLA 数据失败",
+      "empty": "暂无 SLA 数据",
+      "emptyDesc": "当前时间范围内没有监控报告，请尝试扩大查询范围。",
+      "avgUptime": "平均在线率",
+      "period": {
+        "month": "月份",
+        "quarter": "季度"
+      },
+      "table": {
+        "uptime": "在线率",
+        "totalChecks": "总检查数",
+        "failedChecks": "失败次数"
+      }
+    },
+    "noise": {
+      "desc": "分析近期告警触发频率，识别频繁抖动的监控项",
+      "daysRange": {
+        "7": "最近 7 天",
+        "14": "最近 14 天",
+        "30": "最近 30 天",
+        "placeholder": "时间范围"
+      },
+      "totalFirings": "总触发次数",
+      "totalFlaps": "总抖动次数",
+      "period": "统计区间",
+      "top10": "噪音最高监控 Top 10",
+      "loadFailed": "加载噪音数据失败",
+      "empty": "近期无告警噪音",
+      "emptyDesc": "所选时间范围内没有告警触发记录",
+      "trend": "最近 7 天每日趋势",
+      "trendEmpty": "暂无每日趋势数据",
+      "table": {
+        "rank": "排名",
+        "monitorId": "监控 ID",
+        "firings": "触发次数",
+        "flaps": "抖动次数"
+      }
+    }
+  },
+  "page": {
+    "operational": "所有系统正常",
+    "degraded": "部分服务降级",
+    "outage": "服务故障",
+    "components": "系统组件",
+    "incidents": "近期事件",
+    "noIncidents": "近期无事件"
+  }
+}

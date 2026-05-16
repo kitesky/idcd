@@ -1,1 +1,206 @@
-{}
+{
+  "title": "Alert Management",
+  "description": "View alert event history, manage notification channels and alert policies",
+  "metaDescription": "Manage alert events, notification channels and alert policies",
+  "tabs": {
+    "events": "Event History",
+    "channels": "Alert Channels",
+    "policies": "Alert Policies",
+    "silences": "Silence Rules"
+  },
+  "events": {
+    "title": "Event History",
+    "empty": "No alert events",
+    "emptyFiltered": "No events match the filter criteria",
+    "loadFailed": "Failed to load",
+    "activeAlert": "Active Alerts",
+    "activeAlertDesc": "There are {count} active alerts firing, please handle them promptly.",
+    "filter": {
+      "allStatus": "All status",
+      "allMonitors": "All monitors",
+      "clearFilter": "Clear filters",
+      "firing": "Firing",
+      "resolved": "Resolved"
+    },
+    "table": {
+      "monitorName": "Monitor",
+      "status": "Status",
+      "startedAt": "Started At",
+      "duration": "Duration",
+      "actions": "Actions"
+    },
+    "status": {
+      "firing": "Firing",
+      "resolved": "Resolved",
+      "acknowledged": "Acknowledged"
+    }
+  },
+  "channels": {
+    "title": "Alert Channels",
+    "create": "Add Channel",
+    "addSheet": "Add Alert Channel",
+    "empty": "No channels yet, please add one first",
+    "search": "Search channel name...",
+    "countWithFilter": "Found {filtered} / {total} channels",
+    "countAll": "{count} channels total",
+    "verified": "Verified",
+    "unverified": "Unverified",
+    "unverifiedHint": "· Click the Wifi icon to send a test",
+    "testSent": "Test notification sent",
+    "testSentDesc": "Channel \"{name}\" has been marked as verified",
+    "testFailed": "Send failed, please retry",
+    "deliveryHistory": "View delivery history ({count})",
+    "noDeliveryHistory": "No delivery history",
+    "notifStatus": {
+      "sent": "Sent",
+      "failed": "Failed",
+      "pending": "Pending"
+    },
+    "notifTable": {
+      "status": "Status",
+      "eventId": "Alert Event",
+      "sentAt": "Sent At"
+    },
+    "types": {
+      "email": "Email",
+      "webhook": "Webhook",
+      "slack": "Slack",
+      "dingtalk": "DingTalk",
+      "wecom": "WeCom",
+      "feishu": "Feishu"
+    },
+    "form": {
+      "type": "Channel Type",
+      "name": "Channel Name",
+      "namePlaceholder": "e.g. Ops Email Group",
+      "emailLabel": "Email Address",
+      "webhookLabel": "Webhook URL",
+      "emailPlaceholder": "ops@example.com",
+      "webhookPlaceholder": "https://your-webhook-url"
+    },
+    "delete": {
+      "title": "Delete Channel",
+      "desc": "Are you sure you want to delete channel \"{name}\"? This action cannot be undone.",
+      "success": "Channel \"{name}\" deleted",
+      "failed": "Delete failed, please retry"
+    },
+    "add": {
+      "success": "Channel \"{name}\" added",
+      "failed": "Create failed, please retry"
+    }
+  },
+  "policies": {
+    "title": "Alert Policies",
+    "create": "New Policy",
+    "addSheet": "New Alert Policy",
+    "editSheet": "Edit Alert Policy",
+    "count": "{count} policies total",
+    "empty": {
+      "title": "No alert policies",
+      "desc": "Create a policy to receive notifications when monitors detect anomalies"
+    },
+    "table": {
+      "name": "Policy Name",
+      "monitor": "Bound Monitor",
+      "channels": "Channels",
+      "delay": "Delay",
+      "muteWindow": "Mute Window",
+      "status": "Status",
+      "actions": "Actions"
+    },
+    "condition": {
+      "down": "Node down",
+      "latency": "Latency exceeds threshold",
+      "recovery": "Recovery"
+    },
+    "form": {
+      "name": "Policy Name",
+      "namePlaceholder": "e.g. Critical Service Alert",
+      "monitor": "Bound Monitor",
+      "monitorPlaceholder": "Select a monitor",
+      "channels": "Alert Channels",
+      "noChannels": "No channels yet, please add one first",
+      "delay": "Alert delay ({min} min)",
+      "immediately": "Immediately",
+      "maxDelay": "60 min",
+      "muteWindow": "Mute window",
+      "muteTo": "to",
+      "enabled": "Enable policy",
+      "loading": "Loading..."
+    },
+    "status": {
+      "enabled": "Enabled",
+      "disabled": "Disabled"
+    },
+    "delay": {
+      "immediately": "Immediately",
+      "minutes": "{min} min"
+    },
+    "delete": {
+      "title": "Delete Policy",
+      "desc": "Are you sure you want to delete policy \"{name}\"? This action cannot be undone.",
+      "success": "Policy \"{name}\" deleted",
+      "failed": "Delete failed, please retry"
+    },
+    "save": {
+      "success": "Policy updated",
+      "createSuccess": "Policy \"{name}\" created",
+      "failed": "Update failed, please retry",
+      "createFailed": "Create failed, please retry"
+    },
+    "sheet": {
+      "saveChanges": "Save Changes",
+      "createPolicy": "Create Policy",
+      "save": "Save"
+    }
+  },
+  "silences": {
+    "title": "Silence Rules",
+    "create": "Add Silence",
+    "count": "{count} silence rules total",
+    "empty": "No silence rules",
+    "global": "Global",
+    "addDialog": {
+      "title": "Add Silence Rule",
+      "monitor": "Bound Monitor (optional)",
+      "globalSilence": "Global silence",
+      "reason": "Reason",
+      "reasonPlaceholder": "e.g. Planned maintenance window",
+      "startsAt": "Start time",
+      "endsAt": "End time",
+      "submitting": "Creating...",
+      "submit": "Create Silence",
+      "createFailed": "Create failed, please retry",
+      "created": "Silence rule created"
+    },
+    "table": {
+      "monitor": "Monitor",
+      "reason": "Reason",
+      "startsAt": "Start Time",
+      "endsAt": "End Time",
+      "status": "Status"
+    },
+    "status": {
+      "active": "Active",
+      "upcoming": "Upcoming",
+      "expired": "Expired"
+    },
+    "delete": {
+      "success": "Silence rule ended early",
+      "failed": "Delete failed: {msg}"
+    }
+  },
+  "confirm": {
+    "deletePolicy": "Confirm delete policy",
+    "deleteChannel": "Confirm delete channel",
+    "delete": "Delete",
+    "cancel": "Cancel"
+  },
+  "ack": {
+    "label": "Acknowledge Alert",
+    "ackNow": "Acknowledge Now",
+    "ackNote": "Acknowledgement note (optional)",
+    "success": "Alert acknowledged",
+    "failed": "Acknowledge failed, please retry"
+  }
+}

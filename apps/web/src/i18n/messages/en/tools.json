@@ -263,6 +263,246 @@
       "description": "Convert Unix timestamps to human-readable dates and back, across any timezone. Supports seconds, milliseconds, and ISO 8601 formats."
     }
   },
+  "yaml-formatter": {
+    "title": "YAML Formatter",
+    "description": "Format, validate, and beautify YAML documents",
+    "meta": {
+      "title": "YAML Formatter — Online YAML Beautifier | idcd",
+      "description": "Format and validate YAML online with syntax highlighting. Supports YAML-to-JSON conversion."
+    }
+  },
+  "xml-formatter": {
+    "title": "XML Formatter",
+    "description": "Format, validate, and beautify XML documents",
+    "meta": {
+      "title": "XML Formatter — Online XML Beautifier | idcd",
+      "description": "Format, validate, and minify XML online with syntax error detection."
+    }
+  },
+  "url-encode": {
+    "title": "URL Encoder / Decoder",
+    "description": "Encode or decode URL-encoded strings",
+    "meta": {
+      "title": "URL Encoder / Decoder — Online URL Encoding | idcd",
+      "description": "Encode and decode URL strings online. Supports both encodeURIComponent and encodeURI formats."
+    }
+  },
+  "unicode": {
+    "title": "Unicode Converter",
+    "description": "Look up Unicode characters and convert between code points and glyphs",
+    "meta": {
+      "title": "Unicode Converter — Code Point Lookup | idcd",
+      "description": "Look up Unicode character details and convert between characters and their Unicode code points."
+    }
+  },
+  "color-picker": {
+    "title": "Color Converter",
+    "description": "Convert colors between HEX, RGB, and HSL formats",
+    "meta": {
+      "title": "Color Converter — HEX / RGB / HSL Tool | idcd",
+      "description": "Convert colors between HEX, RGB, and HSL formats with a live preview. Works entirely in your browser."
+    }
+  },
+  "markdown": {
+    "title": "Markdown Preview",
+    "description": "Edit Markdown with a live rendered preview",
+    "meta": {
+      "title": "Markdown Preview — Live Markdown Editor | idcd",
+      "description": "Edit and preview Markdown in real time. No installation required."
+    }
+  },
+  "diff": {
+    "title": "Text Diff",
+    "description": "Compare two text blocks line by line",
+    "meta": {
+      "title": "Text Diff — Online Line-by-Line Comparison | idcd",
+      "description": "Compare two blocks of text side by side and highlight differences line by line."
+    }
+  },
+  "word-counter": {
+    "title": "Word Counter",
+    "description": "Count words, characters, lines, and paragraphs in text",
+    "meta": {
+      "title": "Word Counter — Character & Line Count | idcd",
+      "description": "Count words, characters, lines, and paragraphs instantly. Supports mixed English and Chinese text."
+    }
+  },
+  "password-gen": {
+    "title": "Password Generator",
+    "description": "Generate strong random passwords",
+    "meta": {
+      "title": "Password Generator — Strong Random Password | idcd",
+      "description": "Generate cryptographically strong random passwords with customizable length and character sets."
+    }
+  },
+  "uuid-gen": {
+    "title": "UUID Generator",
+    "description": "Generate UUID v4 identifiers in bulk",
+    "meta": {
+      "title": "UUID Generator — Online UUID v4 Creator | idcd",
+      "description": "Generate UUID v4 unique identifiers instantly. Supports bulk generation."
+    }
+  },
+  "number-convert": {
+    "title": "Number Base Converter",
+    "description": "Convert numbers between binary, octal, decimal, and hexadecimal",
+    "meta": {
+      "title": "Number Base Converter — Bin / Oct / Dec / Hex | idcd",
+      "description": "Convert numbers between binary, octal, decimal, and hexadecimal bases instantly."
+    }
+  },
+  "text-case": {
+    "title": "Text Case Converter",
+    "description": "Convert text between camelCase, snake_case, PascalCase, and more",
+    "meta": {
+      "title": "Text Case Converter — camelCase / snake_case | idcd",
+      "description": "Convert text between camelCase, snake_case, PascalCase, kebab-case, and UPPER_CASE formats."
+    }
+  },
+  "html-encode": {
+    "title": "HTML Entity Encoder",
+    "description": "Encode and decode HTML entities",
+    "meta": {
+      "title": "HTML Entity Encoder — Escape & Unescape HTML | idcd",
+      "description": "Encode special characters as HTML entities and decode them back. Prevents XSS injection."
+    }
+  },
+  "json-to-yaml": {
+    "title": "JSON ↔ YAML",
+    "description": "Convert between JSON and YAML formats",
+    "meta": {
+      "title": "JSON / YAML Converter — Format Conversion | idcd",
+      "description": "Convert JSON to YAML and YAML to JSON with format validation. Works entirely in your browser."
+    }
+  },
+  "url-parser": {
+    "title": "URL Parser",
+    "description": "Parse and inspect URL components",
+    "meta": {
+      "title": "URL Parser — URL Structure Inspector | idcd",
+      "description": "Break down a URL into its components: protocol, host, path, query parameters, and fragment."
+    }
+  },
+  "user-agent": {
+    "title": "User-Agent Parser",
+    "description": "Parse User-Agent strings to identify browser, OS, and device",
+    "meta": {
+      "title": "User-Agent Parser — Browser & OS Detector | idcd",
+      "description": "Parse User-Agent strings to identify the browser, operating system, and device type."
+    }
+  },
+  "http-status": {
+    "title": "HTTP Status Codes",
+    "description": "Look up HTTP response status code meanings",
+    "meta": {
+      "title": "HTTP Status Codes — Complete Reference | idcd",
+      "description": "Look up the meaning of any HTTP status code. Covers all 1xx, 2xx, 3xx, 4xx, and 5xx codes."
+    }
+  },
+  "mime-type": {
+    "title": "MIME Type Lookup",
+    "description": "Look up MIME types for file extensions",
+    "meta": {
+      "title": "MIME Type Lookup — File Type Reference | idcd",
+      "description": "Find the MIME type for any file extension, or look up extensions for a given MIME type."
+    }
+  },
+  "timezone": {
+    "title": "Timezone Converter",
+    "description": "Convert times across global timezones",
+    "meta": {
+      "title": "Timezone Converter — World Clock | idcd",
+      "description": "Convert and compare times across any timezone. View current time in major cities worldwide."
+    }
+  },
+  "date-calc": {
+    "title": "Date Calculator",
+    "description": "Calculate date differences and add or subtract days",
+    "meta": {
+      "title": "Date Calculator — Date Difference & Offset | idcd",
+      "description": "Calculate the number of days between two dates or add and subtract days from any date."
+    }
+  },
+  "image-base64": {
+    "title": "Image to Base64",
+    "description": "Convert images to Base64-encoded Data URLs",
+    "meta": {
+      "title": "Image to Base64 — Convert Image to Data URL | idcd",
+      "description": "Convert image files to Base64-encoded Data URLs for embedding directly in HTML or CSS."
+    }
+  },
+  "csv-formatter": {
+    "title": "CSV Formatter",
+    "description": "Parse and display CSV data as a table",
+    "meta": {
+      "title": "CSV Formatter — Parse & Preview CSV | idcd",
+      "description": "Parse CSV data and display it as a formatted table. Works with any delimiter."
+    }
+  },
+  "number-format": {
+    "title": "Number Formatter",
+    "description": "Format numbers with thousands separators and currency styles",
+    "meta": {
+      "title": "Number Formatter — Thousands & Currency Format | idcd",
+      "description": "Format numbers with thousands separators, currency symbols, and custom decimal precision."
+    }
+  },
+  "lorem": {
+    "title": "Lorem Ipsum Generator",
+    "description": "Generate Lorem Ipsum placeholder text",
+    "meta": {
+      "title": "Lorem Ipsum Generator — Placeholder Text | idcd",
+      "description": "Generate Lorem Ipsum placeholder text with customizable paragraph count."
+    }
+  },
+  "line-sort": {
+    "title": "Line Sorter",
+    "description": "Sort text lines in ascending or descending order",
+    "meta": {
+      "title": "Line Sorter — Online Text Line Sorting | idcd",
+      "description": "Sort text lines alphabetically in ascending or descending order. Supports deduplication and case-insensitive sorting."
+    }
+  },
+  "duplicate-remover": {
+    "title": "Duplicate Line Remover",
+    "description": "Remove duplicate lines from text, keeping only unique lines",
+    "meta": {
+      "title": "Duplicate Line Remover — Remove Repeated Lines | idcd",
+      "description": "Remove duplicate lines from text and keep only unique lines. Case-sensitive and case-insensitive modes."
+    }
+  },
+  "text-stats": {
+    "title": "Text Statistics",
+    "description": "Word frequency, character frequency, and text analysis",
+    "meta": {
+      "title": "Text Statistics — Word & Character Frequency | idcd",
+      "description": "Analyze text for word frequency, character frequency, sentence count, and more."
+    }
+  },
+  "escape-html": {
+    "title": "HTML Escape",
+    "description": "Safely escape HTML content",
+    "meta": {
+      "title": "HTML Escape — Safe HTML Content Encoder | idcd",
+      "description": "Escape HTML content to safe text format to prevent XSS injection."
+    }
+  },
+  "chmod-calc": {
+    "title": "chmod Calculator",
+    "description": "Visualize and calculate Unix file permissions",
+    "meta": {
+      "title": "chmod Calculator — Unix File Permissions | idcd",
+      "description": "Visually calculate Unix/Linux file permissions and convert between octal and symbolic notation."
+    }
+  },
+  "sort-json": {
+    "title": "JSON Key Sorter",
+    "description": "Sort JSON object keys alphabetically",
+    "meta": {
+      "title": "JSON Key Sorter — Alphabetical JSON Keys | idcd",
+      "description": "Sort JSON object keys alphabetically for easier comparison and version control diffs."
+    }
+  },
   "_ui": {
     "run": "Run Check",
     "result": "Results",

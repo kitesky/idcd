@@ -1,1 +1,52 @@
-{}
+{
+  "title": "简单透明的定价",
+  "subtitle": "从免费开始，随业务增长灵活升级。无隐藏收费，随时取消。",
+  "billing": {
+    "monthly": "月付",
+    "yearly": "年付",
+    "yearlySave": "省最多 20%",
+    "perMonth": "/月",
+    "contactUs": "联系我们",
+    "originalPrice": "原价",
+    "yearlyTotal": "年付 ¥{price}/年"
+  },
+  "plans": {
+    "free": {
+      "name": "Free",
+      "description": "个人项目和小型站点的入门选择",
+      "cta": "免费开始"
+    },
+    "pro": {
+      "name": "Pro",
+      "description": "专业个人用户，更高频率和更多监控",
+      "badge": "最受欢迎",
+      "cta": "开始试用"
+    },
+    "team": {
+      "name": "Team",
+      "description": "小团队协作，支持企微和钉钉告警",
+      "cta": "开始试用"
+    },
+    "business": {
+      "name": "Business",
+      "description": "企业级监控，私有节点和电话告警",
+      "cta": "开始试用"
+    }
+  },
+  "features": {
+    "monitors": "监控数量",
+    "checkFreq": "检测频率",
+    "probeNodes": "探测节点",
+    "alertChannels": "告警通道",
+    "apiQuota": "API 配额",
+    "teamMembers": "团队成员",
+    "statusPages": "状态页",
+    "mcpUnits": "MCP Units"
+  },
+  "enterprise": {
+    "name": "Enterprise · 企业定制",
+    "description": "私有部署、专属 SLA、合规审计、定制集成方案",
+    "cta": "联系销售团队"
+  },
+  "trial": "所有付费计划含 14 天免费试用 · 随时取消 · 无需信用卡"
+}

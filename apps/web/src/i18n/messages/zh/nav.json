@@ -1,1 +1,151 @@
-{}
+{
+  "brand": {
+    "tagline": "全球网络诊断平台"
+  },
+  "links": {
+    "tools": "工具",
+    "agent": "AI Agent",
+    "nodes": "节点",
+    "becomeNode": "成为节点",
+    "pricing": "定价",
+    "docs": "文档"
+  },
+  "search": {
+    "placeholder": "搜索工具...",
+    "popular": "热门工具",
+    "results": "工具",
+    "close": "关闭"
+  },
+  "auth": {
+    "login": "登录",
+    "register": "立即注册",
+    "dashboard": "控制台"
+  },
+  "locale": {
+    "label": "语言",
+    "zh": "简体中文",
+    "en": "English"
+  },
+  "menu": {
+    "open": "打开菜单",
+    "navigation": "网站导航菜单"
+  },
+  "toolCategories": {
+    "probe": "拨测工具",
+    "utility": "辅助工具"
+  },
+  "toolGroups": {
+    "network": "网络连通",
+    "domain": "域名与证书",
+    "email": "邮件服务",
+    "ip": "IP 与路由",
+    "format": "格式化",
+    "encode": "编解码",
+    "text": "文本处理",
+    "dev": "开发工具"
+  },
+  "tools": {
+    "ping": "Ping 测试",
+    "tcp": "TCP 端口",
+    "tcping": "TCPing",
+    "traceroute": "Traceroute",
+    "mtr": "MTR 路由",
+    "speedtest": "网速测试",
+    "ssl": "SSL 证书检查",
+    "whois": "WHOIS 查询",
+    "icp": "ICP 备案查询",
+    "dns": "DNS 查询",
+    "http": "HTTP 检测",
+    "mx": "MX 记录查询",
+    "spf": "SPF 记录查询",
+    "dmarc": "DMARC 查询",
+    "dkim": "DKIM 密钥查询",
+    "smtp": "SMTP 测试",
+    "rdns": "反向 DNS 查询",
+    "ntp": "NTP 服务测试",
+    "ip-geo": "IP 地理位置",
+    "asn": "ASN 查询",
+    "bgp": "BGP 路由查询",
+    "json-formatter": "JSON 格式化",
+    "yaml-formatter": "YAML 格式化",
+    "xml-formatter": "XML 格式化",
+    "csv-formatter": "CSV 格式化",
+    "base64": "Base64 编解码",
+    "url-encode": "URL 编解码",
+    "hash": "Hash 计算",
+    "html-encode": "HTML 实体编码",
+    "regex-tester": "正则表达式",
+    "diff": "文本对比",
+    "word-counter": "字数统计",
+    "markdown": "Markdown 预览",
+    "line-sort": "行排序",
+    "jwt-decoder": "JWT 解码",
+    "cidr-calculator": "CIDR 计算器",
+    "timestamp": "时间戳转换",
+    "ipv6-converter": "IPv6 检测",
+    "cron-parser": "Cron 可视化",
+    "qrcode": "QR 码生成"
+  },
+  "featured": {
+    "label": "热门工具",
+    "viewAll": "查看全部工具 →"
+  },
+  "featuredProbeDesc": {
+    "ping": "全球节点网络拨测",
+    "ssl": "证书有效期检查",
+    "dns": "全球解析诊断"
+  },
+  "featuredUtilityDesc": {
+    "json": "格式化与压缩 JSON",
+    "regex": "实时高亮匹配",
+    "base64": "编解码与图片转换"
+  },
+  "footer": {
+    "sections": {
+      "about": {
+        "title": "关于我们",
+        "whyIdcd": "为什么选 idcd",
+        "docs": "文档中心",
+        "agent": "AI Agent 接入",
+        "transparency": "透明度报告",
+        "join": "加入我们"
+      },
+      "probe": {
+        "title": "拨测",
+        "ping": "Ping 测试",
+        "http": "HTTP 检测",
+        "dns": "DNS 查询",
+        "tcp": "TCP 端口",
+        "traceroute": "Traceroute",
+        "mtr": "MTR 路由"
+      },
+      "monitoring": {
+        "title": "监控",
+        "monitors": "监控",
+        "alerts": "告警配置",
+        "reports": "多维分析"
+      },
+      "contact": {
+        "title": "联系我们",
+        "email": "邮箱：",
+        "wechat": "微信公众号",
+        "wechatQr": "微信公众号\n二维码",
+        "video": "视频号",
+        "videoQr": "视频号\n二维码"
+      }
+    },
+    "copyright": "© 2026 idcd.com. 保留所有权利。",
+    "icp": "蜀ICP备19009987号-2",
+    "beian": "川公网安备 51010702001950号"
+  },
+  "cookie": {
+    "description": "我们使用 Cookie 来提供更好的用户体验。继续使用本站即表示您同意我们的",
+    "privacy": "隐私政策",
+    "and": "和",
+    "terms": "服务条款",
+    "essentialOnly": "仅必要",
+    "acceptAll": "接受所有",
+    "closeLabel": "关闭（仅接受必要 Cookie）",
+    "regionLabel": "Cookie 使用同意"
+  }
+}

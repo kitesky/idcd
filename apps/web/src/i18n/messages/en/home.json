@@ -1,1 +1,110 @@
-{}
+{
+  "hero": {
+    "title": "Global Network Diagnostics Platform",
+    "subtitle": "100+ real probe nodes — multi-region checks, real-time monitoring, one-click diagnostics",
+    "searchPlaceholder": "Enter domain, IP or tool name...",
+    "cta": "Run Check",
+    "detecting": "Checking...",
+    "advancedConfig": "Advanced config",
+    "createMonitor": "Create a scheduled monitor",
+    "createMonitorDesc": " to continuously check connectivity from multiple regions to your site",
+    "compareCheck": "Compare checks",
+    "probeError": "Probe failed: {message}",
+    "probePending": "Launching probe, please wait..."
+  },
+  "nodePanelCn": "China",
+  "nodePanelGlobal": "Global",
+  "nodePanelLoading": "Loading nodes...",
+  "nodePanelEmpty": "No available nodes",
+  "nodePanelSelected": "{count} node(s) selected for probe",
+  "nodePanelReset": "Reset",
+  "nodePanelConfirm": "Confirm",
+  "nodeSelectorPlaceholder": "Select probe nodes",
+  "nodeSelectorSelected": "{count} node(s) selected",
+  "categories": {
+    "diagnose": {
+      "label": "One-click Diagnostics",
+      "title": "One-click Full Diagnostics",
+      "subtitle": "HTTP • Ping • DNS • SSL • Traceroute",
+      "desc": "Enter once, run multiple checks simultaneously to quickly locate network connectivity and configuration issues for a domain/IP.",
+      "placeholder": "Enter domain or IP, e.g. github.com"
+    },
+    "probe": {
+      "label": "Network Probe",
+      "title": "Network Probe Tools",
+      "subtitle": "Multi-node real-time probing • Network connectivity diagnostics",
+      "desc": "100+ global probe nodes simulate user access to domains/IPs, helping detect network and site availability issues.",
+      "placeholder": "Enter domain or IP"
+    },
+    "domain": {
+      "label": "Domain Lookup",
+      "title": "Domain Information Lookup",
+      "subtitle": "WHOIS • ICP • SSL • DNS — comprehensive query",
+      "desc": "Query domain registration info, ICP filing status, SSL certificate status and DNS records.",
+      "placeholder": "Enter domain, e.g. example.com"
+    }
+  },
+  "features": {
+    "title": "Features",
+    "networkMonitor": {
+      "title": "Network Quality Monitoring",
+      "desc": "Actively probe network quality from users worldwide to cloud and edge nodes, including reachability, latency, packet loss and jitter."
+    },
+    "dnsMonitor": {
+      "title": "DNS Monitoring",
+      "desc": "Actively probe DNS availability and latency, analyze and diagnose DNS records."
+    },
+    "apiMonitor": {
+      "title": "API Monitoring",
+      "desc": "Actively probe HTTP API response time, status codes and response correctness from users worldwide."
+    },
+    "webMonitor": {
+      "title": "Web Page Monitoring",
+      "desc": "Analyze overall page load time from the user perspective, measure CDN and origin latency and availability to gain user experience insights."
+    },
+    "alerts": {
+      "title": "Alerting",
+      "desc": "Support fixed-threshold and intelligent-baseline anomaly detection, notify stakeholders immediately when issues are detected."
+    },
+    "analysis": {
+      "title": "Multi-dimensional Analysis",
+      "desc": "Analyze network quality and user experience by region, city and carrier."
+    },
+    "instant": {
+      "title": "Instant Probe",
+      "desc": "Launch a probe immediately, view results instantly for issue diagnosis and service verification."
+    },
+    "openApi": {
+      "title": "Open API",
+      "desc": "Pull probe data via API for failover, reporting and other use cases."
+    }
+  },
+  "tools": {
+    "title": "Common Network Diagnostic Tools",
+    "useTool": "Use Tool",
+    "http": {
+      "name": "HTTP Check",
+      "desc": "HTTP/HTTPS response time and status check"
+    },
+    "ping": {
+      "name": "Ping Test",
+      "desc": "Multi-region ICMP ping connectivity test"
+    },
+    "dns": {
+      "name": "DNS Query",
+      "desc": "Global DNS resolution and pollution detection"
+    },
+    "ssl": {
+      "name": "SSL Check",
+      "desc": "SSL certificate chain and security config validation"
+    },
+    "traceroute": {
+      "name": "Traceroute",
+      "desc": "Network path tracing and hop analysis"
+    },
+    "diagnose": {
+      "name": "One-click Diagnostics",
+      "desc": "Comprehensive network diagnostics and issue location"
+    }
+  }
+}

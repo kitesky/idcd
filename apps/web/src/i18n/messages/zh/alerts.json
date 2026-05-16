@@ -1,1 +1,206 @@
-{}
+{
+  "title": "告警管理",
+  "description": "查看告警事件历史，管理通知通道与告警策略",
+  "metaDescription": "管理告警事件、通知通道和告警策略",
+  "tabs": {
+    "events": "事件历史",
+    "channels": "告警通道",
+    "policies": "告警策略",
+    "silences": "静默规则"
+  },
+  "events": {
+    "title": "事件历史",
+    "empty": "暂无告警事件",
+    "emptyFiltered": "没有符合筛选条件的事件",
+    "loadFailed": "加载失败",
+    "activeAlert": "活跃告警",
+    "activeAlertDesc": "当前有 {count} 个告警正在触发，请及时处理。",
+    "filter": {
+      "allStatus": "全部状态",
+      "allMonitors": "全部监控",
+      "clearFilter": "清除筛选",
+      "firing": "告警中",
+      "resolved": "已恢复"
+    },
+    "table": {
+      "monitorName": "监控名",
+      "status": "状态",
+      "startedAt": "开始时间",
+      "duration": "持续时长",
+      "actions": "操作"
+    },
+    "status": {
+      "firing": "告警中",
+      "resolved": "已恢复",
+      "acknowledged": "已确认"
+    }
+  },
+  "channels": {
+    "title": "告警通道",
+    "create": "添加通道",
+    "addSheet": "添加告警通道",
+    "empty": "暂无通道，请先添加",
+    "search": "搜索通道名称...",
+    "countWithFilter": "找到 {filtered} / {total} 个通道",
+    "countAll": "共 {count} 个通道",
+    "verified": "已验证",
+    "unverified": "未验证",
+    "unverifiedHint": "· 点击 Wifi 图标发送测试",
+    "testSent": "测试通知已发送",
+    "testSentDesc": "通道「{name}」已标记为已验证",
+    "testFailed": "发送失败，请重试",
+    "deliveryHistory": "查看交付记录（{count} 条）",
+    "noDeliveryHistory": "暂无交付记录",
+    "notifStatus": {
+      "sent": "成功",
+      "failed": "失败",
+      "pending": "待发"
+    },
+    "notifTable": {
+      "status": "状态",
+      "eventId": "告警事件",
+      "sentAt": "发送时间"
+    },
+    "types": {
+      "email": "邮件",
+      "webhook": "Webhook",
+      "slack": "Slack",
+      "dingtalk": "钉钉",
+      "wecom": "企业微信",
+      "feishu": "飞书"
+    },
+    "form": {
+      "type": "通道类型",
+      "name": "通道名称",
+      "namePlaceholder": "如：运维邮件组",
+      "emailLabel": "收件邮箱",
+      "webhookLabel": "Webhook URL",
+      "emailPlaceholder": "ops@example.com",
+      "webhookPlaceholder": "https://your-webhook-url"
+    },
+    "delete": {
+      "title": "删除通道",
+      "desc": "确认删除通道 \"{name}\"？此操作不可撤销。",
+      "success": "通道 \"{name}\" 已删除",
+      "failed": "删除失败，请重试"
+    },
+    "add": {
+      "success": "通道 \"{name}\" 已添加",
+      "failed": "创建失败，请重试"
+    }
+  },
+  "policies": {
+    "title": "告警策略",
+    "create": "新建策略",
+    "addSheet": "新建告警策略",
+    "editSheet": "编辑告警策略",
+    "count": "共 {count} 条策略",
+    "empty": {
+      "title": "暂无告警策略",
+      "desc": "创建策略以在监控异常时收到通知"
+    },
+    "table": {
+      "name": "策略名称",
+      "monitor": "绑定监控",
+      "channels": "通知渠道",
+      "delay": "延迟",
+      "muteWindow": "静音时段",
+      "status": "状态",
+      "actions": "操作"
+    },
+    "condition": {
+      "down": "节点下线",
+      "latency": "延迟超阈值",
+      "recovery": "恢复正常"
+    },
+    "form": {
+      "name": "策略名称",
+      "namePlaceholder": "如：关键服务告警",
+      "monitor": "绑定监控",
+      "monitorPlaceholder": "请选择监控",
+      "channels": "告警通道",
+      "noChannels": "暂无通道，请先添加",
+      "delay": "延迟告警（{min} 分钟）",
+      "immediately": "立即",
+      "maxDelay": "60 分钟",
+      "muteWindow": "静音时段",
+      "muteTo": "至",
+      "enabled": "启用策略",
+      "loading": "加载中..."
+    },
+    "status": {
+      "enabled": "启用",
+      "disabled": "关闭"
+    },
+    "delay": {
+      "immediately": "立即",
+      "minutes": "{min} 分钟"
+    },
+    "delete": {
+      "title": "删除策略",
+      "desc": "确认删除策略 \"{name}\"？此操作不可撤销。",
+      "success": "策略 \"{name}\" 已删除",
+      "failed": "删除失败，请重试"
+    },
+    "save": {
+      "success": "策略已更新",
+      "createSuccess": "策略 \"{name}\" 已创建",
+      "failed": "更新失败，请重试",
+      "createFailed": "创建失败，请重试"
+    },
+    "sheet": {
+      "saveChanges": "保存更改",
+      "createPolicy": "创建策略",
+      "save": "保存"
+    }
+  },
+  "silences": {
+    "title": "静默规则",
+    "create": "添加静默",
+    "count": "共 {count} 条静默规则",
+    "empty": "暂无静默规则",
+    "global": "全局",
+    "addDialog": {
+      "title": "添加静默规则",
+      "monitor": "绑定监控（可选）",
+      "globalSilence": "全局静默",
+      "reason": "原因",
+      "reasonPlaceholder": "如：计划维护窗口",
+      "startsAt": "开始时间",
+      "endsAt": "结束时间",
+      "submitting": "创建中...",
+      "submit": "创建静默",
+      "createFailed": "创建失败，请重试",
+      "created": "静默规则已创建"
+    },
+    "table": {
+      "monitor": "监控",
+      "reason": "原因",
+      "startsAt": "开始时间",
+      "endsAt": "结束时间",
+      "status": "状态"
+    },
+    "status": {
+      "active": "生效中",
+      "upcoming": "即将生效",
+      "expired": "已过期"
+    },
+    "delete": {
+      "success": "静默规则已提前结束",
+      "failed": "删除失败: {msg}"
+    }
+  },
+  "confirm": {
+    "deletePolicy": "确认删除策略",
+    "deleteChannel": "确认删除渠道",
+    "delete": "删除",
+    "cancel": "取消"
+  },
+  "ack": {
+    "label": "确认告警",
+    "ackNow": "立即确认",
+    "ackNote": "确认备注（可选）",
+    "success": "告警已确认",
+    "failed": "确认失败，请重试"
+  }
+}

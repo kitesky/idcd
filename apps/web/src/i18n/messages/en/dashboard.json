@@ -1,1 +1,92 @@
-{}
+{
+  "title": "Overview",
+  "subtitle": "Monitor health status and key metrics at a glance",
+  "stats": {
+    "totalMonitors": "Total Monitors",
+    "onlineRatio": "Online / Total",
+    "checksToday": "Checks Today",
+    "uptime7d": "7-day Avg Uptime",
+    "activeAlerts": "Open Alerts",
+    "statusPages": "Status Pages",
+    "uptime": "Overall Uptime",
+    "incidents": "Incidents"
+  },
+  "quickLinks": {
+    "title": "Quick Links",
+    "newMonitor": {
+      "title": "New Monitor",
+      "desc": "Add HTTP, Ping, SSL or DNS monitors",
+      "action": "Create Now"
+    },
+    "viewAlerts": {
+      "title": "View Alerts",
+      "desc": "Manage alert channels, policies and event history",
+      "action": "Go to Alerts"
+    },
+    "statusPages": {
+      "title": "Manage Status Pages",
+      "desc": "Publish and configure public-facing service status pages",
+      "action": "Manage Status Pages"
+    }
+  },
+  "onboarding": {
+    "title": "Start monitoring your first service",
+    "desc": "Add HTTP / HTTPS / Ping / TCP monitors to track service availability in real time and get notified when incidents occur",
+    "createMonitor": "Create Monitor",
+    "configureAlerts": "Configure Alert Channels"
+  },
+  "downMonitors": {
+    "title": "Monitors with Active Alerts",
+    "loading": "Loading…"
+  },
+  "recentAlerts": "Recent Alerts",
+  "viewAll": "View all",
+  "noAlerts": "No alerts in the last 7 days",
+  "allNormal": "All monitors are healthy",
+  "pinnedMonitors": {
+    "title": "Pinned Monitors",
+    "add": "Add",
+    "empty": "No pinned monitors. Click + to add",
+    "lastCheck": "Last check: {time}",
+    "sheet": {
+      "title": "Select pinned monitors (max 6)",
+      "noMonitors": "No monitors available",
+      "save": "Save",
+      "cancel": "Cancel"
+    }
+  },
+  "monitorStatus": {
+    "active": "Online",
+    "down": "Down",
+    "paused": "Paused"
+  },
+  "monitorStatusTitle": "Monitor Status",
+  "incidents": {
+    "title": "Incident Management",
+    "create": "Create Incident",
+    "table": {
+      "monitorName": "Monitor Name",
+      "status": "Status",
+      "startedAt": "Started At"
+    },
+    "status": {
+      "open": "In Progress",
+      "resolved": "Resolved",
+      "monitoring": "Monitoring",
+      "firing": "Firing",
+      "acknowledged": "Acknowledged"
+    },
+    "severity": {
+      "critical": "Critical",
+      "high": "High",
+      "medium": "Medium",
+      "low": "Low"
+    }
+  },
+  "timeAgo": {
+    "seconds": "{n}s ago",
+    "minutes": "{n}m ago",
+    "hours": "{n}h ago",
+    "days": "{n}d ago"
+  }
+}

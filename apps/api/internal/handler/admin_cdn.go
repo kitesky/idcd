@@ -4,7 +4,6 @@ package handler
 import (
 	"context"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -18,19 +17,20 @@ const systemUserID = "idcd_system"
 
 // systemCDNMonitors defines the 10 CDN providers tracked in the public leaderboard.
 var systemCDNMonitors = []struct {
+	ID     string
 	Name   string
 	Target string
 }{
-	{"Cloudflare CDN", "https://www.cloudflare.com"},
-	{"Fastly CDN", "https://www.fastly.com"},
-	{"Akamai CDN", "https://www.akamai.com"},
-	{"AWS CloudFront", "https://aws.amazon.com/cloudfront/"},
-	{"阿里云 CDN", "https://www.aliyun.com"},
-	{"腾讯云 CDN", "https://cloud.tencent.com"},
-	{"华为云 CDN", "https://www.huaweicloud.com"},
-	{"百度云 CDN", "https://cloud.baidu.com"},
-	{"又拍云 CDN", "https://www.upyun.com"},
-	{"七牛云 CDN", "https://www.qiniu.com"},
+	{"cdn_cloudflare", "Cloudflare CDN", "https://www.cloudflare.com"},
+	{"cdn_fastly", "Fastly CDN", "https://www.fastly.com"},
+	{"cdn_akamai", "Akamai CDN", "https://www.akamai.com"},
+	{"cdn_aws", "AWS CloudFront", "https://aws.amazon.com/cloudfront/"},
+	{"cdn_alicloud", "阿里云 CDN", "https://www.aliyun.com"},
+	{"cdn_tencentcloud", "腾讯云 CDN", "https://cloud.tencent.com"},
+	{"cdn_huaweicloud", "华为云 CDN", "https://www.huaweicloud.com"},
+	{"cdn_baiducloud", "百度云 CDN", "https://cloud.baidu.com"},
+	{"cdn_upyun", "又拍云 CDN", "https://www.upyun.com"},
+	{"cdn_qiniu", "七牛云 CDN", "https://www.qiniu.com"},
 }
 
 // CDNPool is the subset of pgxpool.Pool used by AdminCDNHandler.
@@ -86,33 +86,8 @@ type CDNSeedResponse struct {
 	Total   int `json:"total"`
 }
 
-// cdnSlug converts a CDN provider name into a short slug for use as a monitor ID.
-// e.g. "Cloudflare CDN" → "cdn_cloudflare"
-func cdnSlug(name string) string {
-	lower := strings.ToLower(name)
-	// Extract the provider name (first word before space, or first CJK word)
-	parts := strings.Fields(lower)
-	if len(parts) == 0 {
-		return "cdn_unknown"
-	}
-	slug := parts[0]
-	// Remove any non-alphanumeric characters
-	var b strings.Builder
-	for _, r := range slug {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') {
-			b.WriteRune(r)
-		}
-	}
-	result := b.String()
-	if result == "" {
-		// Fallback: use index-based name for CJK-only entries
-		result = "monitor"
-	}
-	return "cdn_" + result
-}
-
 // Seed handles POST /internal/admin/cdn-monitors/seed.
-// Idempotent: existing monitors are skipped, new ones are inserted.
+// Idempotent: existing monitors (matched by ID) are skipped, new ones are inserted.
 func (h *AdminCDNHandler) Seed(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
 	defer cancel()
@@ -121,36 +96,20 @@ func (h *AdminCDNHandler) Seed(w http.ResponseWriter, r *http.Request) {
 	skipped := 0
 
 	for _, cdn := range systemCDNMonitors {
-		monitorID := cdnSlug(cdn.Name)
-
-		// Check if monitor already exists for this user+target combination.
-		var existingID string
-		err := h.pool.QueryRow(ctx,
-			`SELECT id FROM monitors WHERE user_id = $1 AND target = $2 LIMIT 1`,
-			systemUserID, cdn.Target,
-		).Scan(&existingID)
-
-		if err == nil {
-			// Row found — monitor already exists.
-			skipped++
-			continue
-		}
-
-		// err != nil could be pgx.ErrNoRows (expected) or a real error.
-		// We detect "no rows" by checking the error message, since we can't import pgx here
-		// without creating a circular dependency risk. Instead we use the standard approach:
-		// attempt the INSERT and rely on ON CONFLICT to handle races.
-		_, insertErr := h.pool.Exec(ctx, `
+		tag, insertErr := h.pool.Exec(ctx, `
 			INSERT INTO monitors (id, user_id, name, type, target, config, interval_s, node_count, status, created_at, updated_at)
 			VALUES ($1, $2, $3, 'http', $4, '{}', 60, 0, 'active', NOW(), NOW())
 			ON CONFLICT (id) DO NOTHING
-		`, monitorID, systemUserID, cdn.Name, cdn.Target)
+		`, cdn.ID, systemUserID, cdn.Name, cdn.Target)
 		if insertErr != nil {
 			response.Error(w, r, apperr.Internal("failed to insert CDN monitor", insertErr))
 			return
 		}
-
-		created++
+		if tag.RowsAffected() == 0 {
+			skipped++
+		} else {
+			created++
+		}
 	}
 
 	response.JSON(w, r, http.StatusOK, CDNSeedResponse{

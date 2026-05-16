@@ -1,0 +1,37 @@
+# idcd Aggregator 配置
+# cp config/aggregator.example.yaml config/aggregator.yaml
+# 启动方式: AGGREGATOR_CONFIG=config/aggregator.yaml /bin/aggregator
+#
+# aggregator 独立于主配置文件（api/notifier/gateway/scheduler 用 dev.env.yaml）
+
+# ── 数据库（TimescaleDB）────────────────────────────────────────
+database:
+  main:
+    dsn: "postgresql://idcd_dev:CHANGE_ME@DB_HOST:5432/idcd_dev"
+    max_open_conns: 10
+    max_idle_conns: 3
+    conn_max_lifetime: "5m"
+
+# ── Redis（Stream 数据源）────────────────────────────────────────
+redis:
+  addr: "REDIS_HOST:6379"
+  password: "CHANGE_ME"
+  db: 0
+
+# ── Aggregator 专属配置 ──────────────────────────────────────────
+aggregator:
+  stream_name: "probe.results"       # Redis Stream 名称
+  group_name: "aggregator-group"     # Consumer Group 名称
+  consumer_count: 4                  # 并发消费者数
+  batch_size: 10                     # 每次 XREADGROUP 拉取条数
+  block_timeout: "5s"                # XREADGROUP 阻塞超时
+
+# ── 可观测性 ─────────────────────────────────────────────────────
+observability:
+  prometheus_port: 9092
+  otel_endpoint: ""
+  sentry_dsn: ""
+  telemetry:
+    enabled: false
+    otlp_endpoint: ""
+    sampling_rate: 0.1

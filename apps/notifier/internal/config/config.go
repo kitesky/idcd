@@ -2,9 +2,11 @@
 package config
 
 import (
+	"fmt"
 	"os"
 
 	"github.com/kite365/idcd/lib/shared/config"
+	"gopkg.in/yaml.v3"
 )
 
 // Config holds the complete configuration for the notifier service.
@@ -43,13 +45,11 @@ type SESConfig struct {
 
 // Load reads and parses the configuration file.
 func Load(path string) (*Config, error) {
-	// Load base config first
 	baseConfig, err := config.Load(path)
 	if err != nil {
 		return nil, err
 	}
 
-	// Load the full config including notifier section
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -59,9 +59,13 @@ func Load(path string) (*Config, error) {
 	var cfg Config
 	cfg.Config = baseConfig
 
-	// Set defaults for notifier config
-	setDefaults(&cfg.Notifier)
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(false)
+	if err := dec.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("notifier config: decode %q: %w", path, err)
+	}
 
+	setDefaults(&cfg.Notifier)
 	return &cfg, nil
 }
 

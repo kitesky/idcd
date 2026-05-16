@@ -46,7 +46,25 @@ jobs:
           cache: true
 
       - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out ./...
+        # Go 1.26 起 `go test ./...` 不再从 workspace 根自动展开到全部 module
+        # ("directory prefix . does not contain modules listed in go.work")。
+        # 逐 module 跑测试，再把每个 module 的 coverage 合并成根的 coverage.out
+        # 给 codecov 上传步骤用。
+        run: |
+          set -euo pipefail
+          echo "mode: atomic" > coverage.out
+          for moddir in $(go list -m -f '{{.Dir}}'); do
+            echo "::group::go test $moddir"
+            (
+              cd "$moddir"
+              go test -v -race -covermode=atomic -coverprofile=cov.tmp ./...
+            )
+            if [ -f "$moddir/cov.tmp" ]; then
+              tail -n +2 "$moddir/cov.tmp" >> coverage.out
+              rm "$moddir/cov.tmp"
+            fi
+            echo "::endgroup::"
+          done
 
       - name: Upload coverage
         uses: codecov/codecov-action@v4

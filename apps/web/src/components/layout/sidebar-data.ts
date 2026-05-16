@@ -8,6 +8,7 @@ import {
   Gift,
   Globe,
   LayoutDashboard,
+  Lock,
   Server,
   Settings,
   UserCheck,
@@ -45,6 +46,16 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "发布",
     items: [
       { title: "状态页", url: "/app/status-pages", icon: Globe },
+    ],
+  },
+  {
+    title: "证书",
+    items: [
+      { title: "总览", url: "/app/cert", icon: Lock },
+      { title: "申请证书", url: "/app/cert/new", icon: undefined },
+      { title: "订单", url: "/app/cert/orders", icon: undefined },
+      { title: "已签证书", url: "/app/cert/certs", icon: undefined },
+      { title: "DNS 凭据", url: "/app/cert/dns-credentials", icon: undefined },
     ],
   },
   {

@@ -188,6 +188,57 @@ export function NewMonitorClient() {
     return true
   }
 
+  function buildConfig(f: FormState): Record<string, unknown> {
+    const cfg: Record<string, unknown> = {}
+
+    const timeoutMs = parseInt(f.timeoutMs, 10)
+    if (!isNaN(timeoutMs) && timeoutMs > 0) cfg.timeout_ms = timeoutMs
+
+    switch (f.type) {
+      case "http":
+      case "https": {
+        const code = parseInt(f.assertStatusCode, 10)
+        if (!isNaN(code) && code > 0) cfg.assert_status_code = code
+        if (f.keywordMatch.trim()) cfg.keyword = f.keywordMatch.trim()
+        break
+      }
+      case "keyword": {
+        const code = parseInt(f.assertStatusCode, 10)
+        if (!isNaN(code) && code > 0) cfg.assert_status_code = code
+        if (f.keywordMatch.trim()) cfg.keyword = f.keywordMatch.trim()
+        break
+      }
+      case "ping": {
+        const threshold = parseFloat(f.packetLossThreshold)
+        if (!isNaN(threshold)) cfg.packet_loss_threshold = threshold
+        break
+      }
+      case "tcp": {
+        const port = parseInt(f.port, 10)
+        if (!isNaN(port) && port > 0) cfg.port = port
+        break
+      }
+      case "dns": {
+        if (f.expectedIp.trim()) cfg.expected_ip = f.expectedIp.trim()
+        break
+      }
+      case "ssl_expiry":
+      case "domain_expiry":
+        // no per-type config fields exposed in UI yet
+        break
+      case "llm_endpoint": {
+        if (f.agentObsEndpointUrl.trim()) cfg.endpoint_url = f.agentObsEndpointUrl.trim()
+        if (f.agentObsModelName.trim()) cfg.model_name = f.agentObsModelName.trim()
+        const latencySla = parseInt(f.agentObsLatencySlaMs, 10)
+        if (!isNaN(latencySla) && latencySla > 0) cfg.latency_sla_ms = latencySla
+        if (f.agentObsPayloadTemplate.trim()) cfg.payload_template = f.agentObsPayloadTemplate.trim()
+        break
+      }
+    }
+
+    return cfg
+  }
+
   async function handleCreate() {
     setQuotaExceeded(null)
 
@@ -200,6 +251,7 @@ export function NewMonitorClient() {
           target: form.target,
           interval_s: form.intervalSeconds,
           node_count: form.concurrentNodes,
+          config: buildConfig(form),
         }),
       })
 

@@ -135,8 +135,6 @@ const navItems = [
 const LANGS = [
   { label: 'English', code: 'EN', href: '/en/' },
   { label: '简体中文', code: 'ZH', href: '/' },
-  { label: '日本語', code: 'JP', href: '/ja/' },
-  { label: '한국어', code: 'KO', href: '/ko/' },
 ]
 
 function LangToggle() {

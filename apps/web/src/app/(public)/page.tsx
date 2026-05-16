@@ -10,6 +10,7 @@ import {
   Zap,
   Webhook,
 } from "lucide-react"
+import Link from "next/link"
 import { Button, Card, CardContent, CardDescription, CardHeader, CardTitle, Badge } from "@/components/ui"
 import { HeroSearch } from "@/components/hero-search"
 
@@ -109,6 +110,7 @@ export default function HomePage() {
                       <Icon className="h-6 w-6 text-primary" />
                     </div>
                     <h3 className="text-sm font-semibold text-foreground">{feature.title}</h3>
+                    <p className="text-xs text-muted-foreground mt-2">{feature.description}</p>
                   </div>
                 </Card>
               )
@@ -139,8 +141,8 @@ export default function HomePage() {
                   <CardDescription className="mb-4">
                     {tool.description}
                   </CardDescription>
-                  <Button variant="outline" className="w-full">
-                    <a href={tool.href} className="block w-full">使用工具</a>
+                  <Button asChild variant="outline" className="w-full">
+                    <Link href={tool.href}>使用工具</Link>
                   </Button>
                 </CardContent>
               </Card>

@@ -12,7 +12,7 @@ const sections = [
       { name: "为什么选 idcd", href: "/about" },
       { name: "文档中心", href: "/docs/api" },
       { name: "透明度报告", href: "/transparency" },
-      { name: "加入我们", href: "/about#join" },
+      { name: "加入我们", href: "/about" },
     ],
   },
   {
@@ -29,12 +29,9 @@ const sections = [
   {
     title: "监控",
     links: [
-      { name: "网络质量监控", href: "/app/monitors" },
-      { name: "DNS 监测", href: "/app/monitors/dns" },
-      { name: "API 监测", href: "/app/monitors/api" },
-      { name: "Web 页面监测", href: "/app/monitors/web" },
+      { name: "监控", href: "/app/monitors" },
       { name: "告警配置", href: "/app/alerts" },
-      { name: "多维分析", href: "/app/analytics" },
+      { name: "多维分析", href: "/app/reports" },
     ],
   },
 ]

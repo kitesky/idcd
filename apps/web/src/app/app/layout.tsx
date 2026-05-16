@@ -46,8 +46,9 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   const [authChecked, setAuthChecked] = useState(false)
-  const [plan, setPlan]     = useState("Free")
-  const [email, setEmail]   = useState("user@example.com")
+  const [plan, setPlan]         = useState("Free")
+  const [email, setEmail]       = useState("user@example.com")
+  const [displayName, setDisplayName] = useState<string | null>(null)
 
   useEffect(() => {
     // Verify session by calling the profile API — the HttpOnly access_token cookie
@@ -66,6 +67,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
         if (!body) return
         const profile = body?.data ?? body
         setEmail(profile.email ?? "user@example.com")
+        setDisplayName(profile.display_name ?? null)
         setAuthChecked(true)
       })
       .catch(() => {
@@ -97,7 +99,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <SidebarProvider>
-      <AppSidebar email={email} plan={plan} />
+      <AppSidebar email={email} plan={plan} displayName={displayName} />
       <SidebarInset>
         {/* 顶部工具栏 */}
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">

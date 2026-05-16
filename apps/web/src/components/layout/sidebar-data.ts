@@ -8,6 +8,7 @@ import {
   Gift,
   Globe,
   LayoutDashboard,
+  Server,
   Settings,
   UserCheck,
 } from "lucide-react"
@@ -36,6 +37,7 @@ export const NAV_GROUPS: NavGroup[] = [
       },
       { title: "On-Call 值班", url: "/app/oncall", icon: UserCheck },
       { title: "故障记录", url: "/app/incidents", icon: FileWarning },
+      { title: "节点管理", url: "/app/nodes", icon: Server },
     ],
   },
   {
@@ -63,6 +65,7 @@ export const NAV_GROUPS: NavGroup[] = [
         items: [
           { title: "个人资料", url: "/app/settings/profile" },
           { title: "账户安全", url: "/app/settings/account" },
+          { title: "安全设置", url: "/app/settings/security" },
           { title: "会话管理", url: "/app/settings/sessions" },
           { title: "API 密钥", url: "/app/settings/api-keys" },
           { title: "访问令牌", url: "/app/settings/tokens" },

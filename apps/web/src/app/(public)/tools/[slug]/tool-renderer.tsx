@@ -1,8 +1,6 @@
 "use client"
 
 import { Card, CardContent } from '@/components/ui'
-import { PROBE_TOOLS } from '@/app/(public)/tools/tools-config'
-import ProbeToolClient from './probe-client'
 
 // Text tools
 import {
@@ -55,8 +53,6 @@ import {
   CsvFormatterClient,
 } from './lookup-tools-client'
 
-const PROBE_SLUGS = new Set(PROBE_TOOLS.map(t => t.slug))
-
 const UTILITY_MAP: Record<string, React.FC> = {
   // Text tools
   'word-counter': WordCounterClient,
@@ -107,10 +103,6 @@ interface ToolRendererProps {
 }
 
 export default function ToolRenderer({ slug }: ToolRendererProps) {
-  if (PROBE_SLUGS.has(slug)) {
-    return <ProbeToolClient slug={slug} />
-  }
-
   const UtilityComponent = UTILITY_MAP[slug]
   if (UtilityComponent) {
     return <UtilityComponent />

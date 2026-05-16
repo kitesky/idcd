@@ -18,9 +18,10 @@ import { NAV_GROUPS } from "./sidebar-data"
 type AppSidebarProps = {
   email?: string
   plan?: string
+  displayName?: string | null
 } & React.ComponentProps<typeof Sidebar>
 
-export function AppSidebar({ email = "user@example.com", plan = "Free", ...props }: AppSidebarProps) {
+export function AppSidebar({ email = "user@example.com", plan = "Free", displayName, ...props }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" data-testid="desktop-sidebar" {...props}>
       <SidebarHeader>
@@ -48,7 +49,7 @@ export function AppSidebar({ email = "user@example.com", plan = "Free", ...props
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser email={email} plan={plan} />
+        <NavUser email={email} plan={plan} displayName={displayName} />
       </SidebarFooter>
 
       <SidebarRail />

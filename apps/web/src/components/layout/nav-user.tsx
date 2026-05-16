@@ -23,12 +23,13 @@ import { Badge } from "@/components/ui/badge"
 type NavUserProps = {
   email: string
   plan?: string
+  displayName?: string | null
 }
 
-export function NavUser({ email, plan = "Free" }: NavUserProps) {
+export function NavUser({ email, plan = "Free", displayName }: NavUserProps) {
   const { isMobile } = useSidebar()
 
-  const initial = email.charAt(0).toUpperCase()
+  const initial = (displayName ?? email).charAt(0).toUpperCase()
   const planVariant =
     plan === "Pro" ? "default" :
     plan === "Team" || plan === "Business" ? "secondary" :
@@ -50,8 +51,13 @@ export function NavUser({ email, plan = "Free" }: NavUserProps) {
                 </AvatarFallback>
               </Avatar>
               <div className="grid flex-1 text-left text-sm leading-tight">
-                <span className="truncate font-semibold">{email}</span>
-                <span className="truncate text-xs text-muted-foreground" data-testid="plan-badge">{plan} 计划</span>
+                <span className="truncate font-semibold">{displayName ?? email}</span>
+                {displayName && (
+                  <span className="truncate text-xs text-muted-foreground">{email}</span>
+                )}
+                {!displayName && (
+                  <span className="truncate text-xs text-muted-foreground" data-testid="plan-badge">{plan} 计划</span>
+                )}
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
             </SidebarMenuButton>
@@ -70,7 +76,10 @@ export function NavUser({ email, plan = "Free" }: NavUserProps) {
                   </AvatarFallback>
                 </Avatar>
                 <div className="grid flex-1 text-left text-sm leading-tight">
-                  <span className="truncate font-semibold">{email}</span>
+                  <span className="truncate font-semibold">{displayName ?? email}</span>
+                  {displayName && (
+                    <span className="truncate text-xs text-muted-foreground">{email}</span>
+                  )}
                   <Badge variant={planVariant as "default" | "secondary" | "outline"} className="mt-0.5 w-fit text-xs">
                     {plan}
                   </Badge>

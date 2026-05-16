@@ -407,6 +407,16 @@ func (s *Server) setupRouter() {
 				r.Get("/", quotaH.GetQuota)
 			})
 
+			// Status page user CRUD endpoints (authentication required)
+			statusPageUserH := handler.NewStatusPageUserHandler(s.pgxPool)
+			r.Route("/status-pages", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Get("/", statusPageUserH.List)
+				r.Post("/", statusPageUserH.Create)
+				r.Get("/{id}", statusPageUserH.Get)
+				r.Delete("/{id}", statusPageUserH.Delete)
+			})
+
 			// Status page custom domain endpoints (authentication required)
 			statusPageDomainH := handler.NewStatusPageDomainHandler(idcdmain.New(s.pgxPool), s.logger)
 			r.Route("/status-pages/{id}/domain", func(r chi.Router) {

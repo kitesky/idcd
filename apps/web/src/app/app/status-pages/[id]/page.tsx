@@ -163,13 +163,12 @@ export default function StatusPageDetailPage() {
   const [addError, setAddError] = useState<string | null>(null)
 
   // ── Fetch status page ──────────────────────────────────────────────────────
-  // Backend only has GET /v1/status-pages (list), so we fetch list and find by id.
   const fetchPage = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const json = await apiRequest<{ status_pages: StatusPage[] }>("/v1/status-pages")
-      const found = (json.status_pages ?? []).find((p) => p.id === id)
+      const json = await apiRequest<{ status_page: StatusPage }>(`/v1/status-pages/${id}`)
+      const found = json.status_page
       if (!found) {
         setError("状态页不存在")
         return

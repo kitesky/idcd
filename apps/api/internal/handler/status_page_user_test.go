@@ -263,3 +263,55 @@ func TestStatusPageUserHandler_Delete_NotFound(t *testing.T) {
 
 	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
+
+func TestStatusPageUserHandler_Get_Success(t *testing.T) {
+	now := time.Now().UTC()
+	pool := &mockStatusPagePool{
+		queryRowQueue: []*mockStatusPageRow{
+			{values: []any{"sp_001", "My Page", "my-page", now}},
+		},
+	}
+	h := NewStatusPageUserHandler(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status-pages/sp_001", nil)
+	req = statusPageWithUserID(req, "u_owner")
+	req = statusPageWithChiParam(req, "id", "sp_001")
+	rr := httptest.NewRecorder()
+
+	h.Get(rr, req)
+
+	require.Equal(t, http.StatusOK, rr.Code)
+
+	var resp map[string]any
+	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
+
+	data, ok := resp["data"].(map[string]any)
+	require.True(t, ok, "expected data object")
+
+	sp, ok := data["status_page"].(map[string]any)
+	require.True(t, ok, "expected status_page object")
+
+	assert.Equal(t, "sp_001", sp["id"])
+	assert.Equal(t, "My Page", sp["name"])
+	assert.Equal(t, "my-page", sp["slug"])
+	assert.Equal(t, true, sp["is_public"])
+	assert.Equal(t, "operational", sp["overall_status"])
+}
+
+func TestStatusPageUserHandler_Get_NotFound(t *testing.T) {
+	pool := &mockStatusPagePool{
+		queryRowQueue: []*mockStatusPageRow{
+			{err: pgx.ErrNoRows},
+		},
+	}
+	h := NewStatusPageUserHandler(pool)
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status-pages/sp_missing", nil)
+	req = statusPageWithUserID(req, "u_owner")
+	req = statusPageWithChiParam(req, "id", "sp_missing")
+	rr := httptest.NewRecorder()
+
+	h.Get(rr, req)
+
+	assert.Equal(t, http.StatusNotFound, rr.Code)
+}

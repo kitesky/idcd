@@ -191,4 +191,30 @@ describe("OncallPage", () => {
     // Stats card should be visible in the schedules tab (default tab)
     expect(screen.getByTestId("oncall-stats-card")).toBeInTheDocument()
   })
+
+  it("AddParticipantDialog 存在并可打开", async () => {
+    render(<OncallPage />)
+    // Wait for schedule and participants to load so the dialog trigger renders
+    await waitFor(() => {
+      expect(screen.getByTestId("add-participant-button")).toBeInTheDocument()
+    })
+    // Click the trigger button
+    fireEvent.click(screen.getByTestId("add-participant-button"))
+    // The dialog content should appear
+    await waitFor(() => {
+      expect(screen.getByTestId("add-participant-dialog")).toBeInTheDocument()
+    })
+  })
+
+  it("参与人行显示删除按钮", async () => {
+    render(<OncallPage />)
+    // Wait until participant rows are rendered
+    await waitFor(() => {
+      expect(screen.getByTestId("schedule-participant-u_alice")).toBeInTheDocument()
+    })
+    // Each participant row should have a RemoveParticipantButton (data-testid="remove-participant-<userId>")
+    expect(screen.getByTestId("remove-participant-u_alice")).toBeInTheDocument()
+    expect(screen.getByTestId("remove-participant-u_bob")).toBeInTheDocument()
+    expect(screen.getByTestId("remove-participant-u_carol")).toBeInTheDocument()
+  })
 })

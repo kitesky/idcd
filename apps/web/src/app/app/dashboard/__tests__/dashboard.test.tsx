@@ -37,31 +37,54 @@ const mockSummary = {
 const mockPins = { data: { monitor_ids: [] } }
 const mockMonitors = { data: { items: [], total: 0, page: 1, limit: 20 } }
 
+function buildFetchMock(
+  overrides: {
+    summary?: typeof mockSummary["data"]
+    downItems?: { id: string; name: string; status: string; last_check_at?: string }[]
+    alertEvents?: { id: string; monitorName: string; status: string; startedAt: string }[]
+  } = {},
+) {
+  const summary = overrides.summary ?? mockSummary.data
+  const downItems = overrides.downItems ?? []
+  const alertEvents = overrides.alertEvents ?? []
+
+  return vi.fn((url: string) => {
+    if (url.includes("/v1/dashboard/summary")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: summary }),
+      })
+    }
+    if (url.includes("/v1/dashboard/pins")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockPins),
+      })
+    }
+    if (url.includes("status=DOWN")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { items: downItems } }),
+      })
+    }
+    if (url.includes("/v1/alert-events")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve({ data: { events: alertEvents } }),
+      })
+    }
+    if (url.includes("/v1/monitors")) {
+      return Promise.resolve({
+        ok: true,
+        json: () => Promise.resolve(mockMonitors),
+      })
+    }
+    return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
+  })
+}
+
 beforeEach(() => {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn((url: string) => {
-      if (url.includes("/v1/dashboard/summary")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockSummary),
-        })
-      }
-      if (url.includes("/v1/dashboard/pins")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockPins),
-        })
-      }
-      if (url.includes("/v1/monitors")) {
-        return Promise.resolve({
-          ok: true,
-          json: () => Promise.resolve(mockMonitors),
-        })
-      }
-      return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
-    })
-  )
+  vi.stubGlobal("fetch", buildFetchMock())
 })
 
 import DashboardPage from "../page"
@@ -120,5 +143,55 @@ describe("DashboardPage — 真实 API 数据", () => {
   it("快捷入口区域渲染标题", () => {
     render(<DashboardPage />)
     expect(screen.getByText("快捷入口")).toBeInTheDocument()
+  })
+
+  it("有 down 监控时显示 down 监控快览区块", async () => {
+    const downItems = [
+      { id: "mon_d1", name: "故障服务 A", status: "down", last_check_at: "2024-01-07T10:00:00Z" },
+    ]
+    vi.stubGlobal(
+      "fetch",
+      buildFetchMock({
+        summary: { ...mockSummary.data, monitors: { total: 4, up: 3, down: 1, paused: 0 } },
+        downItems,
+      }),
+    )
+    render(<DashboardPage />)
+    await waitFor(() => {
+      expect(screen.getByTestId("down-monitors-section")).toBeInTheDocument()
+    })
+    expect(screen.getByText("故障服务 A")).toBeInTheDocument()
+  })
+
+  it("显示近期告警事件区块", async () => {
+    const alertEvents = [
+      { id: "evt_1", monitorName: "主站监控", status: "firing", startedAt: "2024-01-07T08:00:00Z" },
+      { id: "evt_2", monitorName: "数据库心跳", status: "resolved", startedAt: "2024-01-06T12:00:00Z" },
+    ]
+    vi.stubGlobal("fetch", buildFetchMock({ alertEvents }))
+    render(<DashboardPage />)
+    // alert-events-section is always rendered
+    expect(screen.getByTestId("alert-events-section")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("主站监控")).toBeInTheDocument()
+    })
+    expect(screen.getByText("数据库心跳")).toBeInTheDocument()
+  })
+
+  it("无监控时显示新用户引导 CTA", async () => {
+    vi.stubGlobal(
+      "fetch",
+      buildFetchMock({
+        summary: { ...mockSummary.data, monitors: { total: 0, up: 0, down: 0, paused: 0 } },
+      }),
+    )
+    render(<DashboardPage />)
+    await waitFor(() => {
+      expect(screen.getByText("开始监控您的第一个服务")).toBeInTheDocument()
+    })
+    // "创建监控" button inside the CTA card
+    const ctaLinks = screen.getAllByRole("link", { name: /创建监控/ })
+    expect(ctaLinks.length).toBeGreaterThan(0)
+    expect(ctaLinks[0]).toHaveAttribute("href", "/app/monitors/new")
   })
 })

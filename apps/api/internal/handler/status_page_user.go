@@ -138,6 +138,41 @@ func (h *StatusPageUserHandler) Create(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusCreated, map[string]any{"status_page": item})
 }
 
+// Get handles GET /v1/status-pages/{id}.
+func (h *StatusPageUserHandler) Get(w http.ResponseWriter, r *http.Request) {
+	userID := middleware.UserIDFromContext(r.Context())
+	if userID == "" {
+		response.Error(w, r, apperr.Unauthorized("not authenticated"))
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	if id == "" {
+		response.Error(w, r, apperr.Validation("missing id", ""))
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	var item statusPageItem
+	var createdAt time.Time
+	err := h.pool.QueryRow(ctx,
+		`SELECT id, name, slug, created_at
+		 FROM status_pages WHERE id = $1 AND user_id = $2`,
+		id, userID,
+	).Scan(&item.ID, &item.Name, &item.Slug, &createdAt)
+	if err != nil {
+		response.Error(w, r, apperr.NotFound("status page not found"))
+		return
+	}
+	item.IsPublic = true
+	item.OverallStatus = "operational"
+	item.CreatedAt = createdAt.UTC().Format(time.RFC3339)
+
+	response.JSON(w, r, http.StatusOK, map[string]any{"status_page": item})
+}
+
 func (h *StatusPageUserHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	userID := middleware.UserIDFromContext(r.Context())
 	if userID == "" {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest"
-import { render, screen, waitFor } from "@testing-library/react"
+import { render, screen, waitFor, fireEvent } from "@testing-library/react"
 import "@testing-library/jest-dom"
 
 vi.mock("next/navigation", () => ({
@@ -208,5 +208,105 @@ describe("ReportsPage — SLA 月报", () => {
     await waitFor(() => {
       expect(screen.getByTestId("reports-error")).toBeInTheDocument()
     })
+  })
+})
+
+// ── Noise analysis Tab tests ───────────────────────────────────────────────
+
+const MOCK_NOISE_DATA = {
+  period: { from: "2024-01-01", to: "2024-01-07" },
+  total_firings: 15,
+  total_flaps: 3,
+  noisiest_monitors: [
+    { monitor_id: "mon_001", firings: 10, flaps: 2 },
+    { monitor_id: "mon_002", firings: 5, flaps: 1 },
+  ],
+  daily_trend: [{ date: "2024-01-07", firings: 3, flaps: 0 }],
+}
+
+describe("告警噪音分析 Tab", () => {
+  function mockFetchForNoise() {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/v1/reports/alert-noise")) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve({ data: MOCK_NOISE_DATA }),
+          })
+        }
+        // SLA tab default
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { entries: MOCK_SLA_ENTRIES } }),
+        })
+      }),
+    )
+  }
+
+  it("切换到噪音 tab 显示分析内容", async () => {
+    mockFetchForNoise()
+    render(<ReportsPage />)
+
+    // Click the noise tab trigger (Radix Tabs responds to mouseDown)
+    const noiseTab = screen.getByRole("tab", { name: "告警噪音分析" })
+    fireEvent.mouseDown(noiseTab)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("noise-tab")).toBeInTheDocument()
+    })
+    // Summary cards should appear
+    expect(screen.getByText("总触发次数")).toBeInTheDocument()
+    expect(screen.getByText("总抖动次数")).toBeInTheDocument()
+  })
+
+  it("显示 top 噪音监控列表", async () => {
+    mockFetchForNoise()
+    render(<ReportsPage />)
+
+    const noiseTab = screen.getByRole("tab", { name: "告警噪音分析" })
+    fireEvent.mouseDown(noiseTab)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("noise-row-mon_001")).toBeInTheDocument()
+    })
+    expect(screen.getByTestId("noise-row-mon_002")).toBeInTheDocument()
+    // monitor IDs visible in the table
+    expect(screen.getByText("mon_001")).toBeInTheDocument()
+    expect(screen.getByText("mon_002")).toBeInTheDocument()
+  })
+
+  it("空状态显示无告警噪音", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn((url: string) => {
+        if (url.includes("/v1/reports/alert-noise")) {
+          return Promise.resolve({
+            ok: true,
+            json: () =>
+              Promise.resolve({
+                data: {
+                  ...MOCK_NOISE_DATA,
+                  noisiest_monitors: [],
+                  daily_trend: [],
+                },
+              }),
+          })
+        }
+        return Promise.resolve({
+          ok: true,
+          json: () => Promise.resolve({ data: { entries: MOCK_SLA_ENTRIES } }),
+        })
+      }),
+    )
+    render(<ReportsPage />)
+
+    const noiseTab = screen.getByRole("tab", { name: "告警噪音分析" })
+    fireEvent.mouseDown(noiseTab)
+
+    await waitFor(() => {
+      expect(screen.getByTestId("noise-empty")).toBeInTheDocument()
+    })
+    expect(screen.getByText("近期无告警噪音")).toBeInTheDocument()
   })
 })

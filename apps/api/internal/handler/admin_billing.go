@@ -66,6 +66,10 @@ type RefundRetryPayload struct {
 	Provider     string `json:"provider"`
 	Reason       string `json:"reason,omitempty"`
 	AttemptCount int    `json:"attempt_count"`
+	// Locale is the recipient's preferred short locale code (cn/en) for the
+	// downstream apology email. The notifier worker reads this — when empty,
+	// resolveLocale falls back to the registry default.
+	Locale string `json:"locale,omitempty"`
 }
 
 // BillingEnqueuer enqueues billing-related asynq tasks (refund retry, etc.).
@@ -211,14 +215,17 @@ func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	// Read the payment fields needed for the retry payload.  We require the
-	// row to be in refund_failed status to retry.
+	// Read the payment fields needed for the retry payload + the owner's
+	// locale (joined from users) so the apology email lands in their language.
+	// D1 forbids cross-schema FKs but `payments` and `users` live in the same
+	// schema (idcd_main), so a regular LEFT JOIN is fine here.
 	rows, err := h.pool.Query(ctx, `
 		SELECT
-			id, user_id, ext_txn_id, amount_cents, currency, provider,
-			refund_retry_count
-		FROM payments
-		WHERE id = $1 AND status = 'refund_failed'
+			p.id, p.user_id, p.ext_txn_id, p.amount_cents, p.currency, p.provider,
+			p.refund_retry_count, COALESCE(u.locale, '')
+		FROM payments p
+		LEFT JOIN users u ON u.id = p.user_id
+		WHERE p.id = $1 AND p.status = 'refund_failed'
 	`, paymentID)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to query payment", err))
@@ -232,15 +239,16 @@ func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request
 	}
 
 	var (
-		id           string
-		userID       string
-		extTxnID     *string
-		amountCents  int64
-		currency     string
-		provider     string
-		retryCount   int
+		id          string
+		userID      string
+		extTxnID    *string
+		amountCents int64
+		currency    string
+		provider    string
+		retryCount  int
+		userLocale  string
 	)
-	if err := rows.Scan(&id, &userID, &extTxnID, &amountCents, &currency, &provider, &retryCount); err != nil {
+	if err := rows.Scan(&id, &userID, &extTxnID, &amountCents, &currency, &provider, &retryCount, &userLocale); err != nil {
 		response.Error(w, r, apperr.Internal("failed to scan payment row", err))
 		return
 	}
@@ -257,6 +265,7 @@ func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request
 		Provider:     provider,
 		Reason:       "admin_manual_retry",
 		AttemptCount: 0,
+		Locale:       userLocale,
 	}
 	if extTxnID != nil {
 		payload.ExtTxnID = *extTxnID

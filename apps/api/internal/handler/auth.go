@@ -20,14 +20,15 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/kite365/idcd/apps/api/internal/errcode"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/auth/password"
 	"github.com/kite365/idcd/lib/auth/totp"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/db/repository"
-	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/aesenc"
+	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/idgen"
 	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 )
@@ -171,18 +172,19 @@ func writeAuthSuccess(w http.ResponseWriter, r *http.Request, status int, token,
 
 // Register handles POST /v1/auth/register.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 
 	if req.Email == "" {
-		response.Error(w, r, apperr.Validation("email is required", ""))
+		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, map[string]any{"field": "email"})
 		return
 	}
 	if err := password.ValidatePassword(req.Password, req.Email); err != nil {
-		response.Error(w, r, apperr.Validation(err.Error(), ""))
+		response.ErrorCode(ctx, w, r, errcode.AuthPasswordWeak, map[string]any{"detail": err.Error()})
 		return
 	}
 
@@ -204,7 +206,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// etc.) sees a canonical value. Negotiate always returns a supported code.
 	locale := negotiateRegisterLocale(r, "")
 
-	user, err := h.q.CreateUser(r.Context(), idcdmain.CreateUserParams{
+	user, err := h.q.CreateUser(ctx, idcdmain.CreateUserParams{
 		ID:           userID,
 		Email:        req.Email,
 		PasswordHash: &hash,
@@ -214,7 +216,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, repository.ErrDuplicate) {
-			response.Error(w, r, apperr.Duplicate("email already registered"))
+			response.ErrorCode(ctx, w, r, errcode.AccountEmailTaken, map[string]any{"email": req.Email})
 			return
 		}
 		response.Error(w, r, apperr.Internal("failed to create user", err))
@@ -222,17 +224,17 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.ReferralCode != "" && h.referralPool != nil {
-		h.recordReferral(r.Context(), req.ReferralCode, user.ID)
+		h.recordReferral(ctx, req.ReferralCode, user.ID)
 	}
 
 	// Send verification email asynchronously (fail-open: does not block registration).
 	if h.enqueuer != nil {
-		if otpID, code, err := h.issueOTP(r.Context(), user.ID, otpTypeVerify, 30*time.Minute); err == nil {
-			h.enqueueVerifyEmail(r.Context(), req.Email, otpID, code)
+		if otpID, code, err := h.issueOTP(ctx, user.ID, otpTypeVerify, 30*time.Minute); err == nil {
+			h.enqueueVerifyEmail(ctx, req.Email, otpID, code, user.Locale)
 		}
 	}
 
-	token, _, err := h.issueToken(r.Context(), user.ID, user.Locale)
+	token, _, err := h.issueToken(ctx, user.ID, user.Locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
@@ -281,21 +283,22 @@ type loginRequest struct {
 
 // Login handles POST /v1/auth/login.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 
 	if req.Email == "" || req.Password == "" {
-		response.Error(w, r, apperr.Validation("email and password are required", ""))
+		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, nil)
 		return
 	}
 
-	user, err := h.q.GetUserByEmail(r.Context(), req.Email)
+	user, err := h.q.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			response.Error(w, r, apperr.Unauthorized("invalid credentials"))
+			response.ErrorCode(ctx, w, r, errcode.AuthCredentialsInvalid, nil)
 			return
 		}
 		response.Error(w, r, apperr.Internal("failed to fetch user", err))
@@ -303,20 +306,20 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if user.PasswordHash == nil || !password.Verify(req.Password, *user.PasswordHash) {
-		response.Error(w, r, apperr.Unauthorized("invalid credentials"))
+		response.ErrorCode(ctx, w, r, errcode.AuthCredentialsInvalid, nil)
 		return
 	}
 
 	// users.status enum: active / locked / pending_deletion / deleted.
 	// Anything other than 'active' must be rejected.
 	if user.Status != "active" {
-		response.Error(w, r, apperr.Forbidden("account is not active"))
+		response.ErrorCode(ctx, w, r, errcode.AuthAccountDisabled, map[string]any{"status": user.Status})
 		return
 	}
 
-	if h.mfaPool != nil && h.mfaRedis != nil && h.userHas2FA(r.Context(), user.ID) {
+	if h.mfaPool != nil && h.mfaRedis != nil && h.userHas2FA(ctx, user.ID) {
 		mfaToken := idgen.New("mfa")
-		if err := h.mfaRedis.Set(r.Context(), mfaPendingKeyPrefix+mfaToken, user.ID, mfaPendingTTL).Err(); err != nil {
+		if err := h.mfaRedis.Set(ctx, mfaPendingKeyPrefix+mfaToken, user.ID, mfaPendingTTL).Err(); err != nil {
 			response.Error(w, r, apperr.Internal("failed to create mfa session", err))
 			return
 		}
@@ -327,13 +330,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := h.issueToken(r.Context(), user.ID, user.Locale)
+	token, _, err := h.issueToken(ctx, user.ID, user.Locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
 	}
 
-	_ = h.q.UpdateUserLastLogin(r.Context(), idcdmain.UpdateUserLastLoginParams{ID: user.ID})
+	_ = h.q.UpdateUserLastLogin(ctx, idcdmain.UpdateUserLastLoginParams{ID: user.ID})
 
 	writeAuthSuccess(w, r, http.StatusOK, token, user.ID)
 }
@@ -390,28 +393,29 @@ type verifyEmailRequest struct {
 
 // VerifyEmail handles POST /v1/auth/verify-email.
 func (h *AuthHandler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req verifyEmailRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 	if req.OtpID == "" || req.Code == "" {
-		response.Error(w, r, apperr.Validation("otp_id and code are required", ""))
+		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, nil)
 		return
 	}
 
-	user, err := h.q.GetUserByEmail(r.Context(), req.Email)
+	user, err := h.q.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		response.Error(w, r, apperr.Unauthorized("invalid request"))
+		response.ErrorCode(ctx, w, r, errcode.AuthOTPInvalid, nil)
 		return
 	}
 
-	if err := h.verifyOTP(r.Context(), user.ID, req.OtpID, req.Code, otpTypeVerify); err != nil {
-		response.Error(w, r, err)
+	if otpCode, params := h.verifyOTPCoded(ctx, user.ID, req.OtpID, req.Code, otpTypeVerify); otpCode != "" {
+		response.ErrorCode(ctx, w, r, otpCode, params)
 		return
 	}
 
-	if _, err := h.q.UpdateUserEmailVerified(r.Context(), user.ID); err != nil {
+	if _, err := h.q.UpdateUserEmailVerified(ctx, user.ID); err != nil {
 		response.Error(w, r, apperr.Internal("failed to mark email verified", err))
 		return
 	}
@@ -428,19 +432,20 @@ type forgotPasswordRequest struct {
 
 // ForgotPassword handles POST /v1/auth/forgot-password.
 func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req forgotPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 	if req.Email == "" {
-		response.Error(w, r, apperr.Validation("email is required", ""))
+		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, map[string]any{"field": "email"})
 		return
 	}
 
 	const sameMsg = "if the email exists, a reset code has been sent"
 
-	user, err := h.q.GetUserByEmail(r.Context(), req.Email)
+	user, err := h.q.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		// Timing equalisation: sleep approximately as long as issueOTP would take
 		// so that attackers cannot enumerate registered emails via response-time differences.
@@ -449,7 +454,7 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	otpID, code, err := h.issueOTP(r.Context(), user.ID, otpTypeReset, otpTTL)
+	otpID, code, err := h.issueOTP(ctx, user.ID, otpTypeReset, otpTTL)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue OTP", err))
 		return
@@ -458,7 +463,7 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 	// Dispatch password-reset email asynchronously (fail-open).
 	// otp_id and code must only travel to the user via email — never returned in the API response.
 	if h.enqueuer != nil {
-		h.enqueueResetPasswordEmail(r.Context(), req.Email, otpID, code)
+		h.enqueueResetPasswordEmail(ctx, req.Email, otpID, code, user.Locale)
 	}
 
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": sameMsg})
@@ -470,13 +475,14 @@ func (h *AuthHandler) ForgotPassword(w http.ResponseWriter, r *http.Request) {
 // Requires authentication (authnMW). Rate-limited by the existing auth rate limiter.
 // If the account is already verified it returns 200 with a descriptive message.
 func (h *AuthHandler) ResendVerifyEmail(w http.ResponseWriter, r *http.Request) {
-	userID := middleware.UserIDFromContext(r.Context())
+	ctx := r.Context()
+	userID := middleware.UserIDFromContext(ctx)
 	if userID == "" {
-		response.Error(w, r, apperr.Unauthorized("authentication required"))
+		response.ErrorCode(ctx, w, r, errcode.AuthRequired, nil)
 		return
 	}
 
-	user, err := h.q.GetUserByID(r.Context(), userID)
+	user, err := h.q.GetUserByID(ctx, userID)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to fetch user", err))
 		return
@@ -493,13 +499,13 @@ func (h *AuthHandler) ResendVerifyEmail(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	otpID, code, err := h.issueOTP(r.Context(), userID, otpTypeVerify, 30*time.Minute)
+	otpID, code, err := h.issueOTP(ctx, userID, otpTypeVerify, 30*time.Minute)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue OTP", err))
 		return
 	}
 
-	h.enqueueVerifyEmail(r.Context(), user.Email, otpID, code)
+	h.enqueueVerifyEmail(ctx, user.Email, otpID, code, user.Locale)
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "verification email sent"})
 }
 
@@ -514,29 +520,30 @@ type resetPasswordRequest struct {
 
 // ResetPassword handles POST /v1/auth/reset-password.
 func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req resetPasswordRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 	if req.Email == "" || req.OtpID == "" || req.Code == "" || req.NewPassword == "" {
-		response.Error(w, r, apperr.Validation("email, otp_id, code, and new_password are required", ""))
+		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, nil)
 		return
 	}
 
-	user, err := h.q.GetUserByEmail(r.Context(), req.Email)
+	user, err := h.q.GetUserByEmail(ctx, req.Email)
 	if err != nil {
-		response.Error(w, r, apperr.Unauthorized("invalid request"))
+		response.ErrorCode(ctx, w, r, errcode.AuthOTPInvalid, nil)
 		return
 	}
 
-	if err := h.verifyOTP(r.Context(), user.ID, req.OtpID, req.Code, otpTypeReset); err != nil {
-		response.Error(w, r, err)
+	if otpCode, params := h.verifyOTPCoded(ctx, user.ID, req.OtpID, req.Code, otpTypeReset); otpCode != "" {
+		response.ErrorCode(ctx, w, r, otpCode, params)
 		return
 	}
 
 	if err := password.ValidatePassword(req.NewPassword, req.Email); err != nil {
-		response.Error(w, r, apperr.Validation(err.Error(), ""))
+		response.ErrorCode(ctx, w, r, errcode.AuthPasswordWeak, map[string]any{"detail": err.Error()})
 		return
 	}
 
@@ -546,7 +553,7 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.q.UpdateUserPasswordHash(r.Context(), idcdmain.UpdateUserPasswordHashParams{
+	if err := h.q.UpdateUserPasswordHash(ctx, idcdmain.UpdateUserPasswordHashParams{
 		ID:           user.ID,
 		PasswordHash: &hash,
 	}); err != nil {
@@ -561,12 +568,18 @@ func (h *AuthHandler) ResetPassword(w http.ResponseWriter, r *http.Request) {
 
 // enqueueVerifyEmail enqueues a send_verify_email task.
 // It is fail-open: errors are silently dropped so callers are never blocked.
-func (h *AuthHandler) enqueueVerifyEmail(ctx context.Context, to, otpID, code string) {
+//
+// userLocale must be the short registry code (cn/en) for the recipient — the
+// notifier worker honours `payload.locale` when picking templates / subject
+// strings. An empty string falls back to the registry default downstream.
+func (h *AuthHandler) enqueueVerifyEmail(ctx context.Context, to, otpID, code, userLocale string) {
+	loc := normalizeLocale(userLocale)
 	payload, err := json.Marshal(map[string]any{
 		"to":         to,
 		"otp_id":     otpID,
 		"code":       code,
 		"expires_in": "30 minutes",
+		"locale":     loc,
 	})
 	if err != nil {
 		return
@@ -577,22 +590,48 @@ func (h *AuthHandler) enqueueVerifyEmail(ctx context.Context, to, otpID, code st
 // enqueueResetPasswordEmail enqueues a send_reset_password task.
 // The reset deep-link embeds otp_id and code so the frontend can pre-fill the form.
 // It is fail-open: errors are silently dropped.
-func (h *AuthHandler) enqueueResetPasswordEmail(ctx context.Context, to, otpID, code string) {
+//
+// userLocale follows the same contract as enqueueVerifyEmail's locale arg.
+func (h *AuthHandler) enqueueResetPasswordEmail(ctx context.Context, to, otpID, code, userLocale string) {
 	baseURL := h.appBaseURL
 	if baseURL == "" {
 		baseURL = "https://app.idcd.com"
 	}
+	loc := normalizeLocale(userLocale)
+	// Note: reset link inherits the user's locale prefix downstream when the
+	// notifier worker rewrites URLs via worker.BuildLocalizedURL. We still send
+	// the raw URL here so the notifier can decide whether to prefix `/en/`.
 	resetURL := fmt.Sprintf("%s/auth/reset-password?otp_id=%s&code=%s", baseURL, otpID, code)
 
 	payload, err := json.Marshal(map[string]any{
 		"to":         to,
 		"reset_url":  resetURL,
 		"expires_in": "10 minutes",
+		"locale":     loc,
 	})
 	if err != nil {
 		return
 	}
 	_ = h.enqueuer.EnqueueTask(ctx, taskSendResetPassword, payload, "email")
+}
+
+// normalizeLocale coerces the persisted users.locale value to a registry-
+// supported short code. Historical data still contains the legacy BCP 47
+// strings ("zh-CN" / "en-US") so we run a best-effort Negotiate first; if
+// nothing matches we return the registry default rather than the empty
+// string so the notifier's resolveLocale fallback is a strict no-op.
+func normalizeLocale(raw string) string {
+	reg := sharedi18n.MustDefault()
+	if raw == "" {
+		return reg.DefaultCode()
+	}
+	if reg.IsSupported(raw) {
+		return raw
+	}
+	if negotiated := reg.Negotiate(raw); negotiated != "" {
+		return negotiated
+	}
+	return reg.DefaultCode()
 }
 
 // issueToken creates a new session and signs a JWT carrying the user's
@@ -677,6 +716,43 @@ func (h *AuthHandler) verifyOTP(ctx context.Context, userID, otpID, code, otpTyp
 	return nil
 }
 
+// verifyOTPCoded is the errcode-flavoured twin of verifyOTP. Returns
+// (codeName, params) when validation fails, or ("", nil) on success. Handlers
+// translate the errcode through response.ErrorCode so the user sees a
+// localized message instead of the legacy English literal.
+//
+// Kept alongside verifyOTP (rather than replacing it) so callers that still
+// thread apperr.Error through the codebase (e.g. internal helpers) keep
+// compiling; both functions share the same underlying logic, so any future
+// rule change must land in both.
+func (h *AuthHandler) verifyOTPCoded(ctx context.Context, userID, otpID, code, otpType string) (errcode.Code, map[string]any) {
+	otp, err := h.q.GetUserOTPByIDAndType(ctx, idcdmain.GetUserOTPByIDAndTypeParams{
+		ID:   otpID,
+		Type: otpType,
+	})
+	if err != nil {
+		return errcode.AuthOTPInvalid, nil
+	}
+	if otp.UserID != userID {
+		return errcode.AuthOTPInvalid, nil
+	}
+	if otp.UsedAt.Valid {
+		return errcode.AuthOTPInvalid, nil
+	}
+	if otp.Attempts >= otpMaxAttempts {
+		return errcode.AuthOTPAttemptsExceeded, nil
+	}
+	if otp.ExpiresAt.Valid && time.Now().After(otp.ExpiresAt.Time) {
+		return errcode.AuthOTPExpired, nil
+	}
+	if h.hashOTP(code) != otp.CodeHash {
+		_ = h.q.IncrementUserOTPAttempts(ctx, otp.ID)
+		return errcode.AuthOTPInvalid, nil
+	}
+	_ = h.q.MarkUserOTPUsed(ctx, otp.ID)
+	return "", nil
+}
+
 func generateOTP() (string, error) {
 	max := big.NewInt(1_000_000)
 	n, err := rand.Int(rand.Reader, max)
@@ -706,24 +782,25 @@ type twoFactorLoginRequest struct {
 }
 
 func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
 	var req twoFactorLoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		response.Error(w, r, apperr.Validation("invalid request body", err.Error()))
+		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 	if req.MFAToken == "" || req.Code == "" {
-		response.Error(w, r, apperr.Validation("mfa_token and code are required", ""))
+		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, nil)
 		return
 	}
 
-	userID, err := h.mfaRedis.Get(r.Context(), mfaPendingKeyPrefix+req.MFAToken).Result()
+	userID, err := h.mfaRedis.Get(ctx, mfaPendingKeyPrefix+req.MFAToken).Result()
 	if err != nil {
-		response.Error(w, r, apperr.Unauthorized("invalid or expired mfa token"))
+		response.ErrorCode(ctx, w, r, errcode.Auth2FAInvalid, nil)
 		return
 	}
 
 	var secretBytes []byte
-	err = h.mfaPool.QueryRow(r.Context(),
+	err = h.mfaPool.QueryRow(ctx,
 		`SELECT secret_encrypted FROM user_2fa WHERE user_id = $1`, userID,
 	).Scan(&secretBytes)
 	if err != nil {
@@ -748,25 +825,25 @@ func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !ok {
-		response.Error(w, r, apperr.Unauthorized("invalid TOTP code"))
+		response.ErrorCode(ctx, w, r, errcode.Auth2FAInvalid, nil)
 		return
 	}
 
-	_ = h.mfaRedis.Del(r.Context(), mfaPendingKeyPrefix+req.MFAToken)
+	_ = h.mfaRedis.Del(ctx, mfaPendingKeyPrefix+req.MFAToken)
 
-	user, err := h.q.GetUserByID(r.Context(), userID)
+	user, err := h.q.GetUserByID(ctx, userID)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to fetch user", err))
 		return
 	}
 
-	token, _, err := h.issueToken(r.Context(), user.ID, user.Locale)
+	token, _, err := h.issueToken(ctx, user.ID, user.Locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
 	}
 
-	_ = h.q.UpdateUserLastLogin(r.Context(), idcdmain.UpdateUserLastLoginParams{ID: user.ID})
+	_ = h.q.UpdateUserLastLogin(ctx, idcdmain.UpdateUserLastLoginParams{ID: user.ID})
 
 	writeAuthSuccess(w, r, http.StatusOK, token, user.ID)
 }

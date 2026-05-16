@@ -153,8 +153,8 @@ func TestAdminBillingHandler_RetryRefund_EnqueuesTask(t *testing.T) {
 	extTxnID := "ph_txn_001"
 	rows := pgxmock.NewRows([]string{
 		"id", "user_id", "ext_txn_id", "amount_cents", "currency", "provider",
-		"refund_retry_count",
-	}).AddRow("pay_test_001", "u_user1", &extTxnID, int64(9900), "CNY", "payment_hub", 1)
+		"refund_retry_count", "locale",
+	}).AddRow("pay_test_001", "u_user1", &extTxnID, int64(9900), "CNY", "payment_hub", 1, "cn")
 
 	mockPool.ExpectQuery("SELECT(.|\n)+FROM payments").
 		WithArgs("pay_test_001").
@@ -187,6 +187,7 @@ func TestAdminBillingHandler_RetryRefund_EnqueuesTask(t *testing.T) {
 	assert.Equal(t, "payment_hub", calls[0].Payload.Provider)
 	assert.Equal(t, "admin_manual_retry", calls[0].Payload.Reason)
 	assert.Equal(t, 0, calls[0].Payload.AttemptCount, "admin retries start at attempt 0")
+	assert.Equal(t, "cn", calls[0].Payload.Locale, "owner locale should propagate to refund retry payload")
 
 	assert.NoError(t, mockPool.ExpectationsWereMet())
 }
@@ -202,7 +203,7 @@ func TestAdminBillingHandler_RetryRefund_NotFound(t *testing.T) {
 	// Empty result set → not found.
 	rows := pgxmock.NewRows([]string{
 		"id", "user_id", "ext_txn_id", "amount_cents", "currency", "provider",
-		"refund_retry_count",
+		"refund_retry_count", "locale",
 	})
 	mockPool.ExpectQuery("SELECT(.|\n)+FROM payments").
 		WithArgs("pay_nonexistent").
@@ -230,8 +231,8 @@ func TestAdminBillingHandler_RetryRefund_EnqueueError(t *testing.T) {
 	extTxnID := "ph_txn_001"
 	rows := pgxmock.NewRows([]string{
 		"id", "user_id", "ext_txn_id", "amount_cents", "currency", "provider",
-		"refund_retry_count",
-	}).AddRow("pay_test_001", "u_user1", &extTxnID, int64(9900), "CNY", "payment_hub", 1)
+		"refund_retry_count", "locale",
+	}).AddRow("pay_test_001", "u_user1", &extTxnID, int64(9900), "CNY", "payment_hub", 1, "cn")
 	mockPool.ExpectQuery("SELECT(.|\n)+FROM payments").
 		WithArgs("pay_test_001").
 		WillReturnRows(rows)
@@ -255,8 +256,8 @@ func TestAdminBillingHandler_RetryRefund_FallbackNoEnqueuer(t *testing.T) {
 	extTxnID := "ph_txn_001"
 	rows := pgxmock.NewRows([]string{
 		"id", "user_id", "ext_txn_id", "amount_cents", "currency", "provider",
-		"refund_retry_count",
-	}).AddRow("pay_test_001", "u_user1", &extTxnID, int64(9900), "CNY", "payment_hub", 0)
+		"refund_retry_count", "locale",
+	}).AddRow("pay_test_001", "u_user1", &extTxnID, int64(9900), "CNY", "payment_hub", 0, "en")
 	mockPool.ExpectQuery("SELECT(.|\n)+FROM payments").
 		WithArgs("pay_test_001").
 		WillReturnRows(rows)

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,14 @@ import (
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/db/repository"
 )
+
+// jsonUnmarshal is a thin wrapper kept in the test file so it stays close
+// to the assertions that consume it. The handler tests only need
+// json.Unmarshal in two places, so we deliberately avoid importing the
+// encoding/json package at top-of-file alongside production imports.
+func jsonUnmarshal(data []byte, v any) error {
+	return json.Unmarshal(data, v)
+}
 
 // --- mocks ---
 
@@ -476,6 +485,45 @@ func TestRegister_enqueuesVerifyEmail(t *testing.T) {
 	}
 	if eq.tasks[0].queue != "email" {
 		t.Errorf("expected queue %q, got %q", "email", eq.tasks[0].queue)
+	}
+
+	// Phase 2a: verify-email payload must carry the user's short locale so
+	// the notifier worker picks the right template / subject.
+	var payload map[string]any
+	if err := jsonUnmarshal(eq.tasks[0].payload, &payload); err != nil {
+		t.Fatalf("payload not valid JSON: %v", err)
+	}
+	if loc, ok := payload["locale"].(string); !ok || loc == "" {
+		t.Errorf("expected payload.locale to be set, got %v", payload["locale"])
+	}
+}
+
+// TestEnqueueVerifyEmail_NegotiatesLocale exercises the Accept-Language path:
+// a registration with en-US should produce a payload with locale="en".
+func TestEnqueueVerifyEmail_NegotiatesLocale(t *testing.T) {
+	eq := &mockEnqueuer{}
+	h := newTestAuthHandler().WithEnqueuer(eq)
+
+	body := `{"email":"en-locale@example.com","password":"Password123"}`
+	req := httptest.NewRequest("POST", "/v1/auth/register", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept-Language", "en-US,en;q=0.9")
+	rr := httptest.NewRecorder()
+
+	h.Register(rr, req)
+
+	if rr.Code != http.StatusCreated {
+		t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if len(eq.tasks) != 1 {
+		t.Fatalf("expected 1 enqueued task, got %d", len(eq.tasks))
+	}
+	var payload map[string]any
+	if err := jsonUnmarshal(eq.tasks[0].payload, &payload); err != nil {
+		t.Fatalf("payload not valid JSON: %v", err)
+	}
+	if loc, _ := payload["locale"].(string); loc != "en" {
+		t.Errorf("expected payload.locale=en, got %q", loc)
 	}
 }
 

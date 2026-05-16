@@ -3,9 +3,11 @@ import { headers } from 'next/headers'
 import { defaultLocale, fallbackChain, isSupported } from './registry'
 
 // Stable list of namespaces. Adding a new namespace = append one entry here
-// + drop the JSON in every messages/{locale}/ directory.
+// + drop the JSON in every messages/{locale}/ directory. Missing files at a
+// given locale are tolerated by loadNamespace's fallback chain.
 const NAMESPACES = [
   'nav',
+  'footer',
   'tools',
   'auth',
   'home',
@@ -20,7 +22,16 @@ const NAMESPACES = [
   'billing',
   'dashboard',
   'status',
+  'statusPages',
+  'incidents',
+  'userMenu',
   'admin',
+  'docs',
+  'enums',
+  'validation',
+  'about',
+  'transparency',
+  'legal',
 ] as const
 
 type Namespace = (typeof NAMESPACES)[number]

@@ -236,23 +236,32 @@ CREATE TABLE cert.acme_accounts (
   UNIQUE (ca, env)
 );
 
--- 签发订单
+-- 签发订单（含付费扩展位，S1 不使用 tier 之外字段）
 CREATE TABLE cert.orders (
-  id              BIGSERIAL PRIMARY KEY,
-  account_id      BIGINT      NOT NULL,
-  sans            TEXT[]      NOT NULL,
-  ca              TEXT        NOT NULL,
-  challenge_type  TEXT        NOT NULL,       -- 'dns-01' | 'http-01'
-  dns_credential_id BIGINT,                   -- NULL 表示手动模式
-  status          TEXT        NOT NULL,       -- draft|validating|issuing|issued|failed|revoking|revoked
-  csr_pem         TEXT,
-  cert_id         BIGINT,
-  retry_count     INT         NOT NULL DEFAULT 0,
-  last_error      TEXT,
-  idempotency_key TEXT,                       -- 防重复点击
-  created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  finalized_at    TIMESTAMPTZ,
-  UNIQUE (account_id, idempotency_key)
+  id                  BIGSERIAL PRIMARY KEY,
+  account_id          BIGINT      NOT NULL,
+  sans                TEXT[]      NOT NULL,            -- 已 Punycode 化的 ASCII 表示
+  sans_unicode        TEXT[],                          -- 原始 Unicode 输入（用于展示）
+  common_name         TEXT,                            -- 通常 = sans[0]；可为空（仅依赖 SAN）
+  tier                TEXT        NOT NULL DEFAULT 'free-dv',  -- 'free-dv'|'paid-dv'|'paid-ov'|'paid-ev'
+  ca                  TEXT        NOT NULL,            -- 'letsencrypt'|'zerossl'|'buypass'|'gts'|reseller channel
+  reseller_channel    TEXT,                            -- S3 起：'digicert'|'sectigo'|'gogetssl' 等；免费分支 NULL
+  reseller_order_ref  TEXT,                            -- S3 起：reseller 端订单 ID
+  organization_id     BIGINT,                          -- S3 起：cert.organizations 应用层 join
+  validity_days       INT         NOT NULL DEFAULT 90,
+  challenge_type      TEXT        NOT NULL,            -- 'dns-01' | 'http-01' | 'email' (S3 OV/EV)
+  dns_credential_id   BIGINT,                          -- NULL 表示手动模式
+  status              TEXT        NOT NULL,            -- draft|validating|awaiting_org_validation|issuing|issued|failed|revoking|revoked
+  csr_pem             TEXT,
+  cert_id             BIGINT,
+  billing_invoice_id  TEXT,                            -- S3 起：09-billing 关联（UNIQUE 防重复扣款）
+  retry_count         INT         NOT NULL DEFAULT 0,
+  last_error          TEXT,
+  idempotency_key     TEXT,                            -- 防重复点击
+  created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  finalized_at        TIMESTAMPTZ,
+  UNIQUE (account_id, idempotency_key),
+  UNIQUE (billing_invoice_id)
 );
 CREATE INDEX ON cert.orders (account_id, status);
 CREATE INDEX ON cert.orders (status) WHERE status IN ('validating','issuing');
@@ -428,7 +437,16 @@ WHERE status='issued'
 
 ### 7.4 撤销
 
-用户点撤销 → cert-svc 调 `CA.Revoke(cert, reason='unspecified')` → 成功后 `certs.status=revoked` + cancel 未来 renewal_job。
+用户点撤销 → cert-svc 调 `CA.Revoke(cert, reason='unspecified')` → 成功后 `certs.status=revoked` + cancel 未来 renewal_job。Revoke 用 ACME 账号 key 签名（也可用 cert 私钥；我们统一用账号 key，避免要从 KMS 解密用户私钥）。
+
+### 7.5 跨流程不变量
+
+- **IDN 归一化**：所有入口域名先做 `idna.Lookup.ToASCII`（Punycode），SAN 列表存 ASCII，UI 展示存 Unicode；防止用户输入 `阿里巴巴.com` 与 `xn--mgbx4cd0ab.com` 被当成两个不同域名
+- **TXT 必须 deferred cleanup**：DNS Present 后立即在事件队列登记 cleanup 任务，无论 order 成功 / 失败 / worker 崩溃，cleanup 都执行；避免 zone 长期残留 `_acme-challenge.x` 污染
+- **CN vs SAN 策略**：CSR 中 `CommonName` 留空或填 `sans[0]`（仅为兼容老 Windows / Java 客户端），现代浏览器只看 SAN。固定策略：`CN = sans[0]`，避免遗漏
+- **私钥轮换**：每次续期生成新私钥（不复用旧 key），降低长期暴露风险
+- **订单状态下发**：前端用**短轮询**（订单状态接口，间隔 3s，订单 issued/failed 后停止），不引入 SSE / WebSocket；S2 评估是否升 SSE
+- **ACME 账号 key 备份**：账号 key 丢失 = 无法 revoke 历史证书；KMS 必须开启自动备份 + 跨 region 复制 + admin 季度演练 restore
 
 ---
 
@@ -440,10 +458,12 @@ WHERE status='issued'
 
 | CA | 阶段 | ACME endpoint | EAB | 备注 |
 |---|---|---|---|---|
-| Let's Encrypt | S1 | `acme-v02.api.letsencrypt.org` | 无 | 主力，周配额 50/根域 |
-| ZeroSSL | S2 | `acme.zerossl.com/v2/DV90` | 必须 | 注册时换 EAB；免费档每账号 3 张/月（绕过：API 不限） |
-| Buypass | S2 | `api.buypass.com/acme` | 无 | 180 天有效期；不支持通配符 |
+| Let's Encrypt | S1 | `acme-v02.api.letsencrypt.org` | 无 | 主力。**多重 rate limit 都共享平台账号**：50 张/Registered Domain/周、300 newOrder/账号/3h、5 失败 validation/账号/域/小时。需在 §13 监控 |
+| ZeroSSL | S2 | `acme.zerossl.com/v2/DV90` | 必须 | 注册时换 EAB；Web 注册免费档每账号 3 张/月**仅限 web 流程**，ACME 走 EAB 不受此限（但有 newOrder 总体节流） |
+| Buypass | S2 | `api.buypass.com/acme` | 无 | 180 天有效期；**支持通配符**（2023 起开放） |
 | Google Trust Services | S3 | `dv.acme-v02.api.pki.goog` | 必须（GCP 账号） | 通配符额度紧 |
+
+> **MPIC 影响**：自 2025 起 LE / GTS 等主流 CA 都已启用 Multi-Perspective Issuance Corroboration，从多个 vantage point 各自查询 DNS 验证 challenge。这意味着我们写完 TXT 必须等到**全球权威 NS 都生效**，而不仅本地 resolver 看到。`lib/cert/dns` 的传播检查必须直接 dig 域名的 authoritative NS（不查 8.8.8.8 这类公共 resolver 缓存）。
 
 **付费（Reseller / CertCentral 协议，S3 起接入；候选见 §20）**
 
@@ -454,6 +474,8 @@ WHERE status='issued'
 | GoGetSSL | REST | DV / OV / EV | 低 | 文档清晰，常被中小 SaaS 用 |
 | NameCheap Reseller | REST | DV / OV | 低 | 个人开发者熟，API 限于 reseller 账号 |
 | 阿里云 / 腾讯云 SSL 市场 | 各自私有 | DV / OV / EV | 高（每家私有协议） | 国内主体合规需要，S4 可选 |
+
+> **有效期 trend**：CA/Browser Forum 已表决（SC-081）将公网 TLS 证书最长有效期从 397 天逐步降至：2026-03 → 200 天、2027-03 → 100 天、2029-03 → 47 天。`cert.orders.validity_days` 必须支持动态，不要在代码里硬编码 397。
 
 **CA 路由策略**（cert-svc 在 order 创建时执行）：
 1. 用户显式指定 → 直接用
@@ -860,17 +882,7 @@ type ResellerCA interface {
 
 ### 20.4 `cert.orders` 表需要从 S1 就预留的字段
 
-```sql
--- 不在 S1 实现，但字段必须存在（避免后续 migration 改大表）
-ALTER TABLE cert.orders ADD COLUMN tier TEXT NOT NULL DEFAULT 'free-dv';
-ALTER TABLE cert.orders ADD COLUMN validity_days INT NOT NULL DEFAULT 90;
-ALTER TABLE cert.orders ADD COLUMN organization_id BIGINT;   -- S3 OV/EV 用
-ALTER TABLE cert.orders ADD COLUMN billing_invoice_id TEXT;  -- S3 付费用
-ALTER TABLE cert.orders ADD COLUMN reseller_order_ref TEXT;  -- S3 reseller 外部 ID
-ALTER TABLE cert.orders ADD COLUMN reseller_channel TEXT;    -- 'digicert'|'sectigo'|'gogetssl'|null
-```
-
-S1 直接把这些字段加进初始 DDL（5.2 已经隐含 `ca` 字段，扩展时新增以上列 + 一张 `cert.organizations`）。
+**已合并进 §5.2 初始 DDL**：`tier / validity_days / organization_id / billing_invoice_id / reseller_order_ref / reseller_channel / common_name / sans_unicode`。S3 接 reseller 时只新增 `cert.organizations` 表 + `awaiting_org_validation` 状态，不动 `cert.orders` schema。
 
 ### 20.5 状态机扩展（S3）
 

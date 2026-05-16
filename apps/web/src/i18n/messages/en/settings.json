@@ -49,6 +49,10 @@
     "deleteFailed": "Failed to submit, please try again"
   },
   "profile": {
+    "validation": {
+      "displayNameMax": "Display name must not exceed {max} characters",
+      "bioMax": "Bio must not exceed {max} characters"
+    },
     "title": "Profile",
     "desc": "Manage your account information",
     "displayName": "Display Name",
@@ -172,7 +176,20 @@
     "copy": "Copy",
     "copied": "Copied",
     "done": "Done",
-    "securityNote": "API Keys have full access to your account. Never hardcode them in client code. Use environment variables instead."
+    "securityNote": "API Keys have full access to your account. Never hardcode them in client code. Use environment variables instead.",
+    "cardDesc": "Used to access the idcd API. Keep it secret; never share it.",
+    "tableName": "Name",
+    "tableType": "Type",
+    "tablePrefix": "Prefix",
+    "tableCreatedAt": "Created At",
+    "tableLastUsed": "Last Used",
+    "tableActions": "Actions",
+    "validityOptions": {
+      "d30": "30 days",
+      "d90": "90 days",
+      "y1": "1 year",
+      "never": "Never expires"
+    }
   },
   "sessions": {
     "title": "Active Sessions",
@@ -193,7 +210,15 @@
     "loadFailed": "Failed to load",
     "currentDevice": "This device",
     "loginAt": "Logged in",
-    "lastSeen": "· Last active"
+    "lastSeen": "· Last active",
+    "revokeAllDesc": "This will revoke {count} other active session(s) besides the current one. Login state on other devices will be invalidated immediately. This action cannot be undone.",
+    "relative": {
+      "justNow": "just now",
+      "minutesAgo": "{count} min ago",
+      "hoursAgo": "{count} h ago",
+      "daysAgo": "{count} d ago",
+      "monthsAgo": "{count} mo ago"
+    }
   },
   "team": {
     "title": "Team Management",
@@ -246,9 +271,33 @@
     "inviteFailed": "Failed to invite member",
     "addKeyFailed": "Failed to create API Key",
     "revokeKeyFailed": "Failed to revoke API Key",
-    "removeMemberFailed": "Failed to remove member"
+    "removeMemberFailed": "Failed to remove member",
+    "tableEmail": "Email",
+    "tableRole": "Role",
+    "tableJoinedAt": "Joined",
+    "tableExpiresAt": "Expires",
+    "tableName": "Name",
+    "tablePrefix": "Prefix",
+    "tableType": "Type",
+    "tableCreatedAt": "Created",
+    "removeBtn": "Remove",
+    "revokeBtn": "Revoke",
+    "summary": "slug: {slug} · {count} member(s) · {plan} plan",
+    "upgradeAgentPro": "Upgrade to Agent Pro (¥299/mo)"
   },
   "tokens": {
+    "expiryOptions": {
+      "d7": "7 days",
+      "d30": "30 days",
+      "d90": "90 days",
+      "y1": "1 year",
+      "never": "Never expires"
+    },
+    "tableName": "Name",
+    "tablePrefix": "Prefix",
+    "tableExpiry": "Expires",
+    "tableCreatedAt": "Created",
+    "tableActions": "Actions",
     "title": "Access Tokens",
     "desc": "Long-lived access tokens for CLI tools and MCP integrations",
     "create": "Generate New Token",

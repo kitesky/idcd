@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Settings } from "lucide-react"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
@@ -29,6 +30,7 @@ type NavUserProps = {
 
 export function NavUser({ email, plan = "Free", displayName, avatarUrl }: NavUserProps) {
   const { isMobile } = useSidebar()
+  const t = useTranslations("userMenu")
 
   const initial = (displayName ?? email).charAt(0).toUpperCase()
   const planVariant =
@@ -58,7 +60,9 @@ export function NavUser({ email, plan = "Free", displayName, avatarUrl }: NavUse
                   <span className="truncate text-xs text-muted-foreground">{email}</span>
                 )}
                 {!displayName && (
-                  <span className="truncate text-xs text-muted-foreground" data-testid="plan-badge">{plan} 计划</span>
+                  <span className="truncate text-xs text-muted-foreground" data-testid="plan-badge">
+                    {t("plan.label", { plan })}
+                  </span>
                 )}
               </div>
               <ChevronsUpDown className="ml-auto size-4" />
@@ -94,25 +98,25 @@ export function NavUser({ email, plan = "Free", displayName, avatarUrl }: NavUse
               <DropdownMenuItem asChild>
                 <Link href="/app/billing">
                   <CreditCard />
-                  订阅与计费
+                  {t("items.billing")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/app/settings/profile">
                   <BadgeCheck />
-                  个人资料
+                  {t("items.profile")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/app/settings/account">
                   <Settings />
-                  账户设置
+                  {t("items.account")}
                 </Link>
               </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/app/alerts/channels">
                   <Bell />
-                  告警通知
+                  {t("items.alertChannels")}
                 </Link>
               </DropdownMenuItem>
             </DropdownMenuGroup>
@@ -120,7 +124,7 @@ export function NavUser({ email, plan = "Free", displayName, avatarUrl }: NavUse
             <DropdownMenuItem asChild className="text-destructive focus:text-destructive">
               <Link href="/auth/logout">
                 <LogOut />
-                退出登录
+                {t("items.logout")}
               </Link>
             </DropdownMenuItem>
           </DropdownMenuContent>

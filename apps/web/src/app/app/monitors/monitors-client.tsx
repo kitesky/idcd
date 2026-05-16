@@ -117,7 +117,7 @@ function fromApi(m: ApiMonitor): Monitor {
 
 // ── UI helpers ────────────────────────────────────────────────────────────────
 
-function statusBadge(status: Monitor["status"]) {
+function statusBadge(status: Monitor["status"], t: ReturnType<typeof useTranslations<"monitors">>) {
   switch (status) {
     case "UP":
       return <Badge variant="success">UP</Badge>
@@ -126,12 +126,12 @@ function statusBadge(status: Monitor["status"]) {
     case "PAUSED":
       return <Badge variant="secondary">PAUSED</Badge>
     case "degraded":
-      return <Badge variant="warning">降级</Badge>
+      return <Badge variant="warning">{t("status.degraded")}</Badge>
   }
 }
 
-function typeBadge(type: MonitorType) {
-  return <Badge variant="outline">{TYPE_LABELS[type]}</Badge>
+function typeBadge(type: MonitorType, t: ReturnType<typeof useTranslations<"monitors">>) {
+  return <Badge variant="outline">{t(`type.${type}` as never) || TYPE_LABELS[type]}</Badge>
 }
 
 function formatInterval(seconds: number): string {
@@ -528,7 +528,7 @@ export function MonitorsClient() {
                     <Checkbox
                       checked={selectedIds.has(monitor.id)}
                       onCheckedChange={() => toggleSelect(monitor.id)}
-                      aria-label={`选择 ${monitor.name}`}
+                      aria-label={t("bulk.selectRow", { name: monitor.name })}
                     />
                   </TableCell>
                   <TableCell>
@@ -541,7 +541,7 @@ export function MonitorsClient() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1.5">
-                      {typeBadge(monitor.type)}
+                      {typeBadge(monitor.type, t)}
                       <span className="text-xs text-muted-foreground hidden sm:inline">
                         {formatInterval(monitor.intervalSeconds)}
                       </span>
@@ -550,7 +550,7 @@ export function MonitorsClient() {
                   <TableCell className="hidden md:table-cell max-w-[200px] truncate font-mono text-xs text-muted-foreground">
                     {monitor.target}
                   </TableCell>
-                  <TableCell>{statusBadge(monitor.status)}</TableCell>
+                  <TableCell>{statusBadge(monitor.status, t)}</TableCell>
                   <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
                     {formatRelativeTime(monitor.lastCheckedAt, t)}
                   </TableCell>

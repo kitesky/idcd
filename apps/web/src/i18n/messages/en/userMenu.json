@@ -1,0 +1,63 @@
+{
+  "plan": {
+    "label": "{plan} plan",
+    "free": "Free",
+    "pro": "Pro",
+    "team": "Team",
+    "business": "Business"
+  },
+  "items": {
+    "billing": "Billing & Subscription",
+    "profile": "Profile",
+    "account": "Account Settings",
+    "alertChannels": "Alert Notifications",
+    "logout": "Sign out"
+  },
+  "sidebar": {
+    "brandTagline": "Network diagnostics platform",
+    "openMenu": "Open menu",
+    "console": "Console",
+    "settingsCrumb": "Settings",
+    "defaultPageTitle": "Console",
+    "groups": {
+      "overview": "Overview",
+      "monitoring": "Monitoring",
+      "publish": "Publish",
+      "cert": "Certificates",
+      "reports": "Reports",
+      "account": "Account"
+    },
+    "items": {
+      "dashboard": "Dashboard",
+      "monitors": "Monitors",
+      "monitorsNew": "New Monitor",
+      "alerts": "Alerts",
+      "alertsList": "Alert Events",
+      "alertsChannels": "Channels",
+      "alertsPolicies": "Policies",
+      "alertsGroups": "Groups",
+      "oncall": "On-Call",
+      "incidents": "Incidents",
+      "nodes": "Nodes",
+      "statusPages": "Status Pages",
+      "certOverview": "Overview",
+      "certNew": "Request Certificate",
+      "certOrders": "Orders",
+      "certCerts": "Issued Certificates",
+      "certDnsCredentials": "DNS Credentials",
+      "reports": "Monthly Reports",
+      "verdictNew": "Evidence Report",
+      "billing": "Billing & Subscription",
+      "usage": "Usage",
+      "referral": "Referrals",
+      "settings": "Settings",
+      "settingsProfile": "Profile",
+      "settingsAccount": "Account Security",
+      "settingsSecurity": "Security Settings",
+      "settingsSessions": "Sessions",
+      "settingsApiKeys": "API Keys",
+      "settingsTokens": "Access Tokens",
+      "settingsTeam": "Team"
+    }
+  }
+}

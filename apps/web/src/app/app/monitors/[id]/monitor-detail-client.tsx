@@ -3,7 +3,8 @@
 import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import {
   ArrowLeft,
   Bell,
@@ -88,18 +89,18 @@ interface CheckBucket {
   status: "up" | "down" | "degraded" | "empty"
 }
 
-function checkStatusBadge(status: "up" | "down" | "degraded") {
+function checkStatusBadge(status: "up" | "down" | "degraded", degradedLabel: string) {
   switch (status) {
     case "up":
       return <Badge variant="success">UP</Badge>
     case "down":
       return <Badge variant="destructive">DOWN</Badge>
     case "degraded":
-      return <Badge variant="warning">降级</Badge>
+      return <Badge variant="warning">{degradedLabel}</Badge>
   }
 }
 
-function statusBadge(status: MonitorStatus) {
+function statusBadge(status: MonitorStatus, degradedLabel: string) {
   switch (status) {
     case "UP":
       return <Badge variant="success">UP</Badge>
@@ -108,17 +109,24 @@ function statusBadge(status: MonitorStatus) {
     case "PAUSED":
       return <Badge variant="secondary">PAUSED</Badge>
     case "degraded":
-      return <Badge variant="warning">降级</Badge>
+      return <Badge variant="warning">{degradedLabel}</Badge>
   }
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("zh-CN", {
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-  })
+/**
+ * Format ISO timestamp using the active locale (BCP 47). We resolve the
+ * registry short code via `useLocale()` and convert with `bcp47Of(...)` —
+ * we never pass the short code directly to Intl.* APIs.
+ */
+function makeFormatDateTime(bcp47: string) {
+  return function formatDateTime(iso: string): string {
+    return new Date(iso).toLocaleString(bcp47, {
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    })
+  }
 }
 
 interface EditMonitorDialogProps {
@@ -269,7 +277,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                         id="edit-timeout"
                         type="number"
                         min={100}
-                        placeholder="例: 5000"
+                        placeholder={t("edit.placeholderTimeout")}
                         value={timeoutMs}
                         onChange={(e) => setTimeoutMs(e.target.value === "" ? "" : Number(e.target.value))}
                         className="text-xs"
@@ -282,7 +290,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                       <Input
                         id="edit-assert"
                         type="number"
-                        placeholder="例: 200"
+                        placeholder={t("edit.placeholderAssertStatus")}
                         value={assertStatusCode}
                         onChange={(e) => setAssertStatusCode(e.target.value === "" ? "" : Number(e.target.value))}
                         className="text-xs"
@@ -309,7 +317,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                         type="number"
                         min={0}
                         max={100}
-                        placeholder="例: 10"
+                        placeholder={t("edit.placeholderPacketLoss")}
                         value={packetLossThreshold}
                         onChange={(e) => setPacketLossThreshold(e.target.value === "" ? "" : Number(e.target.value))}
                         className="text-xs"
@@ -324,7 +332,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                         type="number"
                         min={1}
                         max={65535}
-                        placeholder="例: 443"
+                        placeholder={t("edit.placeholderPort")}
                         value={port}
                         onChange={(e) => setPort(e.target.value === "" ? "" : Number(e.target.value))}
                         className="text-xs"
@@ -336,7 +344,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                       <Label htmlFor="edit-expectedip" className="text-xs">{t("edit.expectedIp")}</Label>
                       <Input
                         id="edit-expectedip"
-                        placeholder="例: 104.21.0.1"
+                        placeholder={t("edit.placeholderExpectedIp")}
                         value={expectedIp}
                         onChange={(e) => setExpectedIp(e.target.value)}
                         className="font-mono text-xs"
@@ -350,7 +358,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
                         id="edit-sslexpiry"
                         type="number"
                         min={1}
-                        placeholder="例: 30"
+                        placeholder={t("edit.placeholderSslDays")}
                         value={sslExpiryDays}
                         onChange={(e) => setSslExpiryDays(e.target.value === "" ? "" : Number(e.target.value))}
                         className="text-xs"
@@ -393,6 +401,9 @@ const EMPTY_BUCKETS: CheckBucket[] = Array.from({ length: 48 }, () => ({
 export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientProps) {
   const router = useRouter()
   const t = useTranslations("monitors")
+  const locale = useLocale()
+  const formatDateTime = makeFormatDateTime(bcp47Of(locale))
+  const degradedLabel = t("status.degraded")
   const [currentMonitor, setCurrentMonitor] = useState<Monitor | null>(monitor)
   const id = monitor?.id ?? monitorId
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
@@ -596,8 +607,8 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
           <h1 className="text-3xl font-bold tracking-tight">
             {currentMonitor.name}
           </h1>
-          {statusBadge(currentMonitor.status)}
-          <Badge variant="outline">{TYPE_LABELS[currentMonitor.type]}</Badge>
+          {statusBadge(currentMonitor.status, degradedLabel)}
+          <Badge variant="outline">{t(`type.${currentMonitor.type}` as never) || TYPE_LABELS[currentMonitor.type]}</Badge>
         </div>
         <p className="mt-1 font-mono text-sm text-muted-foreground">
           {currentMonitor.target}
@@ -630,7 +641,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         </Badge>
         {latestCheck ? (
           <div className="flex items-center gap-3 text-xs">
-            {checkStatusBadge(latestCheck.status)}
+            {checkStatusBadge(latestCheck.status, degradedLabel)}
             {latestCheck.latency_ms != null && (
               <span className="font-mono text-muted-foreground">
                 {latestCheck.latency_ms}ms
@@ -705,7 +716,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-3">
-            {statusBadge(currentMonitor.status)}
+            {statusBadge(currentMonitor.status, degradedLabel)}
           </CardContent>
         </Card>
       </div>
@@ -814,7 +825,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                       ) : bucket.status === "down" ? (
                         <Badge variant="destructive">DOWN</Badge>
                       ) : (
-                        <Badge variant="warning">降级</Badge>
+                        <Badge variant="warning">{degradedLabel}</Badge>
                       )}
                     </TableCell>
                     <TableCell className="font-mono text-xs">

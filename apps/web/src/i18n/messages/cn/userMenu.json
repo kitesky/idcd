@@ -1,0 +1,63 @@
+{
+  "plan": {
+    "label": "{plan} 计划",
+    "free": "Free",
+    "pro": "Pro",
+    "team": "Team",
+    "business": "Business"
+  },
+  "items": {
+    "billing": "订阅与计费",
+    "profile": "个人资料",
+    "account": "账户设置",
+    "alertChannels": "告警通知",
+    "logout": "退出登录"
+  },
+  "sidebar": {
+    "brandTagline": "网络诊断平台",
+    "openMenu": "打开菜单",
+    "console": "控制台",
+    "settingsCrumb": "设置",
+    "defaultPageTitle": "后台管理",
+    "groups": {
+      "overview": "总览",
+      "monitoring": "监控",
+      "publish": "发布",
+      "cert": "证书",
+      "reports": "报告",
+      "account": "账号"
+    },
+    "items": {
+      "dashboard": "仪表盘",
+      "monitors": "监控列表",
+      "monitorsNew": "创建监控",
+      "alerts": "告警管理",
+      "alertsList": "告警列表",
+      "alertsChannels": "告警通道",
+      "alertsPolicies": "告警策略",
+      "alertsGroups": "告警分组",
+      "oncall": "On-Call 值班",
+      "incidents": "故障记录",
+      "nodes": "节点管理",
+      "statusPages": "状态页",
+      "certOverview": "总览",
+      "certNew": "申请证书",
+      "certOrders": "订单",
+      "certCerts": "已签证书",
+      "certDnsCredentials": "DNS 凭据",
+      "reports": "月度报告",
+      "verdictNew": "证据报告",
+      "billing": "订阅与计费",
+      "usage": "用量统计",
+      "referral": "推荐计划",
+      "settings": "设置",
+      "settingsProfile": "个人资料",
+      "settingsAccount": "账户安全",
+      "settingsSecurity": "安全设置",
+      "settingsSessions": "会话管理",
+      "settingsApiKeys": "API 密钥",
+      "settingsTokens": "访问令牌",
+      "settingsTeam": "团队管理"
+    }
+  }
+}

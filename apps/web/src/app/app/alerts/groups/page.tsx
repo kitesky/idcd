@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { Info, Layers, Plus, Trash2 } from "lucide-react"
+import { useTranslations, useLocale } from "next-intl"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
@@ -60,7 +61,9 @@ import {
 } from "@/components/ui/table"
 import { toast } from "sonner"
 import { useForm } from "react-hook-form"
-import { apiRequest } from "@/lib/api"
+import { apiRequest, ApiError } from "@/lib/api"
+import { translateApiError } from "@/lib/api-error"
+import { bcp47Of } from "@/i18n/registry"
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -81,18 +84,10 @@ interface CreateGroupFormValues {
   wait_seconds: string
 }
 
-// ─── group_by label map ───────────────────────────────────────────────────────
-
-const GROUP_BY_LABELS: Record<string, string> = {
-  monitor_prefix: "监控前缀",
-  tag:            "标签",
-  type:           "告警类型",
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function formatDate(iso: string) {
-  return new Date(iso).toLocaleString("zh-CN", {
+function formatDate(iso: string, bcp47: string) {
+  return new Date(iso).toLocaleString(bcp47, {
     year:   "numeric",
     month:  "2-digit",
     day:    "2-digit",
@@ -108,6 +103,8 @@ interface CreateGroupDialogProps {
 }
 
 function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
+  const t = useTranslations("alerts.groups")
+  const tErr = useTranslations()
   const [open, setOpen] = useState(false)
   const [submitting, setSubmitting] = useState(false)
 
@@ -122,21 +119,21 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
 
   async function onSubmit(values: CreateGroupFormValues) {
     if (!values.name.trim()) {
-      form.setError("name", { message: "分组名称不能为空" })
+      form.setError("name", { message: t("dialog.nameRequired") })
       return
     }
     if (!values.group_by) {
-      form.setError("group_by", { message: "请选择分组规则" })
+      form.setError("group_by", { message: t("dialog.groupByRequired") })
       return
     }
     if (!values.group_value.trim()) {
-      form.setError("group_value", { message: "分组值不能为空" })
+      form.setError("group_value", { message: t("dialog.groupValueRequired") })
       return
     }
 
     const wait = parseInt(values.wait_seconds, 10)
     if (isNaN(wait) || wait <= 0) {
-      form.setError("wait_seconds", { message: "合并窗口秒数必须为正整数" })
+      form.setError("wait_seconds", { message: t("dialog.waitInvalid") })
       return
     }
 
@@ -151,69 +148,78 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
           wait_seconds: wait,
         }),
       })
-      toast.success("告警分组已创建")
+      toast.success(t("createSuccess"))
       onCreated(res.data)
       form.reset()
       setOpen(false)
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "创建失败，请重试"
+      const msg =
+        err instanceof ApiError
+          ? translateApiError(err, tErr)
+          : err instanceof Error
+            ? err.message
+            : t("createFailed")
       toast.error(msg)
     } finally {
       setSubmitting(false)
     }
   }
 
+  const groupByValue = form.watch("group_by")
+  const groupValuePlaceholder =
+    groupByValue === "tag"
+      ? t("dialog.groupValuePlaceholderTag")
+      : groupByValue === "monitor_prefix"
+        ? t("dialog.groupValuePlaceholderPrefix")
+        : t("dialog.groupValuePlaceholderType")
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button size="sm">
           <Plus className="mr-2 h-4 w-4" />
-          新建分组
+          {t("create")}
         </Button>
       </DialogTrigger>
 
       <DialogContent className="sm:max-w-[480px]">
         <DialogHeader>
-          <DialogTitle>新建告警分组</DialogTitle>
-          <DialogDescription>
-            配置分组规则与合并窗口，相同分组内的告警将在窗口期内合并为一条通知。
-          </DialogDescription>
+          <DialogTitle>{t("dialog.title")}</DialogTitle>
+          <DialogDescription>{t("dialog.desc")}</DialogDescription>
         </DialogHeader>
 
         <Form {...form}>
           <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-2">
-            {/* 分组名称 */}
             <FormField
               control={form.control}
               name="name"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>分组名称</FormLabel>
+                  <FormLabel>{t("dialog.nameLabel")}</FormLabel>
                   <FormControl>
-                    <Input placeholder="例：生产环境告警组" {...field} />
+                    <Input placeholder={t("dialog.namePlaceholder")} {...field} />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* 分组规则 */}
             <FormField
               control={form.control}
               name="group_by"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>分组规则</FormLabel>
+                  <FormLabel>{t("dialog.groupByLabel")}</FormLabel>
                   <Select onValueChange={field.onChange} value={field.value}>
                     <FormControl>
                       <SelectTrigger>
-                        <SelectValue placeholder="选择分组依据" />
+                        <SelectValue placeholder={t("dialog.groupByPlaceholder")} />
                       </SelectTrigger>
                     </FormControl>
                     <SelectContent>
-                      <SelectItem value="monitor_prefix">监控前缀</SelectItem>
-                      <SelectItem value="tag">标签</SelectItem>
-                      <SelectItem value="type">告警类型</SelectItem>
+                      <SelectItem value="monitor_prefix">{t("groupByLabels.monitor_prefix")}</SelectItem>
+                      <SelectItem value="tag">{t("groupByLabels.tag")}</SelectItem>
+                      <SelectItem value="type">{t("groupByLabels.type")}</SelectItem>
                     </SelectContent>
                   </Select>
                   <FormMessage />
@@ -221,47 +227,31 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
               )}
             />
 
-            {/* 分组值 */}
             <FormField
               control={form.control}
               name="group_value"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>分组值</FormLabel>
+                  <FormLabel>{t("dialog.groupValueLabel")}</FormLabel>
                   <FormControl>
-                    <Input
-                      placeholder={
-                        // eslint-disable-next-line react-hooks/incompatible-library -- react-hook-form 的 form.watch 返回值不能被 memoized (库限制)
-                        form.watch("group_by") === "tag"
-                          ? "输入标签名称，例：prod"
-                          : form.watch("group_by") === "monitor_prefix"
-                          ? "输入监控名前缀，例：api-"
-                          : "输入告警类型，例：down"
-                      }
-                      {...field}
-                    />
+                    <Input placeholder={groupValuePlaceholder} {...field} />
                   </FormControl>
-                  <FormDescription>
-                    与分组规则对应的具体值（标签名、监控前缀或告警类型）
-                  </FormDescription>
+                  <FormDescription>{t("dialog.groupValueHint")}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
 
-            {/* 等待秒数 */}
             <FormField
               control={form.control}
               name="wait_seconds"
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>合并窗口秒数</FormLabel>
+                  <FormLabel>{t("dialog.waitLabel")}</FormLabel>
                   <FormControl>
                     <Input type="number" min={1} {...field} />
                   </FormControl>
-                  <FormDescription>
-                    在此时间窗口内，同分组的告警将合并为一条通知（默认 60 秒）
-                  </FormDescription>
+                  <FormDescription>{t("dialog.waitHint")}</FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
@@ -274,10 +264,10 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
                 onClick={() => setOpen(false)}
                 disabled={submitting}
               >
-                取消
+                {t("dialog.cancel")}
               </Button>
               <Button type="submit" disabled={submitting}>
-                {submitting ? "创建中…" : "创建"}
+                {submitting ? t("dialog.creating") : t("dialog.create")}
               </Button>
             </DialogFooter>
           </form>
@@ -290,6 +280,10 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function AlertGroupsPage() {
+  const t = useTranslations("alerts.groups")
+  const tErr = useTranslations()
+  const locale = useLocale()
+  const bcp47 = bcp47Of(locale)
   const [groups, setGroups] = useState<AlertGroup[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -299,13 +293,13 @@ export default function AlertGroupsPage() {
         const res = await apiRequest<{ data: { items: AlertGroup[] } }>("/v1/alert-groups")
         setGroups(res.data.items ?? [])
       } catch {
-        toast.error("加载告警分组失败")
+        toast.error(t("loadFailed"))
       } finally {
         setLoading(false)
       }
     }
     fetchGroups()
-  }, [])
+  }, [t])
 
   function handleCreated(group: AlertGroup) {
     setGroups((prev) => [group, ...prev])
@@ -315,11 +309,22 @@ export default function AlertGroupsPage() {
     try {
       await apiRequest(`/v1/alert-groups/${id}`, { method: "DELETE" })
       setGroups((prev) => prev.filter((g) => g.id !== id))
-      toast.success("告警分组已删除")
+      toast.success(t("deleteSuccess"))
     } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "删除失败，请重试"
+      const msg =
+        err instanceof ApiError
+          ? translateApiError(err, tErr)
+          : err instanceof Error
+            ? err.message
+            : t("deleteFailed")
       toast.error(msg)
     }
+  }
+
+  function groupByLabel(key: string): string {
+    const known = ["monitor_prefix", "tag", "type"]
+    if (known.includes(key)) return t(`groupByLabels.${key}`)
+    return key
   }
 
   return (
@@ -327,9 +332,9 @@ export default function AlertGroupsPage() {
       {/* Page header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">告警分组</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            将相关监控的告警合并，减少重复通知
+            {t("subtitle")}
           </p>
         </div>
         <CreateGroupDialog onCreated={handleCreated} />
@@ -338,16 +343,14 @@ export default function AlertGroupsPage() {
       {/* Info banner */}
       <Alert>
         <Info className="h-4 w-4" />
-        <AlertDescription>
-          告警分组可将相关监控的告警合并，避免重复通知。配置&quot;等待秒数&quot;，在该窗口内同组监控的告警会合并为一条通知。
-        </AlertDescription>
+        <AlertDescription>{t("infoBanner")}</AlertDescription>
       </Alert>
 
       {/* Groups table */}
       <Card>
         <CardHeader>
-          <CardTitle>分组列表</CardTitle>
-          <CardDescription>已配置的告警分组规则</CardDescription>
+          <CardTitle>{t("listTitle")}</CardTitle>
+          <CardDescription>{t("listDescription")}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -359,18 +362,18 @@ export default function AlertGroupsPage() {
           ) : groups.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
               <Layers className="mb-3 h-10 w-10 opacity-30" />
-              <p className="text-sm font-medium">暂无告警分组</p>
-              <p className="mt-1 text-xs">点击&quot;新建分组&quot;配置第一个告警分组规则</p>
+              <p className="text-sm font-medium">{t("empty")}</p>
+              <p className="mt-1 text-xs">{t("emptyHint")}</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>分组名</TableHead>
-                  <TableHead>分组规则</TableHead>
-                  <TableHead className="text-right">等待秒数</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="w-16 text-right">操作</TableHead>
+                  <TableHead>{t("table.name")}</TableHead>
+                  <TableHead>{t("table.rule")}</TableHead>
+                  <TableHead className="text-right">{t("table.wait")}</TableHead>
+                  <TableHead>{t("table.createdAt")}</TableHead>
+                  <TableHead className="w-16 text-right">{t("table.actions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -378,7 +381,7 @@ export default function AlertGroupsPage() {
                   <TableRow key={group.id}>
                     <TableCell className="font-medium">{group.name}</TableCell>
                     <TableCell className="text-muted-foreground">
-                      {GROUP_BY_LABELS[group.group_by] ?? group.group_by}
+                      {groupByLabel(group.group_by)}
                       {": "}
                       <span className="font-mono text-foreground">
                         {group.group_value}
@@ -386,7 +389,7 @@ export default function AlertGroupsPage() {
                     </TableCell>
                     <TableCell className="text-right">{group.wait_seconds}s</TableCell>
                     <TableCell className="text-muted-foreground text-sm">
-                      {formatDate(group.created_at)}
+                      {formatDate(group.created_at, bcp47)}
                     </TableCell>
                     <TableCell className="text-right">
                       <AlertDialog>
@@ -397,23 +400,23 @@ export default function AlertGroupsPage() {
                             className="h-8 w-8 text-muted-foreground hover:text-destructive"
                           >
                             <Trash2 className="h-4 w-4" />
-                            <span className="sr-only">删除</span>
+                            <span className="sr-only">{t("delete.label")}</span>
                           </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
                           <AlertDialogHeader>
-                            <AlertDialogTitle>确认删除</AlertDialogTitle>
+                            <AlertDialogTitle>{t("delete.title")}</AlertDialogTitle>
                             <AlertDialogDescription>
-                              将永久删除告警分组「{group.name}」，此操作无法撤销。
+                              {t("delete.desc", { name: group.name })}
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
-                            <AlertDialogCancel>取消</AlertDialogCancel>
+                            <AlertDialogCancel>{t("delete.cancel")}</AlertDialogCancel>
                             <AlertDialogAction
                               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                               onClick={() => handleDelete(group.id)}
                             >
-                              确认删除
+                              {t("delete.confirm")}
                             </AlertDialogAction>
                           </AlertDialogFooter>
                         </AlertDialogContent>

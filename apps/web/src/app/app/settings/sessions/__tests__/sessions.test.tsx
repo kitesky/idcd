@@ -8,7 +8,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
-  useLocale: () => "zh",
+  useLocale: () => "cn",
 }))
 
 // ── Default sessions returned by mock fetch ───────────────────────────────────

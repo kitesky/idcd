@@ -2,6 +2,7 @@
 
 import { useEffect } from "react"
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { AlertTriangle } from "lucide-react"
@@ -13,6 +14,9 @@ export default function AppError({
   error: Error & { digest?: string }
   reset: () => void
 }) {
+  const t = useTranslations("userMenu.sidebar")
+  const tDash = useTranslations("dashboard")
+
   useEffect(() => {
     console.error("[AppError]", error)
   }, [error])
@@ -22,22 +26,22 @@ export default function AppError({
       <div className="w-full max-w-md space-y-4">
         <Alert variant="destructive">
           <AlertTriangle className="h-4 w-4" />
-          <AlertTitle>页面加载失败</AlertTitle>
+          <AlertTitle>{tDash("error.title")}</AlertTitle>
           <AlertDescription>
-            {error.message || "加载时遇到意外错误，请重试。"}
+            {error.message || tDash("error.defaultMessage")}
             {error.digest && (
               <span className="mt-1 block font-mono text-xs opacity-60">
-                ID：{error.digest}
+                {tDash("error.idLabel")}{error.digest}
               </span>
             )}
           </AlertDescription>
         </Alert>
         <div className="flex gap-2">
           <Button onClick={reset} size="sm">
-            重试
+            {tDash("error.retry")}
           </Button>
           <Button variant="outline" size="sm" asChild>
-            <Link href="/app/dashboard">返回控制台</Link>
+            <Link href="/app/dashboard">{tDash("error.backToConsole", { console: t("console") })}</Link>
           </Button>
         </div>
       </div>

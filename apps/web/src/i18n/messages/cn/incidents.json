@@ -1,0 +1,26 @@
+{
+  "title": "故障记录",
+  "subtitle": "查看历史告警事件，自动生成事故复盘草稿",
+  "loadFailed": "加载失败，请刷新重试",
+  "loadErrorTitle": "加载失败",
+  "operationErrorTitle": "操作失败",
+  "alertEvents": "告警事件",
+  "empty": "暂无故障记录",
+  "draftGenerated": "已生成",
+  "draftNotGenerated": "未生成",
+  "generateFailed": "生成复盘失败，请重试",
+  "generating": "生成中...",
+  "generate": "生成复盘",
+  "loadingMore": "加载中…",
+  "loadMore": "查看更多",
+  "table": {
+    "monitor": "监控名",
+    "startedAt": "开始时间",
+    "draftStatus": "复盘状态",
+    "actions": "操作"
+  },
+  "detail": {
+    "back": "返回故障列表",
+    "loadFailed": "加载失败"
+  }
+}

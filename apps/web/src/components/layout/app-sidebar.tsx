@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import { useTranslations } from "next-intl"
 import {
   Sidebar,
   SidebarContent,
@@ -23,6 +24,7 @@ type AppSidebarProps = {
 } & React.ComponentProps<typeof Sidebar>
 
 export function AppSidebar({ email = "user@example.com", plan = "Free", displayName, avatarUrl, ...props }: AppSidebarProps) {
+  const t = useTranslations("userMenu.sidebar")
   return (
     <Sidebar collapsible="icon" data-testid="desktop-sidebar" {...props}>
       <SidebarHeader>
@@ -35,7 +37,7 @@ export function AppSidebar({ email = "user@example.com", plan = "Free", displayN
                 </div>
                 <div className="flex flex-col gap-0.5 leading-none">
                   <span className="font-semibold font-mono">idcd</span>
-                  <span className="text-xs text-muted-foreground">网络诊断平台</span>
+                  <span className="text-xs text-muted-foreground">{t("brandTagline")}</span>
                 </div>
               </Link>
             </SidebarMenuButton>

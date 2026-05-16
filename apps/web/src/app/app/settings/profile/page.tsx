@@ -76,13 +76,32 @@ function LanguageSwitcher() {
   )
 }
 
-const profileSchema = z.object({
-  email: z.string().email(),
-  display_name: z.string().max(50, { message: "显示名称不能超过 50 个字符" }).optional(),
-  bio: z.string().max(500, { message: "个人简介不能超过 500 个字符" }).optional(),
-})
+/**
+ * Build a locale-aware zod schema. The validation messages are pulled from the
+ * `settings.profile.validation.*` namespace so they reflect the user's
+ * selected language. Schema is rebuilt on every render — cheap because zod
+ * just wraps validators.
+ */
+function buildProfileSchema(
+  t: (
+    key: string,
+    params?: Record<string, string | number | boolean | Date | null | undefined>,
+  ) => string,
+) {
+  return z.object({
+    email: z.string().email(),
+    display_name: z
+      .string()
+      .max(50, { message: t("profile.validation.displayNameMax", { max: 50 }) })
+      .optional(),
+    bio: z
+      .string()
+      .max(500, { message: t("profile.validation.bioMax", { max: 500 }) })
+      .optional(),
+  })
+}
 
-type ProfileFormValues = z.infer<typeof profileSchema>
+type ProfileFormValues = z.infer<ReturnType<typeof buildProfileSchema>>
 
 interface UserProfile {
   email: string
@@ -107,6 +126,7 @@ export default function ProfilePage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const profileSchema = buildProfileSchema(t)
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {

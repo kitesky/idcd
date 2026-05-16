@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { FileWarning, Clock, Zap, AlertCircle } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -55,6 +56,7 @@ function IncidentsTableSkeleton() {
 
 export default function IncidentsPage() {
   const router = useRouter()
+  const t = useTranslations("incidents")
   const [incidents, setIncidents] = useState<Incident[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -74,12 +76,13 @@ export default function IncidentsPage() {
         setIncidents(list)
         setHasMore(list.length === limit)
       } catch (err) {
-        setError(err instanceof Error ? err.message : "加载失败，请刷新重试")
+        setError(err instanceof Error ? err.message : t("loadFailed"))
       } finally {
         setLoading(false)
       }
     }
     fetchIncidents()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [limit])
 
   async function handleLoadMore() {
@@ -101,7 +104,7 @@ export default function IncidentsPage() {
       })
       router.push(`/app/incidents/${res.data.id}`)
     } catch (err) {
-      setGenerateError(err instanceof Error ? err.message : "生成复盘失败，请重试")
+      setGenerateError(err instanceof Error ? err.message : t("generateFailed"))
       setGenerating(null)
     }
   }
@@ -111,9 +114,9 @@ export default function IncidentsPage() {
       <div className="mb-6 flex items-center gap-3">
         <FileWarning className="h-6 w-6 text-muted-foreground" />
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">故障记录</h1>
+          <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            查看历史告警事件，自动生成事故复盘草稿
+            {t("subtitle")}
           </p>
         </div>
       </div>
@@ -121,7 +124,7 @@ export default function IncidentsPage() {
         {error && (
           <Alert variant="destructive" className="mb-6" data-testid="incidents-error-alert">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>加载失败</AlertTitle>
+            <AlertTitle>{t("loadErrorTitle")}</AlertTitle>
             <AlertDescription>{error}</AlertDescription>
           </Alert>
         )}
@@ -129,31 +132,31 @@ export default function IncidentsPage() {
         {generateError && (
           <Alert variant="destructive" className="mb-6" data-testid="generate-error-alert">
             <AlertCircle className="h-4 w-4" />
-            <AlertTitle>操作失败</AlertTitle>
+            <AlertTitle>{t("operationErrorTitle")}</AlertTitle>
             <AlertDescription>{generateError}</AlertDescription>
           </Alert>
         )}
 
         <Card data-testid="incidents-table-card">
           <CardHeader>
-            <CardTitle>告警事件</CardTitle>
+            <CardTitle>{t("alertEvents")}</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             {loading ? (
               <IncidentsTableSkeleton />
             ) : incidents.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-center" data-testid="incidents-empty-state">
-                <p className="text-sm text-muted-foreground">暂无故障记录</p>
+                <p className="text-sm text-muted-foreground">{t("empty")}</p>
               </div>
             ) : (
               <div className="space-y-4">
                 <Table data-testid="incidents-table">
                   <TableHeader>
                     <TableRow>
-                      <TableHead>监控名</TableHead>
-                      <TableHead>开始时间</TableHead>
-                      <TableHead>复盘状态</TableHead>
-                      <TableHead>操作</TableHead>
+                      <TableHead>{t("table.monitor")}</TableHead>
+                      <TableHead>{t("table.startedAt")}</TableHead>
+                      <TableHead>{t("table.draftStatus")}</TableHead>
+                      <TableHead>{t("table.actions")}</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -169,11 +172,11 @@ export default function IncidentsPage() {
                         <TableCell>
                           {incident.has_draft ? (
                             <Badge variant="secondary" data-testid={`postmortem-status-${incident.event_id}`}>
-                              已生成
+                              {t("draftGenerated")}
                             </Badge>
                           ) : (
                             <Badge variant="outline" data-testid={`postmortem-status-${incident.event_id}`}>
-                              未生成
+                              {t("draftNotGenerated")}
                             </Badge>
                           )}
                         </TableCell>
@@ -186,7 +189,7 @@ export default function IncidentsPage() {
                             data-testid={`generate-btn-${incident.event_id}`}
                           >
                             <Zap className="mr-1 h-3 w-3" />
-                            {generating === incident.event_id ? "生成中..." : "生成复盘"}
+                            {generating === incident.event_id ? t("generating") : t("generate")}
                           </Button>
                         </TableCell>
                       </TableRow>
@@ -202,7 +205,7 @@ export default function IncidentsPage() {
                       disabled={loadingMore}
                       data-testid="load-more-btn"
                     >
-                      {loadingMore ? "加载中…" : "查看更多"}
+                      {loadingMore ? t("loadingMore") : t("loadMore")}
                     </Button>
                   </div>
                 )}

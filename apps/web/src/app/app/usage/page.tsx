@@ -1,18 +1,23 @@
 import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { UsageClient } from "./usage-client"
 
-export const metadata: Metadata = {
-  title: "用量统计 - idcd 控制台",
-  description: "查看您的监控项和 API 调用用量统计",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("billing.usage")
+  return {
+    title: `${t("title")} - idcd`,
+    description: t("metaDescription"),
+  }
 }
 
-export default function UsagePage() {
+export default async function UsagePage() {
+  const t = await getT("billing.usage")
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">用量统计</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          查看您的资源使用情况和 API 调用趋势
+          {t("subtitle")}
         </p>
       </div>
       <UsageClient />

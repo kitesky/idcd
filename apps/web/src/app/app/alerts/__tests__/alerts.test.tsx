@@ -32,7 +32,7 @@ vi.mock('next-intl', () => ({
     }
     return key
   },
-  useLocale: () => 'zh',
+  useLocale: () => 'cn',
 }))
 
 import { apiRequest } from "@/lib/api"

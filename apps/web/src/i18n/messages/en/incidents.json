@@ -1,0 +1,26 @@
+{
+  "title": "Incidents",
+  "subtitle": "Review historical alert events; auto-generate postmortem drafts",
+  "loadFailed": "Failed to load, please refresh and retry",
+  "loadErrorTitle": "Load failed",
+  "operationErrorTitle": "Operation failed",
+  "alertEvents": "Alert Events",
+  "empty": "No incidents yet",
+  "draftGenerated": "Generated",
+  "draftNotGenerated": "Not generated",
+  "generateFailed": "Failed to generate postmortem, please retry",
+  "generating": "Generating…",
+  "generate": "Generate postmortem",
+  "loadingMore": "Loading…",
+  "loadMore": "Load more",
+  "table": {
+    "monitor": "Monitor",
+    "startedAt": "Started at",
+    "draftStatus": "Draft status",
+    "actions": "Actions"
+  },
+  "detail": {
+    "back": "Back to incidents",
+    "loadFailed": "Failed to load"
+  }
+}

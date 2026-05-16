@@ -1,6 +1,42 @@
 import { defaultLocale, isSupported } from "@/i18n/registry"
+import type { ApiError as ApiErrorShape } from "@/lib/api-error"
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+
+/**
+ * Concrete Error subclass thrown by {@link apiRequest} for non-2xx responses.
+ *
+ * Keeps the shape declared in `@/lib/api-error` (`code` / `message` / `params` /
+ * `request_id`) and adds `status` (HTTP status). Callers can pass the instance
+ * to `translateApiError(err, t)` for a locale-aware message. Legacy `catch
+ * (e) { toast(e.message) }` call sites remain compatible because `message` is
+ * still the server-prepared fallback copy.
+ */
+export class ApiError extends Error implements ApiErrorShape {
+  code?: string
+  params?: Record<string, unknown>
+  request_id?: string
+  status?: number
+
+  constructor(message: string, init?: {
+    code?: string
+    params?: Record<string, unknown>
+    request_id?: string
+    status?: number
+  }) {
+    super(message)
+    this.name = "ApiError"
+    this.code = init?.code
+    this.params = init?.params
+    this.request_id = init?.request_id
+    this.status = init?.status
+  }
+}
+
+/** Type guard — returns true when `e` is the structured ApiError thrown by apiRequest. */
+export function isApiError(e: unknown): e is ApiError {
+  return e instanceof ApiError
+}
 
 /** Default request timeout (30 s). Override per-call via AbortSignal in options. */
 const DEFAULT_TIMEOUT_MS = 30_000
@@ -70,14 +106,33 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
     })
 
     if (!res.ok) {
-      let errorMessage = "Request failed"
+      // Backend error contract (see docs/prd/I18N-PLAN.md §2.3):
+      //   { error: { code, message, params, request_id } }
+      // Older endpoints sometimes flatten this to { code, message, ... }; we
+      // accept both shapes. Legacy callers reading e.message keep working
+      // because message is still populated with the server fallback copy.
+      let errorMessage = res.statusText || "Request failed"
+      let code: string | undefined
+      let params: Record<string, unknown> | undefined
+      let requestId: string | undefined
       try {
-        const err = await res.json()
-        errorMessage = err?.error?.message || err?.message || errorMessage
+        const body = await res.json()
+        const e = body?.error ?? body
+        if (e?.message) errorMessage = e.message
+        if (typeof e?.code === "string") code = e.code
+        if (e?.params && typeof e.params === "object") {
+          params = e.params as Record<string, unknown>
+        }
+        if (typeof e?.request_id === "string") requestId = e.request_id
       } catch {
-        errorMessage = res.statusText || errorMessage
+        // body wasn't JSON — fall back to statusText
       }
-      throw new Error(errorMessage)
+      throw new ApiError(errorMessage, {
+        code,
+        params,
+        request_id: requestId,
+        status: res.status,
+      })
     }
 
     return res.json()

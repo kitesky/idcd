@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { ChevronRight } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible"
@@ -26,37 +27,44 @@ import {
 } from "@/components/ui/dropdown-menu"
 import type { NavCollapsible, NavGroup, NavItem, NavLink } from "./types"
 
+// All sidebar labels live under the `userMenu` namespace — see
+// sidebar-data.ts; the `title` field on each entry holds an i18n key
+// (e.g. `sidebar.items.dashboard`).
+type T = ReturnType<typeof useTranslations<"userMenu">>
+
 export function NavGroup({ title, items }: NavGroup) {
   const { state, isMobile } = useSidebar()
   const pathname = usePathname()
+  const t = useTranslations("userMenu")
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{title}</SidebarGroupLabel>
+      <SidebarGroupLabel>{t(title)}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
           if (!item.items) {
-            return <NavMenuLink key={item.title} item={item as NavLink} pathname={pathname} />
+            return <NavMenuLink key={item.title} item={item as NavLink} pathname={pathname} t={t} />
           }
           if (state === "collapsed" && !isMobile) {
-            return <NavMenuCollapsedDropdown key={item.title} item={item as NavCollapsible} pathname={pathname} />
+            return <NavMenuCollapsedDropdown key={item.title} item={item as NavCollapsible} pathname={pathname} t={t} />
           }
-          return <NavMenuCollapsible key={item.title} item={item as NavCollapsible} pathname={pathname} />
+          return <NavMenuCollapsible key={item.title} item={item as NavCollapsible} pathname={pathname} t={t} />
         })}
       </SidebarMenu>
     </SidebarGroup>
   )
 }
 
-function NavMenuLink({ item, pathname }: { item: NavLink; pathname: string }) {
+function NavMenuLink({ item, pathname, t }: { item: NavLink; pathname: string; t: T }) {
   const { setOpenMobile } = useSidebar()
   const isActive = pathname === item.url || pathname.startsWith(item.url + "/")
+  const label = t(item.title)
   return (
     <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={isActive} tooltip={item.title}>
+      <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
         <Link href={item.url as never} onClick={() => setOpenMobile(false)}>
           {item.icon && <item.icon />}
-          <span>{item.title}</span>
+          <span>{label}</span>
           {item.badge && <Badge className="ml-auto rounded-full px-1 py-0 text-xs">{item.badge}</Badge>}
         </Link>
       </SidebarMenuButton>
@@ -64,17 +72,18 @@ function NavMenuLink({ item, pathname }: { item: NavLink; pathname: string }) {
   )
 }
 
-function NavMenuCollapsible({ item, pathname }: { item: NavCollapsible; pathname: string }) {
+function NavMenuCollapsible({ item, pathname, t }: { item: NavCollapsible; pathname: string; t: T }) {
   const { setOpenMobile } = useSidebar()
   const isChildActive = item.items.some((sub) => pathname === sub.url || pathname.startsWith(sub.url + "/"))
+  const label = t(item.title)
 
   return (
     <Collapsible asChild defaultOpen={isChildActive} className="group/collapsible">
       <SidebarMenuItem>
         <CollapsibleTrigger asChild>
-          <SidebarMenuButton tooltip={item.title}>
+          <SidebarMenuButton tooltip={label}>
             {item.icon && <item.icon />}
-            <span>{item.title}</span>
+            <span>{label}</span>
             {item.badge && <Badge className="ml-auto rounded-full px-1 py-0 text-xs">{item.badge}</Badge>}
             <ChevronRight className="ml-auto transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
           </SidebarMenuButton>
@@ -88,7 +97,7 @@ function NavMenuCollapsible({ item, pathname }: { item: NavCollapsible; pathname
                   <SidebarMenuSubButton asChild isActive={isActive}>
                     <Link href={sub.url as never} onClick={() => setOpenMobile(false)}>
                       {sub.icon && <sub.icon />}
-                      <span>{sub.title}</span>
+                      <span>{t(sub.title)}</span>
                       {sub.badge && <Badge className="ml-auto rounded-full px-1 py-0 text-xs">{sub.badge}</Badge>}
                     </Link>
                   </SidebarMenuSubButton>
@@ -102,26 +111,27 @@ function NavMenuCollapsible({ item, pathname }: { item: NavCollapsible; pathname
   )
 }
 
-function NavMenuCollapsedDropdown({ item, pathname }: { item: NavCollapsible; pathname: string }) {
+function NavMenuCollapsedDropdown({ item, pathname, t }: { item: NavCollapsible; pathname: string; t: T }) {
   const isActive = item.items.some((sub) => pathname === sub.url || pathname.startsWith(sub.url + "/"))
+  const label = t(item.title)
   return (
     <SidebarMenuItem>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <SidebarMenuButton tooltip={item.title} isActive={isActive}>
+          <SidebarMenuButton tooltip={label} isActive={isActive}>
             {item.icon && <item.icon />}
-            <span>{item.title}</span>
+            <span>{label}</span>
             <ChevronRight className="ml-auto" />
           </SidebarMenuButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent side="right" align="start" sideOffset={4}>
-          <DropdownMenuLabel>{item.title}</DropdownMenuLabel>
+          <DropdownMenuLabel>{label}</DropdownMenuLabel>
           <DropdownMenuSeparator />
           {item.items.map((sub) => (
             <DropdownMenuItem key={sub.title} asChild>
               <Link href={sub.url as never}>
                 {sub.icon && <sub.icon />}
-                <span>{sub.title}</span>
+                <span>{t(sub.title)}</span>
               </Link>
             </DropdownMenuItem>
           ))}

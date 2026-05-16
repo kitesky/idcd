@@ -16,10 +16,13 @@ export interface ApiError {
 
 /**
  * Translator signature compatible with both `useTranslations()` from next-intl
- * and the lightweight `getT` helper. We accept the broadest compatible shape
- * so callers don't have to import next-intl-specific types at every call site.
+ * and the lightweight `getT` helper. Matches next-intl's `TranslationValues`
+ * shape so call sites can pass the hook return value directly.
  */
-type Translator = (key: string, params?: Record<string, unknown>) => string
+type Translator = (
+  key: string,
+  params?: Record<string, string | number | boolean | Date | null | undefined>,
+) => string
 
 /**
  * Convert a structured API error into a user-facing string.
@@ -38,7 +41,15 @@ export function translateApiError(err: ApiError, t: Translator): string {
   if (err.code) {
     const key = `errors.${err.code}`
     try {
-      const translated = t(key, err.params)
+      // `err.params` is typed loosely (`Record<string, unknown>`) because the
+      // backend may send arbitrary JSON values; next-intl only accepts
+      // `TranslationValues` (string | number | boolean | Date | null). We trust
+      // the backend to send compatible scalars for error params; cast here to
+      // satisfy the stricter Translator signature.
+      const translated = t(
+        key,
+        err.params as Record<string, string | number | boolean | Date | null | undefined> | undefined,
+      )
       // Both `useTranslations` and the local getT helper return the key itself
       // when a translation is missing. Detect that and fall through.
       if (translated && translated !== key) return translated

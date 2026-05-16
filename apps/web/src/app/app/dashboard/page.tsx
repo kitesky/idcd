@@ -109,26 +109,31 @@ function StatCard({ title, value, icon, badge, testId, loading }: StatCardProps)
   )
 }
 
-function monitorStatusBadge(status: string) {
+type Translator = (
+  key: string,
+  params?: Record<string, string | number | boolean | Date | null | undefined>,
+) => string
+
+function monitorStatusBadge(status: string, t: Translator) {
   switch (status) {
     case "active":
-      return <Badge variant="success">在线</Badge>
+      return <Badge variant="success">{t("monitorStatus.active")}</Badge>
     case "down":
-      return <Badge variant="destructive">离线</Badge>
+      return <Badge variant="destructive">{t("monitorStatus.down")}</Badge>
     case "paused":
-      return <Badge variant="secondary">暂停</Badge>
+      return <Badge variant="secondary">{t("monitorStatus.paused")}</Badge>
     default:
       return <Badge variant="outline">{status}</Badge>
   }
 }
 
-function formatRelative(iso?: string): string {
+function formatRelative(iso: string | undefined, t: Translator): string {
   if (!iso) return "—"
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
-  if (diff < 60) return `${diff}秒前`
-  if (diff < 3600) return `${Math.floor(diff / 60)}分钟前`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}小时前`
-  return `${Math.floor(diff / 86400)}天前`
+  if (diff < 60) return t("timeAgo.seconds", { n: diff })
+  if (diff < 3600) return t("timeAgo.minutes", { n: Math.floor(diff / 60) })
+  if (diff < 86400) return t("timeAgo.hours", { n: Math.floor(diff / 3600) })
+  return t("timeAgo.days", { n: Math.floor(diff / 86400) })
 }
 
 // Dashboard endpoints all wrap responses in `{ data: ... }`; unwrap once here.
@@ -405,7 +410,7 @@ export default function DashboardPage() {
                             <Badge variant="destructive">DOWN</Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                            {formatRelative(mon.last_check_at)}
+                            {formatRelative(mon.last_check_at, t)}
                           </TableCell>
                         </TableRow>
                       ))
@@ -456,7 +461,7 @@ export default function DashboardPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                          {formatRelative(evt.startedAt)}
+                          {formatRelative(evt.startedAt, t)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -494,12 +499,12 @@ export default function DashboardPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center justify-between text-sm font-medium">
                         <span className="truncate">{mon.name}</span>
-                        {monitorStatusBadge(mon.status)}
+                        {monitorStatusBadge(mon.status, t)}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-xs text-muted-foreground">
-                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at) })}
+                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at, t) })}
                       </p>
                     </CardContent>
                   </Card>
@@ -531,7 +536,7 @@ export default function DashboardPage() {
                     className="flex flex-1 cursor-pointer items-center justify-between text-sm"
                   >
                     <span>{mon.name}</span>
-                    {monitorStatusBadge(mon.status)}
+                    {monitorStatusBadge(mon.status, t)}
                   </label>
                 </div>
               ))

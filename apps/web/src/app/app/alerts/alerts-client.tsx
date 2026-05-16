@@ -2,7 +2,8 @@
 
 import { useRef, useState, useEffect, useCallback } from "react"
 import { useSearchParams, useRouter, usePathname } from "next/navigation"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import {
   Bell,
   Mail,
@@ -78,7 +79,6 @@ import {
   type AlertNotification,
   type AlertSilence,
   type ChannelType,
-  CHANNEL_TYPE_LABELS,
   CHANNEL_TYPES,
   formatDuration,
   truncateConfig,
@@ -141,7 +141,7 @@ function AddChannelForm({ onSave, onCancel: _onCancel }: AddChannelFormProps) {
           <SelectContent>
             {CHANNEL_TYPES.map((ct) => (
               <SelectItem key={ct} value={ct}>
-                {CHANNEL_TYPE_LABELS[ct]}
+                {t(`channels.types.${ct}`)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -289,7 +289,7 @@ function PolicyForm({ channels, initial, onSave, onCancel: _onCancel }: PolicyFo
               />
               <span className="text-sm">{ch.name}</span>
               <span className="ml-auto text-xs text-muted-foreground">
-                {CHANNEL_TYPE_LABELS[ch.type]}
+                {t(`channels.types.${ch.type}`)}
               </span>
             </label>
           ))}
@@ -354,6 +354,7 @@ interface EventsTabProps {
 
 function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
   const t = useTranslations("alerts")
+  const locale = useLocale()
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -506,7 +507,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
                 <TableCell className="font-medium">{evt.monitorName}</TableCell>
                 <TableCell>{statusBadge(evt.status, t)}</TableCell>
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground">
-                  {new Date(evt.startedAt).toLocaleString("zh-CN", {
+                  {new Date(evt.startedAt).toLocaleString(bcp47Of(locale), {
                     month: "numeric",
                     day: "numeric",
                     hour: "2-digit",
@@ -516,7 +517,8 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
                 <TableCell className="hidden md:table-cell text-sm text-muted-foreground tabular-nums">
                   {formatDuration(
                     evt.startedAt,
-                    evt.resolvedAt ?? evt.acknowledgedAt
+                    evt.resolvedAt ?? evt.acknowledgedAt,
+                    t,
                   )}
                 </TableCell>
                 <TableCell>
@@ -695,7 +697,7 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                   )}
                 </CardTitle>
                 <p className="text-xs text-muted-foreground">
-                  {CHANNEL_TYPE_LABELS[ch.type]}
+                  {t(`channels.types.${ch.type}`)}
                   {!ch.verified && (
                     <span className="ml-1 text-warning">
                       {t("channels.unverifiedHint")}

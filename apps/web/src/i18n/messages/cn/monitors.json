@@ -83,7 +83,8 @@
     "pause": "暂停",
     "resume": "恢复",
     "delete": "删除",
-    "cancel": "取消"
+    "cancel": "取消",
+    "selectRow": "选择 {name}"
   },
   "confirm": {
     "bulkDeleteTitle": "确认批量删除",
@@ -159,7 +160,13 @@
     "expectedIp": "期望 IP",
     "sslExpiryDays": "到期告警提前天数",
     "saving": "保存中…",
-    "save": "保存"
+    "save": "保存",
+    "placeholderTimeout": "例: 5000",
+    "placeholderAssertStatus": "例: 200",
+    "placeholderPacketLoss": "例: 10",
+    "placeholderPort": "例: 443",
+    "placeholderExpectedIp": "例: 104.21.0.1",
+    "placeholderSslDays": "例: 30"
   },
   "new": {
     "title": "新建监控",
@@ -213,6 +220,9 @@
     "cancel": "取消",
     "prev": "上一步",
     "next": "下一步",
+    "targetPlaceholders": {
+      "ping": "8.8.8.8 或 example.com"
+    },
     "typeDescriptions": {
       "http": "检测 HTTP 接口可用性和响应状态",
       "https": "检测 HTTPS 接口含证书",

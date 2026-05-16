@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { SidebarProvider, SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Separator } from "@/components/ui/separator"
 import {
@@ -14,29 +15,32 @@ import {
 } from "@/components/ui/breadcrumb"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 
-const ROUTE_TITLES: Record<string, string> = {
-  "/app/dashboard":          "仪表盘",
-  "/app/monitors":           "监控列表",
-  "/app/monitors/new":       "创建监控",
-  "/app/alerts":             "告警列表",
-  "/app/alerts/channels":    "告警通道",
-  "/app/alerts/policies":    "告警策略",
-  "/app/alerts/groups":      "告警分组",
-  "/app/oncall":             "On-Call 值班",
-  "/app/incidents":          "故障记录",
-  "/app/status-pages":       "状态页",
-  "/app/reports":            "月度报告",
-  "/app/billing":            "订阅与计费",
-  "/app/usage":              "用量统计",
-  "/app/referral":           "推荐计划",
-  "/app/settings/profile":   "个人资料",
-  "/app/settings/account":   "账户安全",
-  "/app/settings/security":  "安全设置",
-  "/app/settings/sessions":  "会话管理",
-  "/app/settings/api-keys":  "API 密钥",
-  "/app/settings/tokens":    "访问令牌",
-  "/app/settings/team":      "团队管理",
-  "/app/nodes":              "节点管理",
+// ── Route → breadcrumb i18n key (relative to `userMenu.sidebar.items`) ──
+// Adding a new top-level page: register the key here + add the translation
+// under `userMenu.sidebar.items.*` in `messages/{locale}/userMenu.json`.
+const ROUTE_TITLE_KEYS: Record<string, string> = {
+  "/app/dashboard":          "dashboard",
+  "/app/monitors":           "monitors",
+  "/app/monitors/new":       "monitorsNew",
+  "/app/alerts":             "alertsList",
+  "/app/alerts/channels":    "alertsChannels",
+  "/app/alerts/policies":    "alertsPolicies",
+  "/app/alerts/groups":      "alertsGroups",
+  "/app/oncall":             "oncall",
+  "/app/incidents":          "incidents",
+  "/app/status-pages":       "statusPages",
+  "/app/reports":            "reports",
+  "/app/billing":            "billing",
+  "/app/usage":              "usage",
+  "/app/referral":           "referral",
+  "/app/settings/profile":   "settingsProfile",
+  "/app/settings/account":   "settingsAccount",
+  "/app/settings/security":  "settingsSecurity",
+  "/app/settings/sessions":  "settingsSessions",
+  "/app/settings/api-keys":  "settingsApiKeys",
+  "/app/settings/tokens":    "settingsTokens",
+  "/app/settings/team":      "settingsTeam",
+  "/app/nodes":              "nodes",
 }
 
 interface AppShellProps {
@@ -49,11 +53,14 @@ interface AppShellProps {
 
 export function AppShell({ email, displayName, avatarUrl, plan = "Free", children }: AppShellProps) {
   const pathname = usePathname()
+  const tSidebar = useTranslations("userMenu.sidebar")
+  const tItems = useTranslations("userMenu.sidebar.items")
 
-  const pageTitle =
-    ROUTE_TITLES[pathname] ??
-    Object.entries(ROUTE_TITLES).find(([k]) => pathname.startsWith(k + "/"))?.[1] ??
-    "后台管理"
+  const titleKey =
+    ROUTE_TITLE_KEYS[pathname] ??
+    Object.entries(ROUTE_TITLE_KEYS).find(([k]) => pathname.startsWith(k + "/"))?.[1] ??
+    null
+  const pageTitle = titleKey ? tItems(titleKey) : tSidebar("defaultPageTitle")
   const isSettings = pathname.startsWith("/app/settings")
 
   return (
@@ -61,13 +68,13 @@ export function AppShell({ email, displayName, avatarUrl, plan = "Free", childre
       <AppSidebar email={email} plan={plan} displayName={displayName} avatarUrl={avatarUrl} />
       <SidebarInset>
         <header className="flex h-12 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger className="-ml-1" data-testid="mobile-menu-button" aria-label="打开菜单" />
+          <SidebarTrigger className="-ml-1" data-testid="mobile-menu-button" aria-label={tSidebar("openMenu")} />
           <Separator orientation="vertical" className="mr-2 h-4" />
           <Breadcrumb>
             <BreadcrumbList>
               <BreadcrumbItem className="hidden md:block">
                 <BreadcrumbLink asChild>
-                  <Link href="/app/dashboard">控制台</Link>
+                  <Link href="/app/dashboard">{tSidebar("console")}</Link>
                 </BreadcrumbLink>
               </BreadcrumbItem>
               {isSettings && (
@@ -75,7 +82,7 @@ export function AppShell({ email, displayName, avatarUrl, plan = "Free", childre
                   <BreadcrumbSeparator className="hidden md:block" />
                   <BreadcrumbItem className="hidden md:block">
                     <BreadcrumbLink asChild>
-                      <Link href="/app/settings/profile">设置</Link>
+                      <Link href="/app/settings/profile">{tSidebar("settingsCrumb")}</Link>
                     </BreadcrumbLink>
                   </BreadcrumbItem>
                 </>

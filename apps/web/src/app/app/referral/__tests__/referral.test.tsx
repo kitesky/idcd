@@ -16,7 +16,7 @@ vi.mock("@/lib/api", () => ({
 // ─── Mock next-intl ───────────────────────────────────────────────────────────
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
-  useLocale: () => "zh",
+  useLocale: () => "cn",
 }))
 
 import { apiRequest } from "@/lib/api"

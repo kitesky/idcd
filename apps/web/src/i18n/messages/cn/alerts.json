@@ -202,5 +202,66 @@
     "ackNote": "确认备注（可选）",
     "success": "告警已确认",
     "failed": "确认失败，请重试"
+  },
+  "duration": {
+    "minutes": "{mins} 分钟",
+    "hours": "{hours} 小时",
+    "hoursAndMinutes": "{hours} 小时 {mins} 分钟"
+  },
+  "groups": {
+    "title": "告警分组",
+    "subtitle": "将相关监控的告警合并，减少重复通知",
+    "infoBanner": "告警分组可将相关监控的告警合并，避免重复通知。配置\"等待秒数\"，在该窗口内同组监控的告警会合并为一条通知。",
+    "create": "新建分组",
+    "listTitle": "分组列表",
+    "listDescription": "已配置的告警分组规则",
+    "empty": "暂无告警分组",
+    "emptyHint": "点击\"新建分组\"配置第一个告警分组规则",
+    "loadFailed": "加载告警分组失败",
+    "createFailed": "创建失败，请重试",
+    "deleteFailed": "删除失败，请重试",
+    "createSuccess": "告警分组已创建",
+    "deleteSuccess": "告警分组已删除",
+    "groupByLabels": {
+      "monitor_prefix": "监控前缀",
+      "tag": "标签",
+      "type": "告警类型"
+    },
+    "table": {
+      "name": "分组名",
+      "rule": "分组规则",
+      "wait": "等待秒数",
+      "createdAt": "创建时间",
+      "actions": "操作"
+    },
+    "delete": {
+      "label": "删除",
+      "title": "确认删除",
+      "desc": "将永久删除告警分组「{name}」，此操作无法撤销。",
+      "cancel": "取消",
+      "confirm": "确认删除"
+    },
+    "dialog": {
+      "title": "新建告警分组",
+      "desc": "配置分组规则与合并窗口，相同分组内的告警将在窗口期内合并为一条通知。",
+      "nameLabel": "分组名称",
+      "namePlaceholder": "例：生产环境告警组",
+      "nameRequired": "分组名称不能为空",
+      "groupByLabel": "分组规则",
+      "groupByPlaceholder": "选择分组依据",
+      "groupByRequired": "请选择分组规则",
+      "groupValueLabel": "分组值",
+      "groupValuePlaceholderTag": "输入标签名称，例：prod",
+      "groupValuePlaceholderPrefix": "输入监控名前缀，例：api-",
+      "groupValuePlaceholderType": "输入告警类型，例：down",
+      "groupValueRequired": "分组值不能为空",
+      "groupValueHint": "与分组规则对应的具体值（标签名、监控前缀或告警类型）",
+      "waitLabel": "合并窗口秒数",
+      "waitHint": "在此时间窗口内，同分组的告警将合并为一条通知（默认 60 秒）",
+      "waitInvalid": "合并窗口秒数必须为正整数",
+      "cancel": "取消",
+      "create": "创建",
+      "creating": "创建中…"
+    }
   }
 }

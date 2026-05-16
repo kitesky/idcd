@@ -1,5 +1,7 @@
 {
-  "title": "Billing & Subscription",
+  "title": "Billing",
+  "metaDescription": "Manage your subscription plan and invoice history",
+  "subtitle": "Manage your subscription, monitor usage, and download invoices",
   "plan": {
     "current": "Current Subscription",
     "free": "Free",
@@ -46,9 +48,32 @@
     "apiCallsPerDay": "API Calls / Day",
     "customDomain": "Custom Domain",
     "currentPlan": "Current Plan",
-    "cancelling": "Cancelling..."
+    "cancelling": "Cancelling...",
+    "prices": {
+      "free": "Free",
+      "pro": "¥99 / mo",
+      "team": "¥299 / mo",
+      "business": "¥999 / mo"
+    },
+    "freqLabels": {
+      "min5": "5 min",
+      "min1": "1 min",
+      "sec30": "30 s"
+    },
+    "unlimited": "Unlimited",
+    "summarySub": "{plan} plan, renews on {date}",
+    "paySuccessShort": "Payment successful! Subscription is activating. Refresh later to see the latest status.",
+    "payTabOpenedShort": "Payment page opened in a new tab. Refresh this page after paying.",
+    "currentBadge2": "Current",
+    "upgradeToPlan": "Upgrade to {plan}",
+    "currentPlanBtn": "Current Plan",
+    "comparisonFeature": "Feature",
+    "pastDueBlock": "Your subscription is past due. Some features may be limited. Re-subscribe to restore service.",
+    "upgradeDialogDesc": "{price} · Select a payment method to proceed"
   },
   "usage": {
+    "metaDescription": "View your monitor and API call usage statistics",
+    "subtitle": "Review resource usage and API call trends",
     "title": "Usage Statistics",
     "monitors": "Monitors",
     "checks": "Checks",
@@ -73,7 +98,44 @@
     "redeeming": "Redeeming…",
     "confirmRedeem": "Confirm Redemption",
     "redeemFailed": "Redemption failed",
-    "today": "Today"
+    "today": "Today",
+    "tomorrowAt": "Tomorrow {time}",
+    "weekday": {
+      "sun": "Sun",
+      "mon": "Mon",
+      "tue": "Tue",
+      "wed": "Wed",
+      "thu": "Thu",
+      "fri": "Fri",
+      "sat": "Sat"
+    },
+    "redeemOptions": {
+      "apiCalls": "1000 API calls (500 pts)",
+      "monitors": "1 month of Pro monitors (1000 pts)"
+    },
+    "pointsBalance": "Points Balance",
+    "communityNodes": "Community Nodes",
+    "communityDesc": "Each community-node heartbeat earns +1 point; activation bonus +200",
+    "redeemBtn": "Redeem Points",
+    "redeemDialog": "Redeem Points",
+    "redeemBalanceLabel": "Current balance: {balance} pts",
+    "redeemPlaceholder": "Select redemption type",
+    "redeemCancel": "Cancel",
+    "redeemingShort": "Redeeming…",
+    "confirmRedeem": "Confirm",
+    "apiCallsTitle": "API Calls (today)",
+    "nearLimit2": "Near limit",
+    "planLine": "{plan} plan: {limit} / day",
+    "planLineDefault": "Free plan: 100 / day",
+    "perDayUnit": "calls",
+    "resetTimeLabel": "Resets at: {time}",
+    "monitorsTitle": "Monitors",
+    "planMonitorsLine": "{plan} plan: up to {limit}",
+    "planMonitorsDefault": "Free plan: up to 3",
+    "unit": "items",
+    "statusPagesTitle": "Status Pages",
+    "planStatusPagesLine": "{plan} plan: up to {limit}",
+    "planStatusPagesDefault": "Free plan: up to 1"
   },
   "referral": {
     "title": "Refer a Friend",
@@ -102,6 +164,7 @@
     "title": "Invoice History",
     "date": "Date",
     "amount": "Amount",
+    "statusHeader": "Status",
     "status": {
       "paid": "Paid",
       "pending": "Pending",

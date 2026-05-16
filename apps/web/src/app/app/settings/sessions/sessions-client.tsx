@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import {
   Button,
   Card,
@@ -47,23 +48,38 @@ async function revokeSession(id: string): Promise<void> {
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
-function formatRelativeTime(iso: string): string {
+/**
+ * Subset of next-intl's `useTranslations` we actually use here. Mirrors
+ * its `TranslationValues` shape (string | number | boolean | Date | null).
+ */
+type Translator = (
+  key: string,
+  params?: Record<string, string | number | boolean | Date | null | undefined>,
+) => string
+
+/**
+ * Locale-aware relative time formatter. Keys live under
+ * `settings.sessions.relative.*` so granularity bands can be reworded per
+ * locale (e.g. "刚刚" vs "just now"). Callers pass the bound `t` returned
+ * by `useTranslations('settings')`.
+ */
+function formatRelativeTime(iso: string, t: Translator): string {
   const date = new Date(iso)
   const diffMs = Date.now() - date.getTime()
   const diffMin = Math.floor(diffMs / 60_000)
-  if (diffMin < 1) return "刚刚"
-  if (diffMin < 60) return `${diffMin} 分钟前`
+  if (diffMin < 1) return t("sessions.relative.justNow")
+  if (diffMin < 60) return t("sessions.relative.minutesAgo", { count: diffMin })
   const diffHr = Math.floor(diffMin / 60)
-  if (diffHr < 24) return `${diffHr} 小时前`
+  if (diffHr < 24) return t("sessions.relative.hoursAgo", { count: diffHr })
   const diffDay = Math.floor(diffHr / 24)
-  if (diffDay < 30) return `${diffDay} 天前`
+  if (diffDay < 30) return t("sessions.relative.daysAgo", { count: diffDay })
   const diffMo = Math.floor(diffDay / 30)
-  return `${diffMo} 个月前`
+  return t("sessions.relative.monthsAgo", { count: diffMo })
 }
 
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("zh-CN", {
+function formatDateTime(iso: string, bcp47: string): string {
+  return new Date(iso).toLocaleString(bcp47, {
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
@@ -103,6 +119,8 @@ function DeviceIcon({
 
 export function SessionsClient() {
   const t = useTranslations("settings")
+  const locale = useLocale()
+  const bcp47 = bcp47Of(locale)
   const [sessions, setSessions] = useState<Session[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -119,7 +137,7 @@ export function SessionsClient() {
         if (!cancelled) setSessions(data)
       })
       .catch((e) => {
-        if (!cancelled) setError(e.message ?? "加载失败")
+        if (!cancelled) setError(e.message ?? t("sessions.loadFailed"))
       })
       .finally(() => {
         if (!cancelled) setLoading(false)
@@ -127,6 +145,7 @@ export function SessionsClient() {
     return () => {
       cancelled = true
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   async function handleRevoke(id: string) {
@@ -194,7 +213,7 @@ export function SessionsClient() {
                 <AlertDialogHeader>
                   <AlertDialogTitle>{t("sessions.revokeAllTitle")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    将撤销除当前会话外的其他 {otherSessionCount} 个活跃会话。其他设备上的登录状态将立即失效，此操作不可撤回。
+                    {t("sessions.revokeAllDesc", { count: otherSessionCount })}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
@@ -278,12 +297,12 @@ export function SessionsClient() {
                     </div>
                     <p
                       className="text-xs text-muted-foreground"
-                      title={formatDateTime(sess.created_at)}
+                      title={formatDateTime(sess.created_at, bcp47)}
                     >
-                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at)}
+                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at, t)}
                       {sess.last_seen_at && sess.last_seen_at !== sess.created_at && (
                         <span className="ml-2 text-muted-foreground/70">
-                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at)}
+                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at, t)}
                         </span>
                       )}
                     </p>

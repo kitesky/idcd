@@ -111,6 +111,7 @@ function MemberAvatar({ email }: { email: string }) {
 }
 
 function EmptyState({ onCreateTeam }: { onCreateTeam: () => void }) {
+  const t = useTranslations("settings")
   return (
     <div
       className="flex flex-col items-center justify-center py-16 gap-4"
@@ -120,9 +121,9 @@ function EmptyState({ onCreateTeam }: { onCreateTeam: () => void }) {
         <Users className="h-7 w-7 text-muted-foreground" />
       </div>
       <div className="text-center">
-        <p className="text-sm font-medium">暂无团队</p>
+        <p className="text-sm font-medium">{t("team.noTeam")}</p>
         <p className="text-xs text-muted-foreground mt-1">
-          创建一个团队，与成员共享资源
+          {t("team.noTeamDesc")}
         </p>
       </div>
       <Button
@@ -131,7 +132,7 @@ function EmptyState({ onCreateTeam }: { onCreateTeam: () => void }) {
         data-testid="btn-create-team-empty"
       >
         <Plus className="h-4 w-4 mr-1" />
-        创建新团队
+        {t("team.createTeam")}
       </Button>
     </div>
   )
@@ -195,7 +196,7 @@ export function TeamClient() {
           loadTeamDetails(t.id)
         }
       })
-      .catch((err) => setError(err.message ?? "加载团队失败"))
+      .catch((err) => setError(err.message ?? t("team.loadFailed")))
       .finally(() => setLoadingTeam(false))
   }, [])
 
@@ -237,7 +238,7 @@ export function TeamClient() {
       setNewTeamSlug("")
       setShowCreateTeamDialog(false)
     } catch (err: any) {
-      setError(err.message ?? "创建团队失败")
+      setError(err.message ?? t("team.createFailed"))
     } finally {
       setCreatingTeam(false)
     }
@@ -262,7 +263,7 @@ export function TeamClient() {
       setInviteRole("member")
       setShowInviteDialog(false)
     } catch (err: any) {
-      setError(err.message ?? "邀请成员失败")
+      setError(err.message ?? t("team.inviteFailed"))
     } finally {
       setInviting(false)
     }
@@ -287,7 +288,7 @@ export function TeamClient() {
       setNewKeyType("production")
       setShowAddKeyDialog(false)
     } catch (err: any) {
-      setError(err.message ?? "创建 API Key 失败")
+      setError(err.message ?? t("team.addKeyFailed"))
     } finally {
       setAddingKey(false)
     }
@@ -299,7 +300,7 @@ export function TeamClient() {
       await apiRequest(`/v1/teams/${team.id}/api-keys/${keyID}`, { method: "DELETE" })
       setTeamKeys((prev) => prev.filter((k) => k.id !== keyID))
     } catch (err: any) {
-      setError(err.message ?? "撤销 API Key 失败")
+      setError(err.message ?? t("team.revokeKeyFailed"))
     }
   }
 
@@ -310,7 +311,7 @@ export function TeamClient() {
       setMembers((prev) => prev.filter((m) => m.user_id !== userId))
       setTeam((prev) => prev ? { ...prev, member_count: prev.member_count - 1 } : prev)
     } catch (err: any) {
-      setError(err.message ?? "移除成员失败")
+      setError(err.message ?? t("team.removeMemberFailed"))
     }
   }
 
@@ -327,9 +328,9 @@ export function TeamClient() {
               <TableHeader>
                 <TableRow>
                   <TableHead className="w-10" />
-                  <TableHead>邮箱</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>加入时间</TableHead>
+                  <TableHead>{t("team.tableEmail")}</TableHead>
+                  <TableHead>{t("team.tableRole")}</TableHead>
+                  <TableHead>{t("team.tableJoinedAt")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -358,20 +359,20 @@ export function TeamClient() {
         >
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>创建新团队</DialogTitle>
+              <DialogTitle>{t("team.createTeamTitle")}</DialogTitle>
               <DialogDescription>
-                输入团队名称和唯一标识符
+                {t("team.createTeamDesc")}
               </DialogDescription>
             </DialogHeader>
             <div className="flex flex-col gap-3 mt-2">
               <Input
-                placeholder="团队名称"
+                placeholder={t("team.teamNamePlaceholder")}
                 value={newTeamName}
                 onChange={(e) => setNewTeamName(e.target.value)}
                 data-testid="input-team-name"
               />
               <Input
-                placeholder="slug（URL 标识符）"
+                placeholder={t("team.teamSlugPlaceholder")}
                 value={newTeamSlug}
                 onChange={(e) => setNewTeamSlug(e.target.value)}
                 data-testid="input-team-slug"
@@ -381,7 +382,7 @@ export function TeamClient() {
                 disabled={creatingTeam}
                 data-testid="btn-confirm-create-team"
               >
-                {creatingTeam ? "创建中..." : "创建团队"}
+                {creatingTeam ? t("team.creating") : t("team.createBtn")}
               </Button>
             </div>
           </DialogContent>
@@ -405,7 +406,7 @@ export function TeamClient() {
               {team.name}
             </CardTitle>
             <CardDescription className="mt-1">
-              slug: {team.slug} · {team.member_count} 名成员 · {team.plan} 计划
+              {t("team.summary", { slug: team.slug, count: team.member_count, plan: team.plan })}
             </CardDescription>
           </div>
           <Button
@@ -415,7 +416,7 @@ export function TeamClient() {
             data-testid="btn-invite-member"
           >
             <UserPlus className="h-4 w-4 mr-1" />
-            邀请成员
+            {t("team.invite")}
           </Button>
         </CardHeader>
 
@@ -424,9 +425,9 @@ export function TeamClient() {
             <TableHeader>
               <TableRow>
                 <TableHead className="w-10" />
-                <TableHead>邮箱</TableHead>
-                <TableHead>角色</TableHead>
-                <TableHead>加入时间</TableHead>
+                <TableHead>{t("team.tableEmail")}</TableHead>
+                <TableHead>{t("team.tableRole")}</TableHead>
+                <TableHead>{t("team.tableJoinedAt")}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -436,7 +437,7 @@ export function TeamClient() {
               ) : members.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
-                    暂无成员
+                    {t("team.noMembers")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -461,7 +462,7 @@ export function TeamClient() {
                           onClick={() => handleRemoveMember(m.user_id)}
                           data-testid={`btn-remove-member-${m.id}`}
                         >
-                          移除
+                          {t("team.removeBtn")}
                         </Button>
                       )}
                     </TableCell>
@@ -476,15 +477,15 @@ export function TeamClient() {
       {(loadingInvitations || invitations.length > 0) && (
         <Card data-testid="pending-invitations-card">
           <CardHeader>
-            <CardTitle className="text-base">待处理邀请</CardTitle>
+            <CardTitle className="text-base">{t("team.pendingInvitations")}</CardTitle>
           </CardHeader>
           <CardContent className="overflow-x-auto">
             <Table data-testid="invitations-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>邮箱</TableHead>
-                  <TableHead>角色</TableHead>
-                  <TableHead>过期时间</TableHead>
+                  <TableHead>{t("team.tableEmail")}</TableHead>
+                  <TableHead>{t("team.tableRole")}</TableHead>
+                  <TableHead>{t("team.tableExpiresAt")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -512,9 +513,9 @@ export function TeamClient() {
       <Card data-testid="team-api-keys-card">
         <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-4">
           <div>
-            <CardTitle className="text-base">团队 API Keys</CardTitle>
+            <CardTitle className="text-base">{t("team.teamApiKeys")}</CardTitle>
             <CardDescription className="mt-1">
-              用于 CI/CD 或自动化集成的团队级密钥
+              {t("team.teamApiKeysDesc")}
             </CardDescription>
           </div>
           <Button
@@ -524,17 +525,17 @@ export function TeamClient() {
             data-testid="btn-add-team-key"
           >
             <Key className="h-4 w-4 mr-1" />
-            添加 Key
+            {t("team.addKey")}
           </Button>
         </CardHeader>
         <CardContent className="overflow-x-auto">
           <Table data-testid="team-keys-table">
             <TableHeader>
               <TableRow>
-                <TableHead>名称</TableHead>
-                <TableHead>前缀</TableHead>
-                <TableHead>类型</TableHead>
-                <TableHead>创建时间</TableHead>
+                <TableHead>{t("team.tableName")}</TableHead>
+                <TableHead>{t("team.tablePrefix")}</TableHead>
+                <TableHead>{t("team.tableType")}</TableHead>
+                <TableHead>{t("team.tableCreatedAt")}</TableHead>
                 <TableHead />
               </TableRow>
             </TableHeader>
@@ -544,7 +545,7 @@ export function TeamClient() {
               ) : teamKeys.length === 0 ? (
                 <TableRow>
                   <TableCell colSpan={5} className="text-center text-xs text-muted-foreground py-6">
-                    暂无团队 API Key
+                    {t("team.noKeys")}
                   </TableCell>
                 </TableRow>
               ) : (
@@ -574,7 +575,7 @@ export function TeamClient() {
                         onClick={() => handleRevokeKey(k.id)}
                         data-testid={`btn-revoke-key-${k.id}`}
                       >
-                        撤销
+                        {t("team.revokeBtn")}
                       </Button>
                     </TableCell>
                   </TableRow>
@@ -587,12 +588,12 @@ export function TeamClient() {
 
       <Card data-testid="team-subscription-card">
         <CardHeader>
-          <CardTitle className="text-base">团队订阅</CardTitle>
-          <CardDescription>管理团队的 Agent Pro 订阅</CardDescription>
+          <CardTitle className="text-base">{t("team.teamSubscription")}</CardTitle>
+          <CardDescription>{t("team.teamSubscriptionDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <span className="text-sm">当前套餐</span>
+            <span className="text-sm">{t("team.currentPlan")}</span>
             <Badge
               variant={teamPlan === "agent_pro" ? "default" : "secondary"}
               data-testid="team-plan-badge"
@@ -602,7 +603,7 @@ export function TeamClient() {
           </div>
           {teamPlan !== "agent_pro" && (
             <Button size="sm" data-testid="btn-upgrade-team">
-              升级到 Agent Pro（¥299/月）
+              {t("team.upgradeAgentPro")}
             </Button>
           )}
         </CardContent>
@@ -611,12 +612,12 @@ export function TeamClient() {
       <Dialog open={showAddKeyDialog} onOpenChange={setShowAddKeyDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>添加团队 API Key</DialogTitle>
-            <DialogDescription>创建一个团队共享的 API 密钥</DialogDescription>
+            <DialogTitle>{t("team.addKeyTitle")}</DialogTitle>
+            <DialogDescription>{t("team.addKeyDesc")}</DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 mt-2">
             <Input
-              placeholder="Key 名称（如 CI/CD Key）"
+              placeholder={t("team.keyNamePlaceholder")}
               value={newKeyName}
               onChange={(e) => setNewKeyName(e.target.value)}
               data-testid="input-key-name"
@@ -626,7 +627,7 @@ export function TeamClient() {
               onValueChange={(v) => setNewKeyType(v as "production" | "test")}
             >
               <SelectTrigger data-testid="select-key-type">
-                <SelectValue placeholder="选择类型" />
+                <SelectValue placeholder={t("team.selectType")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="production">production</SelectItem>
@@ -638,7 +639,7 @@ export function TeamClient() {
               disabled={addingKey}
               data-testid="btn-confirm-add-key"
             >
-              {addingKey ? "创建中..." : "创建 Key"}
+              {addingKey ? t("team.creatingKey") : t("team.createKey")}
             </Button>
           </div>
         </DialogContent>
@@ -647,22 +648,22 @@ export function TeamClient() {
       <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>邀请成员</DialogTitle>
+            <DialogTitle>{t("team.inviteTitle")}</DialogTitle>
             <DialogDescription>
-              输入邮箱地址并选择角色
+              {t("team.inviteDesc")}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 mt-2">
             <Input
               type="email"
-              placeholder="邮箱地址"
+              placeholder={t("team.emailPlaceholder")}
               value={inviteEmail}
               onChange={(e) => setInviteEmail(e.target.value)}
               data-testid="input-invite-email"
             />
             <Select value={inviteRole} onValueChange={setInviteRole}>
               <SelectTrigger data-testid="select-invite-role">
-                <SelectValue placeholder="选择角色" />
+                <SelectValue placeholder={t("team.rolePlaceholder")} />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="admin">admin</SelectItem>
@@ -674,7 +675,7 @@ export function TeamClient() {
               disabled={inviting}
               data-testid="btn-confirm-invite"
             >
-              {inviting ? "发送中..." : "发送邀请"}
+              {inviting ? t("team.sending") : t("team.sendInvite")}
             </Button>
           </div>
         </DialogContent>

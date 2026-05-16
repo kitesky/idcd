@@ -25,6 +25,13 @@ vi.mock("next/link", () => ({
   ),
 }))
 
+// Mock next-intl so t('key') returns the key — keeps these tests
+// locale-agnostic. Assertions use translation keys, not literal strings.
+vi.mock("next-intl", () => ({
+  useTranslations: () => (key: string) => key,
+  useLocale: () => "cn",
+}))
+
 const mockIncidents = [
   {
     event_id: "ev_001",
@@ -70,7 +77,7 @@ describe("IncidentsPage", () => {
   it("renders page title 故障记录", async () => {
     mockedApiRequest.mockResolvedValueOnce({ data: { incidents: mockIncidents } })
     render(<IncidentsPage />)
-    expect(screen.getByText("故障记录")).toBeInTheDocument()
+    expect(screen.getByText("title")).toBeInTheDocument()
   })
 
   it("shows skeleton while loading", () => {
@@ -111,7 +118,7 @@ describe("IncidentsPage", () => {
     await waitFor(() => {
       const buttons = screen.getAllByTestId(/^generate-btn-/)
       expect(buttons).toHaveLength(2)
-      expect(buttons[0]).toHaveTextContent("生成复盘")
+      expect(buttons[0]).toHaveTextContent("generate")
     })
   })
 
@@ -128,7 +135,7 @@ describe("IncidentsPage", () => {
     mockedApiRequest.mockResolvedValueOnce({ data: { incidents: mockIncidents } })
     render(<IncidentsPage />)
     await waitFor(() => {
-      expect(screen.getByText("已生成")).toBeInTheDocument()
+      expect(screen.getByText("draftGenerated")).toBeInTheDocument()
     })
   })
 
@@ -136,7 +143,7 @@ describe("IncidentsPage", () => {
     mockedApiRequest.mockResolvedValueOnce({ data: { incidents: mockIncidents } })
     render(<IncidentsPage />)
     await waitFor(() => {
-      expect(screen.getByText("未生成")).toBeInTheDocument()
+      expect(screen.getByText("draftNotGenerated")).toBeInTheDocument()
     })
   })
 
@@ -164,7 +171,7 @@ describe("IncidentsPage", () => {
       expect(screen.getByTestId("generate-btn-ev_001")).toBeInTheDocument()
     })
     fireEvent.click(screen.getByTestId("generate-btn-ev_001"))
-    expect(screen.getByTestId("generate-btn-ev_001")).toHaveTextContent("生成中...")
+    expect(screen.getByTestId("generate-btn-ev_001")).toHaveTextContent("generating")
     await waitFor(() => {
       expect(mockPush).toHaveBeenCalledWith("/app/incidents/pm_123")
     })

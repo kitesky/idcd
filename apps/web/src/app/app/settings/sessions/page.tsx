@@ -1,7 +1,10 @@
+import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { SessionsClient } from "./sessions-client"
 
-export const metadata = {
-  title: "活跃会话 — idcd",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("settings.sessions")
+  return { title: `${t("title")} — idcd` }
 }
 
 export default function SessionsPage() {

@@ -1,3 +1,11 @@
+/**
+ * Sidebar navigation data.
+ *
+ * `title` and group labels hold i18n **keys** (relative to the `userMenu`
+ * namespace) — they are resolved at render time by NavGroup via
+ * `useTranslations('userMenu')`. This keeps the navigation static & SSR-safe
+ * while still being fully translatable.
+ */
 import {
   Activity,
   BarChart3,
@@ -18,72 +26,72 @@ import type { NavGroup } from "./types"
 
 export const NAV_GROUPS: NavGroup[] = [
   {
-    title: "总览",
+    title: "sidebar.groups.overview",
     items: [
-      { title: "仪表盘", url: "/app/dashboard", icon: LayoutDashboard },
+      { title: "sidebar.items.dashboard", url: "/app/dashboard", icon: LayoutDashboard },
     ],
   },
   {
-    title: "监控",
+    title: "sidebar.groups.monitoring",
     items: [
-      { title: "监控列表", url: "/app/monitors", icon: Activity },
+      { title: "sidebar.items.monitors", url: "/app/monitors", icon: Activity },
       {
-        title: "告警管理",
+        title: "sidebar.items.alerts",
         url: undefined,
         icon: Bell,
         items: [
-          { title: "告警列表", url: "/app/alerts" },
-          { title: "告警通道", url: "/app/alerts/channels" },
-          { title: "告警策略", url: "/app/alerts/policies" },
-          { title: "告警分组", url: "/app/alerts/groups" },
+          { title: "sidebar.items.alertsList", url: "/app/alerts" },
+          { title: "sidebar.items.alertsChannels", url: "/app/alerts/channels" },
+          { title: "sidebar.items.alertsPolicies", url: "/app/alerts/policies" },
+          { title: "sidebar.items.alertsGroups", url: "/app/alerts/groups" },
         ],
       },
-      { title: "On-Call 值班", url: "/app/oncall", icon: UserCheck },
-      { title: "故障记录", url: "/app/incidents", icon: FileWarning },
-      { title: "节点管理", url: "/app/nodes", icon: Server },
+      { title: "sidebar.items.oncall", url: "/app/oncall", icon: UserCheck },
+      { title: "sidebar.items.incidents", url: "/app/incidents", icon: FileWarning },
+      { title: "sidebar.items.nodes", url: "/app/nodes", icon: Server },
     ],
   },
   {
-    title: "发布",
+    title: "sidebar.groups.publish",
     items: [
-      { title: "状态页", url: "/app/status-pages", icon: Globe },
+      { title: "sidebar.items.statusPages", url: "/app/status-pages", icon: Globe },
     ],
   },
   {
-    title: "证书",
+    title: "sidebar.groups.cert",
     items: [
-      { title: "总览", url: "/app/cert", icon: Lock },
-      { title: "申请证书", url: "/app/cert/new", icon: undefined },
-      { title: "订单", url: "/app/cert/orders", icon: undefined },
-      { title: "已签证书", url: "/app/cert/certs", icon: undefined },
-      { title: "DNS 凭据", url: "/app/cert/dns-credentials", icon: undefined },
+      { title: "sidebar.items.certOverview", url: "/app/cert", icon: Lock },
+      { title: "sidebar.items.certNew", url: "/app/cert/new", icon: undefined },
+      { title: "sidebar.items.certOrders", url: "/app/cert/orders", icon: undefined },
+      { title: "sidebar.items.certCerts", url: "/app/cert/certs", icon: undefined },
+      { title: "sidebar.items.certDnsCredentials", url: "/app/cert/dns-credentials", icon: undefined },
     ],
   },
   {
-    title: "报告",
+    title: "sidebar.groups.reports",
     items: [
-      { title: "月度报告", url: "/app/reports", icon: FileText },
-      { title: "证据报告", url: "/app/verdict/new", icon: ShieldCheck },
+      { title: "sidebar.items.reports", url: "/app/reports", icon: FileText },
+      { title: "sidebar.items.verdictNew", url: "/app/verdict/new", icon: ShieldCheck },
     ],
   },
   {
-    title: "账号",
+    title: "sidebar.groups.account",
     items: [
-      { title: "订阅与计费", url: "/app/billing", icon: CreditCard },
-      { title: "用量统计", url: "/app/usage", icon: BarChart3 },
-      { title: "推荐计划", url: "/app/referral", icon: Gift },
+      { title: "sidebar.items.billing", url: "/app/billing", icon: CreditCard },
+      { title: "sidebar.items.usage", url: "/app/usage", icon: BarChart3 },
+      { title: "sidebar.items.referral", url: "/app/referral", icon: Gift },
       {
-        title: "设置",
+        title: "sidebar.items.settings",
         url: undefined,
         icon: Settings,
         items: [
-          { title: "个人资料", url: "/app/settings/profile" },
-          { title: "账户安全", url: "/app/settings/account" },
-          { title: "安全设置", url: "/app/settings/security" },
-          { title: "会话管理", url: "/app/settings/sessions" },
-          { title: "API 密钥", url: "/app/settings/api-keys" },
-          { title: "访问令牌", url: "/app/settings/tokens" },
-          { title: "团队管理", url: "/app/settings/team" },
+          { title: "sidebar.items.settingsProfile", url: "/app/settings/profile" },
+          { title: "sidebar.items.settingsAccount", url: "/app/settings/account" },
+          { title: "sidebar.items.settingsSecurity", url: "/app/settings/security" },
+          { title: "sidebar.items.settingsSessions", url: "/app/settings/sessions" },
+          { title: "sidebar.items.settingsApiKeys", url: "/app/settings/api-keys" },
+          { title: "sidebar.items.settingsTokens", url: "/app/settings/tokens" },
+          { title: "sidebar.items.settingsTeam", url: "/app/settings/team" },
         ],
       },
     ],

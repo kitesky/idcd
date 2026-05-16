@@ -49,12 +49,17 @@ export interface AlertSilence {
   status: SilenceStatus
 }
 
+/**
+ * @deprecated Use `useTranslations('alerts')` and call
+ * `t(`channels.types.${channelType}`)` for locale-aware labels (see
+ * `messages/{locale}/alerts.json#channels.types.*`). Kept as English fallback.
+ */
 export const CHANNEL_TYPE_LABELS: Record<ChannelType, string> = {
-  email: "邮件",
+  email: "Email",
   webhook: "Webhook",
-  wecom: "企业微信",
-  dingtalk: "钉钉",
-  feishu: "飞书",
+  wecom: "WeCom",
+  dingtalk: "DingTalk",
+  feishu: "Feishu",
 }
 
 export const CHANNEL_TYPES: ChannelType[] = [
@@ -65,17 +70,28 @@ export const CHANNEL_TYPES: ChannelType[] = [
   "feishu",
 ]
 
-/** Format duration from start time to now (or to end time) */
-export function formatDuration(startedAt: string, endedAt?: string): string {
+/**
+ * Format duration from start time to now (or to end time) into a
+ * locale-aware string. The translator must expose
+ * `alerts.duration.{minutes,hours,hoursAndMinutes}` keys.
+ */
+export function formatDuration(
+  startedAt: string,
+  endedAt: string | undefined,
+  t: (
+    key: string,
+    params?: Record<string, string | number | boolean | Date | null | undefined>,
+  ) => string,
+): string {
   const start = new Date(startedAt).getTime()
   const end = endedAt ? new Date(endedAt).getTime() : Date.now()
   const diffMs = end - start
   const mins = Math.floor(diffMs / 60_000)
-  if (mins < 60) return `${mins} 分钟`
+  if (mins < 60) return t("duration.minutes", { mins })
   const hours = Math.floor(mins / 60)
   const remainMins = mins % 60
-  if (remainMins === 0) return `${hours} 小时`
-  return `${hours} 小时 ${remainMins} 分钟`
+  if (remainMins === 0) return t("duration.hours", { hours })
+  return t("duration.hoursAndMinutes", { hours, mins: remainMins })
 }
 
 /** Truncate a URL/config string for display */

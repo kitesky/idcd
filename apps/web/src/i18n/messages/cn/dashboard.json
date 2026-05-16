@@ -88,5 +88,12 @@
     "minutes": "{n}分钟前",
     "hours": "{n}小时前",
     "days": "{n}天前"
+  },
+  "error": {
+    "title": "页面加载失败",
+    "defaultMessage": "加载时遇到意外错误，请重试。",
+    "idLabel": "ID：",
+    "retry": "重试",
+    "backToConsole": "返回{console}"
   }
 }

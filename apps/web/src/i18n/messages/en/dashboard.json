@@ -88,5 +88,12 @@
     "minutes": "{n}m ago",
     "hours": "{n}h ago",
     "days": "{n}d ago"
+  },
+  "error": {
+    "title": "Failed to load page",
+    "defaultMessage": "An unexpected error occurred while loading. Please retry.",
+    "idLabel": "ID: ",
+    "retry": "Retry",
+    "backToConsole": "Back to {console}"
   }
 }

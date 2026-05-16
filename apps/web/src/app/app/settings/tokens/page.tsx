@@ -1,7 +1,10 @@
+import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { TokensClient } from "./tokens-client"
 
-export const metadata = {
-  title: "访问令牌 — idcd",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("settings.tokens")
+  return { title: `${t("title")} — idcd` }
 }
 
 export default function TokensPage() {

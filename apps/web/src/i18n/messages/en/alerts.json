@@ -202,5 +202,66 @@
     "ackNote": "Acknowledgement note (optional)",
     "success": "Alert acknowledged",
     "failed": "Acknowledge failed, please retry"
+  },
+  "duration": {
+    "minutes": "{mins} min",
+    "hours": "{hours} h",
+    "hoursAndMinutes": "{hours} h {mins} m"
+  },
+  "groups": {
+    "title": "Alert Groups",
+    "subtitle": "Merge related monitor alerts to reduce duplicate notifications",
+    "infoBanner": "Alert groups merge related monitor alerts to avoid duplicate notifications. Configure a wait window; alerts from the same group within the window are merged into a single notification.",
+    "create": "New Group",
+    "listTitle": "Group List",
+    "listDescription": "Configured alert group rules",
+    "empty": "No alert groups yet",
+    "emptyHint": "Click \"New Group\" to configure your first alert group rule",
+    "loadFailed": "Failed to load alert groups",
+    "createFailed": "Create failed, please retry",
+    "deleteFailed": "Delete failed, please retry",
+    "createSuccess": "Alert group created",
+    "deleteSuccess": "Alert group deleted",
+    "groupByLabels": {
+      "monitor_prefix": "Monitor prefix",
+      "tag": "Tag",
+      "type": "Alert type"
+    },
+    "table": {
+      "name": "Group name",
+      "rule": "Group rule",
+      "wait": "Wait seconds",
+      "createdAt": "Created at",
+      "actions": "Actions"
+    },
+    "delete": {
+      "label": "Delete",
+      "title": "Confirm Delete",
+      "desc": "This will permanently delete the alert group \"{name}\". This action cannot be undone.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Delete"
+    },
+    "dialog": {
+      "title": "New Alert Group",
+      "desc": "Configure the group rule and merge window; alerts in the same group will be merged within the window.",
+      "nameLabel": "Group name",
+      "namePlaceholder": "e.g. Production alerts",
+      "nameRequired": "Group name is required",
+      "groupByLabel": "Group rule",
+      "groupByPlaceholder": "Select grouping criterion",
+      "groupByRequired": "Please select a group rule",
+      "groupValueLabel": "Group value",
+      "groupValuePlaceholderTag": "Enter tag name, e.g. prod",
+      "groupValuePlaceholderPrefix": "Enter monitor name prefix, e.g. api-",
+      "groupValuePlaceholderType": "Enter alert type, e.g. down",
+      "groupValueRequired": "Group value is required",
+      "groupValueHint": "The specific value matching the group rule (tag, prefix, or alert type)",
+      "waitLabel": "Merge window seconds",
+      "waitHint": "Within this window, alerts in the same group are merged into one notification (default 60 s)",
+      "waitInvalid": "Wait seconds must be a positive integer",
+      "cancel": "Cancel",
+      "create": "Create",
+      "creating": "Creating…"
+    }
   }
 }

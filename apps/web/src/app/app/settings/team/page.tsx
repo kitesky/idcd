@@ -1,7 +1,10 @@
+import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { TeamClient } from "./team-client"
 
-export const metadata = {
-  title: "团队 — idcd",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("settings.team")
+  return { title: `${t("title")} — idcd` }
 }
 
 export default function TeamPage() {

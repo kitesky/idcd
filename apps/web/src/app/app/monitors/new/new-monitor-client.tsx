@@ -177,7 +177,7 @@ export function NewMonitorClient() {
   const TARGET_PLACEHOLDERS: Record<MonitorType, string> = {
     http: "http://example.com/api/health",
     https: "https://example.com",
-    ping: "8.8.8.8 或 example.com",
+    ping: t("new.targetPlaceholders.ping"),
     tcp: "example.com:8080",
     dns: "example.com",
     ssl_expiry: "example.com",

@@ -1,5 +1,7 @@
 {
-  "title": "账单与订阅",
+  "title": "计费",
+  "metaDescription": "管理您的订阅方案和发票记录",
+  "subtitle": "管理您的订阅方案、查看用量和下载发票",
   "plan": {
     "current": "当前订阅",
     "free": "免费版",
@@ -46,9 +48,32 @@
     "apiCallsPerDay": "API 调用 / 天",
     "customDomain": "自定义域名",
     "currentPlan": "当前方案",
-    "cancelling": "取消中..."
+    "cancelling": "取消中...",
+    "prices": {
+      "free": "免费",
+      "pro": "¥99 / 月",
+      "team": "¥299 / 月",
+      "business": "¥999 / 月"
+    },
+    "freqLabels": {
+      "min5": "5 分钟",
+      "min1": "1 分钟",
+      "sec30": "30 秒"
+    },
+    "unlimited": "无限",
+    "summarySub": "{plan} 版，到期：{date}",
+    "paySuccessShort": "支付成功！订阅正在激活，稍后刷新页面查看最新状态。",
+    "payTabOpenedShort": "支付页面已在新标签页打开，完成支付后请刷新此页面。",
+    "currentBadge2": "当前",
+    "upgradeToPlan": "升级到 {plan}",
+    "currentPlanBtn": "当前方案",
+    "comparisonFeature": "功能",
+    "pastDueBlock": "您的订阅账单逾期未付，部分功能可能受限。请重新订阅以恢复服务。",
+    "upgradeDialogDesc": "{price} · 选择支付方式后跳转完成支付"
   },
   "usage": {
+    "metaDescription": "查看您的监控项和 API 调用用量统计",
+    "subtitle": "查看您的资源使用情况和 API 调用趋势",
     "title": "用量统计",
     "monitors": "监控项",
     "checks": "检测次数",
@@ -73,7 +98,44 @@
     "redeeming": "兑换中…",
     "confirmRedeem": "确认兑换",
     "redeemFailed": "兑换失败",
-    "today": "今天"
+    "today": "今天",
+    "tomorrowAt": "明天 {time}",
+    "weekday": {
+      "sun": "日",
+      "mon": "一",
+      "tue": "二",
+      "wed": "三",
+      "thu": "四",
+      "fri": "五",
+      "sat": "六"
+    },
+    "redeemOptions": {
+      "apiCalls": "1000 次 API 调用额度（500 积分）",
+      "monitors": "1 个月 Pro 监控（1000 积分）"
+    },
+    "pointsBalance": "积分余额",
+    "communityNodes": "社区节点",
+    "communityDesc": "贡献节点每次心跳 +1 积分，激活奖励 +200 积分",
+    "redeemBtn": "兑换积分",
+    "redeemDialog": "兑换积分",
+    "redeemBalanceLabel": "当前余额 {balance} pts",
+    "redeemPlaceholder": "选择兑换类型",
+    "redeemCancel": "取消",
+    "redeemingShort": "兑换中…",
+    "confirmRedeem": "确认兑换",
+    "apiCallsTitle": "API 调用（今日）",
+    "nearLimit2": "接近上限",
+    "planLine": "{plan} 档每日 {limit} 次",
+    "planLineDefault": "Free 档每日 100 次",
+    "perDayUnit": "次",
+    "resetTimeLabel": "重置时间：{time}",
+    "monitorsTitle": "监控项",
+    "planMonitorsLine": "{plan} 档上限 {limit} 个",
+    "planMonitorsDefault": "Free 档上限 3 个",
+    "unit": "个",
+    "statusPagesTitle": "状态页",
+    "planStatusPagesLine": "{plan} 档上限 {limit} 个",
+    "planStatusPagesDefault": "Free 档上限 1 个"
   },
   "referral": {
     "title": "邀请好友",
@@ -99,9 +161,10 @@
     "loadError": "加载失败"
   },
   "invoices": {
-    "title": "账单记录",
+    "title": "发票记录",
     "date": "日期",
     "amount": "金额",
+    "statusHeader": "状态",
     "status": {
       "paid": "已支付",
       "pending": "待支付",

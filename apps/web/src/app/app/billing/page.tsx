@@ -1,19 +1,24 @@
 import { Suspense } from "react"
 import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { BillingClient } from "./billing-client"
 
-export const metadata: Metadata = {
-  title: "计费 - idcd 控制台",
-  description: "管理您的订阅方案和发票记录",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("billing")
+  return {
+    title: `${t("title")} - idcd`,
+    description: t("metaDescription"),
+  }
 }
 
-export default function BillingPage() {
+export default async function BillingPage() {
+  const t = await getT("billing")
   return (
     <>
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">计费</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
         <p className="mt-1 text-sm text-muted-foreground">
-          管理您的订阅方案、查看用量和下载发票
+          {t("subtitle")}
         </p>
       </div>
       <Suspense>

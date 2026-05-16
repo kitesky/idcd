@@ -83,7 +83,8 @@
     "pause": "Pause",
     "resume": "Resume",
     "delete": "Delete",
-    "cancel": "Cancel"
+    "cancel": "Cancel",
+    "selectRow": "Select {name}"
   },
   "confirm": {
     "bulkDeleteTitle": "Confirm bulk delete",
@@ -159,7 +160,13 @@
     "expectedIp": "Expected IP",
     "sslExpiryDays": "Days before expiry alert",
     "saving": "Saving…",
-    "save": "Save"
+    "save": "Save",
+    "placeholderTimeout": "e.g. 5000",
+    "placeholderAssertStatus": "e.g. 200",
+    "placeholderPacketLoss": "e.g. 10",
+    "placeholderPort": "e.g. 443",
+    "placeholderExpectedIp": "e.g. 104.21.0.1",
+    "placeholderSslDays": "e.g. 30"
   },
   "new": {
     "title": "New Monitor",
@@ -213,6 +220,9 @@
     "cancel": "Cancel",
     "prev": "Previous",
     "next": "Next",
+    "targetPlaceholders": {
+      "ping": "8.8.8.8 or example.com"
+    },
     "typeDescriptions": {
       "http": "Check HTTP endpoint availability and response status",
       "https": "Check HTTPS endpoint including certificate",

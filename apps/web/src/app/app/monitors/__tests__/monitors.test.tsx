@@ -14,7 +14,7 @@ vi.mock("next-intl", () => ({
     }
     return key
   },
-  useLocale: () => "zh",
+  useLocale: () => "cn",
 }))
 
 // Mock next/navigation
@@ -149,16 +149,18 @@ describe("MonitorsClient — 列表渲染", () => {
 
   it("降级状态 Badge 渲染", async () => {
     render(<MonitorsClient />)
-    await screen.findByText("降级")
+    // i18n mock returns the key; `t("status.degraded")` → "status.degraded"
+    await screen.findByText("status.degraded")
   })
 
   it("类型 Badge 渲染：HTTP、Ping、SSL到期、DNS", async () => {
     render(<MonitorsClient />)
     await screen.findByText("idcd.com 主站")
-    expect(screen.getAllByText("HTTP").length).toBeGreaterThan(0)
-    expect(screen.getAllByText("Ping").length).toBeGreaterThan(0)
-    expect(screen.getByText("SSL到期")).toBeInTheDocument()
-    expect(screen.getByText("DNS")).toBeInTheDocument()
+    // typeBadge now calls t(`type.${type}`), so labels render as i18n keys.
+    expect(screen.getAllByText("type.http").length).toBeGreaterThan(0)
+    expect(screen.getAllByText("type.ping").length).toBeGreaterThan(0)
+    expect(screen.getByText("type.ssl_expiry")).toBeInTheDocument()
+    expect(screen.getByText("type.dns")).toBeInTheDocument()
   })
 
   it("点击暂停按钮后状态变为 PAUSED（恢复按钮出现）", async () => {
@@ -407,6 +409,7 @@ describe("MonitorDetailClient — 详情页渲染", () => {
 
   it("类型 Badge 渲染", () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
-    expect(screen.getByText("HTTP")).toBeInTheDocument()
+    // monitor-detail-client now renders `t(`type.${type}`)`; mock returns the key
+    expect(screen.getByText("type.http")).toBeInTheDocument()
   })
 })

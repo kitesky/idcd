@@ -49,6 +49,10 @@
     "deleteFailed": "提交失败，请稍后重试"
   },
   "profile": {
+    "validation": {
+      "displayNameMax": "显示名称不能超过 {max} 个字符",
+      "bioMax": "个人简介不能超过 {max} 个字符"
+    },
     "title": "个人资料",
     "desc": "管理您的账号信息",
     "displayName": "显示名称",
@@ -172,7 +176,20 @@
     "copy": "复制",
     "copied": "已复制",
     "done": "完成",
-    "securityNote": "API Key 拥有您账号的完整权限，请勿在客户端代码中硬编码，建议通过环境变量注入。"
+    "securityNote": "API Key 拥有您账号的完整权限，请勿在客户端代码中硬编码，建议通过环境变量注入。",
+    "cardDesc": "用于通过 API 访问 idcd 服务。请妥善保管，切勿泄露。",
+    "tableName": "名称",
+    "tableType": "类型",
+    "tablePrefix": "前缀",
+    "tableCreatedAt": "创建时间",
+    "tableLastUsed": "最后使用",
+    "tableActions": "操作",
+    "validityOptions": {
+      "d30": "30 天",
+      "d90": "90 天",
+      "y1": "1 年",
+      "never": "永不过期"
+    }
   },
   "sessions": {
     "title": "活跃会话",
@@ -189,11 +206,19 @@
     "revokeAllCancel": "取消",
     "revokingAll": "撤销中...",
     "revokeError": "撤销失败，请稍后重试",
+    "revokeAllDesc": "将撤销除当前会话外的其他 {count} 个活跃会话。其他设备上的登录状态将立即失效，此操作不可撤回。",
     "empty": "暂无活跃会话",
     "loadFailed": "加载失败",
     "currentDevice": "当前设备",
     "loginAt": "登录于",
-    "lastSeen": "· 最近活跃"
+    "lastSeen": "· 最近活跃",
+    "relative": {
+      "justNow": "刚刚",
+      "minutesAgo": "{count} 分钟前",
+      "hoursAgo": "{count} 小时前",
+      "daysAgo": "{count} 天前",
+      "monthsAgo": "{count} 个月前"
+    }
   },
   "team": {
     "title": "团队管理",
@@ -246,9 +271,33 @@
     "inviteFailed": "邀请成员失败",
     "addKeyFailed": "创建 API Key 失败",
     "revokeKeyFailed": "撤销 API Key 失败",
-    "removeMemberFailed": "移除成员失败"
+    "removeMemberFailed": "移除成员失败",
+    "tableEmail": "邮箱",
+    "tableRole": "角色",
+    "tableJoinedAt": "加入时间",
+    "tableExpiresAt": "过期时间",
+    "tableName": "名称",
+    "tablePrefix": "前缀",
+    "tableType": "类型",
+    "tableCreatedAt": "创建时间",
+    "removeBtn": "移除",
+    "revokeBtn": "撤销",
+    "summary": "slug: {slug} · {count} 名成员 · {plan} 计划",
+    "upgradeAgentPro": "升级到 Agent Pro（¥299/月）"
   },
   "tokens": {
+    "expiryOptions": {
+      "d7": "7 天",
+      "d30": "30 天",
+      "d90": "90 天",
+      "y1": "1 年",
+      "never": "永不过期"
+    },
+    "tableName": "名称",
+    "tablePrefix": "前缀",
+    "tableExpiry": "到期时间",
+    "tableCreatedAt": "创建时间",
+    "tableActions": "操作",
     "title": "访问令牌",
     "desc": "用于 CLI 工具和 MCP 集成的长期访问令牌",
     "create": "生成新 Token",

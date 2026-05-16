@@ -1,7 +1,10 @@
+import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { AccountClient } from "./account-client"
 
-export const metadata = {
-  title: "账号设置 — idcd",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("settings.account")
+  return { title: `${t("title")} — idcd` }
 }
 
 export default function AccountPage() {

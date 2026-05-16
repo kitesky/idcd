@@ -1,7 +1,10 @@
+import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { SecurityClient } from "./security-client"
 
-export const metadata = {
-  title: "安全设置 — idcd",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("settings.security")
+  return { title: `${t("title")} — idcd` }
 }
 
 export default function SecurityPage() {

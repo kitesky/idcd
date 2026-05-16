@@ -9,7 +9,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
-  useLocale: () => "zh",
+  useLocale: () => "cn",
 }))
 
 vi.mock("next/link", () => ({
@@ -82,7 +82,8 @@ describe("AlertGroupsPage", () => {
     mockApiRequest.mockResolvedValue({ data: { items: [] } })
     render(<AlertGroupsPage />)
     await waitFor(() => {
-      expect(screen.getByText("暂无告警分组")).toBeInTheDocument()
+      // i18n mock returns the key; the empty-state label key is "empty"
+      expect(screen.getByText("empty")).toBeInTheDocument()
     })
   })
 
@@ -91,12 +92,12 @@ describe("AlertGroupsPage", () => {
     render(<AlertGroupsPage />)
     // Wait for loading to finish
     await waitFor(() => {
-      expect(screen.getByText("暂无告警分组")).toBeInTheDocument()
+      expect(screen.getByText("empty")).toBeInTheDocument()
     })
-    const createButton = screen.getByRole("button", { name: /新建分组/ })
+    const createButton = screen.getByRole("button", { name: /create/ })
     fireEvent.click(createButton)
     await waitFor(() => {
-      expect(screen.getByText("新建告警分组")).toBeInTheDocument()
+      expect(screen.getByText("dialog.title")).toBeInTheDocument()
     })
   })
 })

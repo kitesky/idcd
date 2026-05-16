@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import {
   Button,
   Card,
@@ -76,6 +77,8 @@ function KeyTypeBadge({ keyType }: { keyType: string }) {
 
 export function APIKeysClient() {
   const t = useTranslations("settings")
+  const locale = useLocale()
+  const bcp47 = bcp47Of(locale)
   const [keys, setKeys] = useState<APIKey[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -203,7 +206,7 @@ export function APIKeysClient() {
             <div>
               <CardTitle>API Keys</CardTitle>
               <CardDescription className="mt-1">
-                用于通过 API 访问 idcd 服务。请妥善保管，切勿泄露。
+                {t("apiKeys.cardDesc")}
               </CardDescription>
             </div>
             <Button
@@ -239,7 +242,7 @@ export function APIKeysClient() {
               {/* ── Search & type filter bar ── */}
               <div className="flex gap-3 mb-4" data-testid="keys-filter-bar">
                 <Input
-                  placeholder="搜索 API Key 名称..."
+                  placeholder={t("apiKeys.searchPlaceholder")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="max-w-xs"
@@ -253,9 +256,9 @@ export function APIKeysClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">全部类型</SelectItem>
-                    <SelectItem value="live">生产（Live）</SelectItem>
-                    <SelectItem value="test">测试（Test）</SelectItem>
+                    <SelectItem value="all">{t("apiKeys.filterAll")}</SelectItem>
+                    <SelectItem value="live">{t("apiKeys.filterLive")}</SelectItem>
+                    <SelectItem value="test">{t("apiKeys.filterTest")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -265,18 +268,18 @@ export function APIKeysClient() {
                   className="text-sm text-muted-foreground py-6 text-center"
                   data-testid="no-match-keys-message"
                 >
-                  没有匹配的 API Key
+                  {t("apiKeys.noMatch")}
                 </p>
               ) : (
             <Table data-testid="api-keys-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>类型</TableHead>
-                  <TableHead>前缀</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead>最后使用</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("apiKeys.tableName")}</TableHead>
+                  <TableHead>{t("apiKeys.tableType")}</TableHead>
+                  <TableHead>{t("apiKeys.tablePrefix")}</TableHead>
+                  <TableHead>{t("apiKeys.tableCreatedAt")}</TableHead>
+                  <TableHead>{t("apiKeys.tableLastUsed")}</TableHead>
+                  <TableHead className="text-right">{t("apiKeys.tableActions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -292,11 +295,11 @@ export function APIKeysClient() {
                       </code>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(key.created_at).toLocaleDateString("zh-CN")}
+                      {new Date(key.created_at).toLocaleDateString(bcp47)}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {key.last_used_at ? (
-                        new Date(key.last_used_at).toLocaleDateString("zh-CN")
+                        new Date(key.last_used_at).toLocaleDateString(bcp47)
                       ) : (
                         <Badge variant="secondary" className="text-xs">
                           {t("apiKeys.neverUsed")}
@@ -395,8 +398,8 @@ export function APIKeysClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="live" data-testid="select-item-production">生产（Live）</SelectItem>
-                    <SelectItem value="test" data-testid="select-item-test">测试（Test）</SelectItem>
+                    <SelectItem value="live" data-testid="select-item-production">{t("apiKeys.filterLive")}</SelectItem>
+                    <SelectItem value="test" data-testid="select-item-test">{t("apiKeys.filterTest")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -412,10 +415,10 @@ export function APIKeysClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="30d">30 天</SelectItem>
-                    <SelectItem value="90d">90 天</SelectItem>
-                    <SelectItem value="365d">1 年</SelectItem>
-                    <SelectItem value="never">永不过期</SelectItem>
+                    <SelectItem value="30d">{t("apiKeys.validityOptions.d30")}</SelectItem>
+                    <SelectItem value="90d">{t("apiKeys.validityOptions.d90")}</SelectItem>
+                    <SelectItem value="365d">{t("apiKeys.validityOptions.y1")}</SelectItem>
+                    <SelectItem value="never">{t("apiKeys.validityOptions.never")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -487,7 +490,7 @@ export function APIKeysClient() {
       {/* ── Security note ─────────────────────────────────────────────── */}
       <Alert data-testid="api-keys-security-note">
         <AlertDescription className="text-sm">
-          API Key 拥有您账号的完整权限，请勿在客户端代码中硬编码，建议通过环境变量注入。
+          {t("apiKeys.securityNote")}
         </AlertDescription>
       </Alert>
     </div>

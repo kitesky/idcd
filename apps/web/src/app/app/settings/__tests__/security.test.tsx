@@ -8,7 +8,7 @@ vi.mock("next/navigation", () => ({
 
 vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => key,
-  useLocale: () => "zh",
+  useLocale: () => "cn",
 }))
 
 // Default fetch mock: status=disabled, setup returns secret, verify returns backup codes, disable succeeds

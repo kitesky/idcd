@@ -1,7 +1,8 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import {
   Button,
   Card,
@@ -56,18 +57,14 @@ const AVAILABLE_SCOPES = [
   { value: "read:billing", label: "read:billing" },
 ]
 
-const EXPIRY_OPTIONS = [
-  { value: "7d", label: "7 天" },
-  { value: "30d", label: "30 天" },
-  { value: "90d", label: "90 天" },
-  { value: "365d", label: "1 年" },
-  { value: "never", label: "永不过期" },
-]
+const EXPIRY_VALUES = ["7d", "30d", "90d", "365d", "never"] as const
 
 // ── TokensClient ──────────────────────────────────────────────────────────────
 
 export function TokensClient() {
   const t = useTranslations("settings")
+  const locale = useLocale()
+  const bcp47 = bcp47Of(locale)
   const [tokens, setTokens] = useState<PAT[]>([])
   const [loading, setLoading] = useState(true)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -239,12 +236,12 @@ export function TokensClient() {
             <Table data-testid="tokens-table">
               <TableHeader>
                 <TableRow>
-                  <TableHead>名称</TableHead>
-                  <TableHead>前缀</TableHead>
-                  <TableHead>Scopes</TableHead>
-                  <TableHead>到期时间</TableHead>
-                  <TableHead>创建时间</TableHead>
-                  <TableHead className="text-right">操作</TableHead>
+                  <TableHead>{t("tokens.tableName")}</TableHead>
+                  <TableHead>{t("tokens.tablePrefix")}</TableHead>
+                  <TableHead>{t("tokens.scopes")}</TableHead>
+                  <TableHead>{t("tokens.tableExpiry")}</TableHead>
+                  <TableHead>{t("tokens.tableCreatedAt")}</TableHead>
+                  <TableHead className="text-right">{t("tokens.tableActions")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -260,7 +257,7 @@ export function TokensClient() {
                       <div className="flex flex-wrap gap-1">
                         {tok.scopes.length === 0 ? (
                           <Badge variant="secondary" className="text-xs">
-                            无 scope
+                            {t("tokens.noScope")}
                           </Badge>
                         ) : (
                           tok.scopes.map((s) => (
@@ -278,13 +275,13 @@ export function TokensClient() {
                     </TableCell>
                     <TableCell>{formatExpiry(tok.expires_at)}</TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(tok.created_at).toLocaleDateString("zh-CN")}
+                      {new Date(tok.created_at).toLocaleDateString(bcp47)}
                     </TableCell>
                     <TableCell className="text-right">
                       {revokeTarget === tok.id ? (
                         <div className="flex items-center justify-end gap-2">
                           <span className="text-xs text-muted-foreground">
-                            确认撤销？
+                            {t("tokens.revokeConfirm")}
                           </span>
                           <Button
                             variant="destructive"
@@ -293,7 +290,7 @@ export function TokensClient() {
                             data-testid={`btn-confirm-revoke-${tok.id}`}
                             onClick={() => handleRevoke(tok.id)}
                           >
-                            {revokeLoading ? "撤销中..." : "确认"}
+                            {revokeLoading ? t("tokens.revoking") : t("tokens.confirmRevoke")}
                           </Button>
                           <Button
                             variant="outline"
@@ -302,7 +299,7 @@ export function TokensClient() {
                             data-testid={`btn-cancel-revoke-${tok.id}`}
                             onClick={() => setRevokeTarget(null)}
                           >
-                            取消
+                            {t("tokens.cancelRevoke")}
                           </Button>
                         </div>
                       ) : (
@@ -314,7 +311,7 @@ export function TokensClient() {
                           onClick={() => setRevokeTarget(tok.id)}
                         >
                           <Trash2 className="h-4 w-4 mr-1" />
-                          撤销
+                          {t("tokens.revoke")}
                         </Button>
                       )}
                     </TableCell>
@@ -333,10 +330,10 @@ export function TokensClient() {
       >
         <DialogContent data-testid="create-token-dialog">
           <DialogHeader>
-            <DialogTitle>生成新 Token</DialogTitle>
+            <DialogTitle>{t("tokens.createTitle")}</DialogTitle>
             {!createdToken && (
               <DialogDescription>
-                为新 Token 设置名称、权限范围和有效期
+                {t("tokens.createDesc")}
               </DialogDescription>
             )}
           </DialogHeader>
@@ -350,10 +347,10 @@ export function TokensClient() {
               )}
 
               <div className="space-y-2">
-                <Label htmlFor="token-name">Token 名称</Label>
+                <Label htmlFor="token-name">{t("tokens.tokenNameLabel")}</Label>
                 <Input
                   id="token-name"
-                  placeholder="例如：本地 CLI、MCP 集成"
+                  placeholder={t("tokens.tokenNamePlaceholder")}
                   value={newTokenName}
                   onChange={(e) => {
                     setNewTokenName(e.target.value)
@@ -366,7 +363,7 @@ export function TokensClient() {
               </div>
 
               <div className="space-y-2">
-                <Label>权限范围（Scopes）</Label>
+                <Label>{t("tokens.scopesLabel")}</Label>
                 <div
                   className="space-y-2"
                   data-testid="scopes-checkboxes"
@@ -396,7 +393,7 @@ export function TokensClient() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="token-expiry">有效期</Label>
+                <Label htmlFor="token-expiry">{t("tokens.validityLabel")}</Label>
                 <Select
                   value={expiresIn}
                   onValueChange={setExpiresIn}
@@ -409,15 +406,22 @@ export function TokensClient() {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {EXPIRY_OPTIONS.map((opt) => (
-                      <SelectItem
-                        key={opt.value}
-                        value={opt.value}
-                        data-testid={`select-expiry-${opt.value}`}
-                      >
-                        {opt.label}
-                      </SelectItem>
-                    ))}
+                    {EXPIRY_VALUES.map((value) => {
+                      const labelKey =
+                        value === "7d" ? "d7" :
+                        value === "30d" ? "d30" :
+                        value === "90d" ? "d90" :
+                        value === "365d" ? "y1" : "never"
+                      return (
+                        <SelectItem
+                          key={value}
+                          value={value}
+                          data-testid={`select-expiry-${value}`}
+                        >
+                          {t(`tokens.expiryOptions.${labelKey}`)}
+                        </SelectItem>
+                      )
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -429,14 +433,14 @@ export function TokensClient() {
                   disabled={creating}
                   data-testid="btn-cancel-create"
                 >
-                  取消
+                  {t("tokens.cancel")}
                 </Button>
                 <Button
                   onClick={handleCreate}
                   disabled={creating || newTokenName.trim() === ""}
                   data-testid="btn-submit-create"
                 >
-                  {creating ? "生成中..." : "生成"}
+                  {creating ? t("tokens.generating") : t("tokens.generate")}
                 </Button>
               </div>
             </div>
@@ -445,7 +449,7 @@ export function TokensClient() {
               <Alert data-testid="new-token-reveal">
                 <AlertDescription className="space-y-2">
                   <p className="text-amber-600 dark:text-amber-400 font-medium text-sm">
-                    此 token 只显示一次，请立即复制并妥善保管
+                    {t("tokens.onceWarning")}
                   </p>
                   <code
                     className="block bg-muted p-2 rounded text-xs break-all"
@@ -465,12 +469,12 @@ export function TokensClient() {
                   {copied ? (
                     <>
                       <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-                      已复制
+                      {t("tokens.copied")}
                     </>
                   ) : (
                     <>
                       <Copy className="mr-2 h-4 w-4" />
-                      复制
+                      {t("tokens.copy")}
                     </>
                   )}
                 </Button>
@@ -478,7 +482,7 @@ export function TokensClient() {
                   onClick={handleCloseCreateDialog}
                   data-testid="btn-done-create"
                 >
-                  完成
+                  {t("tokens.done")}
                 </Button>
               </div>
             </div>
@@ -489,7 +493,7 @@ export function TokensClient() {
       {/* ── Security note ────────────────────────────────────────────────── */}
       <Alert data-testid="tokens-security-note">
         <AlertDescription className="text-sm">
-          Personal Access Token 具有账号访问权限，请勿泄露或写入代码仓库，建议通过环境变量注入。
+          {t("tokens.securityNote")}
         </AlertDescription>
       </Alert>
     </div>

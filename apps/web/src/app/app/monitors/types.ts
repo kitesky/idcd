@@ -43,16 +43,21 @@ export interface CheckResult {
   error?: string
 }
 
+/**
+ * @deprecated Use `useTranslations('monitors')` and call `t(`type.${type}`)`
+ * for locale-aware labels (see `messages/{locale}/monitors.json#type.*`).
+ * Kept as English fallback for SSR / non-React callers.
+ */
 export const TYPE_LABELS: Record<MonitorType, string> = {
   http: "HTTP",
   https: "HTTPS",
   ping: "Ping",
   tcp: "TCP",
   dns: "DNS",
-  ssl_expiry: "SSL到期",
-  domain_expiry: "域名到期",
-  icp_change: "ICP变更",
-  keyword: "关键字",
+  ssl_expiry: "SSL Expiry",
+  domain_expiry: "Domain Expiry",
+  icp_change: "ICP Change",
+  keyword: "Keyword",
   llm_endpoint: "LLM Endpoint",
   tool_api: "Tool API",
   rag: "RAG",

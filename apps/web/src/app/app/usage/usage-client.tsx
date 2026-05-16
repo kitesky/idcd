@@ -65,11 +65,16 @@ interface PointsData {
   total_earned: number
 }
 
-function formatResetTime(resetAtUnix: number): string {
+type Translator = (
+  key: string,
+  params?: Record<string, string | number | boolean | Date | null | undefined>,
+) => string
+
+function formatResetTime(resetAtUnix: number, t: Translator): string {
   const d = new Date(resetAtUnix * 1000)
   const hh = String(d.getHours()).padStart(2, "0")
   const mm = String(d.getMinutes()).padStart(2, "0")
-  return `明天 ${hh}:${mm}`
+  return t("tomorrowAt", { time: `${hh}:${mm}` })
 }
 
 function progressColor(used: number, limit: number): string {
@@ -80,16 +85,19 @@ function progressColor(used: number, limit: number): string {
   return ""
 }
 
-function formatTrendLabel(date: string, isLast: boolean): string {
-  if (isLast) return "今天"
+function formatTrendLabel(date: string, isLast: boolean, t: Translator): string {
+  if (isLast) return t("today")
   const d = new Date(date + "T00:00:00Z")
-  return ["日", "一", "二", "三", "四", "五", "六"][d.getUTCDay()]!
+  const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const
+  return t(`weekday.${keys[d.getUTCDay()]}`)
 }
 
-const REDEEM_OPTIONS = [
-  { value: "api_calls", label: "1000 次 API 调用额度（500 积分）", points: 500 },
-  { value: "monitors", label: "1 个月 Pro 监控（1000 积分）", points: 1000 },
-]
+function getRedeemOptions(t: Translator) {
+  return [
+    { value: "api_calls", label: t("redeemOptions.apiCalls"), points: 500 },
+    { value: "monitors", label: t("redeemOptions.monitors"), points: 1000 },
+  ]
+}
 
 interface PointsBalanceCardProps {
   balance: number | null
@@ -98,6 +106,8 @@ interface PointsBalanceCardProps {
 }
 
 function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardProps) {
+  const t = useTranslations("billing.usage")
+  const REDEEM_OPTIONS = getRedeemOptions(t)
   const [redeemType, setRedeemType] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [redeeming, setRedeeming] = useState(false)
@@ -119,7 +129,7 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
       setRedeemType("")
       onRedeemed()
     } catch (err) {
-      setRedeemError(err instanceof Error ? err.message : "兑换失败")
+      setRedeemError(err instanceof Error ? err.message : t("redeemFailed"))
     } finally {
       setRedeeming(false)
     }
@@ -130,14 +140,14 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
       <CardHeader className="pb-2">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            积分余额
+            {t("pointsBalance")}
           </CardTitle>
           <Badge variant="secondary" className="text-xs" data-testid="points-badge">
-            社区节点
+            {t("communityNodes")}
           </Badge>
         </div>
         <CardDescription className="text-xs">
-          贡献节点每次心跳 +1 积分，激活奖励 +200 积分
+          {t("communityDesc")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
@@ -157,20 +167,20 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
         }}>
           <DialogTrigger asChild>
             <Button variant="outline" size="sm" data-testid="redeem-button" disabled={loading}>
-              兑换积分
+              {t("redeemBtn")}
             </Button>
           </DialogTrigger>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>兑换积分</DialogTitle>
+              <DialogTitle>{t("redeemDialog")}</DialogTitle>
               <DialogDescription>
-                当前余额 {(balance ?? 0).toLocaleString()} pts
+                {t("redeemBalanceLabel", { balance: (balance ?? 0).toLocaleString() })}
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-2">
               <Select value={redeemType} onValueChange={setRedeemType}>
                 <SelectTrigger data-testid="redeem-select">
-                  <SelectValue placeholder="选择兑换类型" />
+                  <SelectValue placeholder={t("redeemPlaceholder")} />
                 </SelectTrigger>
                 <SelectContent>
                   {REDEEM_OPTIONS.map((o) => (
@@ -192,14 +202,14 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
                 onClick={() => setDialogOpen(false)}
                 disabled={redeeming}
               >
-                取消
+                {t("redeemCancel")}
               </Button>
               <Button
                 disabled={!canRedeem || redeeming}
                 onClick={handleRedeem}
                 data-testid="confirm-redeem"
               >
-                {redeeming ? "兑换中…" : "确认兑换"}
+                {redeeming ? t("redeemingShort") : t("confirmRedeem")}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -210,7 +220,7 @@ function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardPr
 }
 
 export function UsageClient() {
-  const _t = useTranslations("billing")
+  const t = useTranslations("billing.usage")
   const [data, setData] = useState<QuotaData | null>(null)
   const [loading, setLoading] = useState(true)
   const [pointsData, setPointsData] = useState<PointsData | null>(null)
@@ -243,12 +253,12 @@ export function UsageClient() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                API 调用（今日）
+                {t("apiCallsTitle")}
               </CardTitle>
               {!loading && data && data.api_calls.limit > 0 &&
                 (data.api_calls.used / data.api_calls.limit) >= 0.9 && (
                   <Badge variant="warning" className="text-xs" data-testid="near-limit-badge-api-calls">
-                    接近上限
+                    {t("nearLimit2")}
                   </Badge>
                 )}
             </div>
@@ -256,8 +266,8 @@ export function UsageClient() {
               {loading
                 ? null
                 : data
-                ? `${data.plan === "free" ? "Free" : data.plan} 档每日 ${data.api_calls.limit} 次`
-                : "Free 档每日 100 次"}
+                ? t("planLine", { plan: data.plan === "free" ? "Free" : data.plan, limit: data.api_calls.limit })
+                : t("planLineDefault")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -273,7 +283,7 @@ export function UsageClient() {
                     {data?.api_calls.used ?? 0}
                   </span>
                   <span className="text-sm text-muted-foreground mb-0.5">
-                    / {data?.api_calls.limit ?? 100} 次
+                    / {data?.api_calls.limit ?? 100} {t("perDayUnit")}
                   </span>
                 </div>
                 <Progress
@@ -294,7 +304,7 @@ export function UsageClient() {
                 />
                 {data && (
                   <p className="text-xs text-muted-foreground">
-                    重置时间：{formatResetTime(data.api_calls.reset_at)}
+                    {t("resetTimeLabel", { time: formatResetTime(data.api_calls.reset_at, t) })}
                   </p>
                 )}
               </>
@@ -307,12 +317,12 @@ export function UsageClient() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                监控项
+                {t("monitorsTitle")}
               </CardTitle>
               {!loading && data && data.monitors.limit > 0 &&
                 (data.monitors.used / data.monitors.limit) >= 0.9 && (
                   <Badge variant="warning" className="text-xs" data-testid="near-limit-badge-monitors">
-                    接近上限
+                    {t("nearLimit2")}
                   </Badge>
                 )}
             </div>
@@ -320,8 +330,8 @@ export function UsageClient() {
               {loading
                 ? null
                 : data
-                ? `${data.plan === "free" ? "Free" : data.plan} 档上限 ${data.monitors.limit} 个`
-                : "Free 档上限 3 个"}
+                ? t("planMonitorsLine", { plan: data.plan === "free" ? "Free" : data.plan, limit: data.monitors.limit })
+                : t("planMonitorsDefault")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -337,7 +347,7 @@ export function UsageClient() {
                     {data?.monitors.used ?? 0}
                   </span>
                   <span className="text-sm text-muted-foreground mb-0.5">
-                    / {data?.monitors.limit ?? 3} 个
+                    / {data?.monitors.limit ?? 3} {t("unit")}
                   </span>
                 </div>
                 <Progress
@@ -359,15 +369,15 @@ export function UsageClient() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                状态页
+                {t("statusPagesTitle")}
               </CardTitle>
             </div>
             <CardDescription className="text-xs">
               {loading
                 ? null
                 : data
-                ? `${data.plan === "free" ? "Free" : data.plan} 档上限 ${data.status_pages.limit} 个`
-                : "Free 档上限 1 个"}
+                ? t("planStatusPagesLine", { plan: data.plan === "free" ? "Free" : data.plan, limit: data.status_pages.limit })
+                : t("planStatusPagesDefault")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -383,7 +393,7 @@ export function UsageClient() {
                     {data?.status_pages.used ?? 0}
                   </span>
                   <span className="text-sm text-muted-foreground mb-0.5">
-                    / {data?.status_pages.limit ?? 1} 个
+                    / {data?.status_pages.limit ?? 1} {t("unit")}
                   </span>
                 </div>
                 <Progress
@@ -405,12 +415,12 @@ export function UsageClient() {
           <CardHeader className="pb-2">
             <div className="flex items-center justify-between">
               <CardTitle className="text-sm font-medium text-muted-foreground">
-                告警通道
+                {t("alertChannels")}
               </CardTitle>
               {!loading && data && data.channels.limit > 0 &&
                 (data.channels.used / data.channels.limit) >= 0.9 && (
                   <Badge variant="warning" className="text-xs" data-testid="near-limit-badge-alert-channels">
-                    接近上限
+                    {t("nearLimit2")}
                   </Badge>
                 )}
             </div>
@@ -418,8 +428,8 @@ export function UsageClient() {
               {loading
                 ? null
                 : data
-                ? `${data.plan === "free" ? "Free" : data.plan} 档上限 ${data.channels.limit} 个`
-                : "Free 档上限 1 个"}
+                ? t("planMonitorsLine", { plan: data.plan === "free" ? "Free" : data.plan, limit: data.channels.limit })
+                : t("planStatusPagesDefault")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -435,7 +445,7 @@ export function UsageClient() {
                     {data?.channels.used ?? 0}
                   </span>
                   <span className="text-sm text-muted-foreground mb-0.5">
-                    / {data?.channels.limit ?? 1} 个
+                    / {data?.channels.limit ?? 1} {t("unit")}
                   </span>
                 </div>
                 <Progress
@@ -453,11 +463,11 @@ export function UsageClient() {
         </Card>
       </div>
 
-      {/* ── API 调用趋势 ── */}
+      {/* API call trend */}
       <Card data-testid="api-trend-card">
         <CardHeader>
-          <CardTitle className="text-base">API 调用趋势（过去 7 天）</CardTitle>
-          <CardDescription>每日 API 请求次数统计</CardDescription>
+          <CardTitle className="text-base">{t("apiTrend")}</CardTitle>
+          <CardDescription>{t("apiTrendDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -474,7 +484,7 @@ export function UsageClient() {
               {(data?.api_calls_trend ?? []).map((d, i, arr) => {
                 const max = Math.max(...arr.map((x) => x.count), 1)
                 const heightPct = (d.count / max) * 100
-                const label = formatTrendLabel(d.date, i === arr.length - 1)
+                const label = formatTrendLabel(d.date, i === arr.length - 1, t)
                 return (
                   <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
                     <span className="text-xs text-muted-foreground tabular-nums">
@@ -483,7 +493,7 @@ export function UsageClient() {
                     <div
                       className="w-full rounded-t-sm bg-primary/70 transition-all"
                       style={{ height: `${heightPct}%` }}
-                      title={`${d.date}: ${d.count} 次`}
+                      title={`${d.date}: ${d.count} ${t("perDayUnit")}`}
                       data-testid={`bar-${d.date}`}
                     />
                     <span className="text-xs text-muted-foreground">{label}</span>

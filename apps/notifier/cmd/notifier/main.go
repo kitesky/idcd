@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"net/http"
 	"net/url"
 	"os"
 	"os/signal"
@@ -13,6 +15,7 @@ import (
 
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/kite365/idcd/apps/notifier/internal/billing"
 	"github.com/kite365/idcd/apps/notifier/internal/config"
@@ -24,6 +27,12 @@ import (
 	"github.com/kite365/idcd/lib/shared/logger"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
+
+// defaultMetricsPort is the listen port for the notifier Prometheus
+// scrape endpoint when observability.prometheus_port is unset in config.
+// Picked to sit alongside the other service metric ports (aggregator
+// 9091, scheduler 9093, gateway 9094) — see docs/REVIEW-FINDINGS-2026-05-16.md.
+const defaultMetricsPort = 9092
 
 func main() {
 	// Load configuration. Honour IDCD_CONFIG env var so prod containers can
@@ -123,6 +132,12 @@ func main() {
 		}
 	}()
 
+	// Start Prometheus /metrics listener. Runs on its own port so the worker
+	// process can expose runtime + notifier-specific metrics without standing
+	// up a full HTTP server. Failures are logged but do not block startup —
+	// the email worker keeps running even if Prometheus scraping is broken.
+	startMetricsServer(metricsPort(cfg), log)
+
 	log.Info("邮件通知服务已启动，等待任务...")
 
 	// Wait for shutdown signal
@@ -212,6 +227,39 @@ func wireRefundDeps(cfg *config.Config, handlers *worker.Handlers, log *slog.Log
 	}
 
 	return asynqClient, pool
+}
+
+// metricsPort returns the Prometheus listener port, honouring the shared
+// observability.prometheus_port config knob and falling back to the notifier-
+// specific defaultMetricsPort. Negative / unset values use the default so a
+// blank config file still produces a working scrape endpoint.
+func metricsPort(cfg *config.Config) int {
+	if cfg != nil && cfg.Observability.PrometheusPort > 0 {
+		return cfg.Observability.PrometheusPort
+	}
+	return defaultMetricsPort
+}
+
+// startMetricsServer spins up the dedicated /metrics HTTP listener in a
+// background goroutine. The listener exposes the default Prometheus registry,
+// which is where promauto-registered metrics (see internal/worker/metrics.go)
+// land. ErrServerClosed during shutdown is logged at debug level — anything
+// else is logged at error level but never panics the worker.
+func startMetricsServer(port int, log *slog.Logger) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	addr := ":" + strconv.Itoa(port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Info("Prometheus /metrics 监听已启动", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Error("metrics 监听失败", "addr", addr, "error", err)
+		}
+	}()
 }
 
 // parseAsynqRedis mirrors the helper in apps/notifier/internal/worker/worker.go

@@ -80,6 +80,11 @@ func (h *Hub) Register(nodeID string, conn *websocket.Conn) *Connection {
 
 	h.connections[nodeID] = c
 	h.connGauge.Inc()
+	// P1#19: spec-compliant metrics mirror the legacy counters/gauge so
+	// dashboards can migrate without losing data.
+	MetricsActiveConnections.Inc()
+	MetricsActiveNodes.Set(float64(len(h.connections)))
+	MetricsWSConnections.WithLabelValues("accepted").Inc()
 
 	h.logger.Info("node registered", "node_id", nodeID, "total_connections", len(h.connections))
 	return c
@@ -98,6 +103,11 @@ func (h *Hub) Unregister(nodeID string, reason string) {
 	delete(h.connections, nodeID)
 	h.connGauge.Dec()
 	h.disconnectTotal.WithLabelValues(reason).Inc()
+	// P1#19: keep the spec-compliant gauges + counter in sync with the legacy
+	// ones so Grafana can switch dashboard sources transparently.
+	MetricsActiveConnections.Dec()
+	MetricsActiveNodes.Set(float64(len(h.connections)))
+	MetricsWSConnections.WithLabelValues("disconnected").Inc()
 
 	// Close the connection
 	c.Close()
@@ -117,6 +127,10 @@ func (h *Hub) UpdateHeartbeat(nodeID string) bool {
 
 	c.LastHB = time.Now()
 	h.heartbeatTotal.Inc()
+	// P1#19: spec-compliant per-message-type counter. The hub only directly
+	// observes heartbeats (other message types are dispatched in the WS
+	// handler), so heartbeat is the only label populated from this path.
+	MetricsNodeMessages.WithLabelValues("heartbeat").Inc()
 	return true
 }
 
@@ -133,9 +147,14 @@ func (h *Hub) Broadcast(nodeID string, msg []byte) bool {
 
 	select {
 	case c.SendCh <- msg:
+		// P1#19: outbound dispatch counted under the "broadcast" type so the
+		// gateway_node_messages_total series tracks both inbound and outbound
+		// traffic without needing ws.go instrumentation.
+		MetricsNodeMessages.WithLabelValues("broadcast").Inc()
 		return true
 	default:
 		// Send channel full, log and skip
+		MetricsNodeMessages.WithLabelValues("broadcast_dropped").Inc()
 		h.logger.Warn("send channel full, dropping message", "node_id", nodeID)
 		return false
 	}

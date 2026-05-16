@@ -3,15 +3,18 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/gateway/internal/config"
@@ -19,9 +22,16 @@ import (
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
 	"github.com/kite365/idcd/apps/gateway/internal/scheduler"
 	"github.com/kite365/idcd/apps/gateway/internal/server"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
+
+// defaultMetricsPort is the listen port for the gateway Prometheus scrape
+// endpoint when observability.prometheus_port is unset in config. Picked to
+// sit alongside the other service metric ports (aggregator 9091, notifier
+// 9092, scheduler 9093) — see docs/REVIEW-FINDINGS-2026-05-16.md.
+const defaultMetricsPort = 9094
 
 func main() {
 	// Load configuration from dev.env.yaml (falls back to defaults if missing).
@@ -136,6 +146,13 @@ func main() {
 		}
 	}()
 
+	// Start dedicated Prometheus /metrics listener (P1#19). Runs on its own
+	// port so dashboards can scrape gateway-specific counters / gauges
+	// (see internal/hub/metrics.go) without going through the WS server's
+	// auth-gated /metrics route. Errors are logged but never fatal — broken
+	// scraping should never bring the gateway down.
+	startMetricsServer(gatewayMetricsPort(cfg), loggerInst)
+
 	// Wait for interrupt signal
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
@@ -171,4 +188,44 @@ func main() {
 	}
 
 	loggerInst.Info("Gateway service stopped")
+}
+
+// gatewayMetricsPort returns the listener port for the Prometheus scrape
+// endpoint. config.Load currently does not propagate Observability from the
+// shared config file, so we re-read the shared file here to honour the
+// operator's observability.prometheus_port knob. Any I/O error falls back to
+// defaultMetricsPort so a missing config still produces a working scrape
+// endpoint.
+func gatewayMetricsPort(cfg *config.Config) int {
+	if cfg != nil && cfg.Observability.PrometheusPort > 0 {
+		return cfg.Observability.PrometheusPort
+	}
+	if shared, err := sharedconfig.Load(sharedconfig.DefaultPath()); err == nil {
+		if shared.Observability.PrometheusPort > 0 {
+			return shared.Observability.PrometheusPort
+		}
+	}
+	return defaultMetricsPort
+}
+
+// startMetricsServer launches the dedicated Prometheus /metrics HTTP listener
+// in a background goroutine. The listener exposes the default Prometheus
+// registry, where promauto-registered metrics in internal/hub/metrics.go
+// land. ErrServerClosed is treated as a clean shutdown; any other failure is
+// logged but does not panic the gateway process.
+func startMetricsServer(port int, logger *slog.Logger) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	addr := ":" + strconv.Itoa(port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		logger.Info("Prometheus /metrics listener started", "addr", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			logger.Error("metrics listener failed", "addr", addr, "error", err)
+		}
+	}()
 }

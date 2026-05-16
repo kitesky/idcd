@@ -19,10 +19,17 @@ RUN go build -o /bin/scheduler ./cmd/scheduler/
 # Runtime stage
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+ && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/scheduler /bin/scheduler
 
+USER 10001:10001
+
 EXPOSE 8084
+
+# Scheduler is a leader-elected worker (no HTTP listener) — fall back to process liveness check.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD pidof scheduler >/dev/null 2>&1 || exit 1
 
 CMD ["/bin/scheduler"]

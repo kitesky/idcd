@@ -19,10 +19,18 @@ RUN go build -o /bin/gateway ./cmd/gateway/
 # Runtime stage
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+ && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/gateway /bin/gateway
 
-EXPOSE 8083
+USER 10001:10001
+
+EXPOSE 8443
+
+# Gateway terminates TLS on 8443 with client-cert mTLS — wget-based health probe is
+# unreliable (would need cert + SNI). Fall back to a process liveness check (BusyBox pidof).
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD pidof gateway >/dev/null 2>&1 || exit 1
 
 CMD ["/bin/gateway"]

@@ -3,13 +3,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/scheduler/internal/config"
@@ -19,6 +23,12 @@ import (
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
+
+// defaultMetricsPort is the listen port for the scheduler Prometheus scrape
+// endpoint when observability.prometheus_port is unset in config. Picked to
+// sit alongside the other service metric ports (aggregator 9091, notifier
+// 9092, gateway 9094) — see docs/REVIEW-FINDINGS-2026-05-16.md.
+const defaultMetricsPort = 9093
 
 func main() {
 	if err := run(); err != nil {
@@ -123,7 +133,13 @@ func run() error {
 		Stream:       streamClient,
 		Pool:         pool,
 		MonitorStore: monitorStore,
+		NodeID:       nodeID,
 	})
+
+	// Start Prometheus /metrics listener. Runs in a goroutine so it doesn't
+	// block the scheduler main loop; failures are logged but never fatal —
+	// the scheduler keeps running even if observability scraping is broken.
+	startMetricsServer(metricsPort(cfg))
 
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -154,4 +170,36 @@ func run() error {
 
 	log.Println("[main] Scheduler stopped gracefully")
 	return nil
+}
+
+// metricsPort returns the Prometheus listener port, honouring the shared
+// observability.prometheus_port config knob and falling back to the scheduler-
+// specific defaultMetricsPort when unset. Zero / negative values use the
+// default so a missing config block still produces a working scrape endpoint.
+func metricsPort(cfg *config.Config) int {
+	if cfg != nil && cfg.Observability.PrometheusPort > 0 {
+		return cfg.Observability.PrometheusPort
+	}
+	return defaultMetricsPort
+}
+
+// startMetricsServer spins up a background HTTP listener serving the default
+// Prometheus registry (where promauto-registered metrics in
+// internal/scheduler/metrics.go land). ErrServerClosed is treated as a clean
+// shutdown signal; any other failure is logged but never panics the scheduler.
+func startMetricsServer(port int) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", promhttp.Handler())
+	addr := ":" + strconv.Itoa(port)
+	srv := &http.Server{
+		Addr:              addr,
+		Handler:           mux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		log.Printf("[metrics] Prometheus /metrics listener started on %s", addr)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("[metrics] listener failed on %s: %v", addr, err)
+		}
+	}()
 }

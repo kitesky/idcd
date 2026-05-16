@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -21,12 +22,24 @@ type SessionData struct {
 
 // Service provides session storage operations using Redis.
 type Service struct {
-	redis *redis.Client
+	redis  *redis.Client
+	logger *slog.Logger
 }
 
 // NewService creates a new session service with the given Redis client.
+// Uses slog.Default() for logging; call SetLogger to override.
 func NewService(redisClient *redis.Client) *Service {
-	return &Service{redis: redisClient}
+	return &Service{redis: redisClient, logger: slog.Default()}
+}
+
+// SetLogger overrides the logger used for non-fatal warnings (e.g. failed
+// LastSeenAt write-back). Passing nil resets to slog.Default().
+func (s *Service) SetLogger(l *slog.Logger) {
+	if l == nil {
+		s.logger = slog.Default()
+		return
+	}
+	s.logger = l
 }
 
 // Store creates or updates a session with the given session ID, user ID, and TTL.
@@ -100,15 +113,35 @@ func (s *Service) Get(ctx context.Context, sessionID string) (*SessionData, erro
 		return nil, apperr.Internal("failed to unmarshal session data", err)
 	}
 
-	// Update LastSeenAt
+	// Update LastSeenAt atomically: single SET ... XX KEEPTTL is a single Redis
+	// command, so the TTL cannot expire between read and write (the previous
+	// TTL-then-SET sequence could resurrect a just-expired session). XX means
+	// we only write if the key still exists — concurrent Gets race on the
+	// final byte value (last-writer-wins for last_seen, acceptable per design),
+	// but the TTL and key existence invariants are preserved.
+	//
+	// last_seen is an observational signal, not auth state. On write failure
+	// we log a warning so Redis flakiness is visible, but we still return the
+	// session — the user is authenticated either way. If Redis is fully down
+	// the initial GET above would have failed and we'd have returned the error.
 	sessionData.LastSeenAt = time.Now()
-	updatedData, err := json.Marshal(sessionData)
-	if err == nil {
-		// Best effort update, don't fail on error
-		ttl := s.redis.TTL(ctx, key).Val()
-		if ttl > 0 {
-			s.redis.Set(ctx, key, updatedData, ttl)
+	if updatedData, marshalErr := json.Marshal(sessionData); marshalErr == nil {
+		if setErr := s.redis.SetArgs(ctx, key, updatedData, redis.SetArgs{
+			Mode:    "XX",
+			KeepTTL: true,
+		}).Err(); setErr != nil && !errors.Is(setErr, redis.Nil) {
+			// redis.Nil here means the XX guard rejected the write because the
+			// key expired between GET and SET — benign, not logged.
+			s.logger.WarnContext(ctx, "session: failed to update last_seen_at",
+				slog.String("session_id", sessionID),
+				slog.Any("error", setErr),
+			)
 		}
+	} else {
+		s.logger.WarnContext(ctx, "session: failed to marshal session for last_seen_at update",
+			slog.String("session_id", sessionID),
+			slog.Any("error", marshalErr),
+		)
 	}
 
 	return &sessionData, nil

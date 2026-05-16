@@ -3,6 +3,7 @@ package channel
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"strings"
 
 	"github.com/kite365/idcd/apps/notifier/internal/email"
@@ -73,10 +74,14 @@ func buildAlertHTML(p Payload, status string) string {
 	if status == "RESOLVED" {
 		badgeColor = "#16a34a" // green for RESOLVED
 	}
-	detailURL := p.URL
-	if detailURL == "" {
-		detailURL = "https://idcd.com/app/alerts"
-	}
+	// Sanitise the detail URL before embedding it in an href.  The raw value
+	// originates from monitor configuration so a malicious operator (or an
+	// upstream that mis-handles input) could otherwise smuggle `javascript:`,
+	// `data:`, or attribute-breaking content into the alert email.  We accept
+	// only http(s) URLs and fall back to the alerts dashboard.  The result is
+	// further attribute-escaped before being written to keep `"`, `<`, etc.
+	// from breaking out of the href context.
+	detailURL := safeDetailURL(p.URL)
 
 	var b strings.Builder
 	b.WriteString(`<!DOCTYPE html>
@@ -127,7 +132,7 @@ func buildAlertHTML(p Payload, status string) string {
         <tr>
           <td style="padding:0 32px 32px;">
             <a href="`)
-	b.WriteString(detailURL)
+	b.WriteString(htmlEscape(detailURL))
 	b.WriteString(`" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:600;padding:10px 24px;border-radius:6px;">查看告警详情</a>
           </td>
         </tr>
@@ -157,4 +162,43 @@ func htmlEscape(s string) string {
 	s = strings.ReplaceAll(s, `"`, "&#34;")
 	s = strings.ReplaceAll(s, "'", "&#39;")
 	return s
+}
+
+// defaultAlertURL is returned by safeDetailURL when the payload URL is empty
+// or fails the http/https scheme allow-list.  Exported in test-friendly form
+// via the symbol but kept package-private — alert email recipients always
+// land on the alerts dashboard.
+const defaultAlertURL = "https://idcd.com/app/alerts"
+
+// safeDetailURL coerces an untrusted payload URL into a value that is safe to
+// drop into an HTML href attribute.  Rules:
+//
+//   - empty string → default alerts dashboard URL.
+//   - any parse error → default URL.
+//   - scheme must be http or https (case-insensitive); anything else
+//     (`javascript:`, `data:`, `vbscript:`, `file:`, `tel:` typos, …) is
+//     rejected and the default URL is used.
+//   - scheme-relative URLs (`//evil.com/x`) are rejected — they would inherit
+//     the user agent's scheme and could land on `javascript:` in some clients.
+//
+// Callers still HTML-escape the return value before writing it into the
+// attribute; safeDetailURL handles scheme filtering, htmlEscape handles
+// attribute-context characters.
+func safeDetailURL(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return defaultAlertURL
+	}
+	u, err := url.Parse(raw)
+	if err != nil {
+		return defaultAlertURL
+	}
+	scheme := strings.ToLower(u.Scheme)
+	if scheme != "http" && scheme != "https" {
+		return defaultAlertURL
+	}
+	if u.Host == "" {
+		return defaultAlertURL
+	}
+	return raw
 }

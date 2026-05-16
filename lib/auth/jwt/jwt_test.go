@@ -1,6 +1,7 @@
 package jwt
 
 import (
+	"context"
 	"testing"
 	"time"
 
@@ -337,6 +338,227 @@ func TestService_ErrorCases(t *testing.T) {
 			_, err := service.Verify(malformed)
 			assert.Error(t, err)
 		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// JTI + blocklist behavior.
+//
+// Goals validated below:
+//   - Every Sign emits a non-empty unique JTI (RegisteredClaims.ID).
+//   - With a blocklist wired, Refresh revokes the OLD jti immediately so
+//     the previous token cannot be replayed.
+//   - The blocklist entry TTL never exceeds the original token's
+//     remaining ExpiresAt — once the token would naturally expire,
+//     there's no need to keep it on the list.
+//   - Verify is fail-closed: a blocklist lookup error is treated as
+//     "revoked" (Unauthorized), not "allowed".
+//   - Without a blocklist, Verify / Refresh behave identically to the
+//     pre-blocklist Service (no JTI lookup, no revocation side-effect).
+// ---------------------------------------------------------------------------
+
+func TestService_SignEmitsUniqueJTI(t *testing.T) {
+	service, err := NewService(Config{SecretKey: testSecret})
+	require.NoError(t, err)
+
+	tok1, err := service.Sign("u_test", "s_test", 15*time.Minute)
+	require.NoError(t, err)
+	tok2, err := service.Sign("u_test", "s_test", 15*time.Minute)
+	require.NoError(t, err)
+
+	c1, err := service.Verify(tok1)
+	require.NoError(t, err)
+	c2, err := service.Verify(tok2)
+	require.NoError(t, err)
+
+	assert.NotEmpty(t, c1.ID, "every JWT must carry a JTI for revocation")
+	assert.NotEmpty(t, c2.ID)
+	assert.NotEqual(t, c1.ID, c2.ID, "two signs must produce distinct JTIs")
+}
+
+func TestService_RefreshRevokesOldToken(t *testing.T) {
+	bl := NewInMemoryBlocklist()
+	service, err := NewServiceWithOptions(Config{SecretKey: testSecret}, WithBlocklist(bl))
+	require.NoError(t, err)
+
+	oldToken, err := service.Sign("u_test", "s_test", 15*time.Minute)
+	require.NoError(t, err)
+
+	// Old token must verify before refresh.
+	oldClaims, err := service.Verify(oldToken)
+	require.NoError(t, err)
+	require.NotEmpty(t, oldClaims.ID)
+
+	newToken, err := service.Refresh(oldToken, 15*time.Minute)
+	require.NoError(t, err)
+
+	// New token verifies; old token is dead.
+	newClaims, err := service.Verify(newToken)
+	require.NoError(t, err)
+	assert.NotEqual(t, oldClaims.ID, newClaims.ID, "refresh must rotate JTI")
+
+	_, err = service.Verify(oldToken)
+	require.Error(t, err, "refreshed-away token must no longer verify")
+	assert.True(t, apperr.Is(err, apperr.CodeUnauthorized))
+
+	// Blocklist should hold the old JTI.
+	revoked, err := bl.IsRevoked(context.Background(), oldClaims.ID)
+	require.NoError(t, err)
+	assert.True(t, revoked)
+}
+
+func TestService_RefreshTTLBoundedByOldExp(t *testing.T) {
+	bl := NewInMemoryBlocklist()
+	service, err := NewServiceWithOptions(Config{SecretKey: testSecret}, WithBlocklist(bl))
+	require.NoError(t, err)
+
+	// Short-lived old token: 30s remaining when refreshed.
+	oldExpiry := 30 * time.Second
+	oldToken, err := service.Sign("u_test", "s_test", oldExpiry)
+	require.NoError(t, err)
+
+	oldClaims, err := service.Verify(oldToken)
+	require.NoError(t, err)
+	oldExpAt := oldClaims.ExpiresAt.Time
+
+	// Refresh — issue a 24h new token but blocklist TTL must be bounded
+	// by the OLD token's remaining lifetime, not the new one's.
+	_, err = service.Refresh(oldToken, 24*time.Hour)
+	require.NoError(t, err)
+
+	// Inspect the in-memory entry expiry directly (test-only access).
+	bl.mu.RLock()
+	entryExp, ok := bl.entries[oldClaims.ID]
+	bl.mu.RUnlock()
+	require.True(t, ok, "old JTI must be on the blocklist")
+
+	// Blocklist entry should expire roughly at the old token's exp.
+	// Tolerance: 2s (revocation happens slightly after Sign).
+	diff := entryExp.Sub(oldExpAt)
+	if diff < 0 {
+		diff = -diff
+	}
+	assert.LessOrEqual(t, diff, 2*time.Second,
+		"blocklist TTL must be capped at the old token's remaining exp, not the new token's expiry")
+}
+
+func TestService_RefreshTTLCappedAt24h(t *testing.T) {
+	// A pathologically long-lived JWT (>24h remaining) must still produce
+	// a blocklist TTL no longer than the internal 24h cap.
+	bl := NewInMemoryBlocklist()
+	service, err := NewServiceWithOptions(Config{SecretKey: testSecret}, WithBlocklist(bl))
+	require.NoError(t, err)
+
+	oldToken, err := service.Sign("u_test", "s_test", 7*24*time.Hour) // 7 days
+	require.NoError(t, err)
+	oldClaims, err := service.Verify(oldToken)
+	require.NoError(t, err)
+
+	_, err = service.Refresh(oldToken, time.Minute)
+	require.NoError(t, err)
+
+	bl.mu.RLock()
+	entryExp, ok := bl.entries[oldClaims.ID]
+	bl.mu.RUnlock()
+	require.True(t, ok)
+
+	// Cap is 24h. Allow a couple seconds of test wiggle.
+	maxExpected := time.Now().Add(24*time.Hour + 2*time.Second)
+	assert.True(t, entryExp.Before(maxExpected),
+		"blocklist TTL must be capped at 24h for long-lived tokens; got entryExp=%s, now=%s",
+		entryExp, time.Now())
+}
+
+func TestService_VerifyFailClosed(t *testing.T) {
+	// When the blocklist is unreachable, Verify MUST reject the token.
+	// Letting a leaked token survive a Redis outage is the bug we're
+	// guarding against.
+	service, err := NewServiceWithOptions(Config{SecretKey: testSecret}, WithBlocklist(errBlocklist{}))
+	require.NoError(t, err)
+
+	token, err := service.Sign("u_test", "s_test", 15*time.Minute)
+	require.NoError(t, err)
+
+	_, err = service.Verify(token)
+	require.Error(t, err, "blocklist lookup error must be treated as revoked (fail-closed)")
+	assert.True(t, apperr.Is(err, apperr.CodeUnauthorized))
+}
+
+func TestService_NoBlocklist_LegacyBehavior(t *testing.T) {
+	// Without WithBlocklist, the Service must behave exactly like
+	// pre-blocklist code — no revocation, no errors on refresh-twice.
+	service, err := NewService(Config{SecretKey: testSecret})
+	require.NoError(t, err)
+
+	oldToken, err := service.Sign("u_test", "s_test", 15*time.Minute)
+	require.NoError(t, err)
+
+	newToken, err := service.Refresh(oldToken, 15*time.Minute)
+	require.NoError(t, err)
+
+	// Both tokens still verify (legacy behavior — the bug we're fixing
+	// for production use, but the no-blocklist path must keep it for
+	// backwards compatibility with callers that haven't opted in).
+	_, err = service.Verify(oldToken)
+	require.NoError(t, err, "no-blocklist Service must keep legacy refresh behavior")
+	_, err = service.Verify(newToken)
+	require.NoError(t, err)
+}
+
+func TestService_RevokeToken(t *testing.T) {
+	bl := NewInMemoryBlocklist()
+	service, err := NewServiceWithOptions(Config{SecretKey: testSecret}, WithBlocklist(bl))
+	require.NoError(t, err)
+
+	t.Run("revokes a valid token", func(t *testing.T) {
+		token, err := service.Sign("u_test", "s_test", 15*time.Minute)
+		require.NoError(t, err)
+
+		ctx := context.Background()
+		require.NoError(t, service.RevokeToken(ctx, token))
+
+		_, err = service.Verify(token)
+		require.Error(t, err)
+		assert.True(t, apperr.Is(err, apperr.CodeUnauthorized))
+	})
+
+	t.Run("rejects unparseable token", func(t *testing.T) {
+		err := service.RevokeToken(context.Background(), "garbage")
+		require.Error(t, err)
+		assert.True(t, apperr.Is(err, apperr.CodeUnauthorized))
+	})
+
+	t.Run("no-op without blocklist", func(t *testing.T) {
+		plainService, err := NewService(Config{SecretKey: testSecret})
+		require.NoError(t, err)
+		token, err := plainService.Sign("u_test", "s_test", 15*time.Minute)
+		require.NoError(t, err)
+		require.NoError(t, plainService.RevokeToken(context.Background(), token))
+	})
+}
+
+func TestBlocklistTTL(t *testing.T) {
+	now := time.Now()
+
+	t.Run("nil exp falls back to 24h", func(t *testing.T) {
+		got := blocklistTTL(nil, now)
+		assert.Equal(t, 24*time.Hour, got)
+	})
+
+	t.Run("already-expired returns 0", func(t *testing.T) {
+		got := blocklistTTL(jwt.NewNumericDate(now.Add(-time.Second)), now)
+		assert.Equal(t, time.Duration(0), got)
+	})
+
+	t.Run("within 24h returns remaining", func(t *testing.T) {
+		got := blocklistTTL(jwt.NewNumericDate(now.Add(10*time.Minute)), now)
+		// Tolerance for now() drift between call sites.
+		assert.InDelta(t, (10 * time.Minute).Seconds(), got.Seconds(), 1.0)
+	})
+
+	t.Run("beyond 24h is capped at 24h", func(t *testing.T) {
+		got := blocklistTTL(jwt.NewNumericDate(now.Add(48*time.Hour)), now)
+		assert.Equal(t, 24*time.Hour, got)
 	})
 }
 

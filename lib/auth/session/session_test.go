@@ -1,7 +1,13 @@
 package session
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
+	"log/slog"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -391,4 +397,171 @@ func TestService_ErrorCases(t *testing.T) {
 		require.NoError(t, err)
 		assert.Equal(t, userID, sessionData.UserID)
 	})
+}
+
+// errorOnCmdHook injects an error response for any redis command whose name
+// starts with the given prefix (case-insensitive). It implements redis.Hook.
+type errorOnCmdHook struct {
+	cmdPrefix string
+	err       error
+}
+
+func (h *errorOnCmdHook) DialHook(next redis.DialHook) redis.DialHook { return next }
+
+func (h *errorOnCmdHook) ProcessHook(next redis.ProcessHook) redis.ProcessHook {
+	return func(ctx context.Context, cmd redis.Cmder) error {
+		if strings.EqualFold(cmd.Name(), h.cmdPrefix) {
+			cmd.SetErr(h.err)
+			return h.err
+		}
+		return next(ctx, cmd)
+	}
+}
+
+func (h *errorOnCmdHook) ProcessPipelineHook(next redis.ProcessPipelineHook) redis.ProcessPipelineHook {
+	return next
+}
+
+// captureLogger returns a slog.Logger that writes JSON lines into buf so the
+// test can assert on warnings.
+func captureLogger(buf *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+// TestService_GetConcurrent verifies that concurrent Get() calls do not
+// lose the LastSeenAt update — atomic SET ... XX KEEPTTL means each writer
+// either wins or is benignly preempted, and the final value is always one
+// of the writers' timestamps (not the original stored timestamp).
+func TestService_GetConcurrent(t *testing.T) {
+	redisClient := setupTestRedis(t)
+	service := NewService(redisClient)
+	ctx := context.Background()
+
+	sessionID := "s_concurrent"
+	userID := "u_concurrent"
+	ttl := 15 * time.Minute
+
+	require.NoError(t, service.Store(ctx, sessionID, userID, ttl))
+
+	// Capture the original LastSeenAt for comparison.
+	original, err := service.Get(ctx, sessionID)
+	require.NoError(t, err)
+	originalLastSeen := original.LastSeenAt
+	// Wait so concurrent goroutines produce later timestamps.
+	time.Sleep(20 * time.Millisecond)
+
+	const goroutines = 10
+	var wg sync.WaitGroup
+	results := make([]time.Time, goroutines)
+	wg.Add(goroutines)
+	for i := 0; i < goroutines; i++ {
+		go func(idx int) {
+			defer wg.Done()
+			data, err := service.Get(ctx, sessionID)
+			if err == nil && data != nil {
+				results[idx] = data.LastSeenAt
+			}
+		}(i)
+	}
+	wg.Wait()
+
+	// Each goroutine read a LastSeenAt that is strictly after the initial
+	// (pre-concurrent) read — proves Get() returns a freshly stamped value.
+	for i, ts := range results {
+		assert.Falsef(t, ts.IsZero(), "goroutine %d got zero timestamp", i)
+		assert.Truef(t, ts.After(originalLastSeen),
+			"goroutine %d LastSeenAt=%v not after originalLastSeen=%v",
+			i, ts, originalLastSeen)
+	}
+
+	// And the value persisted in Redis is one of the concurrent writers'
+	// timestamps (last writer wins) — not the original. This proves the
+	// write-back actually happened atomically and did not get clobbered
+	// by a TTL race resurrecting the old session.
+	final, err := service.Get(ctx, sessionID)
+	require.NoError(t, err)
+	assert.True(t, final.LastSeenAt.After(originalLastSeen),
+		"final LastSeenAt should be after the pre-concurrent value")
+
+	// TTL must still be roughly intact — KEEPTTL means we never accidentally
+	// dropped or extended the expiry.
+	key := service.sessionKey(sessionID)
+	finalTTL := redisClient.TTL(ctx, key).Val()
+	assert.True(t, finalTTL > 0 && finalTTL <= ttl,
+		"TTL=%v should remain within (0, %v]", finalTTL, ttl)
+}
+
+// TestService_GetRedisWriteFailure verifies that a failure while writing
+// back LastSeenAt does NOT cause Get() to fail — the caller still gets the
+// session — but the failure is surfaced via the logger (not silently swallowed).
+func TestService_GetRedisWriteFailure(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	service := NewService(rdb)
+	ctx := context.Background()
+
+	sessionID := "s_write_fail"
+	userID := "u_write_fail"
+	ttl := 15 * time.Minute
+
+	// Pre-store a session via the normal path (before installing the failing hook).
+	require.NoError(t, service.Store(ctx, sessionID, userID, ttl))
+
+	// Capture warnings.
+	var buf bytes.Buffer
+	service.SetLogger(captureLogger(&buf))
+
+	// Install a hook that fails ONLY the SET command. GET still works,
+	// so Get() can load the session — but the write-back of LastSeenAt fails.
+	injected := fmt.Errorf("simulated redis write failure")
+	rdb.AddHook(&errorOnCmdHook{cmdPrefix: "SET", err: injected})
+
+	got, err := service.Get(ctx, sessionID)
+	require.NoError(t, err, "Get should still succeed even if LastSeenAt write-back fails")
+	require.NotNil(t, got)
+	assert.Equal(t, userID, got.UserID)
+
+	// The failure should be logged as a warning, not silently swallowed.
+	logged := buf.String()
+	assert.Contains(t, logged, "session: failed to update last_seen_at",
+		"expected warning log line, got: %s", logged)
+	assert.Contains(t, logged, sessionID, "log line should include session_id")
+	// Confirm the level is WARN (slog JSON uses "level":"WARN").
+	assert.True(t, strings.Contains(logged, `"level":"WARN"`),
+		"expected WARN level in log: %s", logged)
+
+	// And we can still parse out the entry as valid JSON.
+	for _, line := range strings.Split(strings.TrimSpace(logged), "\n") {
+		var entry map[string]any
+		require.NoError(t, json.Unmarshal([]byte(line), &entry), "log line must be valid JSON")
+		assert.Equal(t, "WARN", entry["level"])
+	}
+}
+
+// TestService_GetRedisDown verifies that when Redis is completely
+// unreachable, Get() returns nil + error rather than masquerading as success.
+func TestService_GetRedisDown(t *testing.T) {
+	mr := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
+	service := NewService(rdb)
+	ctx := context.Background()
+
+	sessionID := "s_redis_down"
+	userID := "u_redis_down"
+	ttl := 15 * time.Minute
+
+	// Store a session, then kill the Redis server so subsequent ops fail
+	// with a connection error.
+	require.NoError(t, service.Store(ctx, sessionID, userID, ttl))
+	mr.Close()
+
+	got, err := service.Get(ctx, sessionID)
+	assert.Nil(t, got, "Get must return nil when Redis is unreachable")
+	require.Error(t, err, "Get must return an error when Redis is unreachable")
+	// Must not be a NotFound (that would mask a real outage as a missing session).
+	assert.False(t, apperr.Is(err, apperr.CodeNotFound),
+		"unreachable Redis must not be reported as NotFound")
+	// Should be an Internal error wrapping the underlying connection failure.
+	assert.True(t, apperr.Is(err, apperr.CodeInternal),
+		"expected CodeInternal, got: %v", err)
 }

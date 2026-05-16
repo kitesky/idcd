@@ -1,3 +1,19 @@
+# Cloudflare Workers 配置（@opennextjs/cloudflare）
+#
+# 部署命令:
+#   pnpm exec wrangler deploy --env staging
+#   pnpm exec wrangler deploy --env production
+#
+# Secrets（不在本文件，用 wrangler secret put 注入）:
+#   ADMIN_TOKEN              — admin 后台调用 /internal/admin/* 的 service token
+#   INTERNAL_API_TOKEN       — 服务端组件直连内网 API 的 token（如和 ADMIN_TOKEN 一致可省略）
+#   PADDLE_WEBHOOK_SECRET    — Paddle webhook 签名（如前端代理 webhook 才需要）
+#   SENTRY_DSN               — Sentry SDK DSN（前端错误聚合）
+#
+# 设置 secret 示例:
+#   pnpm exec wrangler secret put ADMIN_TOKEN --env production
+#   pnpm exec wrangler secret put ADMIN_TOKEN --env staging
+
 name = "idcd-web"
 main = ".open-next/worker.js"
 compatibility_date = "2025-04-01"
@@ -8,11 +24,63 @@ compatibility_flags = ["nodejs_compat"]
 directory = ".open-next/assets"
 binding = "ASSETS"
 
-# 生产环境变量（敏感值在 Cloudflare Dashboard 的 Workers → Settings → Variables 中配置）
+# ─── 默认/开发环境 vars（pnpm exec wrangler dev 时生效）────────────────────────
+# 注意：env-specific 段（staging / production）会**完全覆盖**本块，
+# 不是合并；新加变量记得同步到下面三处。
 [vars]
-NEXT_PUBLIC_API_URL = "https://api.idcd.com"
+NEXT_PUBLIC_API_URL  = "http://localhost:8080"
+INTERNAL_API_URL     = "http://localhost:8080"
+IDCD_COOKIE_DOMAIN   = "localhost"
+NEXT_PUBLIC_APP_ENV  = "development"
 
-# 路由规则：idcd.com 全站流量走此 Worker
-[[routes]]
-pattern = "idcd.com/*"
+# ─── Staging ─────────────────────────────────────────────────────────────────
+[env.staging]
+name = "idcd-web-staging"
+
+[env.staging.vars]
+NEXT_PUBLIC_API_URL  = "https://api-staging.idcd.com"
+INTERNAL_API_URL     = "https://api-staging.idcd.com"
+IDCD_COOKIE_DOMAIN   = ".staging.idcd.com"
+NEXT_PUBLIC_APP_ENV  = "staging"
+
+[[env.staging.routes]]
+pattern   = "staging.idcd.com/*"
 zone_name = "idcd.com"
+
+[env.staging.assets]
+directory = ".open-next/assets"
+binding   = "ASSETS"
+
+# ─── Production ──────────────────────────────────────────────────────────────
+[env.production]
+name = "idcd-web-production"
+
+[env.production.vars]
+NEXT_PUBLIC_API_URL  = "https://api.idcd.com"
+# INTERNAL_API_URL 走内网/直连 api，避免走公网回环；如 CF Worker 必须经公网，
+# 用 api.idcd.com（nginx 已加 X-Forwarded-* 头透传）。
+INTERNAL_API_URL     = "https://api.idcd.com"
+IDCD_COOKIE_DOMAIN   = ".idcd.com"
+NEXT_PUBLIC_APP_ENV  = "production"
+
+# 路由规则：idcd.com 全站流量走 production worker
+[[env.production.routes]]
+pattern   = "idcd.com/*"
+zone_name = "idcd.com"
+
+[[env.production.routes]]
+pattern   = "www.idcd.com/*"
+zone_name = "idcd.com"
+
+# status 子域（<slug>.status.idcd.com）由 src/proxy.ts 重写到 /status/<slug>
+[[env.production.routes]]
+pattern   = "*.status.idcd.com/*"
+zone_name = "idcd.com"
+
+[env.production.assets]
+directory = ".open-next/assets"
+binding   = "ASSETS"
+
+# TODO(P1#16): app/api/diagnose/stream/route.ts 长轮询 60s — Workers 5min CPU
+# 限制下可能在 fan-out / 多用户并发时被截断；若上线后观察到 stream 异常断开，
+# 改用 Durable Object 或回退到客户端轮询。本任务不在范畴内。

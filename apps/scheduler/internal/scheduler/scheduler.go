@@ -77,6 +77,7 @@ type Scheduler struct {
 	stream       *stream.Client
 	pool         *pgxpool.Pool
 	monitorStore MonitorStore
+	nodeID       string // optional, used to label scheduler_is_leader{node}
 }
 
 // Config holds Scheduler configuration.
@@ -86,6 +87,10 @@ type Config struct {
 	Stream       *stream.Client
 	Pool         *pgxpool.Pool
 	MonitorStore MonitorStore // optional; set to enable monitor polling
+	// NodeID identifies this scheduler replica in metric labels. Optional —
+	// when empty the leader gauge falls back to "unknown" so the label cardinality
+	// stays bounded if the wiring isn't fully plumbed yet.
+	NodeID string
 }
 
 // New creates a Scheduler instance.
@@ -96,7 +101,17 @@ func New(cfg Config) *Scheduler {
 		stream:       cfg.Stream,
 		pool:         cfg.Pool,
 		monitorStore: cfg.MonitorStore,
+		nodeID:       cfg.NodeID,
 	}
+}
+
+// metricNode returns the label value to use for scheduler_is_leader{node}.
+// Bounded fallback prevents an empty-string label series leaking into Prometheus.
+func (s *Scheduler) metricNode() string {
+	if s.nodeID == "" {
+		return "unknown"
+	}
+	return s.nodeID
 }
 
 // Run starts the scheduler loop.
@@ -108,13 +123,16 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	// Try to acquire leadership
 	isLeader, err := s.leader.Acquire(ctx)
 	if err != nil {
+		MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
 		return fmt.Errorf("scheduler.Run: acquire leadership: %w", err)
 	}
 	if !isLeader {
+		MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
 		log.Println("[scheduler] Not the leader, exiting")
 		return nil
 	}
 
+	MetricsIsLeader.WithLabelValues(s.metricNode()).Set(1)
 	log.Println("[scheduler] Acquired leadership, starting work goroutines")
 
 	// workCtx is cancelled either when the parent ctx is cancelled OR when
@@ -149,6 +167,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	if err := s.leader.Release(releaseCtx); err != nil {
 		log.Printf("[scheduler] Failed to release leadership: %v", err)
 	}
+	MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
 
 	// If the parent context was cancelled, surface that error. If we exited
 	// purely because leadership was lost, return nil (clean exit, the orchestrator
@@ -175,10 +194,13 @@ func (s *Scheduler) renewLeadership(ctx context.Context, cancelWork context.Canc
 			return
 		case <-ticker.C:
 			if err := s.leader.Renew(ctx); err != nil {
+				MetricsLeaderRenewals.WithLabelValues("fail").Inc()
+				MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
 				log.Printf("[scheduler] Failed to renew leadership: %v — cancelling work", err)
 				cancelWork()
 				return
 			}
+			MetricsLeaderRenewals.WithLabelValues("ok").Inc()
 		}
 	}
 }
@@ -222,11 +244,18 @@ func (s *Scheduler) pollMonitors(ctx context.Context) {
 		return
 	}
 
+	start := time.Now()
+	defer func() {
+		MetricsPollDuration.Observe(time.Since(start).Seconds())
+	}()
+
 	monitors, err := s.monitorStore.ListActiveMonitorsDue(ctx)
 	if err != nil {
+		MetricsMonitorPolls.WithLabelValues("error").Inc()
 		log.Printf("[scheduler] monitorPoller: list due monitors error: %v", err)
 		return
 	}
+	MetricsMonitorPolls.WithLabelValues("ok").Inc()
 
 	for _, m := range monitors {
 		// Bail out mid-loop if leadership was lost while we were dispatching.

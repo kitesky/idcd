@@ -207,7 +207,7 @@ func (h *Handlers) HandleSendVerifyEmail(ctx context.Context, task *asynq.Task) 
 		HTML:    html,
 	}
 
-	if err := h.sender.Send(ctx, msg); err != nil {
+	if err := h.sendEmail(ctx, msg); err != nil {
 		h.logger.Error("发送验证邮件失败", "to", payload.To, "locale", locale, "error", err)
 		return err
 	}
@@ -245,7 +245,7 @@ func (h *Handlers) HandleSendWelcome(ctx context.Context, task *asynq.Task) erro
 		HTML:    html,
 	}
 
-	if err := h.sender.Send(ctx, msg); err != nil {
+	if err := h.sendEmail(ctx, msg); err != nil {
 		h.logger.Error("发送欢迎邮件失败", "to", payload.To, "locale", locale, "error", err)
 		return err
 	}
@@ -284,7 +284,7 @@ func (h *Handlers) HandleSendResetPassword(ctx context.Context, task *asynq.Task
 		HTML:    html,
 	}
 
-	if err := h.sender.Send(ctx, msg); err != nil {
+	if err := h.sendEmail(ctx, msg); err != nil {
 		h.logger.Error("发送密码重置邮件失败", "to", payload.To, "locale", locale, "error", err)
 		return err
 	}
@@ -335,7 +335,11 @@ func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task
 		Level: payload.Level,
 	}
 
-	if err := ch.Send(ctx, p); err != nil {
+	start := time.Now()
+	err = ch.Send(ctx, p)
+	MetricsSendDuration.WithLabelValues(payload.ChannelType).Observe(time.Since(start).Seconds())
+	if err != nil {
+		MetricsWebhookCalls.WithLabelValues(payload.ChannelType, "fail").Inc()
 		h.logger.Error("告警通知发送失败",
 			"channel_type", payload.ChannelType,
 			"locale", locale,
@@ -343,6 +347,7 @@ func (h *Handlers) HandleAlertNotification(ctx context.Context, task *asynq.Task
 		)
 		return err
 	}
+	MetricsWebhookCalls.WithLabelValues(payload.ChannelType, "ok").Inc()
 
 	h.logger.Info("告警通知发送成功", "channel_type", payload.ChannelType, "locale", locale)
 	return nil
@@ -460,6 +465,7 @@ func (h *Handlers) HandleRefundRetry(ctx context.Context, task *asynq.Task) erro
 			// Return error so asynq retries — DB hiccups are transient.
 			return fmt.Errorf("mark refunded: %w", err)
 		}
+		MetricsRefundRetries.WithLabelValues("ok").Inc()
 		h.logger.Info("退款重试成功",
 			"payment_id", payload.PaymentID,
 			"ext_txn_id", payload.ExtTxnID,
@@ -492,11 +498,13 @@ func (h *Handlers) HandleRefundRetry(ctx context.Context, task *asynq.Task) erro
 				"error", err,
 			)
 		}
+		MetricsRefundRetries.WithLabelValues("retry").Inc()
 		return nil
 	}
 
 	// Max attempts reached → send apology email + leave row in refund_failed
 	// for admin dashboard escalation (D5).
+	MetricsRefundRetries.WithLabelValues("failed").Inc()
 	if err := h.paymentStore.MarkRefundFailed(ctx, payload.PaymentID, nextAttempt); err != nil {
 		h.logger.Warn("最终标记 refund_failed 失败（非致命）",
 			"payment_id", payload.PaymentID,
@@ -543,7 +551,39 @@ func (h *Handlers) sendRefundApologyEmail(ctx context.Context, p RefundRetryPayl
 		Subject: catalogProvider().T(locale, "email.refund_failed.subject", nil),
 		HTML:    html,
 	}
-	return h.sender.Send(ctx, msg)
+	return h.sendEmail(ctx, msg)
+}
+
+// sendEmail is the metric-instrumented wrapper around the raw Sender.Send call.
+// It infers the provider label from the concrete sender type and records both
+// the outcome counter and the send-duration histogram. Centralising the
+// instrumentation here keeps the existing logging / error handling at each
+// call site untouched.
+func (h *Handlers) sendEmail(ctx context.Context, msg email.Message) error {
+	provider := emailProviderLabel(h.sender)
+	start := time.Now()
+	err := h.sender.Send(ctx, msg)
+	MetricsSendDuration.WithLabelValues("email").Observe(time.Since(start).Seconds())
+	if err != nil {
+		MetricsEmailsSent.WithLabelValues(provider, "fail").Inc()
+		return err
+	}
+	MetricsEmailsSent.WithLabelValues(provider, "ok").Inc()
+	return nil
+}
+
+// emailProviderLabel maps a concrete Sender to its provider label. Anything
+// not recognised collapses to "unknown" so metrics stay non-cardinality-bombing
+// when tests inject mocks.
+func emailProviderLabel(s email.Sender) string {
+	switch s.(type) {
+	case *email.SESSender:
+		return "ses"
+	case *email.SMTPSender:
+		return "smtp"
+	default:
+		return "unknown"
+	}
 }
 
 // formatAmountDisplay renders cents+currency in a locale-neutral form.

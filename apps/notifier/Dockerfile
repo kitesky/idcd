@@ -19,10 +19,17 @@ RUN go build -o /bin/notifier ./cmd/notifier/
 # Runtime stage
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata
+RUN apk add --no-cache ca-certificates tzdata \
+ && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/notifier /bin/notifier
 
+USER 10001:10001
+
 EXPOSE 8082
+
+# Notifier is an Asynq worker (no HTTP listener) — fall back to process liveness check.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD pidof notifier >/dev/null 2>&1 || exit 1
 
 CMD ["/bin/notifier"]

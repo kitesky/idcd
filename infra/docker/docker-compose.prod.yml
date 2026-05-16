@@ -7,6 +7,10 @@
 # 依赖:
 #   - /opt/idcd/config/prod.env.yaml  (包含所有密钥，不入 git)
 #   - .env 文件包含 GHCR_OWNER 变量
+#
+# 配置加载约定:
+#   各 Go service 的 main.go 通过 lib/shared/config.DefaultPath() 读 IDCD_CONFIG env var
+#   (没有 flag.Parse 解析 -config，所以 command 里不再传 -config xxx，统一用 env)
 
 services:
   api:
@@ -17,9 +21,11 @@ services:
       - "127.0.0.1:8080:8080"
     volumes:
       - /opt/idcd/config/prod.env.yaml:/config/prod.env.yaml:ro
-    command: ["/bin/api", "-config", "/config/prod.env.yaml"]
     environment:
       - TZ=Asia/Shanghai
+      - IDCD_CONFIG=/config/prod.env.yaml
+    # healthcheck 由 Dockerfile HEALTHCHECK 提供;此处保留 compose 级覆盖
+    # 以确保 depends_on: condition: service_healthy 行为稳定
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 10s
@@ -36,9 +42,9 @@ services:
     restart: unless-stopped
     volumes:
       - /opt/idcd/config/prod.env.yaml:/config/prod.env.yaml:ro
-    command: ["/bin/aggregator", "-config", "/config/prod.env.yaml"]
     environment:
       - TZ=Asia/Shanghai
+      - IDCD_CONFIG=/config/prod.env.yaml
     depends_on:
       api:
         condition: service_healthy
@@ -52,9 +58,9 @@ services:
     restart: unless-stopped
     volumes:
       - /opt/idcd/config/prod.env.yaml:/config/prod.env.yaml:ro
-    command: ["/bin/notifier", "-config", "/config/prod.env.yaml"]
     environment:
       - TZ=Asia/Shanghai
+      - IDCD_CONFIG=/config/prod.env.yaml
     logging:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
@@ -68,9 +74,9 @@ services:
     volumes:
       - /opt/idcd/config/prod.env.yaml:/config/prod.env.yaml:ro
       - /opt/idcd/certs:/certs:ro
-    command: ["/bin/gateway", "-config", "/config/prod.env.yaml"]
     environment:
       - TZ=Asia/Shanghai
+      - IDCD_CONFIG=/config/prod.env.yaml
     logging:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
@@ -81,9 +87,9 @@ services:
     restart: unless-stopped
     volumes:
       - /opt/idcd/config/prod.env.yaml:/config/prod.env.yaml:ro
-    command: ["/bin/scheduler", "-config", "/config/prod.env.yaml"]
     environment:
       - TZ=Asia/Shanghai
+      - IDCD_CONFIG=/config/prod.env.yaml
     depends_on:
       api:
         condition: service_healthy

@@ -19,10 +19,18 @@ RUN go build -o /bin/api ./cmd/api/
 # Runtime stage
 FROM alpine:latest
 
-RUN apk add --no-cache ca-certificates tzdata
+# wget for HEALTHCHECK; ca-certificates / tzdata for TLS + Asia/Shanghai TZ.
+RUN apk add --no-cache ca-certificates tzdata wget \
+ && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/api /bin/api
 
+# Drop root: container escape no longer escalates to host root.
+USER 10001:10001
+
 EXPOSE 8080
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+  CMD wget -q -O- http://localhost:8080/health || exit 1
 
 CMD ["/bin/api"]

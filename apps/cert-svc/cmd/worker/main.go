@@ -1,12 +1,16 @@
 // worker is the cert-svc ACME orchestrator.
 //
-// S1 W2: drives the Redis-Stream consumer and the order state machine.
-// Liveness logs every minute so an operator can confirm the loop hasn't
-// silently parked; the real signal is the state-machine log.
+// S1 W3: drives the Redis-Stream consumer + the order state machine, and
+// runs the manual-TXT Redis pub/sub subscriber so the HTTP server can
+// notify this process when a user installs a DNS challenge record. The
+// ACME account key is loaded from cert.acme_accounts (envelope-encrypted
+// via vault); first start generates and persists, subsequent restarts
+// decrypt the existing row.
 package main
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/signal"
 	"syscall"
@@ -21,7 +25,6 @@ import (
 	"github.com/kite365/idcd/lib/cert/dns"
 	"github.com/kite365/idcd/lib/cert/dns/cloudflare"
 	"github.com/kite365/idcd/lib/cert/dns/manual"
-	"github.com/kite365/idcd/lib/cert/vault"
 	"github.com/kite365/idcd/lib/cert/vault/envmaster"
 	"github.com/kite365/idcd/lib/shared/logger"
 )
@@ -66,35 +69,38 @@ func main() {
 	leCA := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.Env(cfg.LEEnv)})
 	router := service.NewRouter(leCA)
 
-	// S1 simplification: account key is a fresh ECDSA P256 derived per
-	// process via vault.GenerateKey. lego auto-registers on first use.
-	// S2 will load this from cert.acme_accounts.
-	_, ek, err := vlt.GenerateKey(ctx, vault.KeyAlgECDSAP256)
+	repos := repo.New(pool)
+
+	// Long-lived ACME account key persisted in cert.acme_accounts. The
+	// first invocation for a (CA, env) pair generates + inserts; later
+	// invocations decrypt and reuse the same key so the CA sees a stable
+	// account identity across restarts.
+	acctMgr := service.NewAccountManager(repos, vlt)
+	accountKey, err := acctMgr.GetOrCreate(ctx, "lets-encrypt", cfg.LEEnv)
 	if err != nil {
 		log.Error("cert-worker: acme account key", "err", err)
 		os.Exit(1)
 	}
-	plain, err := vlt.DecryptKey(ctx, ek)
-	if err != nil {
-		log.Error("cert-worker: decrypt acme account key", "err", err)
-		os.Exit(1)
-	}
-	signer, err := service.DecodeAccountKey(plain)
-	if err != nil {
-		log.Error("cert-worker: parse acme account key", "err", err)
-		os.Exit(1)
-	}
 
 	svc := service.New(service.Config{
-		Repos:        repo.New(pool),
+		Repos:        repos,
 		Redis:        rdb,
 		Vault:        vlt,
 		DNSReg:       reg,
 		Router:       router,
-		AccountKey:   signer,
+		AccountKey:   accountKey,
 		AccountEmail: cfg.AccountEmail,
 		Logger:       log,
 	})
+
+	// Subscribe to manual-TXT readiness notifications published by the
+	// API server. Runs concurrently with the order consumer; both stop
+	// on ctx cancel.
+	go func() {
+		if err := svc.RunManualReadySubscriber(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("cert-worker: manual ready subscriber stopped", "err", err)
+		}
+	}()
 
 	log.Info("cert-worker consuming", "stream", service.DefaultStream, "group", service.DefaultGroup)
 	if err := svc.RunConsumer(ctx); err != nil {

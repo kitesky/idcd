@@ -246,15 +246,17 @@ export default function PricingPage() {
                       {plan.features.map((feature) => (
                         <li
                           key={feature.label}
-                          className="flex items-start gap-2 text-sm"
+                          className="flex items-center justify-between gap-2 text-sm"
                         >
-                          <Check className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
-                          <span className="text-muted-foreground">
-                            {feature.label}：
-                          </span>
+                          <div className="flex shrink-0 items-center gap-1.5">
+                            <Check className="h-4 w-4 text-primary" />
+                            <span className="whitespace-nowrap text-muted-foreground">
+                              {feature.label}
+                            </span>
+                          </div>
                           <Badge
                             variant="outline"
-                            className="ml-auto shrink-0 text-xs font-normal"
+                            className="text-right text-xs font-normal"
                           >
                             {feature.value}
                           </Badge>

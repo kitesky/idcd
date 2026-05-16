@@ -97,6 +97,15 @@ const T = {
 }
 
 function Sparkline({ values }: { values: number[] }) {
+  if (!values?.length) {
+    return (
+      <div className="flex h-6 w-14 items-end gap-px opacity-20">
+        {Array.from({ length: 7 }).map((_, i) => (
+          <div key={i} className="flex-1 rounded-sm bg-muted-foreground/40" style={{ height: "50%" }} />
+        ))}
+      </div>
+    )
+  }
   const max = Math.max(...values)
   const min = Math.min(...values)
   const range = max - min || 1
@@ -148,6 +157,7 @@ function ChangeIndicator({ change, flat }: { change: number; flat: string }) {
 }
 
 function LatencyBadge({ ms }: { ms: number }) {
+  if (!ms) return <span className="text-xs text-muted-foreground">—</span>
   const variant = getLatencyVariant(ms)
   return <Badge variant={variant}>{ms}ms</Badge>
 }
@@ -250,12 +260,27 @@ export function LeaderboardClient() {
   useEffect(() => {
     setLoading(true)
     setError(null)
-    apiRequest<{ data: CdnEntry[]; month: string; sample_count: number }>(
+    type ApiEntry = {
+      rank: number; name: string; target: string
+      avg_latency_ms: number; p50_latency_ms: number; p95_latency_ms: number
+      uptime_pct: number; check_count: number
+    }
+    apiRequest<{ data: { entries: ApiEntry[]; total: number } }>(
       `/v1/leaderboard/cdn?month=${selectedMonth}`
     )
       .then((json) => {
-        setData(json.data ?? [])
-        setSampleCount(json.sample_count ?? 0)
+        const raw = json.data?.entries ?? []
+        setData(raw.map(e => ({
+          rank: e.rank,
+          name: e.name,
+          shortName: e.name.replace(/ CDN$/, ''),
+          globalP50: e.p50_latency_ms,
+          chinaP50: e.p50_latency_ms,
+          overseasP50: e.p50_latency_ms,
+          trend: [],
+          change: 0,
+        })))
+        setSampleCount(json.data?.total ?? 0)
       })
       .catch(() => setError(lang === 'zh' ? '数据加载失败，请稍后重试' : 'Failed to load data, please try again later'))
       .finally(() => setLoading(false))

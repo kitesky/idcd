@@ -38,6 +38,114 @@ export default function GettingStartedPage() {
         <li><a href="/docs/mcp">MCP Server</a> — 让 Claude、Cursor 等 AI 直接调用拨测能力</li>
         <li>REST API — 参考 API 文档（即将发布）</li>
       </ul>
+
+      <hr />
+
+      <h2>步骤 1：创建你的第一个监控</h2>
+      <ol>
+        <li>
+          登录后进入 <a href="/app/monitors">监控列表</a>，点击右上角"创建监控"按钮
+        </li>
+        <li>
+          选择监控类型：
+          <ul>
+            <li><strong>HTTP/HTTPS</strong>：检测 API 或网站可用性（最常用）</li>
+            <li><strong>Ping</strong>：检测服务器网络可达性</li>
+            <li><strong>TCP</strong>：检测指定端口连通性</li>
+            <li><strong>SSL 到期</strong>：监控 HTTPS 证书即将到期告警</li>
+          </ul>
+        </li>
+        <li>
+          填写目标地址，例如 <code>https://api.example.com/health</code>
+        </li>
+        <li>
+          设置检测频率（推荐 <strong>5 分钟</strong>，高可用业务可选 1 分钟）
+        </li>
+        <li>
+          高级配置（可选）：
+          <ul>
+            <li>断言状态码：期望返回 <code>200</code></li>
+            <li>关键字匹配：响应体必须包含指定字符串</li>
+            <li>超时时间：单次拨测最长等待时间（默认 10s）</li>
+          </ul>
+        </li>
+      </ol>
+
+      <h2>步骤 2：配置告警通道</h2>
+      <ol>
+        <li>
+          进入 <a href="/app/alerts">告警中心</a> → 告警通道标签页
+        </li>
+        <li>
+          点击"添加通道"，选择通知方式：
+          <ul>
+            <li><strong>Email</strong>：直接发送到你的邮箱</li>
+            <li><strong>企业微信</strong>：通过 Webhook 机器人推送</li>
+            <li><strong>飞书</strong>：通过飞书自定义机器人推送</li>
+            <li><strong>Webhook</strong>：自定义 HTTP 回调，接入任意系统</li>
+          </ul>
+        </li>
+        <li>
+          点击通道右侧的"测试"按钮，确认通道可正常接收消息
+        </li>
+        <li>
+          创建告警策略：绑定监控项 + 通知通道，并设置告警延迟（0 = 立即告警，建议设 2-3 分钟避免误报）
+        </li>
+      </ol>
+
+      <h2>步骤 3：查看监控数据</h2>
+      <ul>
+        <li>
+          <strong>仪表盘</strong>：总体健康状态概览，置顶关键监控项
+        </li>
+        <li>
+          <strong>监控详情</strong>：24 小时延迟趋势图、平均响应时间、在线率统计
+        </li>
+        <li>
+          <strong>故障记录</strong>：查看历史故障时间线，生成复盘报告
+        </li>
+        <li>
+          <strong>SLA 月报</strong>：在 <a href="/app/reports">报告中心</a> 下载 PDF 或 CSV 格式的月度可用性报告
+        </li>
+      </ul>
+
+      <h2>API 接入（开发者）</h2>
+      <ol>
+        <li>
+          在 <a href="/app/settings/api-keys">设置 → API Keys</a> 页面创建你的 API Key
+        </li>
+        <li>
+          在请求头中携带 Key：
+          <br />
+          <code>Authorization: Bearer &lt;your-key&gt;</code>
+        </li>
+        <li>
+          查阅完整接口文档：<a href="/docs/api">API 参考</a>
+        </li>
+      </ol>
+
+      <h2>常见问题</h2>
+      <dl>
+        <dt><strong>Q：监控显示 DOWN 但实际服务正常？</strong></dt>
+        <dd>
+          检查节点选择范围，可能是特定地区网络波动导致。可尝试增大超时时间，或切换到距离目标服务更近的节点。
+        </dd>
+
+        <dt><strong>Q：收到太多告警误报怎么办？</strong></dt>
+        <dd>
+          在告警策略中调整"延迟分钟数"，例如设为 3 分钟，即连续失败超过 3 分钟才触发通知，可有效过滤短暂抖动。
+        </dd>
+
+        <dt><strong>Q：如何对外共享服务状态？</strong></dt>
+        <dd>
+          在 <a href="/app/status-pages">状态页</a> 中创建公开状态页，可自定义域名，适合对用户或客户公开服务健康状况。
+        </dd>
+
+        <dt><strong>Q：多人团队如何协作？</strong></dt>
+        <dd>
+          在 <a href="/app/settings">设置 → 团队成员</a> 中邀请成员，不同角色拥有不同的查看与操作权限。
+        </dd>
+      </dl>
     </article>
   )
 }

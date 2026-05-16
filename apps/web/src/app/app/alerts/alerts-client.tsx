@@ -520,7 +520,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
                       data-testid={`ack-btn-${evt.id}`}
                     >
                       <CheckCheck className="mr-1 h-3 w-3" />
-                      Acknowledge
+                      确认告警
                     </Button>
                   )}
                 </TableCell>

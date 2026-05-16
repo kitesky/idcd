@@ -132,6 +132,12 @@ function typeBadge(type: MonitorType) {
   return <Badge variant="outline">{TYPE_LABELS[type]}</Badge>
 }
 
+function formatInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`
+  if (seconds < 3600) return `${seconds / 60}m`
+  return `${seconds / 3600}h`
+}
+
 function formatRelativeTime(iso: string): string {
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
   if (diff < 60) return `${diff}秒前`
@@ -434,6 +440,15 @@ export function MonitorsClient() {
         </div>
       </div>
 
+      {/* 结果计数 */}
+      {!loading && (
+        <p className="text-sm text-muted-foreground -mb-4">
+          {search || statusFilter
+            ? `找到 ${total} 个监控`
+            : `共 ${total} 个监控`}
+        </p>
+      )}
+
       {/* 监控列表表格 */}
       <Table>
           <TableHeader>
@@ -520,7 +535,14 @@ export function MonitorsClient() {
                       {monitor.name}
                     </Link>
                   </TableCell>
-                  <TableCell>{typeBadge(monitor.type)}</TableCell>
+                  <TableCell>
+                    <div className="flex items-center gap-1.5">
+                      {typeBadge(monitor.type)}
+                      <span className="text-xs text-muted-foreground hidden sm:inline">
+                        {formatInterval(monitor.intervalSeconds)}
+                      </span>
+                    </div>
+                  </TableCell>
                   <TableCell className="hidden md:table-cell max-w-[200px] truncate font-mono text-xs text-muted-foreground">
                     {monitor.target}
                   </TableCell>

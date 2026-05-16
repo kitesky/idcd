@@ -455,6 +455,27 @@ func (h *AlertNoiseHandler) ListGroups(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, map[string]any{"items": items})
 }
 
+// DeleteGroup handles DELETE /v1/alert-groups/{id}.
+func (h *AlertNoiseHandler) DeleteGroup(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	userID := middleware.UserIDFromContext(ctx)
+	if userID == "" {
+		response.Error(w, r, apperr.Unauthorized("authentication required"))
+		return
+	}
+	id := chi.URLParam(r, "id")
+	tag, err := h.pool.Exec(ctx, `DELETE FROM alert_groups WHERE id = $1 AND user_id = $2`, id, userID)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to delete alert group", err))
+		return
+	}
+	if tag.RowsAffected() == 0 {
+		response.Error(w, r, apperr.NotFound("alert group not found"))
+		return
+	}
+	response.JSON(w, r, http.StatusNoContent, nil)
+}
+
 // ─────────────────────────────────────────────
 // Helper
 // ─────────────────────────────────────────────

@@ -24,6 +24,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/app/alerts":             "告警列表",
   "/app/alerts/channels":    "告警通道",
   "/app/alerts/policies":    "告警策略",
+  "/app/alerts/groups":     "告警分组",
   "/app/oncall":             "On-Call 值班",
   "/app/incidents":          "故障记录",
   "/app/status-pages":       "状态页",

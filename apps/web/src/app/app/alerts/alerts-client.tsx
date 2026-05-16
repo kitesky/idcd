@@ -1,6 +1,7 @@
 "use client"
 
 import { useRef, useState, useEffect, useCallback } from "react"
+import { useSearchParams, useRouter, usePathname } from "next/navigation"
 import {
   Bell,
   Mail,
@@ -342,14 +343,18 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
 
 // ─── Events Tab ───────────────────────────────────────────────────────────────
 
-function EventsTab() {
+interface EventsTabProps {
+  initialMonitorId?: string
+}
+
+function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Filter state
+  // Filter state — seed monitorId from prop (set once on mount)
   const [status, setStatus] = useState<"" | "firing" | "resolved">("")
-  const [monitorId, setMonitorId] = useState("")
+  const [monitorId, setMonitorId] = useState(initialMonitorId)
   const [monitors, setMonitors] = useState<MonitorOption[]>([])
 
   const handleAcknowledge = async (id: string) => {
@@ -1102,6 +1107,16 @@ function PoliciesSkeleton() {
 // ─── Main AlertsClient ────────────────────────────────────────────────────────
 
 export function AlertsClient() {
+  // URL-synced tab state
+  const searchParams = useSearchParams()
+  const router = useRouter()
+  const pathname = usePathname()
+  const initialTab = searchParams.get("tab") ?? "events"
+  const [activeTab, setActiveTab] = useState(initialTab)
+
+  // Read ?monitor= param to pre-fill EventsTab monitor filter
+  const initialMonitorId = searchParams.get("monitor") ?? ""
+
   // Per-tab data state
   const [channels, setChannels] = useState<AlertChannel[]>([])
   const [policies, setPolicies] = useState<AlertPolicy[]>([])
@@ -1189,10 +1204,25 @@ export function AlertsClient() {
   // ── Tab change handler ──
 
   const handleTabChange = (value: string) => {
+    setActiveTab(value)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set("tab", value)
+    // Remove transient ?monitor= param on tab switch so it doesn't persist
+    params.delete("monitor")
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
     if (value === "channels") void fetchChannels()
     if (value === "policies") void fetchPolicies()
     if (value === "silences") void fetchSilences()
   }
+
+  // ── Fetch data for the initial tab if it isn't "events" ──
+
+  useEffect(() => {
+    if (initialTab === "channels") void fetchChannels()
+    else if (initialTab === "policies") void fetchPolicies()
+    else if (initialTab === "silences") void fetchSilences()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // ── Event handlers ──
 
@@ -1346,7 +1376,7 @@ export function AlertsClient() {
   return (
     <div className="space-y-6">
       {/* Tabs — navigation + panels */}
-      <Tabs defaultValue="events" onValueChange={handleTabChange}>
+      <Tabs value={activeTab} onValueChange={handleTabChange}>
         <TabsList className="w-full">
           <TabsTrigger value="events" className="flex-1" data-testid="tab-events">事件历史</TabsTrigger>
           <TabsTrigger value="channels" className="flex-1" data-testid="tab-channels">告警通道</TabsTrigger>
@@ -1354,7 +1384,7 @@ export function AlertsClient() {
           <TabsTrigger value="silences" className="flex-1" data-testid="tab-silences">静默规则</TabsTrigger>
         </TabsList>
         <TabsContent value="events">
-          <EventsTab />
+          <EventsTab initialMonitorId={initialMonitorId} />
         </TabsContent>
         <TabsContent value="channels">
           {channelsLoading ? (

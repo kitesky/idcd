@@ -167,8 +167,12 @@ func (s *Server) setupRouter() {
 	r.Get("/v1/openapi.json", openAPIHandler.OpenAPI)
 
 	// Transparency dashboard — public, no auth required
-	transparencyH := handler.NewTransparencyHandler()
+	transparencyH := handler.NewTransparencyHandler(s.pgxPool)
 	r.Get("/v1/transparency", transparencyH.Get)
+
+	// CDN leaderboard — public, no auth required
+	leaderboardH := handler.NewLeaderboardHandler(s.pgxPool)
+	r.Get("/v1/leaderboard/cdn", leaderboardH.CdnRanking)
 
 	// Prometheus metrics are served on a separate internal port (see startMetricsServer).
 	// Do NOT expose /metrics on the public router.
@@ -502,6 +506,7 @@ func (s *Server) setupRouter() {
 				r.Use(authnMW)
 				r.Post("/", noiseH.CreateGroup)
 				r.Get("/", noiseH.ListGroups)
+				r.Delete("/{id}", noiseH.DeleteGroup)
 			})
 
 			// Team / Org endpoints (authentication required)

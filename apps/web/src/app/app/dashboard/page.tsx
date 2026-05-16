@@ -283,6 +283,36 @@ export default function DashboardPage() {
             />
           </div>
 
+          {!summaryLoading && summary?.monitors.total === 0 && (
+            <Card className="border-dashed">
+              <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-4">
+                <div className="rounded-full bg-primary/10 p-4">
+                  <Activity className="h-8 w-8 text-primary" />
+                </div>
+                <div className="space-y-2">
+                  <h3 className="text-lg font-semibold">开始监控您的第一个服务</h3>
+                  <p className="text-sm text-muted-foreground max-w-sm">
+                    添加 HTTP / HTTPS / Ping / TCP 监控，实时掌握服务可用性，配置告警在故障时第一时间通知您
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-3 justify-center">
+                  <Button asChild>
+                    <Link href="/app/monitors/new">
+                      <Plus className="mr-2 h-4 w-4" />
+                      创建监控
+                    </Link>
+                  </Button>
+                  <Button variant="outline" asChild>
+                    <Link href="/app/alerts/channels">
+                      <Bell className="mr-2 h-4 w-4" />
+                      配置告警通道
+                    </Link>
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           <div>
             <h2 className="mb-4 text-lg font-semibold">快捷入口</h2>
             <div

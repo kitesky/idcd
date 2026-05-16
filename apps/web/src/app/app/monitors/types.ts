@@ -66,7 +66,6 @@ export const MONITOR_TYPES: MonitorType[] = [
   "dns",
   "ssl_expiry",
   "domain_expiry",
-  "icp_change",
   "keyword",
 ]
 

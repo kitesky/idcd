@@ -33,6 +33,7 @@ export const NAV_GROUPS: NavGroup[] = [
           { title: "告警列表", url: "/app/alerts" },
           { title: "告警通道", url: "/app/alerts/channels" },
           { title: "告警策略", url: "/app/alerts/policies" },
+          { title: "告警分组", url: "/app/alerts/groups" },
         ],
       },
       { title: "On-Call 值班", url: "/app/oncall", icon: UserCheck },

@@ -421,7 +421,14 @@ func (h *WebAuthnHandler) AuthComplete(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("failed to create session", err))
 		return
 	}
-	token, err := h.jwtSvc.Sign(storedUserID, sessionID, accessTokenTTL)
+	// Pull the user's stored locale so the JWT carries the right claim
+	// (the i18n middleware's resolution chain trusts this). Empty locale
+	// downgrades gracefully — middleware will fall through to Accept-Language.
+	var userLocale string
+	_ = h.pool.QueryRow(r.Context(),
+		`SELECT locale FROM "user" WHERE id = $1`, storedUserID,
+	).Scan(&userLocale)
+	token, err := h.jwtSvc.SignWithLocale(storedUserID, sessionID, userLocale, accessTokenTTL)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to sign token", err))
 		return

@@ -20,6 +20,7 @@ import (
 	acmemgr "github.com/kite365/idcd/apps/api/internal/acme"
 	"github.com/kite365/idcd/apps/api/internal/billing"
 	"github.com/kite365/idcd/apps/api/internal/handler"
+	apiI18n "github.com/kite365/idcd/apps/api/internal/i18n"
 	_ "github.com/kite365/idcd/apps/api/internal/metrics" // register business metrics with Prometheus default registry
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/quota"
@@ -30,6 +31,7 @@ import (
 	"github.com/kite365/idcd/lib/ratelimit"
 	"github.com/kite365/idcd/lib/shared/aesenc"
 	"github.com/kite365/idcd/lib/shared/config"
+	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
@@ -143,10 +145,15 @@ func (s *Server) setupRouter() {
 		blocklistAdapter = &redisBlocklistAdapter{client: s.redis}
 	}
 
-	// Middleware chain: Recover → TraceMiddleware → RequestID → Logger → SecurityHeaders → CORS → CSRF
+	// Middleware chain: Recover → TraceMiddleware → RequestID → i18n → Logger → SecurityHeaders → CORS → CSRF
 	r.Use(middleware.Recover(s.logger))
 	r.Use(telemetry.TraceMiddleware("idcd-api"))
 	r.Use(middleware.RequestID())
+	// i18n locale resolution must run before Authn so claims-stashing in
+	// authn.go has somewhere to write to; it doesn't depend on any auth
+	// state itself (the JWT claim is read from ctx if Authn already ran on
+	// a sub-route, otherwise we fall through to Accept-Language / default).
+	r.Use(apiI18n.Middleware(sharedi18n.MustDefault()))
 	r.Use(middleware.Logger(s.logger))
 	r.Use(middleware.SecurityHeaders(s.config.Server.Env))
 	r.Use(middleware.CORS(s.config.Server.Env, s.config.Server.CORSOrigins))

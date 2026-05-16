@@ -29,6 +29,7 @@ import (
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/aesenc"
 	"github.com/kite365/idcd/lib/shared/idgen"
+	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 )
 
 const (
@@ -69,9 +70,12 @@ type AuthQuerier interface {
 	UpdateUserProfile(ctx context.Context, arg idcdmain.UpdateUserProfileParams) (idcdmain.User, error)
 }
 
-// JWTSigner signs JWT tokens.
+// JWTSigner signs JWT tokens. SignWithLocale embeds an optional locale claim
+// ("" omits it). Sign is retained for backwards compatibility with callers
+// that don't yet carry a locale (legacy code paths / tests).
 type JWTSigner interface {
 	Sign(userID, sessionID string, expiry time.Duration) (string, error)
+	SignWithLocale(userID, sessionID, locale string, expiry time.Duration) (string, error)
 }
 
 // SessionStorer stores and deletes sessions.
@@ -195,12 +199,17 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		displayNamePtr = &displayName
 	}
 
+	// Infer locale from Accept-Language (i18n Phase 2c): persist the short
+	// registry code so every downstream component (JWT claim, notifier email,
+	// etc.) sees a canonical value. Negotiate always returns a supported code.
+	locale := negotiateRegisterLocale(r, "")
+
 	user, err := h.q.CreateUser(r.Context(), idcdmain.CreateUserParams{
 		ID:           userID,
 		Email:        req.Email,
 		PasswordHash: &hash,
 		DisplayName:  displayNamePtr,
-		Locale:       "zh-CN",
+		Locale:       locale,
 		Timezone:     "Asia/Shanghai",
 	})
 	if err != nil {
@@ -223,7 +232,7 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	token, _, err := h.issueToken(r.Context(), user.ID)
+	token, _, err := h.issueToken(r.Context(), user.ID, user.Locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
@@ -318,7 +327,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := h.issueToken(r.Context(), user.ID)
+	token, _, err := h.issueToken(r.Context(), user.ID, user.Locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
@@ -586,16 +595,31 @@ func (h *AuthHandler) enqueueResetPasswordEmail(ctx context.Context, to, otpID, 
 	_ = h.enqueuer.EnqueueTask(ctx, taskSendResetPassword, payload, "email")
 }
 
-func (h *AuthHandler) issueToken(ctx context.Context, userID string) (token, sessionID string, err error) {
+// issueToken creates a new session and signs a JWT carrying the user's
+// preferred locale. Pass the short registry code (e.g. "cn" / "en") that the
+// caller already has — the middleware's i18n chain trusts this claim to be
+// a supported code, so callers must normalize before getting here.
+func (h *AuthHandler) issueToken(ctx context.Context, userID, locale string) (token, sessionID string, err error) {
 	sessionID = idgen.New("sess")
 	if err := h.sessSvc.Store(ctx, sessionID, userID, sessionTTL); err != nil {
 		return "", "", fmt.Errorf("store session: %w", err)
 	}
-	token, err = h.jwtSvc.Sign(userID, sessionID, accessTokenTTL)
+	token, err = h.jwtSvc.SignWithLocale(userID, sessionID, locale, accessTokenTTL)
 	if err != nil {
 		return "", "", fmt.Errorf("sign token: %w", err)
 	}
 	return token, sessionID, nil
+}
+
+// negotiateRegisterLocale derives a short locale code for a freshly
+// registered user. Order: explicit request override → Accept-Language → default.
+// Always returns a value supported by the shared registry.
+func negotiateRegisterLocale(r *http.Request, explicit string) string {
+	reg := sharedi18n.MustDefault()
+	if explicit != "" && reg.IsSupported(explicit) {
+		return explicit
+	}
+	return reg.Negotiate(r.Header.Get("Accept-Language"))
 }
 
 func (h *AuthHandler) issueOTP(ctx context.Context, userID, otpType string, ttl time.Duration) (otpID, code string, err error) {
@@ -736,7 +760,7 @@ func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, _, err := h.issueToken(r.Context(), user.ID)
+	token, _, err := h.issueToken(r.Context(), user.ID, user.Locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return

@@ -13,6 +13,7 @@ import (
 	"github.com/kite365/idcd/lib/auth/password"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 )
 
 // AccountQuerier is the subset of sqlc Queries used by AccountHandler.
@@ -107,6 +108,13 @@ func (h *AccountHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 	locale := current.Locale
 	if req.Locale != nil {
 		locale = *req.Locale
+	}
+	// Reject / normalize unsupported locale codes — accept only registry short
+	// codes (cn/en today). Falls back to the registry default when the caller
+	// passes a legacy BCP 47 value or an unknown code, keeping the JWT-locale
+	// invariant intact.
+	if reg := sharedi18n.MustDefault(); !reg.IsSupported(locale) {
+		locale = reg.DefaultCode()
 	}
 	timezone := current.Timezone
 	if req.Timezone != nil {

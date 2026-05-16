@@ -18,6 +18,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
@@ -156,13 +157,13 @@ func (h *OAuthHandler) DingTalkCallback(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	userID, err := h.findOrCreateOAuthUser(r.Context(), providerDingTalk, userInfo.openID, userInfo.name, userInfo.email)
+	userID, locale, err := h.findOrCreateOAuthUser(r.Context(), r, providerDingTalk, userInfo.openID, userInfo.name, userInfo.email)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to provision user", err))
 		return
 	}
 
-	token, err := h.issueOAuthToken(r.Context(), userID)
+	token, err := h.issueOAuthToken(r.Context(), userID, locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
@@ -312,13 +313,13 @@ func (h *OAuthHandler) FeishuCallback(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := h.findOrCreateOAuthUser(r.Context(), providerFeishu, userInfo.openID, userInfo.name, userInfo.email)
+	userID, locale, err := h.findOrCreateOAuthUser(r.Context(), r, providerFeishu, userInfo.openID, userInfo.name, userInfo.email)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to provision user", err))
 		return
 	}
 
-	token, err := h.issueOAuthToken(r.Context(), userID)
+	token, err := h.issueOAuthToken(r.Context(), userID, locale)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
@@ -420,38 +421,50 @@ func (h *OAuthHandler) fetchFeishuUser(ctx context.Context, accessToken string) 
 
 // --- shared helpers ---
 
-func (h *OAuthHandler) findOrCreateOAuthUser(ctx context.Context, provider, externalID, name, email string) (string, error) {
+// findOrCreateOAuthUser returns the user id and their persisted short locale
+// code. Newly provisioned users get a locale negotiated from the inbound
+// Accept-Language header; existing users keep whatever locale is on file.
+func (h *OAuthHandler) findOrCreateOAuthUser(ctx context.Context, r *http.Request, provider, externalID, name, email string) (userID, locale string, err error) {
 	extID := externalID
 	cred, err := h.q.GetUserCredentialByTypeAndExternal(ctx, idcdmain.GetUserCredentialByTypeAndExternalParams{
 		Type:       provider,
 		ExternalID: &extID,
 	})
 	if err == nil {
-		return cred.UserID, nil
+		// Existing user — load locale so JWT claim stays accurate.
+		existing, err := h.q.GetUserByID(ctx, cred.UserID)
+		if err != nil {
+			return "", "", fmt.Errorf("load oauth user: %w", err)
+		}
+		return existing.ID, existing.Locale, nil
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return "", fmt.Errorf("lookup credential: %w", err)
+		return "", "", fmt.Errorf("lookup credential: %w", err)
 	}
 
-	userID := idgen.New("usr")
+	newID := idgen.New("usr")
 	finalEmail := email
 	if finalEmail == "" {
-		finalEmail = userID + "@oauth.placeholder"
+		finalEmail = newID + "@oauth.placeholder"
 	}
 	var namePtr *string
 	if name != "" {
 		namePtr = &name
 	}
 
+	// i18n: persist the short registry code (cn/en) so JWT + email + UI all
+	// agree on the same value across the user's lifetime.
+	provisionedLocale := sharedi18n.MustDefault().Negotiate(r.Header.Get("Accept-Language"))
+
 	user, err := h.q.CreateUser(ctx, idcdmain.CreateUserParams{
-		ID:          userID,
+		ID:          newID,
 		Email:       finalEmail,
 		DisplayName: namePtr,
-		Locale:      "zh-CN",
+		Locale:      provisionedLocale,
 		Timezone:    "Asia/Shanghai",
 	})
 	if err != nil {
-		return "", fmt.Errorf("create user: %w", err)
+		return "", "", fmt.Errorf("create user: %w", err)
 	}
 
 	credID := idgen.New("cred")
@@ -462,18 +475,18 @@ func (h *OAuthHandler) findOrCreateOAuthUser(ctx context.Context, provider, exte
 		ExternalID: &extID,
 		Metadata:   []byte("{}"),
 	}); err != nil {
-		return "", fmt.Errorf("create credential: %w", err)
+		return "", "", fmt.Errorf("create credential: %w", err)
 	}
 
-	return user.ID, nil
+	return user.ID, user.Locale, nil
 }
 
-func (h *OAuthHandler) issueOAuthToken(ctx context.Context, userID string) (string, error) {
+func (h *OAuthHandler) issueOAuthToken(ctx context.Context, userID, locale string) (string, error) {
 	sessionID := idgen.New("sess")
 	if err := h.sessSvc.Store(ctx, sessionID, userID, sessionTTL); err != nil {
 		return "", fmt.Errorf("store session: %w", err)
 	}
-	token, err := h.jwtSvc.Sign(userID, sessionID, accessTokenTTL)
+	token, err := h.jwtSvc.SignWithLocale(userID, sessionID, locale, accessTokenTTL)
 	if err != nil {
 		return "", fmt.Errorf("sign token: %w", err)
 	}

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	apiI18n "github.com/kite365/idcd/apps/api/internal/i18n"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/auth/jwt"
 	"github.com/kite365/idcd/lib/auth/session"
@@ -174,6 +175,13 @@ func verifyJWT(w http.ResponseWriter, r *http.Request, jwtSvc TokenVerifier, ses
 	ctx := context.WithValue(r.Context(), userIDKey, claims.UserID)
 	ctx = context.WithValue(ctx, sessionIDKey, claims.SessionID)
 	ctx = context.WithValue(ctx, authMethodKey, AuthMethodJWT)
+	// Stash claims so the i18n middleware (which ran upstream with only
+	// header/Accept-Language) can re-resolve locale from JWT on downstream
+	// handlers if they propagate the request context. The middleware itself
+	// only runs once at the chain head, but exporters that re-evaluate the
+	// chain (or response helpers that pull locale from the JWT) read claims
+	// via i18n.ClaimsFromContext.
+	ctx = apiI18n.WithClaims(ctx, claims)
 	return ctx, true
 }
 

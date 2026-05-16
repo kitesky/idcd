@@ -157,9 +157,17 @@ func (m *mockAuthQuerier) UpdateUserProfile(_ context.Context, arg idcdmain.Upda
 
 // mockJWT / mockSession
 
-type mockJWT struct{ token string }
+type mockJWT struct {
+	token  string
+	locale string // captured by SignWithLocale for i18n test assertions
+}
 
 func (m *mockJWT) Sign(_, _ string, _ time.Duration) (string, error) {
+	return m.token, nil
+}
+
+func (m *mockJWT) SignWithLocale(_, _, locale string, _ time.Duration) (string, error) {
+	m.locale = locale
 	return m.token, nil
 }
 
@@ -218,6 +226,54 @@ func TestRegister_success(t *testing.T) {
 	}
 	if !hasTokenCookie {
 		t.Errorf("expected access_token cookie, got cookies: %v, body: %s", cookie, rr.Body.String())
+	}
+}
+
+// TestRegister_localeFromAcceptLanguage asserts the i18n Phase 2c contract:
+// registration negotiates the user's short locale code from Accept-Language
+// (en-US / zh-CN → en / cn) and persists it on the user row + JWT claim.
+func TestRegister_localeFromAcceptLanguage(t *testing.T) {
+	cases := []struct {
+		name           string
+		acceptLanguage string
+		wantLocale     string
+	}{
+		{name: "english", acceptLanguage: "en-US,en;q=0.9", wantLocale: "en"},
+		{name: "chinese", acceptLanguage: "zh-CN,zh;q=0.9", wantLocale: "cn"},
+		{name: "unsupported_falls_back_to_default", acceptLanguage: "fr-FR", wantLocale: "cn"},
+		{name: "empty_falls_back_to_default", acceptLanguage: "", wantLocale: "cn"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			mock := newMockAuthQuerier()
+			jwt := &mockJWT{token: "tok"}
+			h := NewAuthHandler(mock, jwt, &mockSession{}, "test-otp-secret-32bytes-minimum!!")
+
+			body := `{"email":"` + tc.name + `@example.com","password":"Password123"}`
+			req := httptest.NewRequest("POST", "/v1/auth/register", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			if tc.acceptLanguage != "" {
+				req.Header.Set("Accept-Language", tc.acceptLanguage)
+			}
+			rr := httptest.NewRecorder()
+
+			h.Register(rr, req)
+
+			if rr.Code != http.StatusCreated {
+				t.Fatalf("expected 201, got %d: %s", rr.Code, rr.Body.String())
+			}
+			gotUser, ok := mock.users[tc.name+"@example.com"]
+			if !ok {
+				t.Fatalf("user not stored")
+			}
+			if gotUser.Locale != tc.wantLocale {
+				t.Errorf("user.Locale = %q, want %q", gotUser.Locale, tc.wantLocale)
+			}
+			if jwt.locale != tc.wantLocale {
+				t.Errorf("JWT signed locale = %q, want %q", jwt.locale, tc.wantLocale)
+			}
+		})
 	}
 }
 

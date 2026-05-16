@@ -6,7 +6,26 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
+	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 )
+
+// normalizeLocale ensures the given locale code is one of the supported short
+// codes from the shared registry (e.g. "cn" / "en"). Unsupported, empty, or
+// legacy BCP 47 values fall back to the registry default. Repository
+// callers (handlers, OAuth providers, admin tooling) pass user-provided or
+// historical values; normalizing centrally keeps the locale invariant that
+// the JWT signer + middleware rely on (always a short code).
+//
+// Implementation note: we load the registry via MustDefault which caches —
+// no per-call file IO. Tests that don't set up a registry can override the
+// resolver by wiring a stub (currently unused; future-proof seam).
+var localeNormalizer = func(code string) string {
+	reg := sharedi18n.MustDefault()
+	if code != "" && reg.IsSupported(code) {
+		return code
+	}
+	return reg.DefaultCode()
+}
 
 // UserRepository wraps sqlc Queries with domain-friendly error handling.
 type UserRepository struct {
@@ -52,6 +71,7 @@ func (r *UserRepository) GetByUsername(ctx context.Context, username string) (id
 }
 
 func (r *UserRepository) Create(ctx context.Context, p idcdmain.CreateUserParams) (idcdmain.User, error) {
+	p.Locale = localeNormalizer(p.Locale)
 	u, err := r.q.CreateUser(ctx, p)
 	if err != nil {
 		if isDuplicate(err) {
@@ -92,6 +112,7 @@ func (r *UserRepository) UpdateLastLogin(ctx context.Context, p idcdmain.UpdateU
 }
 
 func (r *UserRepository) UpdateProfile(ctx context.Context, p idcdmain.UpdateUserProfileParams) (idcdmain.User, error) {
+	p.Locale = localeNormalizer(p.Locale)
 	u, err := r.q.UpdateUserProfile(ctx, p)
 	if err != nil {
 		if isNoRows(err) {

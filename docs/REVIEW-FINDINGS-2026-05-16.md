@@ -5,6 +5,44 @@
 
 ---
 
+## 📊 闭环进度（2026-05-16 17:30 更新）
+
+**Round 1** (be1066e) → **Round 2 P0** (9f9bde2 / 565a398 / cee1310) → **P1** (ec736a1) → **P2 + follow-up** (0d053d8)。已推远端。
+
+| # | 项 | 状态 | Commit |
+|---|---|---|---|
+| P0#1 | PAT/APIKey middleware | ✅ | 9f9bde2 / 565a398 (wire) |
+| P0#2 | ACME 接线 | ✅ | 9f9bde2 |
+| P0#3 | D5 退款重试 | ✅ | 9f9bde2 / 565a398 (wire) |
+| P0#4 | CSRF Domain | ✅ | 9f9bde2 |
+| P0#5 | CORS credentials | ✅ | 9f9bde2 |
+| P0#6 | SSRF netfilter | ✅ | 9f9bde2 |
+| P0#7 | MCP 鉴权 | ✅ | 9f9bde2 / 565a398 (wire) |
+| P0#8 | Scheduler 死代码 + leader race | ✅ | 9f9bde2 / ec736a1 (cleanup) |
+| P0#9 | enrolled_nodes 生命周期 | ✅ | 9f9bde2 / 565a398 (route) |
+| P0#10 | WebAuthn CBOR 真验签 | ✅ | 9f9bde2 / 565a398 / cee1310 |
+| P1#11 | JWT jti replay | ✅ | ec736a1 / 0d053d8 (wire) |
+| P1#12 | Session refresh atomic | ✅ | ec736a1 |
+| P1#13 | Argon2 PHC | ✅ | ec736a1 |
+| P1#14 | Notifier worker backoff + email escape | ✅ | ec736a1 |
+| P1#14 (F1) | SES sender 实装 | ✅ | 0d053d8 |
+| P1#15 | Aggregator scaling + DLQ + /metrics | ✅ | ec736a1 |
+| P1#16 | Cloudflare Workers + nginx | ✅ | ec736a1 |
+| P1#17 | docker-compose -config | ✅ | ec736a1 |
+| P1#18 | Dockerfile rootless + HEALTHCHECK | ✅ | ec736a1 |
+| P1#19 | /metrics notifier/scheduler/gateway | ✅ | ec736a1 |
+| P2#20 | WebSocket reconnect 替换保护 | ✅ | 0d053d8 |
+| P2#21 | Response shape 统一 | ⏸ | 跨 20+ handler + 前端联动，单独 PR |
+| P2#22 | lib/db TxRunner | ✅ | 0d053d8 |
+| P2#23 | Ratelimit Lua 去 random | ✅ | 0d053d8 |
+| P2#24 | v2 模块 OpenAPI gap | ⏸ | S2-S3 路线图（verdict/attest/compliance/mcp_token） |
+| Docs | ARCHITECTURE / CHANGELOG / README | ⚠ | CHANGELOG 已补齐至 0d053d8；ARCHITECTURE 仍列不存在目录待清；README 仍缺 |
+| Deploy | TLS / DB backup / Sentry / Loki / Terraform / WAF | ⏸ | 留独立 session 推进 |
+
+**P0/P1 全部闭环 + P2 三项实操项闭环。** 上线 blocker 已清完。
+
+---
+
 ## 一、本轮已修复（Round 1）
 
 均通过 build + test 验证。

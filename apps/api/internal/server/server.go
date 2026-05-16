@@ -579,6 +579,7 @@ func (s *Server) setupRouter() {
 			r.Post("/block-ip", blocklistH.BlockIP)
 			r.Delete("/block-ip", blocklistH.UnblockIP)
 			r.Post("/cdn-monitors/seed", cdnAdminH.Seed)
+			r.Post("/test-email", adminH.TestEmail)
 		})
 
 		// Community node application and points endpoints.

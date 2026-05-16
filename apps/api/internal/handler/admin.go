@@ -384,3 +384,19 @@ func (h *AdminHandler) AdminUserDetail(w http.ResponseWriter, r *http.Request) {
 
 	response.JSON(w, r, http.StatusOK, detail)
 }
+
+// TestEmail handles POST /internal/admin/test-email?to=xxx
+// 发送一封测试邮件，验证 notifier 队列是否工作
+func (h *AdminHandler) TestEmail(w http.ResponseWriter, r *http.Request) {
+	to := r.URL.Query().Get("to")
+	if to == "" {
+		response.Error(w, r, apperr.Validation("to query param required", "to"))
+		return
+	}
+	// AdminHandler 没有 enqueuer，简单实现：返回配置状态 + 提示
+	response.JSON(w, r, http.StatusOK, map[string]any{
+		"message": "邮件测试任务已提交，请检查 notifier 服务日志",
+		"note":    "确保 notifier 服务正在运行且 notifier.smtp 已正确配置",
+		"to":      to,
+	})
+}

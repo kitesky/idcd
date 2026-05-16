@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Plus, Server } from "lucide-react"
+import { CheckCircle2, Plus, Server } from "lucide-react"
 
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -193,10 +193,48 @@ export default function NodesPage() {
             <strong>+200 积分</strong>。
           </p>
           <p className="text-muted-foreground text-sm">
-            审核通过后，按节点安装指南完成部署，节点上线后自动开始计入积分。
+            审核通过后，按节点安装指南完成部署，节点上线后自动开始计入积分。节点申请通过后，您将看到完整的部署指南。通常在 1-3 个工作日内审核完成。
           </p>
         </AlertDescription>
       </Alert>
+
+      {/* 部署指南：仅当有 active 节点时显示 */}
+      {applications.some((a) => a.status === "active") && (
+        <Card className="border-green-500/30 bg-green-500/5">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base text-green-700 dark:text-green-400">
+              <CheckCircle2 className="h-4 w-4" />
+              您有已批准的节点，请按以下步骤完成部署
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {/* Step 1: 下载安装 */}
+            <div>
+              <p className="text-sm font-medium mb-2">1. 下载并安装 Agent</p>
+              <pre className="rounded-md bg-muted px-4 py-3 font-mono text-xs overflow-x-auto">
+                curl -sL https://get.idcd.com/install.sh | sudo bash
+              </pre>
+            </div>
+            {/* Step 2: 配置 */}
+            <div>
+              <p className="text-sm font-medium mb-2">2. 配置环境变量</p>
+              <pre className="rounded-md bg-muted px-4 py-3 font-mono text-xs overflow-x-auto">
+                {`IDCD_API_URL=https://api.idcd.com\nIDCD_ENROLL_TOKEN=<管理员提供的注册令牌>`}
+              </pre>
+            </div>
+            {/* Step 3: 启动 */}
+            <div>
+              <p className="text-sm font-medium mb-2">3. 启动 Agent</p>
+              <pre className="rounded-md bg-muted px-4 py-3 font-mono text-xs overflow-x-auto">
+                sudo systemctl start idcd-agent && sudo systemctl enable idcd-agent
+              </pre>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              注册令牌需联系管理员获取。部署成功后节点状态将自动更新为在线。
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {/* 申请列表 */}
       <Card>

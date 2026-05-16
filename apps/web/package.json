@@ -9,7 +9,9 @@
     "preview": "opennextjs-cloudflare preview",
     "deploy": "opennextjs-cloudflare build && wrangler deploy",
     "start": "next start",
-    "lint": "next lint",
+    "prebuild": "pnpm lint && pnpm type-check",
+    "lint": "eslint . --max-warnings 0 --cache --cache-location node_modules/.cache/eslint",
+    "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

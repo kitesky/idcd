@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { BadgeCheck, Bell, ChevronsUpDown, CreditCard, LogOut, Settings } from "lucide-react"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,9 +24,10 @@ type NavUserProps = {
   email: string
   plan?: string
   displayName?: string | null
+  avatarUrl?: string | null
 }
 
-export function NavUser({ email, plan = "Free", displayName }: NavUserProps) {
+export function NavUser({ email, plan = "Free", displayName, avatarUrl }: NavUserProps) {
   const { isMobile } = useSidebar()
 
   const initial = (displayName ?? email).charAt(0).toUpperCase()
@@ -46,6 +47,7 @@ export function NavUser({ email, plan = "Free", displayName }: NavUserProps) {
               data-testid="user-menu-trigger"
             >
               <Avatar className="h-8 w-8 rounded-lg">
+                <AvatarImage src={avatarUrl ?? undefined} alt={displayName ?? email} />
                 <AvatarFallback className="rounded-lg bg-primary/10 text-primary text-sm font-semibold">
                   {initial}
                 </AvatarFallback>
@@ -71,6 +73,7 @@ export function NavUser({ email, plan = "Free", displayName }: NavUserProps) {
             <DropdownMenuLabel className="p-0 font-normal">
               <div className="flex items-center gap-2 px-1 py-1.5">
                 <Avatar className="h-8 w-8 rounded-lg">
+                  <AvatarImage src={avatarUrl ?? undefined} alt={displayName ?? email} />
                   <AvatarFallback className="rounded-lg bg-primary/10 text-primary text-sm font-semibold">
                     {initial}
                   </AvatarFallback>

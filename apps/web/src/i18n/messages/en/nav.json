@@ -19,7 +19,12 @@
   "auth": {
     "login": "Log In",
     "register": "Sign Up Free",
-    "dashboard": "Dashboard"
+    "dashboard": "Dashboard",
+    "upgrade": "Upgrade to Pro",
+    "account": "Account Settings",
+    "billing": "Billing",
+    "notifications": "Notifications",
+    "logout": "Log Out"
   },
   "locale": {
     "label": "Language",

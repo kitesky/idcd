@@ -2,8 +2,18 @@
 
 import { useState, useRef, useCallback, useEffect } from "react"
 import { usePathname, useRouter } from "next/navigation"
-import { ChevronDown, Search, Globe, X, Menu } from "lucide-react"
+import { ChevronDown, Search, Globe, X, Menu, BadgeCheck, Bell, CreditCard, LogOut, Sparkles, LayoutDashboard, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuGroup,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { ALL_TOOLS } from "@/app/(public)/tools/tools-config"
 import {
   Sheet,
@@ -15,10 +25,11 @@ import {
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
 import { useTranslations } from "next-intl"
+import { useTheme } from "next-themes"
 
 // ── Mega menu data ─────────────────────────────────────────────────────────
 
-function buildToolsMenu(t: ReturnType<typeof useTranslations<"nav">>) {
+function buildToolsMenu(t: ReturnType<typeof useTranslations<"nav">>, p: string) {
   return {
     categories: [
       {
@@ -27,49 +38,49 @@ function buildToolsMenu(t: ReturnType<typeof useTranslations<"nav">>) {
           {
             title: t("toolGroups.network"),
             items: [
-              { name: t("tools.ping"), href: "/tools/ping" },
-              { name: t("tools.tcp"), href: "/tools/tcp" },
-              { name: t("tools.tcping"), href: "/tools/tcping" },
-              { name: t("tools.traceroute"), href: "/tools/traceroute" },
-              { name: t("tools.mtr"), href: "/tools/mtr" },
-              { name: t("tools.speedtest"), href: "/tools/speedtest" },
+              { name: t("tools.ping"), href: `${p}/tools/ping` },
+              { name: t("tools.tcp"), href: `${p}/tools/tcp` },
+              { name: t("tools.tcping"), href: `${p}/tools/tcping` },
+              { name: t("tools.traceroute"), href: `${p}/tools/traceroute` },
+              { name: t("tools.mtr"), href: `${p}/tools/mtr` },
+              { name: t("tools.speedtest"), href: `${p}/tools/speedtest` },
             ],
           },
           {
             title: t("toolGroups.domain"),
             items: [
-              { name: t("tools.ssl"), href: "/tools/ssl" },
-              { name: t("tools.whois"), href: "/tools/whois" },
-              { name: t("tools.icp"), href: "/tools/icp" },
-              { name: t("tools.dns"), href: "/tools/dns" },
-              { name: t("tools.http"), href: "/tools/http" },
+              { name: t("tools.ssl"), href: `${p}/tools/ssl` },
+              { name: t("tools.whois"), href: `${p}/tools/whois` },
+              { name: t("tools.icp"), href: `${p}/tools/icp` },
+              { name: t("tools.dns"), href: `${p}/tools/dns` },
+              { name: t("tools.http"), href: `${p}/tools/http` },
             ],
           },
           {
             title: t("toolGroups.email"),
             items: [
-              { name: t("tools.mx"), href: "/tools/mx" },
-              { name: t("tools.spf"), href: "/tools/spf" },
-              { name: t("tools.dmarc"), href: "/tools/dmarc" },
-              { name: t("tools.dkim"), href: "/tools/dkim" },
-              { name: t("tools.smtp"), href: "/tools/smtp" },
-              { name: t("tools.rdns"), href: "/tools/rdns" },
-              { name: t("tools.ntp"), href: "/tools/ntp" },
+              { name: t("tools.mx"), href: `${p}/tools/mx` },
+              { name: t("tools.spf"), href: `${p}/tools/spf` },
+              { name: t("tools.dmarc"), href: `${p}/tools/dmarc` },
+              { name: t("tools.dkim"), href: `${p}/tools/dkim` },
+              { name: t("tools.smtp"), href: `${p}/tools/smtp` },
+              { name: t("tools.rdns"), href: `${p}/tools/rdns` },
+              { name: t("tools.ntp"), href: `${p}/tools/ntp` },
             ],
           },
           {
             title: t("toolGroups.ip"),
             items: [
-              { name: t("tools.ip-geo"), href: "/tools/ip" },
-              { name: t("tools.asn"), href: "/tools/asn" },
-              { name: t("tools.bgp"), href: "/tools/bgp" },
+              { name: t("tools.ip-geo"), href: `${p}/tools/ip` },
+              { name: t("tools.asn"), href: `${p}/tools/asn` },
+              { name: t("tools.bgp"), href: `${p}/tools/bgp` },
             ],
           },
         ],
         featured: [
-          { name: t("tools.ping"), desc: t("featuredProbeDesc.ping"), href: "/tools/ping" },
-          { name: t("tools.ssl"), desc: t("featuredProbeDesc.ssl"), href: "/tools/ssl" },
-          { name: t("tools.dns"), desc: t("featuredProbeDesc.dns"), href: "/tools/dns" },
+          { name: t("tools.ping"), desc: t("featuredProbeDesc.ping"), href: `${p}/tools/ping` },
+          { name: t("tools.ssl"), desc: t("featuredProbeDesc.ssl"), href: `${p}/tools/ssl` },
+          { name: t("tools.dns"), desc: t("featuredProbeDesc.dns"), href: `${p}/tools/dns` },
         ],
       },
       {
@@ -78,51 +89,216 @@ function buildToolsMenu(t: ReturnType<typeof useTranslations<"nav">>) {
           {
             title: t("toolGroups.format"),
             items: [
-              { name: t("tools.json-formatter"), href: "/tools/json-formatter" },
-              { name: t("tools.yaml-formatter"), href: "/tools/yaml-formatter" },
-              { name: t("tools.xml-formatter"), href: "/tools/xml-formatter" },
-              { name: t("tools.csv-formatter"), href: "/tools/csv-formatter" },
+              { name: t("tools.json-formatter"), href: `${p}/tools/json-formatter` },
+              { name: t("tools.yaml-formatter"), href: `${p}/tools/yaml-formatter` },
+              { name: t("tools.xml-formatter"), href: `${p}/tools/xml-formatter` },
+              { name: t("tools.csv-formatter"), href: `${p}/tools/csv-formatter` },
             ],
           },
           {
             title: t("toolGroups.encode"),
             items: [
-              { name: t("tools.base64"), href: "/tools/base64" },
-              { name: t("tools.url-encode"), href: "/tools/url-encode" },
-              { name: t("tools.hash"), href: "/tools/hash" },
-              { name: t("tools.html-encode"), href: "/tools/html-encode" },
+              { name: t("tools.base64"), href: `${p}/tools/base64` },
+              { name: t("tools.url-encode"), href: `${p}/tools/url-encode` },
+              { name: t("tools.hash"), href: `${p}/tools/hash` },
+              { name: t("tools.html-encode"), href: `${p}/tools/html-encode` },
             ],
           },
           {
             title: t("toolGroups.text"),
             items: [
-              { name: t("tools.regex-tester"), href: "/tools/regex-tester" },
-              { name: t("tools.diff"), href: "/tools/diff" },
-              { name: t("tools.word-counter"), href: "/tools/word-counter" },
-              { name: t("tools.markdown"), href: "/tools/markdown" },
-              { name: t("tools.line-sort"), href: "/tools/line-sort" },
+              { name: t("tools.regex-tester"), href: `${p}/tools/regex-tester` },
+              { name: t("tools.diff"), href: `${p}/tools/diff` },
+              { name: t("tools.word-counter"), href: `${p}/tools/word-counter` },
+              { name: t("tools.markdown"), href: `${p}/tools/markdown` },
+              { name: t("tools.line-sort"), href: `${p}/tools/line-sort` },
             ],
           },
           {
             title: t("toolGroups.dev"),
             items: [
-              { name: t("tools.jwt-decoder"), href: "/tools/jwt-decoder" },
-              { name: t("tools.cidr-calculator"), href: "/tools/cidr-calculator" },
-              { name: t("tools.timestamp"), href: "/tools/timestamp" },
-              { name: t("tools.ipv6-converter"), href: "/tools/ipv6-converter" },
-              { name: t("tools.cron-parser"), href: "/tools/cron-parser" },
-              { name: t("tools.qrcode"), href: "/tools/qrcode" },
+              { name: t("tools.jwt-decoder"), href: `${p}/tools/jwt-decoder` },
+              { name: t("tools.cidr-calculator"), href: `${p}/tools/cidr-calculator` },
+              { name: t("tools.timestamp"), href: `${p}/tools/timestamp` },
+              { name: t("tools.ipv6-converter"), href: `${p}/tools/ipv6-converter` },
+              { name: t("tools.cron-parser"), href: `${p}/tools/cron-parser` },
+              { name: t("tools.qrcode"), href: `${p}/tools/qrcode` },
             ],
           },
         ],
         featured: [
-          { name: t("tools.json-formatter"), desc: t("featuredUtilityDesc.json"), href: "/tools/json-formatter" },
-          { name: t("tools.regex-tester"), desc: t("featuredUtilityDesc.regex"), href: "/tools/regex-tester" },
-          { name: t("tools.base64"), desc: t("featuredUtilityDesc.base64"), href: "/tools/base64" },
+          { name: t("tools.json-formatter"), desc: t("featuredUtilityDesc.json"), href: `${p}/tools/json-formatter` },
+          { name: t("tools.regex-tester"), desc: t("featuredUtilityDesc.regex"), href: `${p}/tools/regex-tester` },
+          { name: t("tools.base64"), desc: t("featuredUtilityDesc.base64"), href: `${p}/tools/base64` },
         ],
       },
     ],
   }
+}
+
+// ── ThemeToggle ─────────────────────────────────────────────────────────────
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme()
+  return (
+    <button
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+      aria-label="切换主题"
+      className="relative h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-colors"
+    >
+      <Sun className="h-4 w-4 rotate-0 scale-100 transition-all dark:-rotate-90 dark:scale-0" />
+      <Moon className="absolute h-4 w-4 rotate-90 scale-0 transition-all dark:rotate-0 dark:scale-100" />
+    </button>
+  )
+}
+
+// ── NavUserMenu ─────────────────────────────────────────────────────────────
+
+interface UserProfile {
+  email: string
+  display_name?: string | null
+  avatar_url?: string | null
+  plan?: string
+}
+
+function NavUserMenu({ mobile = false }: { mobile?: boolean }) {
+  const t = useTranslations("nav")
+  const pathname = usePathname()
+  const p = pathname?.startsWith("/en") ? "/en" : ""
+  const [user, setUser] = useState<UserProfile | null | undefined>(undefined) // undefined = loading
+
+  useEffect(() => {
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+    fetch(`${API_BASE}/v1/account/profile`, { credentials: "include" })
+      .then(res => {
+        if (!res.ok) { setUser(null); return null }
+        return res.json()
+      })
+      .then(body => {
+        if (!body) return
+        const profile = body?.data ?? body
+        setUser({
+          email: profile.email ?? "",
+          display_name: profile.display_name ?? null,
+          avatar_url: profile.avatar_url ?? null,
+          plan: profile.plan ?? "Free",
+        })
+      })
+      .catch(() => setUser(null))
+  }, [])
+
+  // Loading: show skeleton placeholder
+  if (user === undefined) {
+    return <div className="h-8 w-8 rounded-full bg-muted animate-pulse" />
+  }
+
+  // Not logged in
+  if (user === null) {
+    if (mobile) {
+      return (
+        <div className="flex flex-col gap-2">
+          <Button variant="outline" className="w-full" asChild>
+            <a href="/auth/login">{t("auth.login")}</a>
+          </Button>
+          <Button className="w-full" asChild>
+            <a href="/auth/register">{t("auth.register")}</a>
+          </Button>
+        </div>
+      )
+    }
+    return (
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" className="h-8 px-3 text-sm" asChild>
+          <a href="/auth/login">{t("auth.login")}</a>
+        </Button>
+        <Button size="sm" className="h-8 px-4 text-sm" asChild>
+          <a href="/auth/register">{t("auth.register")}</a>
+        </Button>
+      </div>
+    )
+  }
+
+  // Logged in
+  const initial = (user.display_name ?? user.email).charAt(0).toUpperCase()
+  const isFree = !user.plan || user.plan === "Free"
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button className="flex items-center gap-2 rounded-full outline-none focus-visible:ring-2 focus-visible:ring-ring">
+          <Avatar className="h-8 w-8 cursor-pointer ring-2 ring-transparent hover:ring-primary/40 transition-all">
+            <AvatarImage src={user.avatar_url ?? undefined} alt={user.display_name ?? user.email} />
+            <AvatarFallback className="bg-primary/10 text-primary text-sm font-semibold">
+              {initial}
+            </AvatarFallback>
+          </Avatar>
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent className="w-56 rounded-lg" align="end" sideOffset={8}>
+        <DropdownMenuLabel className="p-0 font-normal">
+          <div className="flex items-center gap-2 px-2 py-2">
+            <Avatar className="h-9 w-9 rounded-lg">
+              <AvatarImage src={user.avatar_url ?? undefined} alt={user.display_name ?? user.email} />
+              <AvatarFallback className="rounded-lg bg-primary/10 text-primary text-sm font-semibold">
+                {initial}
+              </AvatarFallback>
+            </Avatar>
+            <div className="grid flex-1 text-left text-sm leading-tight">
+              <span className="truncate font-semibold">{user.display_name ?? user.email}</span>
+              <span className="truncate text-xs text-muted-foreground">{user.email}</span>
+            </div>
+          </div>
+        </DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        {isFree && (
+          <>
+            <DropdownMenuGroup>
+              <DropdownMenuItem asChild>
+                <a href="/pricing">
+                  <Sparkles className="text-primary" />
+                  {t("auth.upgrade")}
+                </a>
+              </DropdownMenuItem>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+          </>
+        )}
+        <DropdownMenuGroup>
+          <DropdownMenuItem asChild>
+            <a href="/app/dashboard">
+              <LayoutDashboard />
+              {t("auth.dashboard")}
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a href="/app/settings/account">
+              <BadgeCheck />
+              {t("auth.account")}
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a href="/app/billing">
+              <CreditCard />
+              {t("auth.billing")}
+            </a>
+          </DropdownMenuItem>
+          <DropdownMenuItem asChild>
+            <a href="/app/alerts/channels">
+              <Bell />
+              {t("auth.notifications")}
+            </a>
+          </DropdownMenuItem>
+        </DropdownMenuGroup>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild className="text-destructive focus:text-destructive">
+          <a href="/auth/logout">
+            <LogOut />
+            {t("auth.logout")}
+          </a>
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
 }
 
 // ── LangToggle ──────────────────────────────────────────────────────────────
@@ -153,23 +329,23 @@ function LangToggle() {
     setOpen(false)
     if (code === currentCode) return
 
-    // Check if we're on a public page (not /app, /auth, /admin)
-    const isPublicPage = !pathname?.match(/^\/(app|auth|admin)(\/|$)/)
+    const isAppPage = !!pathname?.match(/^\/(app|auth|admin)(\/|$)/)
 
-    if (isPublicPage) {
-      if (code === "EN") {
-        // Add /en prefix
-        const withoutEn = pathname?.replace(/^\/en/, "") || "/"
-        router.push("/en" + withoutEn)
-      } else {
-        // Remove /en prefix
-        const withoutEn = pathname?.replace(/^\/en/, "") || "/"
-        router.push(withoutEn || "/")
-      }
-    } else {
-      // App/Auth pages: set cookie and reload
+    if (isAppPage) {
       document.cookie = `locale=${code === "EN" ? "en" : "zh"};path=/;max-age=31536000`
       router.refresh()
+      return
+    }
+
+    // Public pages: hard navigate so the full layout re-renders with new locale
+    if (code === "EN") {
+      // Only /en/tools/[slug] has an English version apart from the homepage
+      const toolsMatch = pathname?.match(/^\/tools\/(.+)$/)
+      window.location.href = toolsMatch ? `/en/tools/${toolsMatch[1]}` : "/en"
+    } else {
+      // Strip /en prefix; /en → /
+      const withoutEn = pathname?.replace(/^\/en(\/|$)/, "/") || "/"
+      window.location.href = withoutEn
     }
   }
 
@@ -314,9 +490,10 @@ interface MegaMenuCategory {
 
 interface MegaMenuProps {
   categories: MegaMenuCategory[]
+  p: string
 }
 
-function MegaMenuPanel({ categories }: MegaMenuProps) {
+function MegaMenuPanel({ categories, p }: MegaMenuProps) {
   const t = useTranslations("nav")
   const [activeCat, setActiveCat] = useState(0)
   const cat = categories[activeCat] ?? categories[0]
@@ -392,7 +569,7 @@ function MegaMenuPanel({ categories }: MegaMenuProps) {
               ))}
             </ul>
             <a
-              href="/tools"
+              href={`${p}/tools`}
               className="mt-4 inline-flex items-center text-xs text-primary hover:underline"
             >
               {t("featured.viewAll")}
@@ -406,7 +583,7 @@ function MegaMenuPanel({ categories }: MegaMenuProps) {
 
 // ── MobileSheet ─────────────────────────────────────────────────────────────
 
-function MobileSheet({ navItems }: { navItems: ReturnType<typeof buildNavItems> }) {
+function MobileSheet({ navItems, p }: { navItems: ReturnType<typeof buildNavItems>; p: string }) {
   const t = useTranslations("nav")
   const [open, setOpen] = useState(false)
   const [expandedCat, setExpandedCat] = useState<string | null>(null)
@@ -471,7 +648,7 @@ function MobileSheet({ navItems }: { navItems: ReturnType<typeof buildNavItems> 
                             </a>
                           ))}
                         </div>
-                        <a href="/tools" onClick={close} className="mt-2 block text-xs text-primary hover:underline">
+                        <a href={`${p}/tools`} onClick={close} className="mt-2 block text-xs text-primary hover:underline">
                           {t("featured.viewAll")}
                         </a>
                       </div>
@@ -485,13 +662,13 @@ function MobileSheet({ navItems }: { navItems: ReturnType<typeof buildNavItems> 
 
         {/* Footer */}
         <div className="border-t p-4 flex flex-col gap-2 flex-shrink-0">
-          <LangToggle />
-          <Button variant="outline" className="w-full mt-2" asChild>
-            <a href="/auth/login" onClick={close}>{t("auth.login")}</a>
-          </Button>
-          <Button className="w-full" asChild>
-            <a href="/auth/register" onClick={close}>{t("auth.register")}</a>
-          </Button>
+          <div className="flex items-center justify-between">
+            <LangToggle />
+            <ThemeToggle />
+          </div>
+          <div className="mt-2">
+            <NavUserMenu mobile />
+          </div>
         </div>
       </SheetContent>
     </Sheet>
@@ -500,8 +677,8 @@ function MobileSheet({ navItems }: { navItems: ReturnType<typeof buildNavItems> 
 
 // ── Nav items builder ────────────────────────────────────────────────────────
 
-function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>) {
-  const toolsMenu = buildToolsMenu(t)
+function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>, p: string) {
+  const toolsMenu = buildToolsMenu(t, p)
   return [
     { name: t("links.tools"), mega: toolsMenu, href: undefined as string | undefined },
     { name: t("links.agent"), mega: undefined as typeof toolsMenu | undefined, href: "/agent" },
@@ -516,7 +693,9 @@ function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>) {
 
 export function Nav() {
   const t = useTranslations("nav")
-  const navItems = buildNavItems(t)
+  const pathname = usePathname()
+  const p = pathname?.startsWith("/en") ? "/en" : ""
+  const navItems = buildNavItems(t, p)
 
   const [openMenu, setOpenMenu] = useState<string | null>(null)
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -539,7 +718,7 @@ export function Nav() {
       {/* Main bar */}
       <nav className="mx-auto flex max-w-screen-xl items-center justify-between px-6 h-14">
         {/* Logo */}
-        <a href="/" className="flex items-center gap-2 flex-shrink-0">
+        <a href={p || "/"} className="flex items-center gap-2 flex-shrink-0">
           <svg className="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="currentColor">
             <path d="M3 12L12 3l9 9v9H3v-9z" opacity="0.2" />
             <path d="M3 12L12 3l9 9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
@@ -588,22 +767,15 @@ export function Nav() {
         {/* Desktop right */}
         <div className="hidden md:flex md:items-center md:gap-4 ml-auto">
           <NavSearch />
+          <ThemeToggle />
           <LangToggle />
-          <div className="flex items-center gap-2 pl-2 border-l">
-            <a href="/app" className="text-sm text-foreground/70 hover:text-foreground transition-colors">
-              {t("auth.dashboard")}
-            </a>
-            <Button variant="ghost" size="sm" className="h-8 px-3 text-sm" asChild>
-              <a href="/auth/login">{t("auth.login")}</a>
-            </Button>
-            <Button size="sm" className="h-8 px-4 text-sm" asChild>
-              <a href="/auth/register">{t("auth.register")}</a>
-            </Button>
+          <div className="pl-2 border-l">
+            <NavUserMenu />
           </div>
         </div>
 
         {/* Mobile menu */}
-        <MobileSheet navItems={navItems} />
+        <MobileSheet navItems={navItems} p={p} />
       </nav>
 
       {/* Mega menu panels (full-width, below nav) */}
@@ -615,7 +787,7 @@ export function Nav() {
             onMouseEnter={handlePanelMouseEnter}
             onMouseLeave={handleMouseLeave}
           >
-            <MegaMenuPanel categories={item.mega.categories} />
+            <MegaMenuPanel categories={item.mega.categories} p={p} />
           </div>
         )
       })}

@@ -19,9 +19,10 @@ type AppSidebarProps = {
   email?: string
   plan?: string
   displayName?: string | null
+  avatarUrl?: string | null
 } & React.ComponentProps<typeof Sidebar>
 
-export function AppSidebar({ email = "user@example.com", plan = "Free", displayName, ...props }: AppSidebarProps) {
+export function AppSidebar({ email = "user@example.com", plan = "Free", displayName, avatarUrl, ...props }: AppSidebarProps) {
   return (
     <Sidebar collapsible="icon" data-testid="desktop-sidebar" {...props}>
       <SidebarHeader>
@@ -49,7 +50,7 @@ export function AppSidebar({ email = "user@example.com", plan = "Free", displayN
       </SidebarContent>
 
       <SidebarFooter>
-        <NavUser email={email} plan={plan} displayName={displayName} />
+        <NavUser email={email} plan={plan} displayName={displayName} avatarUrl={avatarUrl} />
       </SidebarFooter>
 
       <SidebarRail />

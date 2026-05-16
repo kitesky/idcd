@@ -11,11 +11,15 @@ import (
 )
 
 // Config holds the scheduler service configuration.
+//
+// Note: the legacy worker.count field was removed on 2026-05-16 along with the
+// scheduler:tasks ZSET worker pool (no producer existed). Monitor polling is
+// the sole live path; concurrency there is fixed by the poll cadence, not by
+// a worker pool size. See scheduler package doc.
 type Config struct {
 	Redis         RedisConfig                      `yaml:"redis"`
 	Database      DatabaseConfig                   `yaml:"database"`
 	Leader        LeaderConfig                     `yaml:"leader"`
-	Worker        WorkerConfig                     `yaml:"worker"`
 	Observability sharedconfig.ObservabilityConfig `yaml:"observability"`
 }
 
@@ -33,13 +37,8 @@ type DatabaseConfig struct {
 
 // LeaderConfig holds leader election settings.
 type LeaderConfig struct {
-	Key string        `yaml:"key"`         // Redis key for leader lock, default: "scheduler:leader"
-	TTL time.Duration `yaml:"ttl"`         // Leader lock TTL, default: 10s
-}
-
-// WorkerConfig holds worker pool settings.
-type WorkerConfig struct {
-	Count int `yaml:"count"` // Number of worker goroutines, default: 4
+	Key string        `yaml:"key"` // Redis key for leader lock, default: "scheduler:leader"
+	TTL time.Duration `yaml:"ttl"` // Leader lock TTL, default: 10s
 }
 
 // Load reads and parses the YAML config file at path.
@@ -63,9 +62,6 @@ func Load(path string) (*Config, error) {
 	}
 	if cfg.Leader.TTL == 0 {
 		cfg.Leader.TTL = 10 * time.Second
-	}
-	if cfg.Worker.Count == 0 {
-		cfg.Worker.Count = 4
 	}
 
 	if err := cfg.validate(); err != nil {
@@ -101,9 +97,6 @@ func (c *Config) validate() error {
 	}
 	if c.Leader.TTL < time.Second {
 		return fmt.Errorf("leader.ttl must be at least 1s")
-	}
-	if c.Worker.Count < 1 {
-		return fmt.Errorf("worker.count must be at least 1")
 	}
 	return nil
 }

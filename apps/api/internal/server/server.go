@@ -23,6 +23,7 @@ import (
 	_ "github.com/kite365/idcd/apps/api/internal/metrics" // register business metrics with Prometheus default registry
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/quota"
+	"github.com/kite365/idcd/apps/api/internal/repository"
 	"github.com/kite365/idcd/lib/auth/jwt"
 	"github.com/kite365/idcd/lib/auth/session"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
@@ -194,16 +195,22 @@ func (s *Server) setupRouter() {
 
 		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
 
-		// Wire async email dispatch via asynq (uses the same Redis instance as the notifier).
-		var enqueuer handler.AuthEnqueuer
+		// Wire async dispatch via asynq (uses the same Redis instance as the notifier).
+		// One asynq.Client is shared across all enqueuer adapters (auth emails,
+		// billing refund retries, …) — they all hit the same Redis broker.
+		var (
+			asynqClient      *asynq.Client
+			enqueuer         handler.AuthEnqueuer
+			asynqBillingEnq  handler.BillingEnqueuer
+		)
 		if s.redis != nil {
-			enqueuer = &asynqEnqueuer{
-				client: asynq.NewClient(asynq.RedisClientOpt{
-					Addr:     s.config.Redis.Addr,
-					Password: s.config.Redis.Password,
-					DB:       s.config.Redis.DB,
-				}),
-			}
+			asynqClient = asynq.NewClient(asynq.RedisClientOpt{
+				Addr:     s.config.Redis.Addr,
+				Password: s.config.Redis.Password,
+				DB:       s.config.Redis.DB,
+			})
+			enqueuer = &asynqEnqueuer{client: asynqClient}
+			asynqBillingEnq = repository.NewBillingEnqueuer(asynqClient)
 		}
 
 		authH := handler.NewAuthHandler(q, jwtSvc, sessSvc, s.config.JWT.Secret).
@@ -218,7 +225,14 @@ func (s *Server) setupRouter() {
 		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis, fieldCipher)
 		webauthnH := handler.NewWebAuthnHandler(s.pgxPool, s.redis, "").WithAuth(jwtSvc, sessSvc)
 		sessionH := handler.NewSessionHandler(sessSvc, s.redis)
-		authnMW := middleware.Authn(jwtSvc, sessSvc)
+
+		// Multi-modal auth — accept JWT (browser sessions), PATs (idcd_pat_*),
+		// and API keys (sk_live_* / sk_test_*). The PAT/APIKey verifiers run
+		// against the same pgx pool the handlers write to, so newly minted
+		// tokens are immediately usable.
+		patVerifier := repository.NewPATVerifier(s.pgxPool)
+		apiKeyVerifier := repository.NewAPIKeyVerifier(s.pgxPool)
+		authnMW := middleware.AuthnWithTokens(jwtSvc, sessSvc, patVerifier, apiKeyVerifier)
 
 		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
 		authLimiter := ratelimit.NewLimiter(s.redis, ratelimit.Config{
@@ -389,7 +403,7 @@ func (s *Server) setupRouter() {
 			})
 
 			// Admin billing endpoints — require admin token via Authorization: Bearer header.
-			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool)
+			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool).WithEnqueuer(asynqBillingEnq)
 			billingAdminAuthH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(billingAdminAuthH.AdminAuthMiddleware)
@@ -411,7 +425,7 @@ func (s *Server) setupRouter() {
 			} else {
 				billingProvider = billing.NewStubProvider()
 			}
-			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider)
+			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).WithEnqueuer(asynqBillingEnq)
 			r.Route("/billing", func(r chi.Router) {
 				// Authenticated routes
 				r.With(authnMW).Post("/subscribe", billingH.Subscribe)
@@ -573,6 +587,11 @@ func (s *Server) setupRouter() {
 		}
 		enrollH := handler.NewNodeEnrollmentHandler(s.pgxPool, gatewayWSS, s.config.Server.AdminToken)
 		r.Post("/v1/agent/enroll", enrollH.Enroll)
+
+		// Admin node lifecycle endpoint (P0 #9 — flip pending/offline → active).
+		// NodeActivate runs its own admin-token check (h.isAdmin), matching the
+		// other NodeEnrollmentHandler routes; no extra middleware needed here.
+		r.Post("/v1/admin/nodes/{node_id}/activate", enrollH.NodeActivate)
 
 		// Agent node management (admin)
 		nodeCmdH := handler.NewNodeCommandHandler(s.pgxPool, s.config.Server.AdminToken)

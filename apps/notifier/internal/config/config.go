@@ -88,7 +88,12 @@ func setDefaults(n *NotifierConfig) {
 		n.Queues = map[string]int{
 			"notifier:default":  1, // lower priority
 			"notifier:critical": 2, // higher priority
+			"billing":           5, // D5 refund retry — high priority, payment-impacting
 		}
+	} else if _, ok := n.Queues["billing"]; !ok {
+		// Honour user-supplied queue overrides but ensure the billing queue
+		// is always present so D5 refund retry tasks are processed.
+		n.Queues["billing"] = 5
 	}
 
 	if n.AsynqDSN == "" {

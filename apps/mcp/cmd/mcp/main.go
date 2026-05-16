@@ -4,12 +4,18 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
+	"strings"
+	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
 	"github.com/kite365/idcd/apps/mcp/internal/tools"
+	"github.com/kite365/idcd/lib/shared/config"
 )
 
 func main() {
@@ -38,16 +44,93 @@ func main() {
 
 	switch *transport {
 	case "http":
-		addr := fmt.Sprintf(":%d", *port)
-		mux := http.NewServeMux()
-		mux.Handle("/sse", protocol.SSEHandler(srv))
-		mux.Handle("/messages", protocol.MessagesHandler(srv))
-		if err := http.ListenAndServe(addr, mux); err != nil {
-			os.Exit(1)
+		// HTTP transport requires bearer-token auth + CORS allowlist
+		// (see protocol/auth.go + REVIEW-FINDINGS-2026-05-16 P0#7).
+		// We load cfg lazily so stdio mode keeps working without a
+		// config file present (common in dev / Claude Desktop).
+		if err := runHTTP(*port); err != nil {
+			log.Fatalf("mcp http: %v", err)
 		}
 	default:
 		if err := srv.RunStdio(context.Background()); err != nil {
 			os.Exit(1)
 		}
 	}
+}
+
+// runHTTP wires the production HTTP transport: pgx-backed token validator
+// + CORS allowlist + 1 MiB body cap. All applied via SetHTTPConfig; the
+// existing SSEHandler / MessagesHandler entry points stay unchanged.
+func runHTTP(port int) error {
+	cfg, err := config.Load(config.DefaultPath())
+	if err != nil {
+		return fmt.Errorf("config load: %w", err)
+	}
+	if cfg.Database.Main.DSN == "" {
+		return fmt.Errorf("config: database.main.dsn is required for --transport http")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	pool, err := pgxpool.New(ctx, cfg.Database.Main.DSN)
+	if err != nil {
+		return fmt.Errorf("pgxpool: %w", err)
+	}
+	defer pool.Close()
+
+	if err := pool.Ping(ctx); err != nil {
+		return fmt.Errorf("pgxpool ping: %w", err)
+	}
+
+	validator := protocol.NewPGTokenValidator(pool)
+	origins := parseCORSOrigins(os.Getenv("MCP_CORS_ORIGINS"))
+
+	protocol.SetHTTPConfig(protocol.HTTPConfig{
+		Validator:        validator,
+		AllowedOrigins:   origins,
+		AllowCredentials: true,
+	})
+
+	// Rebuild server + tools after config is ready (the apiclient is the
+	// same instance regardless of transport — re-using parent scope's
+	// srv would also work, but keeping the wiring here makes the http
+	// branch self-contained for readability).
+	srv := protocol.NewServer()
+	apiBase := os.Getenv("IDCD_API_URL")
+	if apiBase == "" {
+		apiBase = "https://api.idcd.com"
+	}
+	tools.RegisterAll(srv, apiclient.New(apiBase, os.Getenv("IDCD_API_KEY")))
+
+	mux := http.NewServeMux()
+	mux.Handle("/sse", protocol.SSEHandler(srv))
+	mux.Handle("/messages", protocol.MessagesHandler(srv))
+
+	addr := fmt.Sprintf(":%d", port)
+	return http.ListenAndServe(addr, mux)
+}
+
+// parseCORSOrigins splits a comma-separated env value into a normalized
+// allowlist. Empty / whitespace-only entries are dropped. Returns nil for
+// an empty input so SetHTTPConfig stays in its fail-closed default (no
+// origins accepted) rather than accidentally allowing the empty-string
+// origin.
+func parseCORSOrigins(raw string) []string {
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p == "" {
+			continue
+		}
+		out = append(out, p)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }

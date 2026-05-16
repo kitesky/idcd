@@ -32,10 +32,11 @@ type WebAuthnPool interface {
 }
 
 type WebAuthnHandler struct {
-	pool  WebAuthnPool
-	redis *redis.Client
-	rpID  string
-	jwtSvc JWTSigner
+	pool    WebAuthnPool
+	redis   *redis.Client
+	rpID    string
+	origins []string
+	jwtSvc  JWTSigner
 	sessSvc SessionStorer
 }
 
@@ -50,6 +51,28 @@ func (h *WebAuthnHandler) WithAuth(jwtSvc JWTSigner, sessSvc SessionStorer) *Web
 	h.jwtSvc = jwtSvc
 	h.sessSvc = sessSvc
 	return h
+}
+
+// WithOrigins sets the explicit allow-list of acceptable Web Origins for
+// WebAuthn ceremonies. When unset, the verifier falls back to
+// "https://" + rpID — fine for prod but breaks local dev (which uses
+// http://localhost:3000). Callers that need multi-origin support (e.g.
+// dev + staging + prod, or apex + www) should pass the full list here.
+func (h *WebAuthnHandler) WithOrigins(origins []string) *WebAuthnHandler {
+	h.origins = origins
+	return h
+}
+
+// verifier builds a fresh Verifier from the handler's rpID + origins.
+// If origins is empty we fall back to ["https://" + rpID] so production
+// deployments work without extra wiring; dev/staging callers MUST use
+// WithOrigins to allow http://localhost or alternate hosts.
+func (h *WebAuthnHandler) verifier() *webauthn.Verifier {
+	origins := h.origins
+	if len(origins) == 0 {
+		origins = []string{"https://" + h.rpID}
+	}
+	return webauthn.NewVerifier(h.rpID, origins)
 }
 
 type registerBeginResponse struct {
@@ -169,7 +192,10 @@ func (h *WebAuthnHandler) RegisterComplete(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	credentialID, publicKey, err := webauthn.ParseAttestationResponse(req.Response)
+	// Real verification: challenge equality, origin, RPID, attestation
+	// signature, COSE algorithm whitelist. Replaces the legacy stub that
+	// only parsed the CBOR and trusted whatever the client sent.
+	credentialID, publicKey, err := h.verifier().VerifyAttestation(req.Response, req.Challenge)
 	if err != nil {
 		response.Error(w, r, apperr.Validation("invalid attestation response: "+err.Error(), ""))
 		return
@@ -183,8 +209,8 @@ func (h *WebAuthnHandler) RegisterComplete(w http.ResponseWriter, r *http.Reques
 	id := idgen.New("wc_")
 	_, err = h.pool.Exec(r.Context(), `
 		INSERT INTO webauthn_credentials
-		  (id, user_id, credential_id, public_key, device_name)
-		VALUES ($1, $2, $3, $4, $5)
+		  (id, user_id, credential_id, public_key, sign_count, device_name)
+		VALUES ($1, $2, $3, $4, 0, $5)
 	`, id, userID, credentialID, publicKey, deviceName)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to store credential", err))
@@ -352,24 +378,31 @@ func (h *WebAuthnHandler) AuthComplete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	credentialID, newSignCount, err := webauthn.ParseAssertionResponse(req.Response)
+	// First parse — *no* signature check yet — just to extract the
+	// credential ID so we can look up the matching public key in the DB.
+	// The real cryptographic verification happens via VerifyAssertion below.
+	credentialID, _, err := webauthn.ParseAssertionResponse(req.Response)
 	if err != nil {
 		response.Error(w, r, apperr.Validation("invalid assertion response: "+err.Error(), ""))
 		return
 	}
 
-	var storedUserID string
+	var storedUserID, storedPubKey string
 	var storedSignCount int64
 	err = h.pool.QueryRow(r.Context(), `
-		SELECT user_id, sign_count FROM webauthn_credentials WHERE credential_id = $1
-	`, credentialID).Scan(&storedUserID, &storedSignCount)
+		SELECT user_id, public_key, sign_count FROM webauthn_credentials WHERE credential_id = $1
+	`, credentialID).Scan(&storedUserID, &storedPubKey, &storedSignCount)
 	if err != nil {
 		response.Error(w, r, apperr.Unauthorized("unknown credential"))
 		return
 	}
 
-	if newSignCount > 0 && newSignCount <= storedSignCount {
-		response.Error(w, r, apperr.Unauthorized("sign count replay detected"))
+	// Real WebAuthn assertion verification: challenge equality, origin,
+	// RPID, signature against storedPubKey, and replay protection
+	// (newSignCount > storedSignCount when non-zero).
+	_, newSignCount, err := h.verifier().VerifyAssertion(req.Response, storedPubKey, req.Challenge, storedSignCount)
+	if err != nil {
+		response.Error(w, r, apperr.Unauthorized("assertion verification failed: "+err.Error()))
 		return
 	}
 

@@ -37,9 +37,6 @@ func run() error {
 	log.Printf("[main] Config loaded from %s", cfgPath)
 	log.Printf("[main] Redis: %s", cfg.Redis.Addr)
 	log.Printf("[main] Leader key: %s, TTL: %v", cfg.Leader.Key, cfg.Leader.TTL)
-	// cfg.Worker.Count is retained in config for now but unused: the legacy
-	// worker pool that consumed `scheduler:tasks` ZSET was removed in
-	// 2026-05-16 (no producer existed). See scheduler package doc.
 
 	// Initialize OpenTelemetry
 	telCfg := telemetry.Config{

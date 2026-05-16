@@ -26,8 +26,6 @@ database:
 leader:
   key: "scheduler:leader"
   ttl: 15s
-worker:
-  count: 8
 `,
 			wantErr: false,
 			checkFunc: func(t *testing.T, c *Config) {
@@ -45,9 +43,6 @@ worker:
 				}
 				if c.Leader.TTL != 15*time.Second {
 					t.Errorf("Leader.TTL = %v, want 15s", c.Leader.TTL)
-				}
-				if c.Worker.Count != 8 {
-					t.Errorf("Worker.Count = %d, want 8", c.Worker.Count)
 				}
 			},
 		},
@@ -67,8 +62,25 @@ database:
 				if c.Leader.TTL != 10*time.Second {
 					t.Errorf("Leader.TTL = %v, want default 10s", c.Leader.TTL)
 				}
-				if c.Worker.Count != 4 {
-					t.Errorf("Worker.Count = %d, want default 4", c.Worker.Count)
+			},
+		},
+		{
+			name: "ignores legacy worker.count field (forward-compat)",
+			yaml: `
+redis:
+  addr: "localhost:6379"
+database:
+  dsn: "postgresql://user:pass@localhost/idcd"
+worker:
+  count: 99
+`,
+			wantErr: false,
+			checkFunc: func(t *testing.T, c *Config) {
+				// worker.count was removed 2026-05-16; KnownFields(false) in
+				// the YAML decoder means stale prod configs with this field
+				// still load cleanly. This test pins that forward-compat.
+				if c.Leader.Key != "scheduler:leader" {
+					t.Errorf("Leader.Key = %q, want default scheduler:leader", c.Leader.Key)
 				}
 			},
 		},
@@ -99,23 +111,6 @@ leader:
   ttl: 500ms
 `,
 			wantErr: true,
-		},
-		{
-			name: "worker.count = 0 uses default",
-			yaml: `
-redis:
-  addr: "localhost:6379"
-database:
-  dsn: "postgresql://user:pass@localhost/idcd"
-worker:
-  count: 0
-`,
-			wantErr: false,
-			checkFunc: func(t *testing.T, c *Config) {
-				if c.Worker.Count != 4 {
-					t.Errorf("Worker.Count = %d, want default 4", c.Worker.Count)
-				}
-			},
 		},
 	}
 

@@ -50,6 +50,14 @@ func LoadFromFile(path string) (*Registry, error) {
 	return loadFromBytes(raw)
 }
 
+// LoadFromBytesForTesting exposes the otherwise-internal byte loader so
+// downstream tests (e.g. apps/api/internal/i18n) can build hermetic
+// registries without writing JSON to disk. Not meant for production use —
+// the name keeps callers honest.
+func LoadFromBytesForTesting(raw []byte) (*Registry, error) {
+	return loadFromBytes(raw)
+}
+
 func loadFromBytes(raw []byte) (*Registry, error) {
 	var r Registry
 	if err := json.Unmarshal(raw, &r); err != nil {

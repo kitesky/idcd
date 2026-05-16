@@ -13,9 +13,16 @@ import (
 )
 
 // Claims represents the JWT token claims.
+//
+// Locale is an optional short locale code (e.g. "cn" / "en") matching the
+// shared i18n registry. It is omitted from the wire format when empty so
+// older tokens issued before the field existed remain backwards compatible
+// — Verify won't reject them, and Sign won't emit the claim unless an
+// explicit locale is supplied via SignWithLocale.
 type Claims struct {
 	UserID    string `json:"user_id"`
 	SessionID string `json:"session_id"`
+	Locale    string `json:"locale,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -69,7 +76,21 @@ func NewService(config Config) (*Service, error) {
 }
 
 // Sign creates a new JWT token with the given user ID, session ID, and expiry duration.
+//
+// Sign does not embed a locale claim; use SignWithLocale when the caller
+// has a user locale to carry over (e.g. immediately after a successful
+// login or refresh).
 func (s *Service) Sign(userID, sessionID string, expiry time.Duration) (string, error) {
+	return s.SignWithLocale(userID, sessionID, "", expiry)
+}
+
+// SignWithLocale is the same as Sign but additionally embeds a "locale"
+// claim into the token. Pass "" to skip the claim (equivalent to Sign).
+//
+// The locale string is stored verbatim — validation against the shared
+// registry is the caller's responsibility (typically the handler that owns
+// user.locale at signing time).
+func (s *Service) SignWithLocale(userID, sessionID, locale string, expiry time.Duration) (string, error) {
 	if userID == "" {
 		return "", apperr.Validation("user ID is required", "")
 	}
@@ -81,6 +102,7 @@ func (s *Service) Sign(userID, sessionID string, expiry time.Duration) (string, 
 	claims := Claims{
 		UserID:    userID,
 		SessionID: sessionID,
+		Locale:    locale,
 		RegisteredClaims: jwt.RegisteredClaims{
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(expiry)),
@@ -149,8 +171,9 @@ func (s *Service) Refresh(tokenString string, newExpiry time.Duration) (string, 
 		return "", fmt.Errorf("refresh token verification failed: %w", err)
 	}
 
-	// Issue new token with same user and session but new expiry
-	return s.Sign(claims.UserID, claims.SessionID, newExpiry)
+	// Issue new token with same user, session, and locale but new expiry.
+	// SignWithLocale handles the empty-locale case (omits the claim).
+	return s.SignWithLocale(claims.UserID, claims.SessionID, claims.Locale, newExpiry)
 }
 
 // keyFunc returns the appropriate key for token validation based on signing method.

@@ -1,0 +1,4 @@
+{
+  "maxLength": "{max, plural, one {At most # character} other {At most # characters}}",
+  "required": "{field} is required"
+}

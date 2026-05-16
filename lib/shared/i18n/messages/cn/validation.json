@@ -1,0 +1,4 @@
+{
+  "maxLength": "最多 {max} 个字符",
+  "required": "{field} 不能为空"
+}

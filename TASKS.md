@@ -559,7 +559,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### P4 — 基础设施补全
 
-- [ ] **T17** 邮件服务配置（Resend 接入）
+- [x] **T17** 邮件服务配置（Resend 接入）
   - 注册 / 忘记密码邮件当前在本地 SMTP 25 发不出去
   - 配置 `config/dev.env.yaml` + `config/prod.env.yaml` 的 Resend SMTP relay
   - *deps: Resend 账号 [👤]*

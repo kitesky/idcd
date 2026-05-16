@@ -731,7 +731,8 @@ function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>, p: string) 
   const toolsMenu = buildToolsMenu(t, p)
   return [
     { name: t("links.tools"), mega: toolsMenu, href: undefined as string | undefined },
-    { name: t("links.agent"), mega: undefined as typeof toolsMenu | undefined, href: `${p}/agent` },
+    { name: t("links.monitors"), mega: undefined as typeof toolsMenu | undefined, href: `${p}/monitors` },
+    { name: t("links.agent"), mega: undefined, href: `${p}/agent` },
     { name: t("links.nodes"), mega: undefined, href: `${p}/nodes` },
     { name: t("links.becomeNode"), mega: undefined, href: `${p}/nodes/apply` },
     { name: t("links.pricing"), mega: undefined, href: `${p}/pricing` },

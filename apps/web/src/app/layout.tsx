@@ -8,6 +8,7 @@ import { Toaster } from "@/components/ui/sonner"
 import { CookieBanner } from "@/components/cookie-banner"
 import { getLocale } from "@/i18n/locale"
 import { loadMessages } from "@/i18n/request"
+import { bcp47Of } from "@/i18n/registry"
 import "./globals.css"
 
 const geistSans = Geist({
@@ -65,7 +66,7 @@ export default async function RootLayout({
   ])
   const messages = await loadMessages(locale)
   const nonce = headersList.get("x-nonce") ?? undefined
-  const htmlLang = locale === 'en' ? 'en' : 'zh-CN'
+  const htmlLang = bcp47Of(locale)
 
   return (
     <html lang={htmlLang} suppressHydrationWarning>

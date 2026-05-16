@@ -2,25 +2,25 @@ import '@testing-library/jest-dom'
 import { vi } from 'vitest'
 
 // ---------------------------------------------------------------------------
-// Global mock for next-intl — returns zh translation strings so tests
+// Global mock for next-intl — returns cn translation strings so tests
 // keep passing without a full next-intl provider setup.
 // ---------------------------------------------------------------------------
-import zhAuth from '@/i18n/messages/zh/auth.json'
-import zhCommon from '@/i18n/messages/zh/common.json'
-import zhErrors from '@/i18n/messages/zh/errors.json'
-import zhNav from '@/i18n/messages/zh/nav.json'
-import zhHome from '@/i18n/messages/zh/home.json'
-import zhTools from '@/i18n/messages/zh/tools.json'
-import zhLeaderboard from '@/i18n/messages/zh/leaderboard.json'
-import zhNodes from '@/i18n/messages/zh/nodes.json'
-import zhPricing from '@/i18n/messages/zh/pricing.json'
-import zhMonitors from '@/i18n/messages/zh/monitors.json'
-import zhAlerts from '@/i18n/messages/zh/alerts.json'
-import zhSettings from '@/i18n/messages/zh/settings.json'
-import zhBilling from '@/i18n/messages/zh/billing.json'
-import zhDashboard from '@/i18n/messages/zh/dashboard.json'
-import zhStatus from '@/i18n/messages/zh/status.json'
-import zhAdmin from '@/i18n/messages/zh/admin.json'
+import cnAuth from '@/i18n/messages/cn/auth.json'
+import cnCommon from '@/i18n/messages/cn/common.json'
+import cnErrors from '@/i18n/messages/cn/errors.json'
+import cnNav from '@/i18n/messages/cn/nav.json'
+import cnHome from '@/i18n/messages/cn/home.json'
+import cnTools from '@/i18n/messages/cn/tools.json'
+import cnLeaderboard from '@/i18n/messages/cn/leaderboard.json'
+import cnNodes from '@/i18n/messages/cn/nodes.json'
+import cnPricing from '@/i18n/messages/cn/pricing.json'
+import cnMonitors from '@/i18n/messages/cn/monitors.json'
+import cnAlerts from '@/i18n/messages/cn/alerts.json'
+import cnSettings from '@/i18n/messages/cn/settings.json'
+import cnBilling from '@/i18n/messages/cn/billing.json'
+import cnDashboard from '@/i18n/messages/cn/dashboard.json'
+import cnStatus from '@/i18n/messages/cn/status.json'
+import cnAdmin from '@/i18n/messages/cn/admin.json'
 
 type NestedRecord = { [key: string]: string | NestedRecord }
 
@@ -41,22 +41,22 @@ function makeTranslator(messages: NestedRecord) {
 }
 
 const ALL_MESSAGES: Record<string, NestedRecord> = {
-  auth: zhAuth as unknown as NestedRecord,
-  common: zhCommon as unknown as NestedRecord,
-  errors: zhErrors as unknown as NestedRecord,
-  nav: zhNav as unknown as NestedRecord,
-  home: zhHome as unknown as NestedRecord,
-  tools: zhTools as unknown as NestedRecord,
-  leaderboard: zhLeaderboard as unknown as NestedRecord,
-  nodes: zhNodes as unknown as NestedRecord,
-  pricing: zhPricing as unknown as NestedRecord,
-  monitors: zhMonitors as unknown as NestedRecord,
-  alerts: zhAlerts as unknown as NestedRecord,
-  settings: zhSettings as unknown as NestedRecord,
-  billing: zhBilling as unknown as NestedRecord,
-  dashboard: zhDashboard as unknown as NestedRecord,
-  status: zhStatus as unknown as NestedRecord,
-  admin: zhAdmin as unknown as NestedRecord,
+  auth: cnAuth as unknown as NestedRecord,
+  common: cnCommon as unknown as NestedRecord,
+  errors: cnErrors as unknown as NestedRecord,
+  nav: cnNav as unknown as NestedRecord,
+  home: cnHome as unknown as NestedRecord,
+  tools: cnTools as unknown as NestedRecord,
+  leaderboard: cnLeaderboard as unknown as NestedRecord,
+  nodes: cnNodes as unknown as NestedRecord,
+  pricing: cnPricing as unknown as NestedRecord,
+  monitors: cnMonitors as unknown as NestedRecord,
+  alerts: cnAlerts as unknown as NestedRecord,
+  settings: cnSettings as unknown as NestedRecord,
+  billing: cnBilling as unknown as NestedRecord,
+  dashboard: cnDashboard as unknown as NestedRecord,
+  status: cnStatus as unknown as NestedRecord,
+  admin: cnAdmin as unknown as NestedRecord,
 }
 
 vi.mock('next-intl', () => ({
@@ -64,7 +64,7 @@ vi.mock('next-intl', () => ({
     const ns = namespace && ALL_MESSAGES[namespace] ? ALL_MESSAGES[namespace] : {}
     return makeTranslator(ns as NestedRecord)
   },
-  useLocale: () => 'zh',
+  useLocale: () => 'cn',
   useNow: () => new Date(),
   useTimeZone: () => 'Asia/Shanghai',
   NextIntlClientProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -75,14 +75,16 @@ vi.mock('next-intl/server', () => ({
     const ns = namespace && ALL_MESSAGES[namespace] ? ALL_MESSAGES[namespace] : {}
     return makeTranslator(ns as NestedRecord)
   },
-  getLocale: async () => 'zh',
+  getLocale: async () => 'cn',
   getMessages: async () => ALL_MESSAGES,
   getRequestConfig: (fn: unknown) => fn,
 }))
 
 vi.mock('@/i18n/locale', () => ({
-  getLocale: async () => 'zh',
-  getLocaleCookie: async () => 'zh',
+  getLocale: async () => 'cn',
+  getLocaleCookie: async () => 'cn',
+  LOCALE_COOKIE_NAME: 'idcd_locale',
+  LEGACY_LOCALE_COOKIE_NAME: 'locale',
 }))
 
 // Mock ResizeObserver for jsdom (required by Radix UI Slider and other components)

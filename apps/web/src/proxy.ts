@@ -1,24 +1,75 @@
 import { type NextRequest, NextResponse } from 'next/server'
-import { type Locale, defaultLocale } from './i18n/routing'
+import {
+  defaultLocale,
+  isSupported,
+  localeCodes,
+  negotiate,
+  type Locale,
+} from './i18n/registry'
 
-function detectLocale(request: NextRequest): Locale {
+// Non-default locales are the only ones that carry a URL prefix.
+// Computed once at module load; updates require a rebuild (registry is static).
+const PREFIXED_LOCALES = localeCodes.filter((c) => c !== defaultLocale)
+const PREFIXED_LOCALES_SET = new Set(PREFIXED_LOCALES)
+
+// Cookie names — keep reading the legacy `locale` cookie so existing sessions
+// don't get bounced back to the default locale on first request after deploy.
+const COOKIE_NAME = 'idcd_locale'
+const LEGACY_COOKIE_NAME = 'locale'
+
+/**
+ * Match `/{code}/...` (or exactly `/{code}`) where `{code}` is a non-default
+ * locale code from the registry.
+ *
+ * Returns the matched code + rest of the path (without the prefix), or null
+ * when no prefix is present.
+ */
+function matchLocalePrefix(
+  pathname: string,
+): { code: Locale; rest: string } | null {
+  for (const code of PREFIXED_LOCALES) {
+    if (pathname === `/${code}`) return { code, rest: '/' }
+    if (pathname.startsWith(`/${code}/`)) {
+      return { code, rest: pathname.slice(code.length + 1) }
+    }
+  }
+  return null
+}
+
+function readCookieLocale(request: NextRequest): Locale | null {
+  const fresh = request.cookies.get(COOKIE_NAME)?.value
+  if (fresh && isSupported(fresh)) return fresh
+  const legacy = request.cookies.get(LEGACY_COOKIE_NAME)?.value
+  if (legacy && isSupported(legacy)) return legacy
+  return null
+}
+
+/**
+ * Resolve the effective locale for a request.
+ *
+ * Order (highest priority first):
+ *   1. URL prefix (`/{code}/...`)
+ *   2. Cookie (`idcd_locale`, falling back to the legacy `locale` name)
+ *   3. Accept-Language negotiation
+ *   4. Registry default
+ *
+ * For authenticated areas (`/app`, `/auth`, `/admin`) we deliberately skip
+ * Accept-Language because those flows persist locale via cookie + user.locale.
+ */
+function detectLocale(request: NextRequest, prefix: { code: Locale } | null): Locale {
+  if (prefix) return prefix.code
+
+  const cookie = readCookieLocale(request)
+  if (cookie) return cookie
+
   const { pathname } = request.nextUrl
-
-  // URL prefix wins for public pages under /en
-  if (pathname.startsWith('/en')) return 'en'
-
-  // For authenticated and admin pages: read cookie
-  if (
+  const isAuthArea =
     pathname.startsWith('/app') ||
     pathname.startsWith('/auth') ||
     pathname.startsWith('/admin')
-  ) {
-    const cookie = request.cookies.get('locale')?.value
-    if (cookie === 'en') return 'en'
-    return defaultLocale
-  }
+  if (isAuthArea) return defaultLocale
 
-  return defaultLocale
+  return negotiate(request.headers.get('accept-language'))
 }
 
 // NEXT_PUBLIC_API_URL is baked at build time; resolve once and cache. Malformed
@@ -36,7 +87,7 @@ const API_ORIGIN: string = (() => {
 function withSecurityHeaders(
   response: NextResponse,
   isDev: boolean,
-  nonce?: string
+  nonce?: string,
 ): NextResponse {
   const csp = [
     `default-src 'self'`,
@@ -52,7 +103,7 @@ function withSecurityHeaders(
   response.headers.set('X-Frame-Options', 'DENY')
   response.headers.set(
     'Permissions-Policy',
-    'camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=(), browsing-topics=()'
+    'camera=(), microphone=(), geolocation=(), payment=(), interest-cohort=(), browsing-topics=()',
   )
   return response
 }
@@ -85,8 +136,10 @@ export function proxy(request: NextRequest): NextResponse {
     return withSecurityHeaders(NextResponse.rewrite(url), isDev)
   }
 
-  // ── Normal request: add locale + nonce + security headers ─────────────────
-  const locale = detectLocale(request)
+  // ── Normal request: detect locale, optionally rewrite prefix, inject headers
+  const { pathname } = request.nextUrl
+  const prefixMatch = matchLocalePrefix(pathname)
+  const locale = detectLocale(request, prefixMatch)
   const nonce = crypto.randomUUID().replace(/-/g, '')
 
   const requestHeaders = new Headers({
@@ -95,21 +148,23 @@ export function proxy(request: NextRequest): NextResponse {
     'x-locale': locale,
   })
 
-  // Rewrite /en/<path> → /<path> for pages that don't have an explicit /en/* file.
-  // Existing file-based routes (/en and /en/tools/[slug]) are excluded so they
-  // continue to render their own page components.
-  const { pathname } = request.nextUrl
-  const isFileBasedEnRoute =
-    pathname === '/en' || pathname.startsWith('/en/tools/')
+  // When the URL carries a non-default locale prefix, rewrite to the un-prefixed
+  // path so the same page components render. File-based `/en/*` routes (e.g.
+  // pre-rendered tool pages) are excluded so they keep serving their own files.
+  if (prefixMatch && PREFIXED_LOCALES_SET.has(prefixMatch.code)) {
+    const isFileBasedRoute =
+      pathname === `/${prefixMatch.code}` ||
+      pathname.startsWith(`/${prefixMatch.code}/tools/`)
 
-  if (locale === 'en' && pathname.startsWith('/en/') && !isFileBasedEnRoute) {
-    const rewriteUrl = request.nextUrl.clone()
-    rewriteUrl.pathname = pathname.slice(3) // strip /en prefix
-    const response = NextResponse.rewrite(rewriteUrl, {
-      request: { headers: requestHeaders },
-    })
-    response.headers.set('x-locale', 'en')
-    return withSecurityHeaders(response, isDev, nonce)
+    if (!isFileBasedRoute) {
+      const rewriteUrl = request.nextUrl.clone()
+      rewriteUrl.pathname = prefixMatch.rest
+      const response = NextResponse.rewrite(rewriteUrl, {
+        request: { headers: requestHeaders },
+      })
+      response.headers.set('x-locale', locale)
+      return withSecurityHeaders(response, isDev, nonce)
+    }
   }
 
   const response = NextResponse.next({

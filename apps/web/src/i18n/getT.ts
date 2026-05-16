@@ -1,6 +1,6 @@
 import { loadMessages } from './request'
 import { getLocale } from './locale'
-import type { Locale } from './routing'
+import { defaultLocale, isSupported, type Locale } from './registry'
 
 type Params = Record<string, string | number>
 
@@ -28,8 +28,9 @@ function makeT(ns: unknown) {
 }
 
 export async function getT(namespace: string, locale?: Locale) {
-  const l = locale ?? (await getLocale())
-  const messages = await loadMessages(l)
+  const requested = locale ?? (await getLocale())
+  const resolved = isSupported(requested) ? requested : defaultLocale
+  const messages = await loadMessages(resolved)
   const ns = (messages as Record<string, unknown>)[namespace] ?? {}
   return makeT(ns)
 }

@@ -4,7 +4,8 @@ import { Nav } from "../nav"
 
 vi.mock("next/navigation", () => ({
   usePathname: () => "/",
-  useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
+  useRouter: () => ({ push: vi.fn(), refresh: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(""),
 }))
 
 // next-themes uses matchMedia and storage; provide a minimal mock

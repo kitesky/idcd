@@ -13,8 +13,11 @@ export function LanguageSwitcher({ currentLocale, label }: LanguageSwitcherProps
   const router = useRouter()
 
   function handleSwitch() {
-    const next: Locale = currentLocale === "zh" ? "en" : "zh"
-    document.cookie = `locale=${next};path=/;max-age=31536000`
+    const next: Locale = currentLocale === "cn" ? "en" : "cn"
+    // Canonical cookie name is `idcd_locale`; clear the legacy `locale` cookie
+    // so sessions converge on the new name.
+    document.cookie = `idcd_locale=${next};path=/;max-age=31536000;samesite=lax`
+    document.cookie = "locale=;path=/;max-age=0"
     router.refresh()
   }
 
@@ -26,7 +29,7 @@ export function LanguageSwitcher({ currentLocale, label }: LanguageSwitcherProps
       className="text-xs text-muted-foreground hover:text-foreground"
       title={label}
     >
-      {currentLocale === "zh" ? "EN" : "中文"}
+      {currentLocale === "cn" ? "EN" : "中文"}
     </Button>
   )
 }

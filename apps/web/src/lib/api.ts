@@ -1,3 +1,5 @@
+import { defaultLocale, isSupported } from "@/i18n/registry"
+
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
 /** Default request timeout (30 s). Override per-call via AbortSignal in options. */
@@ -10,6 +12,28 @@ function getCsrfToken(): string {
   return match ? decodeURIComponent(match[1]!) : ""
 }
 
+/**
+ * Resolve the active locale for outbound requests, in priority order:
+ *   1. `idcd_locale` cookie (new canonical name)
+ *   2. `locale` cookie (legacy; honored so cross-deploy sessions don't reset)
+ *   3. registry default
+ *
+ * Always returns a registry-supported short code (cn / en / …). On the server
+ * (no `document`), we fall back to the default and rely on layout to pass
+ * an `X-Locale` via the request — most browser API calls happen client-side.
+ */
+function getCurrentLocale(): string {
+  if (typeof document === "undefined") return defaultLocale
+  const cookies = document.cookie
+  const freshMatch = cookies.match(/(?:^|;\s*)idcd_locale=([^;]+)/)
+  const fresh = freshMatch ? decodeURIComponent(freshMatch[1]!) : ""
+  if (fresh && isSupported(fresh)) return fresh
+  const legacyMatch = cookies.match(/(?:^|;\s*)locale=([^;]+)/)
+  const legacy = legacyMatch ? decodeURIComponent(legacyMatch[1]!) : ""
+  if (legacy && isSupported(legacy)) return legacy
+  return defaultLocale
+}
+
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"])
 
 export async function apiRequest<T = unknown>(path: string, options?: RequestInit): Promise<T> {
@@ -19,6 +43,10 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
   // needs to set it automatically (including the multipart boundary parameter).
   const defaultHeaders: HeadersInit =
     options?.body instanceof FormData ? {} : { "Content-Type": "application/json" }
+
+  // Inject locale on every request so the backend (and any downstream service)
+  // can localize error messages / templates without re-reading cookies.
+  const localeHeaders: HeadersInit = { "X-Locale": getCurrentLocale() }
 
   // Double-submit CSRF pattern: include the cookie value in the X-CSRF-Token header
   // for all mutating requests. /v1/auth/* is exempt server-side, but sending the
@@ -37,7 +65,7 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
       ...options,
       // credentials: "include" sends the HttpOnly access_token cookie automatically.
       credentials: "include",
-      headers: { ...defaultHeaders, ...csrfHeaders, ...options?.headers },
+      headers: { ...defaultHeaders, ...localeHeaders, ...csrfHeaders, ...options?.headers },
       signal: options?.signal ?? ownController!.signal,
     })
 

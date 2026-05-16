@@ -2,49 +2,50 @@ import { describe, it, expect } from 'vitest'
 import { locales, defaultLocale, isValidLocale } from '../routing'
 import { EN_TOOLS_META, getEnToolMeta } from '../en-tools-meta'
 
-import zhTools from '../messages/zh/tools.json'
+import cnTools from '../messages/cn/tools.json'
 import enTools from '../messages/en/tools.json'
-import zhCommon from '../messages/zh/common.json'
+import cnCommon from '../messages/cn/common.json'
 import enCommon from '../messages/en/common.json'
-import zhErrors from '../messages/zh/errors.json'
+import cnErrors from '../messages/cn/errors.json'
 import enErrors from '../messages/en/errors.json'
-import zhLeaderboard from '../messages/zh/leaderboard.json'
+import cnLeaderboard from '../messages/cn/leaderboard.json'
 import enLeaderboard from '../messages/en/leaderboard.json'
 
 describe('routing config', () => {
-  it('locales contains zh and en', () => {
-    expect(locales).toContain('zh')
+  it('locales contains cn and en', () => {
+    expect(locales).toContain('cn')
     expect(locales).toContain('en')
   })
 
-  it('defaultLocale is zh', () => {
-    expect(defaultLocale).toBe('zh')
+  it('defaultLocale is cn', () => {
+    expect(defaultLocale).toBe('cn')
   })
 
-  it('isValidLocale returns true for zh and en', () => {
-    expect(isValidLocale('zh')).toBe(true)
+  it('isValidLocale returns true for cn and en', () => {
+    expect(isValidLocale('cn')).toBe(true)
     expect(isValidLocale('en')).toBe(true)
   })
 
   it('isValidLocale returns false for unknown locales', () => {
     expect(isValidLocale('fr')).toBe(false)
     expect(isValidLocale('')).toBe(false)
+    expect(isValidLocale('zh')).toBe(false)
   })
 })
 
 describe('tools namespace', () => {
-  it('zh and en have the same top-level tool keys', () => {
-    const zhKeys = Object.keys(zhTools).sort()
+  it('cn and en have the same top-level tool keys', () => {
+    const cnKeys = Object.keys(cnTools).sort()
     const enKeys = Object.keys(enTools).sort()
-    expect(zhKeys).toEqual(enKeys)
+    expect(cnKeys).toEqual(enKeys)
   })
 
-  it('each core probe tool has title and description in zh', () => {
+  it('each core probe tool has title and description in cn', () => {
     const probeTools = ['ping', 'http', 'dns', 'ssl', 'traceroute', 'ip', 'whois', 'icp', 'diagnose']
     for (const slug of probeTools) {
-      const tool = (zhTools as Record<string, { title?: string; description?: string }>)[slug]
-      expect(tool?.title, `zh.tools.${slug}.title`).toBeTruthy()
-      expect(tool?.description, `zh.tools.${slug}.description`).toBeTruthy()
+      const tool = (cnTools as Record<string, { title?: string; description?: string }>)[slug]
+      expect(tool?.title, `cn.tools.${slug}.title`).toBeTruthy()
+      expect(tool?.description, `cn.tools.${slug}.description`).toBeTruthy()
     }
   })
 
@@ -57,8 +58,8 @@ describe('tools namespace', () => {
     }
   })
 
-  it('_ui.run is correct in zh', () => {
-    expect((zhTools as unknown as Record<string, Record<string, string>>)._ui?.run).toBe('开始检测')
+  it('_ui.run is correct in cn', () => {
+    expect((cnTools as unknown as Record<string, Record<string, string>>)._ui?.run).toBe('开始检测')
   })
 
   it('_ui.run is correct in en', () => {
@@ -67,12 +68,12 @@ describe('tools namespace', () => {
 })
 
 describe('common namespace', () => {
-  it('zh and en have the same keys', () => {
-    expect(Object.keys(zhCommon).sort()).toEqual(Object.keys(enCommon).sort())
+  it('cn and en have the same keys', () => {
+    expect(Object.keys(cnCommon).sort()).toEqual(Object.keys(enCommon).sort())
   })
 
-  it('zh save is correct', () => {
-    expect((zhCommon as Record<string, string>).save).toBe('保存')
+  it('cn save is correct', () => {
+    expect((cnCommon as Record<string, string>).save).toBe('保存')
   })
 
   it('en save is correct', () => {
@@ -86,13 +87,13 @@ describe('errors namespace', () => {
     'UNAUTHORIZED', 'FORBIDDEN', 'RATE_LIMIT', 'INTERNAL', 'UNAVAILABLE',
   ]
 
-  it('zh and en have the same error codes', () => {
-    expect(Object.keys(zhErrors).sort()).toEqual(Object.keys(enErrors).sort())
+  it('cn and en have the same error codes', () => {
+    expect(Object.keys(cnErrors).sort()).toEqual(Object.keys(enErrors).sort())
   })
 
-  it('all known apperr codes are present in zh', () => {
+  it('all known apperr codes are present in cn', () => {
     for (const code of knownCodes) {
-      expect((zhErrors as Record<string, string>)[code], `zh.errors.${code}`).toBeTruthy()
+      expect((cnErrors as Record<string, string>)[code], `cn.errors.${code}`).toBeTruthy()
     }
   })
 
@@ -104,9 +105,9 @@ describe('errors namespace', () => {
 })
 
 describe('leaderboard namespace', () => {
-  it('has title and tabs in zh', () => {
-    expect(zhLeaderboard.title).toBeTruthy()
-    expect(zhLeaderboard.tabs.cdn).toBeTruthy()
+  it('has title and tabs in cn', () => {
+    expect(cnLeaderboard.title).toBeTruthy()
+    expect(cnLeaderboard.tabs.cdn).toBeTruthy()
   })
 
   it('has title and tabs in en', () => {

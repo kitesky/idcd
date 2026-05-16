@@ -1,7 +1,13 @@
-export const locales = ['zh', 'en'] as const
-export type Locale = (typeof locales)[number]
-export const defaultLocale: Locale = 'zh'
+import {
+  localeCodes,
+  defaultLocale as registryDefault,
+  type Locale as RegistryLocale,
+} from './registry'
+
+export const locales = localeCodes
+export type Locale = RegistryLocale
+export const defaultLocale: Locale = registryDefault
 
 export function isValidLocale(locale: string): locale is Locale {
-  return (locales as readonly string[]).includes(locale)
+  return locales.includes(locale)
 }

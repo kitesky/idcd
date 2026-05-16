@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { ChevronDown, Search, Globe, X, Menu, BadgeCheck, Bell, CreditCard, LogOut, Sparkles, LayoutDashboard, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { locales as registryLocales, defaultLocale, isSupported, type Locale } from "@/i18n/registry"
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -303,13 +304,54 @@ function NavUserMenu({ mobile = false }: { mobile?: boolean }) {
 
 // ── LangToggle ──────────────────────────────────────────────────────────────
 
+// Locale codes that carry a URL prefix (= every locale except the default).
+const PREFIX_CODES = registryLocales
+  .map(l => l.code)
+  .filter(c => c !== defaultLocale)
+
+/**
+ * Detect the active locale from a URL path. Mirrors `matchLocalePrefix` in
+ * proxy.ts so client-side state stays in sync with the middleware.
+ */
+function detectLocaleFromPath(pathname: string | null): Locale {
+  if (!pathname) return defaultLocale
+  for (const code of PREFIX_CODES) {
+    if (pathname === `/${code}` || pathname.startsWith(`/${code}/`)) {
+      return code
+    }
+  }
+  return defaultLocale
+}
+
+/**
+ * Strip any leading locale prefix from a pathname, leaving a path that starts
+ * with `/`. Used when computing the destination URL for a locale switch.
+ */
+function stripLocalePrefix(pathname: string): string {
+  for (const code of PREFIX_CODES) {
+    if (pathname === `/${code}`) return "/"
+    if (pathname.startsWith(`/${code}/`)) return pathname.slice(code.length + 1)
+  }
+  return pathname || "/"
+}
+
+/**
+ * Build the new URL when switching to `target` locale. Preserves the rest of
+ * the path; the caller is responsible for query / hash.
+ */
+function buildLocaleHref(pathname: string, target: Locale): string {
+  const bare = stripLocalePrefix(pathname)
+  if (target === defaultLocale) return bare
+  return bare === "/" ? `/${target}` : `/${target}${bare}`
+}
+
 function LangToggle() {
   const t = useTranslations("nav")
-  const pathname = usePathname()
+  const pathname = usePathname() ?? "/"
+  const searchParams = useSearchParams()
   const router = useRouter()
-  const isEn = pathname?.startsWith("/en") ?? false
-  const currentCode = isEn ? "EN" : "ZH"
-  const currentLabel = isEn ? t("locale.en") : t("locale.zh")
+
+  const currentLocale = detectLocaleFromPath(pathname)
 
   const [open, setOpen] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -325,33 +367,38 @@ function LangToggle() {
     return () => document.removeEventListener("mousedown", handler)
   }, [open])
 
-  const switchLocale = (code: "EN" | "ZH") => {
+  const switchLocale = (target: Locale) => {
     setOpen(false)
-    if (code === currentCode) return
+    if (!isSupported(target) || target === currentLocale) return
 
-    const isAppPage = !!pathname?.match(/^\/(app|auth|admin)(\/|$)/)
+    // Persist the choice so subsequent requests (incl. authenticated areas
+    // without URL prefixes) keep the user's preferred language. Canonical
+    // cookie is `idcd_locale`; we also clear the legacy `locale` cookie so
+    // sessions converge on the new name.
+    document.cookie = `idcd_locale=${target};path=/;max-age=31536000;samesite=lax`
+    document.cookie = "locale=;path=/;max-age=0"
 
-    if (isAppPage) {
-      document.cookie = `locale=${code === "EN" ? "en" : "zh"};path=/;max-age=31536000`
+    const isAuthArea = /^\/(app|auth|admin)(\/|$)/.test(pathname)
+
+    if (isAuthArea) {
+      // Authenticated areas don't carry a URL prefix; just refresh so the
+      // server re-renders with the new locale (read from cookie).
       router.refresh()
       return
     }
 
-    // Public pages: hard navigate so the full layout re-renders with new locale.
-    // All /en/* URLs are supported via middleware rewrite in proxy.ts.
-    if (code === "EN") {
-      const withoutEn = pathname?.replace(/^\/en(\/|$)/, "/") || "/"
-      window.location.href = "/en" + (withoutEn === "/" ? "" : withoutEn)
-    } else {
-      const withoutEn = pathname?.replace(/^\/en(\/|$)/, "/") || "/"
-      window.location.href = withoutEn
-    }
+    // Public pages: keep path + query + hash, switch the locale prefix.
+    const qs = searchParams?.toString() ?? ""
+    const hash = typeof window !== "undefined" ? window.location.hash : ""
+    const target_path = buildLocaleHref(pathname, target)
+    const href = `${target_path}${qs ? `?${qs}` : ""}${hash}`
+
+    router.replace(href)
   }
 
-  const langs = [
-    { label: t("locale.zh"), code: "ZH" as const },
-    { label: t("locale.en"), code: "EN" as const },
-  ]
+  const currentEntry =
+    registryLocales.find(l => l.code === currentLocale) ??
+    registryLocales.find(l => l.code === defaultLocale)!
 
   return (
     <div ref={containerRef} className="relative">
@@ -360,7 +407,7 @@ function LangToggle() {
         className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
       >
         <Globe className="h-3.5 w-3.5" />
-        <span>{currentLabel}</span>
+        <span>{currentEntry.nativeLabel}</span>
         <ChevronDown className={cn(
           "h-3 w-3 transition-transform duration-150",
           open && "rotate-180"
@@ -370,19 +417,19 @@ function LangToggle() {
       {open && (
         <div className="absolute top-full right-0 mt-1.5 w-48 bg-popover border rounded-lg shadow-lg py-2 z-50">
           <p className="text-xs text-muted-foreground px-4 pt-1 pb-1.5">{t("locale.label")}</p>
-          {langs.map(l => (
+          {registryLocales.map(l => (
             <button
               key={l.code}
               onMouseDown={() => switchLocale(l.code)}
               className={cn(
                 "block w-full text-left px-4 py-2 text-sm transition-colors",
-                l.code === currentCode
+                l.code === currentLocale
                   ? "text-primary bg-muted/60"
                   : "text-foreground hover:bg-muted"
               )}
             >
-              {l.label}
-              <span className="text-muted-foreground ml-1.5 text-xs">– {l.code}</span>
+              {l.nativeLabel}
+              <span className="text-muted-foreground ml-1.5 text-xs uppercase">– {l.code}</span>
             </button>
           ))}
         </div>

@@ -64,7 +64,7 @@ export default function APIReferencePage() {
             <p className="mb-3 text-[11px] font-semibold uppercase tracking-widest text-muted-foreground/50">
               API 端点
             </p>
-            <nav>
+            <nav aria-label="API 端点导航">
               <ul className="space-y-3">
                 {API_GROUPS.map((group) => (
                   <li key={group.id}>

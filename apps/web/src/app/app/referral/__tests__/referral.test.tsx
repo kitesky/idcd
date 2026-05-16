@@ -21,7 +21,8 @@ const mockApiRequest = vi.mocked(apiRequest)
 const MOCK_CODE_RESPONSE = {
   data: {
     code: "IDCD-XYZ789",
-    referral_url: "https://idcd.com/?ref=IDCD-XYZ789",
+    url: "https://idcd.com/?ref=IDCD-XYZ789",
+    uses_count: 0,
   },
 }
 
@@ -98,7 +99,7 @@ describe("ReferralPage — 推荐计划", () => {
     })
   })
 
-  it("点击复制按钮调用 clipboard.writeText 传入 referral_url", async () => {
+  it("点击复制按钮调用 clipboard.writeText 传入 url", async () => {
     setupSuccessMocks()
     render(<ReferralPage />)
     await waitFor(() => {
@@ -175,7 +176,7 @@ describe("ReferralPage — 推荐计划", () => {
     setupSuccessMocks()
     render(<ReferralPage />)
     await waitFor(() => {
-      expect(mockApiRequest).toHaveBeenCalledWith("/v1/referral/code")
+      expect(mockApiRequest).toHaveBeenCalledWith("/v1/referral/code", { method: "POST" })
       expect(mockApiRequest).toHaveBeenCalledWith("/v1/referral/rewards")
     })
   })

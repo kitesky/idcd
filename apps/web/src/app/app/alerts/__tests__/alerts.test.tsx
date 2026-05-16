@@ -14,6 +14,13 @@ vi.mock("@/lib/api", () => ({
   API_BASE: "http://localhost:8080",
 }))
 
+// Mock next/navigation hooks used by alerts-client.tsx
+vi.mock('next/navigation', () => ({
+  useSearchParams: vi.fn(() => new URLSearchParams()),
+  useRouter: vi.fn(() => ({ replace: vi.fn(), push: vi.fn(), back: vi.fn() })),
+  usePathname: vi.fn(() => '/app/alerts'),
+}))
+
 import { apiRequest } from "@/lib/api"
 const mockApiRequest = vi.mocked(apiRequest)
 
@@ -42,7 +49,7 @@ function setupDefaultMocks() {
     const method = options?.method?.toUpperCase() ?? "GET"
 
     // Events
-    if (path === "/v1/alert-events" && method === "GET") {
+    if (path.startsWith("/v1/alert-events") && !path.includes("/ack") && method === "GET") {
       return { data: { events: MOCK_ALERT_EVENTS } }
     }
     if (path.startsWith("/v1/alert-events/") && path.endsWith("/ack") && method === "POST") {
@@ -453,7 +460,11 @@ describe("AlertsClient — 通用", () => {
   })
 
   it("加载失败时显示错误 Alert", async () => {
-    mockApiRequest.mockRejectedValueOnce(new Error("网络错误"))
+    // EventsTab first calls /v1/monitors (silently ignored on error),
+    // then calls /v1/alert-events — reject both so events call also fails
+    mockApiRequest
+      .mockRejectedValueOnce(new Error("monitors 加载失败"))
+      .mockRejectedValueOnce(new Error("网络错误"))
     render(<AlertsClient />)
     await waitFor(() => {
       expect(screen.getByTestId("events-error")).toBeInTheDocument()

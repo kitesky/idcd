@@ -26,10 +26,11 @@ import { MonitorDetailClient } from "../[id]/monitor-detail-client"
 
 // Build the GET /v1/monitors response from MOCK_MONITORS.
 // Maps frontend camelCase to backend snake_case so fromApi() can normalise them.
+// Uses `items` key to match the server-side pagination shape expected by monitors-client.tsx.
 function mockMonitorsResponse(monitors = MOCK_MONITORS) {
   return {
     data: {
-      monitors: monitors.map((m) => ({
+      items: monitors.map((m) => ({
         id: m.id,
         name: m.name,
         type: m.type,
@@ -52,18 +53,25 @@ function mockMonitorsResponse(monitors = MOCK_MONITORS) {
   }
 }
 
-// Default fetch mock: first call → monitors list; subsequent calls (trend / SSE) → empty buckets
+// Default fetch mock: first call → monitors list; subsequent calls (trend / SSE / alert-events) → empty data
 beforeEach(() => {
   global.fetch = vi.fn().mockImplementation((url: string) => {
     const path = typeof url === "string" ? url : String(url)
     if (path.includes("/v1/monitors") && !path.match(/\/v1\/monitors\//)) {
-      // GET /v1/monitors
+      // GET /v1/monitors (list)
       return Promise.resolve({
         ok: true,
         json: async () => mockMonitorsResponse(),
       } as Response)
     }
-    // trend / check history buckets
+    if (path.includes("/v1/alert-events")) {
+      // GET /v1/alert-events?monitor_id=...&limit=10
+      return Promise.resolve({
+        ok: true,
+        json: async () => ({ data: [] }),
+      } as Response)
+    }
+    // trend / check history buckets (GET /v1/monitors/:id/checks)
     return Promise.resolve({
       ok: true,
       json: async () => ({

@@ -15,7 +15,7 @@ describe("HomePage", () => {
     render(<HomePage />)
 
     expect(
-      screen.getByRole("heading", { name: /多地网络诊断，秒级定位问题/ })
+      screen.getByRole("heading", { name: /网络拨测工具/ })
     ).toBeInTheDocument()
   })
 
@@ -24,7 +24,7 @@ describe("HomePage", () => {
 
     const input = screen.getByRole("textbox")
     expect(input).toBeInTheDocument()
-    expect(input).toHaveAttribute("placeholder", "输入域名或 IP，如 github.com")
+    expect(input).toHaveAttribute("placeholder", "请输入域名或 IP")
   })
 
   it("renders the diagnosis button", () => {
@@ -38,9 +38,9 @@ describe("HomePage", () => {
   it("renders feature cards", () => {
     render(<HomePage />)
 
-    expect(screen.getByText("全球节点覆盖")).toBeInTheDocument()
-    expect(screen.getByText("实时多地并发")).toBeInTheDocument()
-    expect(screen.getByText("SSL/安全检测")).toBeInTheDocument()
+    expect(screen.getByText("网络质量监控")).toBeInTheDocument()
+    expect(screen.getByText("DNS 监测")).toBeInTheDocument()
+    expect(screen.getByText("API 监测")).toBeInTheDocument()
   })
 
   it("renders tools section", () => {

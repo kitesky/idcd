@@ -12,7 +12,7 @@ describe("Nav", () => {
 
     const logo = screen.getByText("idcd")
     expect(logo).toBeInTheDocument()
-    expect(logo).toHaveClass("font-mono", "font-bold", "text-primary")
+    expect(logo).toHaveClass("font-mono", "font-bold", "text-foreground")
   })
 
   it("renders main navigation links", () => {

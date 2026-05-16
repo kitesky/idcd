@@ -268,7 +268,8 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
       `/v1/alert-events?monitor_id=${id}&limit=10`
     )
       .then((json) => {
-        setAlertEvents(json?.data ?? [])
+        const events = json?.data
+        setAlertEvents(Array.isArray(events) ? events : [])
       })
       .catch(() => {
         setAlertEvents([])

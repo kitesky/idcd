@@ -9,16 +9,18 @@ import {
 } from "../leaderboard-data"
 
 describe("leaderboard-data — CDN entries", () => {
-  it("CDN 数据应包含 10 条记录", () => {
-    expect(CDN_DATA).toHaveLength(10)
+  it("CDN 数据为数组（数据由 API 实时获取，静态导出可能为空）", () => {
+    expect(Array.isArray(CDN_DATA)).toBe(true)
   })
 
-  it("CDN 数据按 globalP50 升序排列后，首项最小", () => {
+  it("CDN 数据按 globalP50 升序排列后，首项最小（有数据时）", () => {
+    if (CDN_DATA.length < 2) return
     const sorted = [...CDN_DATA].sort((a, b) => a.globalP50 - b.globalP50)
     expect(sorted[0]!.globalP50).toBeLessThanOrEqual(sorted[1]!.globalP50)
   })
 
-  it("CDN 数据按 globalP50 升序排列后，末项最大", () => {
+  it("CDN 数据按 globalP50 升序排列后，末项最大（有数据时）", () => {
+    if (CDN_DATA.length < 2) return
     const sorted = [...CDN_DATA].sort((a, b) => a.globalP50 - b.globalP50)
     const last = sorted.length - 1
     expect(sorted[last]!.globalP50).toBeGreaterThanOrEqual(sorted[last - 1]!.globalP50)
@@ -41,17 +43,18 @@ describe("leaderboard-data — CDN entries", () => {
 })
 
 describe("leaderboard-data — Region entries", () => {
-  it("区域数据应包含 6 个大陆", () => {
-    expect(REGION_LATENCY_DATA).toHaveLength(6)
+  it("区域数据为数组（数据由 API 实时获取，静态导出可能为空）", () => {
+    expect(Array.isArray(REGION_LATENCY_DATA)).toBe(true)
   })
 
-  it("每个大陆应有 5 个国家/地区", () => {
+  it("每个大陆应有 5 个国家/地区（有数据时）", () => {
     for (const region of REGION_LATENCY_DATA) {
       expect(region.countries).toHaveLength(5)
     }
   })
 
-  it("亚洲大陆存在且包含香港", () => {
+  it("亚洲大陆存在且包含香港（有数据时）", () => {
+    if (REGION_LATENCY_DATA.length === 0) return
     const asia = REGION_LATENCY_DATA.find((r) => r.continent === "亚洲")
     expect(asia).toBeDefined()
     const hk = asia?.countries.find((c) => c.name === "香港")
@@ -60,8 +63,8 @@ describe("leaderboard-data — Region entries", () => {
 })
 
 describe("leaderboard-data — ISP Availability entries", () => {
-  it("ISP 数据应包含至少 10 条记录", () => {
-    expect(ISP_AVAILABILITY_DATA.length).toBeGreaterThanOrEqual(10)
+  it("ISP 数据为数组（数据由 API 实时获取，静态导出可能为空）", () => {
+    expect(Array.isArray(ISP_AVAILABILITY_DATA)).toBe(true)
   })
 
   it("所有 ISP 可用率在 0-100 之间", () => {

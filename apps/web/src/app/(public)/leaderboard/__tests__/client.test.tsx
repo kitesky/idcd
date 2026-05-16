@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from "vitest"
-import { render, screen, fireEvent, within } from "@testing-library/react"
+import { describe, it, expect, vi, beforeEach } from "vitest"
+import { render, screen, fireEvent, within, waitFor } from "@testing-library/react"
 import "@testing-library/jest-dom"
 
 // Radix UI Tabs uses ResizeObserver — polyfill for jsdom
@@ -9,8 +9,33 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
   disconnect: vi.fn(),
 }))
 
+// Mock apiRequest so CDN data loads synchronously in tests
+vi.mock("@/lib/api", () => ({
+  apiRequest: vi.fn(),
+}))
+
+import { apiRequest } from "@/lib/api"
 import { LeaderboardClient } from "../leaderboard-client"
 import { CDN_DATA, REGION_LATENCY_DATA, ISP_AVAILABILITY_DATA } from "../leaderboard-data"
+
+const MOCK_CDN_DATA = [
+  { rank: 1, name: "Cloudflare CDN", shortName: "CF", globalP50: 12, chinaP50: 18, overseasP50: 10, trend: [12, 13, 11, 12, 14, 11, 12], change: -1 },
+  { rank: 2, name: "AWS CloudFront", shortName: "CF", globalP50: 18, chinaP50: 25, overseasP50: 15, trend: [18, 19, 17, 18, 20, 18, 18], change: 0 },
+  { rank: 3, name: "Akamai CDN", shortName: "AK", globalP50: 22, chinaP50: 30, overseasP50: 19, trend: [22, 21, 23, 22, 24, 22, 22], change: 1 },
+  { rank: 4, name: "腾讯云 CDN", shortName: "TX", globalP50: 28, chinaP50: 20, overseasP50: 35, trend: [28, 27, 29, 28, 30, 27, 28], change: -2 },
+  { rank: 5, name: "阿里云 CDN", shortName: "ALI", globalP50: 32, chinaP50: 22, overseasP50: 42, trend: [32, 31, 33, 32, 34, 31, 32], change: 0 },
+  { rank: 6, name: "百度云加速", shortName: "BD", globalP50: 38, chinaP50: 28, overseasP50: 48, trend: [38, 37, 39, 38, 40, 37, 38], change: 1 },
+  { rank: 7, name: "网宿科技 CDN", shortName: "WS", globalP50: 45, chinaP50: 35, overseasP50: 55, trend: [45, 44, 46, 45, 47, 44, 45], change: 0 },
+  { rank: 8, name: "又拍云 CDN", shortName: "UP", globalP50: 52, chinaP50: 40, overseasP50: 64, trend: [52, 51, 53, 52, 54, 51, 52], change: -1 },
+  { rank: 9, name: "七牛云 CDN", shortName: "QN", globalP50: 58, chinaP50: 45, overseasP50: 71, trend: [58, 57, 59, 58, 60, 57, 58], change: 2 },
+  { rank: 10, name: "Fastly CDN", shortName: "FL", globalP50: 65, chinaP50: 90, overseasP50: 55, trend: [65, 64, 66, 65, 67, 64, 65], change: 0 },
+]
+
+const mockApiRequest = vi.mocked(apiRequest)
+
+beforeEach(() => {
+  mockApiRequest.mockResolvedValue({ data: MOCK_CDN_DATA, month: "2026-05", sample_count: 12000 })
+})
 
 describe("LeaderboardClient — Tab 触发器渲染", () => {
   it("应该渲染三个 Tab 触发器", () => {
@@ -57,8 +82,12 @@ describe("LeaderboardClient — 语言切换", () => {
     expect(screen.getByRole("tab", { name: /Availability Stats/ })).toBeInTheDocument()
   })
 
-  it("切换为英文后列头变为英文", () => {
+  it("切换为英文后列头变为英文", async () => {
     render(<LeaderboardClient />)
+    // Wait for data to load so the table (with column headers) is rendered
+    await waitFor(() => {
+      expect(screen.getByText("Cloudflare CDN")).toBeInTheDocument()
+    })
     fireEvent.click(screen.getByRole("button", { name: /Switch to English/ }))
     expect(screen.getByText("Provider")).toBeInTheDocument()
     expect(screen.getByText("Global P50")).toBeInTheDocument()
@@ -79,37 +108,49 @@ describe("LeaderboardClient — 语言切换", () => {
 })
 
 describe("LeaderboardClient — CDN Tab 内容", () => {
-  it("默认 Tab 显示 Cloudflare CDN 行", () => {
+  it("默认 Tab 显示 Cloudflare CDN 行", async () => {
     render(<LeaderboardClient />)
-    expect(screen.getByText("Cloudflare CDN")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("Cloudflare CDN")).toBeInTheDocument()
+    })
   })
 
-  it("CDN 表格应至少渲染 10 个排名单元格", () => {
+  it("CDN 表格应至少渲染 10 个排名单元格", async () => {
     render(<LeaderboardClient />)
-    const rankCells = screen.getAllByText(/^#\d+$/)
-    expect(rankCells.length).toBeGreaterThanOrEqual(10)
+    await waitFor(() => {
+      const rankCells = screen.getAllByText(/^#\d+$/)
+      expect(rankCells.length).toBeGreaterThanOrEqual(10)
+    })
   })
 
-  it("CDN 表格包含列头：CDN 名称", () => {
+  it("CDN 表格包含列头：CDN 名称", async () => {
     render(<LeaderboardClient />)
-    expect(screen.getByText("CDN 名称")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("CDN 名称")).toBeInTheDocument()
+    })
   })
 
-  it("CDN 表格包含列头：全球 P50", () => {
+  it("CDN 表格包含列头：全球 P50", async () => {
     render(<LeaderboardClient />)
-    expect(screen.getByText("全球 P50")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("全球 P50")).toBeInTheDocument()
+    })
   })
 
-  it("腾讯云 CDN 在 CDN 列表中", () => {
+  it("腾讯云 CDN 在 CDN 列表中", async () => {
     render(<LeaderboardClient />)
-    expect(screen.getByText("腾讯云 CDN")).toBeInTheDocument()
+    await waitFor(() => {
+      expect(screen.getByText("腾讯云 CDN")).toBeInTheDocument()
+    })
   })
 
-  it("所有 CDN 名称均渲染在页面中", () => {
+  it("所有 CDN 名称均渲染在页面中", async () => {
     render(<LeaderboardClient />)
-    for (const cdn of CDN_DATA) {
-      expect(screen.getByText(cdn.name)).toBeInTheDocument()
-    }
+    await waitFor(() => {
+      for (const cdn of MOCK_CDN_DATA) {
+        expect(screen.getByText(cdn.name)).toBeInTheDocument()
+      }
+    })
   })
 })
 
@@ -148,11 +189,13 @@ describe("LeaderboardClient — Tab 面板结构（无需交互）", () => {
     expect(panel).toBeTruthy()
   })
 
-  it("所有 CDN 名称存在于默认激活面板的 DOM 中", () => {
+  it("所有 CDN 名称存在于默认激活面板的 DOM 中", async () => {
     const { container } = render(<LeaderboardClient />)
-    for (const cdn of CDN_DATA) {
-      expect(container.textContent).toContain(cdn.name)
-    }
+    await waitFor(() => {
+      for (const cdn of MOCK_CDN_DATA) {
+        expect(container.textContent).toContain(cdn.name)
+      }
+    })
   })
 
   it("三个 tabpanel 对应 aria-controls 均可在 DOM 中找到", () => {

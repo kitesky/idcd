@@ -38,6 +38,7 @@ const ROUTE_TITLES: Record<string, string> = {
   "/app/settings/api-keys":  "API 密钥",
   "/app/settings/tokens":    "访问令牌",
   "/app/settings/team":      "团队管理",
+  "/app/nodes":              "节点管理",
 }
 
 // ── Client 子组件（持有 state，处理 auth guard）────────────────
@@ -94,7 +95,10 @@ function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   // 当前页面标题（用于面包屑）
-  const pageTitle = ROUTE_TITLES[pathname] ?? "后台管理"
+  const pageTitle =
+    ROUTE_TITLES[pathname] ??
+    Object.entries(ROUTE_TITLES).find(([k]) => pathname.startsWith(k + "/"))?.[1] ??
+    "后台管理"
   const isSettings = pathname.startsWith("/app/settings")
 
   return (

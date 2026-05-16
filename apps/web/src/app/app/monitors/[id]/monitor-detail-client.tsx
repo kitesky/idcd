@@ -5,6 +5,7 @@ import Link from "next/link"
 import { useRouter } from "next/navigation"
 import {
   ArrowLeft,
+  Bell,
   Edit,
   Pause,
   Play,
@@ -339,6 +340,12 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
         </div>
         <div className="flex items-center gap-2">
           <EditMonitorDialog monitor={currentMonitor} onUpdated={setCurrentMonitor} />
+          <Button variant="outline" size="sm" asChild>
+            <Link href={`/app/alerts?tab=policies&monitor=${encodeURIComponent(currentMonitor.name)}`}>
+              <Bell className="mr-2 h-4 w-4" />
+              告警策略
+            </Link>
+          </Button>
           <Button variant="outline" size="sm" onClick={togglePause}>
             {currentMonitor.status === "PAUSED" ? (
               <>
@@ -617,8 +624,11 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
 
       {/* 告警历史 */}
       <Card data-testid="alert-history-section">
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between">
           <CardTitle className="text-base">告警历史</CardTitle>
+          <Link href="/app/alerts?tab=events" className="text-xs text-muted-foreground hover:text-foreground">
+            查看全部 →
+          </Link>
         </CardHeader>
         <CardContent className="p-0">
           <Table>

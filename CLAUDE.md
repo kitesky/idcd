@@ -113,6 +113,17 @@
 
 ---
 
+## 并发 Agent 派发规则
+
+使用 `Agent(isolation: "worktree", run_in_background: true)` 并发多个 agent 时，必须遵守：
+
+1. **文件集合互不相交**：规划任务时列出每个 agent 修改的文件，确认零重叠再派发
+2. **不写绝对路径**：prompt 里写 `文件: apps/web/...`（相对路径），而非 `/Volumes/Workspace/code/idcd/...`，否则 isolation 的 worktree 隔离失效，agent 直接写主 repo
+3. **同一文件只能一个 agent 改**：需要多处修改同一文件时，合并成单个 agent 或顺序执行
+4. **sidebar-data.ts 是反例**：批次五两个 agent 都改了它，靠运气（后者先读再追加）没丢数据，但不可依赖
+
+---
+
 ## Skill routing
 
 When the user's request matches an available skill, invoke it via the Skill tool. When in doubt, invoke the skill.

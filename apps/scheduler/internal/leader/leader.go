@@ -5,6 +5,7 @@ package leader
 import (
 	"context"
 	"fmt"
+	"sync/atomic"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -17,7 +18,11 @@ type Leader struct {
 	key string
 	ttl time.Duration
 
-	isLeader bool
+	// isLeader is read by IsLeader() from any goroutine (test poll, scheduler
+	// renewal loop, external observers); written by Acquire/Renew/Release on
+	// the scheduler goroutine. atomic.Bool keeps reads/writes race-free
+	// without extra mutex hops on the hot read path.
+	isLeader atomic.Bool
 	nodeID   string // unique identifier for this scheduler instance
 }
 
@@ -40,7 +45,7 @@ func (l *Leader) Acquire(ctx context.Context) (bool, error) {
 	if err != nil {
 		return false, fmt.Errorf("leader.Acquire: %w", err)
 	}
-	l.isLeader = ok
+	l.isLeader.Store(ok)
 	return ok, nil
 }
 
@@ -48,7 +53,7 @@ func (l *Leader) Acquire(ctx context.Context) (bool, error) {
 // Should be called periodically (every TTL/2) by the current leader.
 // Returns error if we're not the leader or renewal failed.
 func (l *Leader) Renew(ctx context.Context) error {
-	if !l.isLeader {
+	if !l.isLeader.Load() {
 		return fmt.Errorf("leader.Renew: not the leader")
 	}
 
@@ -69,7 +74,7 @@ func (l *Leader) Renew(ctx context.Context) error {
 
 	if result == 0 {
 		// We lost leadership (someone else took the lock)
-		l.isLeader = false
+		l.isLeader.Store(false)
 		return fmt.Errorf("leader.Renew: lost leadership")
 	}
 
@@ -79,7 +84,7 @@ func (l *Leader) Renew(ctx context.Context) error {
 // Release releases the leader lock.
 // Only releases if this instance is the current owner.
 func (l *Leader) Release(ctx context.Context) error {
-	if !l.isLeader {
+	if !l.isLeader.Load() {
 		return nil // not leader, nothing to release
 	}
 
@@ -97,7 +102,7 @@ func (l *Leader) Release(ctx context.Context) error {
 		return fmt.Errorf("leader.Release: %w", err)
 	}
 
-	l.isLeader = false
+	l.isLeader.Store(false)
 
 	if result == 0 {
 		return fmt.Errorf("leader.Release: not the owner")
@@ -108,5 +113,5 @@ func (l *Leader) Release(ctx context.Context) error {
 
 // IsLeader reports whether this instance is currently the leader.
 func (l *Leader) IsLeader() bool {
-	return l.isLeader
+	return l.isLeader.Load()
 }

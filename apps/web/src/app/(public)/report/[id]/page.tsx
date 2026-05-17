@@ -7,17 +7,7 @@ type Props = {
   params: Promise<{ id: string }>
 }
 
-/**
- * Legacy share path. Kept alive for backward compat — share URLs from
- * before May 2026 land here. New share URLs all use /r/[id], which handles
- * both combo and single-tool reports.
- *
- * For combo reports we render in place (no redirect — keeps any external
- * links pointing here intact). For single-tool reports (which technically
- * shouldn't reach this route via current code paths but might in the
- * future) we redirect to the canonical /r/[id].
- */
-
+// Legacy share path. Combo reports render in place to keep existing links live; single-type reports redirect to canonical /r/[id].
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { id } = await params
   const report = await getReport(id)

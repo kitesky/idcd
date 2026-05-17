@@ -4,7 +4,7 @@ import { useState } from "react"
 import { Share2, Check, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { saveProbeReport, shareUrlFor } from "@/lib/probe-share"
-import type { SingleProbeReport, AnyReport } from "@/lib/diagnose-store"
+import type { SingleProbeReport } from "@/lib/diagnose-store"
 import type { ProbeTaskResult } from "@/lib/api"
 
 interface ShareResultButtonProps {
@@ -14,14 +14,7 @@ interface ShareResultButtonProps {
   taskResult: ProbeTaskResult | null
 }
 
-/**
- * "Share Result" button that lives next to a finished probe-task result.
- *
- * On first click: POST the task snapshot to /v1/diagnose/reports (Redis 7d
- * TTL) and copy /r/{id} to clipboard. Subsequent clicks just re-copy the
- * URL, no new save. The button is disabled until the task reaches a
- * terminal state — sharing an in-flight task would leak a half-baked URL.
- */
+// Button is gated on a terminal task status — sharing an in-flight task would leak a half-baked URL.
 export default function ShareResultButton({
   tool,
   target,
@@ -44,7 +37,7 @@ export default function ShareResultButton({
     let id = savedId
     if (!id) {
       setBusy(true)
-      const payload: Omit<AnyReport, "id" | "createdAt"> = {
+      id = await saveProbeReport({
         type: "single",
         tool,
         target,
@@ -52,8 +45,7 @@ export default function ShareResultButton({
         taskId: taskResult!.task_id,
         status: taskResult!.status,
         result: taskResult!.result,
-      } as Omit<SingleProbeReport, "id" | "createdAt">
-      id = await saveProbeReport(payload as Omit<SingleProbeReport, "id" | "createdAt">)
+      })
       setBusy(false)
       if (!id) {
         setError("保存失败，请重试")

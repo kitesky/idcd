@@ -11,11 +11,7 @@ interface ProbeResultsProps {
   taskId?: string | null       // new polling mode
   loading?: boolean
   error?: string
-  /**
-   * When provided AND a task result is available, render a "Share Result"
-   * button in the card header. Saves a snapshot to /v1/diagnose/reports and
-   * yields a public /r/{id} link.
-   */
+  // When set, render a "Share Result" button once the task reaches a terminal state.
   shareContext?: {
     tool: SingleProbeReport["tool"]
     target: string

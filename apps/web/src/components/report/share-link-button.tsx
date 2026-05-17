@@ -4,11 +4,6 @@ import { useState } from "react"
 import { Share2, Check } from "lucide-react"
 import { Button } from "@/components/ui"
 
-/**
- * Copy-current-URL button used on the public report pages (/r/[id] and the
- * legacy /report/[id]). Lives in its own client component because the
- * surrounding page is a server component.
- */
 export default function ShareLinkButton() {
   const [copied, setCopied] = useState(false)
 
@@ -18,7 +13,7 @@ export default function ShareLinkButton() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // fallback: ignored — modern browsers all support clipboard from a click handler
+      // clipboard blocked (insecure context / permission denied) — silently no-op
     }
   }
 

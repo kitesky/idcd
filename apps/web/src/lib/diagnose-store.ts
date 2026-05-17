@@ -9,11 +9,7 @@ export interface CheckResult {
   error?: string
 }
 
-/**
- * Comprehensive 7-in-1 diagnose report (from `/tools/diagnose`). The `type`
- * field is optional for backward compat with reports stored before the share
- * feature distinguished single-tool reports.
- */
+// `type` defaults to combo for pre-share-feature reports without the field.
 export interface DiagnoseReport {
   id: string
   type?: "combo"
@@ -24,7 +20,6 @@ export interface DiagnoseReport {
   errorCount: number
 }
 
-/** Single-tool probe result snapshot (from ping/http/dns/traceroute share). */
 export interface SingleProbeReport {
   id: string
   type: "single"
@@ -80,7 +75,6 @@ export async function getReport(id: string): Promise<AnyReport | null> {
   }
 }
 
-/** Type guard. Combo is the default when `type` is missing (legacy data). */
 export function isSingleReport(r: AnyReport): r is SingleProbeReport {
   return r.type === "single"
 }

@@ -20,11 +20,7 @@ const TOOL_BACK_HREF: Record<SingleProbeReport["tool"], string> = {
   traceroute: "/tools/traceroute",
 }
 
-/**
- * Re-shape a saved single-tool snapshot back into a ProbeResult so the
- * existing <ProbeResults> table (which already knows how to render a result
- * row) can display it without polling.
- */
+// Reshape the saved snapshot into a ProbeResult so <ProbeResults> can render it without polling.
 function toLegacyProbeResult(report: SingleProbeReport): ProbeResult {
   const r = report.result
   if (!r) {

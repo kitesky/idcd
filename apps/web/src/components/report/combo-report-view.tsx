@@ -4,11 +4,6 @@ import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui
 import ShareLinkButton from "./share-link-button"
 import type { DiagnoseReport, CheckResult } from "@/lib/diagnose-store"
 
-/**
- * Renders the 7-in-1 comprehensive diagnose report. Used by both
- * `/report/[id]` (legacy) and `/r/[id]` (new canonical) so the two routes
- * stay in lock-step.
- */
 export default function ComboReportView({ report }: { report: DiagnoseReport }) {
   return (
     <div className="container mx-auto px-4 py-8 max-w-4xl">

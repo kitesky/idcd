@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +20,7 @@ import (
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
 	"github.com/kite365/idcd/apps/scheduler/internal/scheduler"
 	"github.com/kite365/idcd/lib/db"
+	"github.com/kite365/idcd/lib/shared/logger"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
@@ -32,7 +33,10 @@ const defaultMetricsPort = 9093
 
 func main() {
 	if err := run(); err != nil {
-		log.Fatalf("Fatal error: %v", err)
+		// Logger may not be initialised yet if config loading failed, so fall
+		// back to the slog default which writes to stderr.
+		slog.Default().Error("fatal error", "err", err)
+		os.Exit(1)
 	}
 }
 
@@ -44,9 +48,19 @@ func run() error {
 		return fmt.Errorf("load config: %w", err)
 	}
 
-	log.Printf("[main] Config loaded from %s", cfgPath)
-	log.Printf("[main] Redis: %s", cfg.Redis.Addr)
-	log.Printf("[main] Leader key: %s, TTL: %v", cfg.Leader.Key, cfg.Leader.TTL)
+	// Build the service logger. The scheduler config has no Server.Env field
+	// (unlike apps/api); honour IDCD_ENV so dev gets text + DEBUG and prod
+	// gets JSON + INFO. Tag every line with component=scheduler so Loki can
+	// filter by service without us having to repeat "[main]" / "[scheduler]"
+	// in every message.
+	baseLogger := logger.New(os.Getenv("IDCD_ENV"))
+	mainLog := baseLogger.With("component", "scheduler", "subsystem", "main")
+	telLog := baseLogger.With("component", "scheduler", "subsystem", "telemetry")
+	metricsLog := baseLogger.With("component", "scheduler", "subsystem", "metrics")
+
+	mainLog.Info("config loaded", "path", cfgPath)
+	mainLog.Info("redis configured", "addr", cfg.Redis.Addr)
+	mainLog.Info("leader configured", "key", cfg.Leader.Key, "ttl", cfg.Leader.TTL)
 
 	// Initialize OpenTelemetry
 	telCfg := telemetry.Config{
@@ -58,7 +72,7 @@ func run() error {
 	}
 	shutdownTelemetry, err := telemetry.Init(telCfg)
 	if err != nil {
-		log.Printf("[telemetry] failed to init: %v", err)
+		telLog.Error("failed to init", "err", err)
 		os.Exit(1)
 	}
 	defer func() {
@@ -84,7 +98,7 @@ func run() error {
 	if err := rdb.Ping(ctx).Err(); err != nil {
 		return fmt.Errorf("redis ping: %w", err)
 	}
-	log.Println("[main] Redis connection OK")
+	mainLog.Info("redis connection ok")
 
 	// Create DB pool
 	pool, err := db.NewPool(ctx, db.Config{
@@ -97,7 +111,7 @@ func run() error {
 		return fmt.Errorf("create db pool: %w", err)
 	}
 	defer pool.Close()
-	log.Println("[main] Database connection OK")
+	mainLog.Info("database connection ok")
 
 	// Create components
 	nodeID := fmt.Sprintf("scheduler-%s-%d", os.Getenv("HOSTNAME"), os.Getpid())
@@ -134,12 +148,13 @@ func run() error {
 		Pool:         pool,
 		MonitorStore: monitorStore,
 		NodeID:       nodeID,
+		Logger:       baseLogger.With("component", "scheduler", "subsystem", "loop"),
 	})
 
 	// Start Prometheus /metrics listener. Runs in a goroutine so it doesn't
 	// block the scheduler main loop; failures are logged but never fatal —
 	// the scheduler keeps running even if observability scraping is broken.
-	startMetricsServer(metricsPort(cfg))
+	startMetricsServer(metricsPort(cfg), metricsLog)
 
 	// Setup signal handling
 	ctx, cancel := context.WithCancel(context.Background())
@@ -151,14 +166,14 @@ func run() error {
 	// Start scheduler in goroutine
 	errChan := make(chan error, 1)
 	go func() {
-		log.Println("[main] Starting scheduler...")
+		mainLog.Info("starting scheduler")
 		errChan <- sched.Run(ctx)
 	}()
 
 	// Wait for signal or error
 	select {
 	case sig := <-sigChan:
-		log.Printf("[main] Received signal %v, shutting down...", sig)
+		mainLog.Info("received signal, shutting down", "signal", sig.String())
 		cancel()
 		// Wait for scheduler to stop
 		<-errChan
@@ -168,7 +183,7 @@ func run() error {
 		}
 	}
 
-	log.Println("[main] Scheduler stopped gracefully")
+	mainLog.Info("scheduler stopped gracefully")
 	return nil
 }
 
@@ -187,7 +202,7 @@ func metricsPort(cfg *config.Config) int {
 // Prometheus registry (where promauto-registered metrics in
 // internal/scheduler/metrics.go land). ErrServerClosed is treated as a clean
 // shutdown signal; any other failure is logged but never panics the scheduler.
-func startMetricsServer(port int) {
+func startMetricsServer(port int, log *slog.Logger) {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	addr := ":" + strconv.Itoa(port)
@@ -197,9 +212,9 @@ func startMetricsServer(port int) {
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 	go func() {
-		log.Printf("[metrics] Prometheus /metrics listener started on %s", addr)
+		log.Info("prometheus /metrics listener started", "addr", addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			log.Printf("[metrics] listener failed on %s: %v", addr, err)
+			log.Error("listener failed", "addr", addr, "err", err)
 		}
 	}()
 }

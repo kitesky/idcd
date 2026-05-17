@@ -11,6 +11,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -959,6 +960,75 @@ func TestRecordFailure_UpdaterErrorIsLoggedNotMasked(t *testing.T) {
 	// The original failure reason must surface, not the updater error.
 	if err == nil || !strings.Contains(err.Error(), "rejected") {
 		t.Fatalf("err=%v want original 'rejected' reason", err)
+	}
+}
+
+// TestD6_ConfigDoesNotCarryKMSDependency is a regression test for the
+// D6 independence contract (DECISIONS.md §M):
+//
+//	"Self-Verify Worker 独立 / 独立 KMS 客户端 / 仅调
+//	 attest.idcd.com/verify 公开接口"
+//
+// The Worker MUST NOT take a sign.Signer / sign.Verifier / kms client
+// in its Config. We assert that by reflection on the Config field set.
+// If a future change adds a KMS dependency to share keypath state with
+// the Generator, this test fails and forces a conscious D6 review.
+//
+// We match on the package path + type-name fragments rather than
+// importing kms / sign here so the test does not itself pull in the
+// dependencies it is forbidding.
+func TestD6_ConfigDoesNotCarryKMSDependency(t *testing.T) {
+	cfg := Config{}
+	rt := reflect.TypeOf(cfg)
+	for i := 0; i < rt.NumField(); i++ {
+		f := rt.Field(i)
+		typeName := f.Type.String()
+		// Forbid any field whose static type comes from the sign package
+		// hierarchy or names a KMS client interface.
+		if strings.Contains(typeName, "/sign") ||
+			strings.Contains(typeName, "kms.") ||
+			strings.Contains(strings.ToLower(typeName), "signer") ||
+			strings.Contains(strings.ToLower(typeName), "verifier") {
+			t.Fatalf("D6 violation: selfverify.Config.%s has type %q which looks like a KMS / signing dependency; the Self-Verify Worker MUST go through /verify only",
+				f.Name, typeName)
+		}
+	}
+}
+
+// TestD6_HTTPClientNotSharedAtBoundary documents the cmd/verifier
+// wiring contract: the worker is constructed with its OWN *http.Client
+// instance, separate from any client the Generator would build. Because
+// the Worker is wired in cmd/verifier (not via this package's
+// constructor), the strongest assertion we can make here is that
+// passing two distinct *http.Client instances to two different Workers
+// results in independent transports — i.e. New() does not silently
+// dedupe / share state. This guards against a future refactor that
+// memoises an http.Client at package level.
+func TestD6_HTTPClientNotShared(t *testing.T) {
+	c1 := &http.Client{Timeout: 1 * time.Second}
+	c2 := &http.Client{Timeout: 2 * time.Second}
+
+	mkCfg := func(c *http.Client) Config {
+		return Config{
+			Lister:             &fakeLister{},
+			Updater:            &fakeUpdater{},
+			AttestationRecords: &fakeRecords{},
+			Fetcher:            &fakeFetcher{},
+			VerifyEndpoint:     "http://example.invalid",
+			HTTPClient:         c,
+		}
+	}
+	w1 := New(mkCfg(c1))
+	w2 := New(mkCfg(c2))
+
+	if w1.cfg.HTTPClient != c1 {
+		t.Fatalf("worker 1 did not retain its injected http.Client")
+	}
+	if w2.cfg.HTTPClient != c2 {
+		t.Fatalf("worker 2 did not retain its injected http.Client")
+	}
+	if w1.cfg.HTTPClient == w2.cfg.HTTPClient {
+		t.Fatalf("D6 violation: two workers ended up sharing the same http.Client; New() must take whatever the caller supplied")
 	}
 }
 

@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -17,10 +18,25 @@ import (
 )
 
 // Worker manages the asynq server and task processing.
+//
+// S2 W8 added an optional Redis Stream consumer (CertConsumer) that runs
+// alongside the asynq server in its own goroutine.  Stop() cancels its
+// dedicated context and waits for the goroutine to return before reporting
+// "fully stopped" upstream.
 type Worker struct {
 	server   *asynq.Server
 	handlers *Handlers
 	logger   *slog.Logger
+
+	// Optional cert:notifications consumer.  Nil when CertStreamEnabled was
+	// false at construction time or when the wiring layer chose not to attach
+	// one (e.g. a DB-less deployment).
+	certConsumer *CertConsumer
+
+	// Cancel + wg are populated when Start spawns the cert consumer goroutine
+	// so Stop can deterministically wait.
+	certCancel context.CancelFunc
+	certWG     sync.WaitGroup
 }
 
 // retryDelayFunc is the asynq.Config.RetryDelayFunc implementation used by
@@ -113,7 +129,25 @@ func NewWorker(cfg *config.NotifierConfig, handlers *Handlers, logger *slog.Logg
 	}, nil
 }
 
+// WithCertConsumer attaches a cert:notifications Stream consumer.  Pass nil
+// to disable (no-op).  Must be called before Start; calling after Start has
+// no effect on the running loop (the existing consumer keeps going).
+//
+// The wiring contract: main.go constructs a CertConsumer once it has the
+// Redis client / template renderer / EmailLookup ready, then hands it to the
+// Worker so Stop() can fence the consumer's lifetime alongside asynq's own.
+func (w *Worker) WithCertConsumer(c *CertConsumer) *Worker {
+	w.certConsumer = c
+	return w
+}
+
 // Start starts the worker and begins processing tasks.
+//
+// When a CertConsumer has been attached via WithCertConsumer, Start also
+// spawns its Run loop as a managed goroutine.  The context passed to Start
+// drives both: callers cancelling it also halts the consumer.  In addition,
+// Stop() cancels the consumer's dedicated context so callers can use a
+// fresh context for graceful shutdown (mirroring asynq.Server.Shutdown).
 func (w *Worker) Start(ctx context.Context) error {
 	w.logger.Info("启动邮件通知 Worker")
 
@@ -125,15 +159,60 @@ func (w *Worker) Start(ctx context.Context) error {
 		return fmt.Errorf("启动 asynq server 失败: %w", err)
 	}
 
+	// Spawn the cert:notifications Stream consumer (if wired). The consumer
+	// owns its own context so Stop() can fence its lifetime independently of
+	// the asynq server's shutdown sequence.
+	if w.certConsumer != nil {
+		consumerCtx, cancel := context.WithCancel(ctx)
+		w.certCancel = cancel
+		w.certWG.Add(1)
+		go func() {
+			defer w.certWG.Done()
+			if err := w.certConsumer.Run(consumerCtx); err != nil {
+				w.logger.Error("cert 通知消费者退出",
+					"stream", w.certConsumer.Stream(), "err", err)
+			}
+		}()
+		w.logger.Info("cert 通知消费者已启动",
+			"stream", w.certConsumer.Stream(),
+			"consumer", w.certConsumer.ConsumerName())
+	}
+
 	w.logger.Info("邮件通知 Worker 已启动")
 	return nil
 }
 
 // Stop gracefully stops the worker.
+//
+// Order matters: we cancel the cert consumer first (so it stops pulling new
+// stream entries), wait for its goroutine to drain, then shut down asynq.
+// If asynq's shutdown exceeds 30s we still report the consumer as cleanly
+// stopped because its drain completed earlier.
 func (w *Worker) Stop(ctx context.Context) error {
 	w.logger.Info("停止邮件通知 Worker")
 
-	// Create a timeout context for graceful shutdown
+	// Tell the cert consumer to stop and wait for the goroutine to finish.
+	if w.certCancel != nil {
+		w.certCancel()
+	}
+	// Wait with a generous bound — the consumer's BLOCK timeout is small so
+	// in practice this returns in <500ms.  We still bound the wait with the
+	// caller's context to avoid hanging shutdown on a wedged Redis call.
+	waitDone := make(chan struct{})
+	go func() {
+		w.certWG.Wait()
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+		if w.certConsumer != nil {
+			w.logger.Info("cert 通知消费者已停止")
+		}
+	case <-ctx.Done():
+		w.logger.Warn("cert 通知消费者停止超时，将强制关闭后续步骤")
+	}
+
+	// Create a timeout context for asynq's graceful shutdown.
 	shutdownCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
 

@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en-US">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your SSL certificate is ready</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #f4f4f4; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Helvetica Neue", Arial, sans-serif; color: #18181b; }
+        .container { width: 100%; max-width: 600px; margin: 0 auto; background-color: #ffffff; }
+        .header { background-color: #16a34a; padding: 20px; text-align: center; }
+        .logo { color: #ffffff; font-size: 24px; font-weight: bold; }
+        .content { padding: 40px 24px; }
+        .badge { display: inline-block; background-color: #dcfce7; color: #166534; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: bold; }
+        table.meta { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        table.meta th, table.meta td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; font-size: 14px; }
+        table.meta th { color: #6b7280; font-weight: normal; width: 140px; }
+        table.meta td { color: #18181b; word-break: break-all; }
+        .cta-button { display: inline-block; background-color: #16a34a; color: #ffffff; text-decoration: none; padding: 12px 24px; border-radius: 6px; font-weight: bold; margin: 20px 0; }
+        .footer { background-color: #f8fafc; padding: 20px; text-align: center; color: #6b7280; font-size: 12px; border-top: 1px solid #e5e7eb; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header"><div class="logo">idcd</div></div>
+        <div class="content">
+            <span class="badge">Issued</span>
+            <h1 style="color: #18181b; margin: 16px 0 8px 0;">Your SSL certificate is ready</h1>
+            <p style="color: #4b5563; line-height: 1.6;">
+                Your SSL/TLS certificate for <strong>{{.Domain}}</strong> has been issued. You can download and deploy it from your dashboard.
+            </p>
+            <table class="meta">
+                <tr><th>Primary domain</th><td>{{.Domain}}</td></tr>
+                {{if .SANs}}<tr><th>SAN list</th><td>{{.SANs}}</td></tr>{{end}}
+                {{if .CA}}<tr><th>Issuing CA</th><td>{{.CA}}</td></tr>{{end}}
+                {{if .NotAfter}}<tr><th>Valid until</th><td>{{.NotAfter}}</td></tr>{{end}}
+                {{if .CertID}}<tr><th>Certificate ID</th><td>{{.CertID}}</td></tr>{{end}}
+            </table>
+            <div style="text-align: center;">
+                <a href="{{.DashboardURL}}" class="cta-button">Open dashboard →</a>
+            </div>
+            <p style="color: #6b7280; font-size: 14px; margin-top: 32px;">
+                idcd will remind you 30/14/7/1 days before the certificate expires. You can also enable auto-renewal.
+            </p>
+        </div>
+        <div class="footer">© 2026 idcd.com · Professional network diagnostics</div>
+    </div>
+</body>
+</html>

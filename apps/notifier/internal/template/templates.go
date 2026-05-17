@@ -1,9 +1,9 @@
-// Package template provides locale-aware email templates loaded via
-// go:embed. Each template base name (e.g. "verify_email") has one HTML
-// file per locale ("verify_email.cn.html", "verify_email.en.html"). When a
-// renderer is asked for an unsupported locale, it walks the shared i18n
-// registry fallback chain so adding a new language is a data-only change
-// (drop new {base}.{locale}.html files into this directory).
+// Package template provides locale-aware email templates loaded via Go's
+// embed package. Each template base name (e.g. "verify_email") has one
+// HTML file per locale ("verify_email.cn.html", "verify_email.en.html").
+// When a renderer is asked for an unsupported locale, it walks the shared
+// i18n registry fallback chain so adding a new language is a data-only
+// change (drop new {base}.{locale}.html files into this directory).
 package template
 
 import (

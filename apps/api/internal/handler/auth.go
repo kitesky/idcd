@@ -684,47 +684,9 @@ func (h *AuthHandler) issueOTP(ctx context.Context, userID, otpType string, ttl 
 	return otpID, code, nil
 }
 
-func (h *AuthHandler) verifyOTP(ctx context.Context, userID, otpID, code, otpType string) *apperr.Error {
-	otp, err := h.q.GetUserOTPByIDAndType(ctx, idcdmain.GetUserOTPByIDAndTypeParams{
-		ID:   otpID,
-		Type: otpType,
-	})
-	if err != nil {
-		return apperr.Unauthorized("invalid or expired code")
-	}
-
-	// Verify ownership — otp must belong to the requesting user.
-	if otp.UserID != userID {
-		return apperr.Unauthorized("invalid or expired code")
-	}
-	if otp.UsedAt.Valid {
-		return apperr.Unauthorized("code already used")
-	}
-	if otp.Attempts >= otpMaxAttempts {
-		return apperr.Unauthorized("too many attempts")
-	}
-	if otp.ExpiresAt.Valid && time.Now().After(otp.ExpiresAt.Time) {
-		return apperr.Unauthorized("code expired")
-	}
-
-	if h.hashOTP(code) != otp.CodeHash {
-		_ = h.q.IncrementUserOTPAttempts(ctx, otp.ID)
-		return apperr.Unauthorized("invalid code")
-	}
-
-	_ = h.q.MarkUserOTPUsed(ctx, otp.ID)
-	return nil
-}
-
-// verifyOTPCoded is the errcode-flavoured twin of verifyOTP. Returns
-// (codeName, params) when validation fails, or ("", nil) on success. Handlers
-// translate the errcode through response.ErrorCode so the user sees a
-// localized message instead of the legacy English literal.
-//
-// Kept alongside verifyOTP (rather than replacing it) so callers that still
-// thread apperr.Error through the codebase (e.g. internal helpers) keep
-// compiling; both functions share the same underlying logic, so any future
-// rule change must land in both.
+// verifyOTPCoded validates an OTP and returns (codeName, params) when
+// validation fails, or ("", nil) on success. Handlers translate the
+// errcode through response.ErrorCode so the user sees a localized message.
 func (h *AuthHandler) verifyOTPCoded(ctx context.Context, userID, otpID, code, otpType string) (errcode.Code, map[string]any) {
 	otp, err := h.q.GetUserOTPByIDAndType(ctx, idcdmain.GetUserOTPByIDAndTypeParams{
 		ID:   otpID,

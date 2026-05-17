@@ -114,7 +114,7 @@ interface AddChannelFormProps {
   onCancel: () => void
 }
 
-function AddChannelForm({ onSave, onCancel }: AddChannelFormProps) {
+function AddChannelForm({ onSave, onCancel: _onCancel }: AddChannelFormProps) {
   const t = useTranslations("alerts")
   const [type, setType] = useState<ChannelType>("email")
   const [name, setName] = useState("")
@@ -182,7 +182,7 @@ interface PolicyFormProps {
   onCancel: () => void
 }
 
-function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
+function PolicyForm({ channels, initial, onSave, onCancel: _onCancel }: PolicyFormProps) {
   const t = useTranslations("alerts")
   const tCommon = useTranslations("common")
   const [name, setName] = useState(initial?.name ?? "")
@@ -197,6 +197,7 @@ function PolicyForm({ channels, initial, onSave, onCancel }: PolicyFormProps) {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 重置 loading，与 AddSilenceDialog 同样的 fetch 模式
     setMonitorsLoading(true)
     apiRequest<{ data: { items: MonitorOption[] } }>("/v1/monitors")
       .then((res) => {
@@ -388,6 +389,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
   // Fetch events whenever filters change
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 筛选条件变化时需重置 loading/error，随后异步 fetch
     setLoading(true)
     setError(null)
     const params = new URLSearchParams({ limit: "50" })
@@ -398,6 +400,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
       .catch((err) => { if (!cancelled) setError(err instanceof Error ? err.message : t("events.loadFailed")) })
       .finally(() => { if (!cancelled) setLoading(false) })
     return () => { cancelled = true }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定但 lint 不识别
   }, [status, monitorId])
 
   const firingCount = events.filter((e) => e.status === "firing").length
@@ -951,6 +954,7 @@ function AddSilenceDialog({ open, onOpenChange, onCreated }: AddSilenceDialogPro
   useEffect(() => {
     if (!open) return
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 打开 Sheet 时重置 loading，随后异步 fetch
     setMonitorsLoading(true)
     apiRequest<{ data: { items: MonitorOption[] } }>("/v1/monitors")
       .then((res) => { if (!cancelled) setMonitors(res.data.items ?? []) })
@@ -1230,6 +1234,7 @@ export function AlertsClient() {
   // ── Fetch data for the initial tab if it isn't "events" ──
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetcher 内有 setLoading(true) 在 await 之前同步执行；首次 tab 加载需要
     if (initialTab === "channels") void fetchChannels()
     else if (initialTab === "policies") void fetchPolicies()
     else if (initialTab === "silences") void fetchSilences()

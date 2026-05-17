@@ -1,7 +1,6 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { useTranslations } from "next-intl"
 import {
   Button,
   Card,
@@ -27,8 +26,10 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Alert,
+  AlertDescription,
+  Skeleton,
 } from "@/components/ui"
-import { Alert, AlertDescription, Skeleton } from "@/components/ui"
 import { Key, Plus, UserPlus, Users } from "lucide-react"
 import { apiRequest } from "@/lib/api"
 
@@ -153,7 +154,6 @@ function TableSkeleton({ rows = 3, cols = 4 }: { rows?: number; cols?: number })
 }
 
 export function TeamClient() {
-  const t = useTranslations("settings")
   const [team, setTeam] = useState<Team | null>(null)
   const [members, setMembers] = useState<TeamMember[]>([])
   const [invitations, setInvitations] = useState<PendingInvitation[]>([])
@@ -183,6 +183,7 @@ export function TeamClient() {
 
   // Load team on mount
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初次挂载重置 loading，随后异步 fetch
     setLoadingTeam(true)
     apiRequest<{ data: { teams: Team[] } }>("/v1/teams")
       .then((json) => {

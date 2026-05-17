@@ -238,6 +238,7 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
       })
       setMarkers(mk)
     }).catch(console.error)
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- nodeNameKey 派生自 nodes，作为稳定 key 避免每次渲染重新 fetch
   }, [nodeNameKey])
 
   return (

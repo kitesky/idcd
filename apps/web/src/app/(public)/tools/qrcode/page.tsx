@@ -108,8 +108,10 @@ export default function QRCodePage() {
   // Auto-generate on input change
   useEffect(() => {
     if (input || (qrOptions.type === 'wifi' && wifiSsid)) {
-      generateQRCode()
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步生成 QR 码后必须 setState，输入变化即触发
+      void generateQRCode()
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- generateQRCode 依赖全部 input/qrOptions/wifi*，已显式列出
   }, [input, qrOptions, wifiSsid, wifiPassword, wifiSecurity])
 
   const handleInputChange = (value: string) => {

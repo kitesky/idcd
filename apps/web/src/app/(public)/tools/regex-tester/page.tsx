@@ -14,12 +14,11 @@ export default function RegexTesterPage() {
   const [pattern, setPattern] = useState('')
   const [flags, setFlags] = useState('g')
   const [testText, setTestText] = useState('')
-  const [error, setError] = useState('')
 
   // Real-time regex testing
-  const results = useMemo(() => {
+  const { results, error } = useMemo(() => {
     if (!pattern || !testText) {
-      return { matches: [], highlightedText: testText }
+      return { results: { matches: [] as MatchResult[], highlightedText: testText }, error: '' }
     }
 
     try {
@@ -27,7 +26,6 @@ export default function RegexTesterPage() {
       const matches: MatchResult[] = []
       let highlightedText = testText
       let match
-      let offset = 0
 
       // Reset regex lastIndex for global matching
       regex.lastIndex = 0
@@ -70,11 +68,12 @@ export default function RegexTesterPage() {
         highlightedText = result
       }
 
-      setError('')
-      return { matches, highlightedText }
+      return { results: { matches, highlightedText }, error: '' }
     } catch (err) {
-      setError(err instanceof Error ? err.message : '正则表达式错误')
-      return { matches: [], highlightedText: testText }
+      return {
+        results: { matches: [] as MatchResult[], highlightedText: testText },
+        error: err instanceof Error ? err.message : '正则表达式错误',
+      }
     }
   }, [pattern, flags, testText])
 

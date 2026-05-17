@@ -1,7 +1,7 @@
 import { render, screen } from "@testing-library/react"
 import { describe, it, expect } from "vitest"
 import { UpgradesClient } from "../upgrades-client"
-import type { UpgradeRollout } from "../page"
+import type { UpgradeRollout } from "../types"
 
 const mockRollout: UpgradeRollout = {
   id: "oru_test01",

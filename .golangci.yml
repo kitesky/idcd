@@ -1,35 +1,33 @@
+version: "2"
+
 run:
   timeout: 5m
   go: '1.26'
 
 linters:
+  default: none
   enable:
     - errcheck
     - govet
     - staticcheck
     - unused
     - misspell
-    - gosimple
     - ineffassign
-    - typecheck
 
-linters-settings:
-  errcheck:
-    check-blank: false
-    check-type-assertions: false
+  settings:
+    errcheck:
+      check-blank: false
+      check-type-assertions: false
 
-  govet:
-    check-shadowing: false
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - errcheck
+      - path: cmd/
+        linters:
+          - errcheck
 
 issues:
-  exclude-rules:
-    - path: _test\.go
-      linters:
-        - errcheck
-        - gosec
-    - path: cmd/
-      linters:
-        - errcheck
-
   max-issues-per-linter: 0
   max-same-issues: 0

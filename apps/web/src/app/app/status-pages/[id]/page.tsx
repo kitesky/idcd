@@ -202,8 +202,9 @@ export default function StatusPageDetailPage() {
   }, [id])
 
   useEffect(() => {
-    fetchPage()
-    fetchLinkedMonitors()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchPage/fetchLinkedMonitors 内部 await 后 setState
+    void fetchPage()
+    void fetchLinkedMonitors()
   }, [fetchPage, fetchLinkedMonitors])
 
   // ── Save basic info ────────────────────────────────────────────────────────

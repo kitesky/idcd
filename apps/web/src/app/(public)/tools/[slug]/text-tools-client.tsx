@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import {
   Card, CardContent, CardHeader, CardTitle,
-  Textarea, Button, Badge, Label, Input,
+  Textarea, Button, Badge, Input,
 } from '@/components/ui'
 import {
   countWords,

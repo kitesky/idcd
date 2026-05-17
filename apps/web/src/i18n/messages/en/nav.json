@@ -4,6 +4,7 @@
   },
   "links": {
     "tools": "Tools",
+    "monitors": "Monitoring",
     "agent": "AI Agent",
     "nodes": "Nodes",
     "becomeNode": "Become a Node",

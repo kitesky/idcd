@@ -230,7 +230,8 @@ export function UsageClient() {
       .catch(() => setData(null))
       .finally(() => setLoading(false))
 
-    fetchPoints()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchPoints 内部 await 后 setState
+    void fetchPoints()
   }, [])
 
   return (

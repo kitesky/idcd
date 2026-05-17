@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useCallback, useEffect } from "react"
+import Link from "next/link"
 import { usePathname, useRouter, useSearchParams } from "next/navigation"
 import { ChevronDown, Search, Globe, X, Menu, BadgeCheck, Bell, CreditCard, LogOut, Sparkles, LayoutDashboard, Sun, Moon } from "lucide-react"
 import { Button } from "@/components/ui/button"
@@ -376,7 +377,9 @@ function LangToggle() {
     // without URL prefixes) keep the user's preferred language. Canonical
     // cookie is `idcd_locale`; we also clear the legacy `locale` cookie so
     // sessions converge on the new name.
+    // eslint-disable-next-line react-hooks/immutability -- document.cookie 是浏览器 API，事件处理器内写入合法
     document.cookie = `idcd_locale=${target};path=/;max-age=31536000;samesite=lax`
+    // eslint-disable-next-line react-hooks/immutability -- 清理旧 locale cookie
     document.cookie = "locale=;path=/;max-age=0"
 
     const isAuthArea = /^\/(app|auth|admin)(\/|$)/.test(pathname)
@@ -650,7 +653,7 @@ function MobileSheet({ navItems, p }: { navItems: ReturnType<typeof buildNavItem
       <SheetContent side="left" className="w-72 p-0 flex flex-col">
         <SheetHeader className="border-b px-4 py-3 flex-shrink-0">
           <SheetTitle asChild>
-            <a href="/" onClick={close} className="font-mono font-bold text-foreground text-lg">idcd</a>
+            <Link href="/" onClick={close} className="font-mono font-bold text-foreground text-lg">idcd</Link>
           </SheetTitle>
           <SheetDescription className="sr-only">{t("menu.navigation")}</SheetDescription>
         </SheetHeader>
@@ -731,7 +734,8 @@ function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>, p: string) 
   const toolsMenu = buildToolsMenu(t, p)
   return [
     { name: t("links.tools"), mega: toolsMenu, href: undefined as string | undefined },
-    { name: t("links.agent"), mega: undefined as typeof toolsMenu | undefined, href: `${p}/agent` },
+    { name: t("links.monitors"), mega: undefined as typeof toolsMenu | undefined, href: `${p}/monitors` },
+    { name: t("links.agent"), mega: undefined, href: `${p}/agent` },
     { name: t("links.nodes"), mega: undefined, href: `${p}/nodes` },
     { name: t("links.becomeNode"), mega: undefined, href: `${p}/nodes/apply` },
     { name: t("links.pricing"), mega: undefined, href: `${p}/pricing` },

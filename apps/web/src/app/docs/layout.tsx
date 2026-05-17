@@ -1,6 +1,5 @@
 import Link from "next/link"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Separator } from "@/components/ui/separator"
 
 const NAV = [
   { heading: "入门", items: [

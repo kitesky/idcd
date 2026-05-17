@@ -28,7 +28,7 @@ export default function JwtDecoderPage() {
     try {
       const headerJson = atob(headerB64.replace(/-/g, '+').replace(/_/g, '/'))
       header = JSON.parse(headerJson)
-    } catch (err) {
+    } catch {
       throw new Error('无法解码 JWT Header')
     }
 
@@ -37,7 +37,7 @@ export default function JwtDecoderPage() {
     try {
       const payloadJson = atob(payloadB64.replace(/-/g, '+').replace(/_/g, '/'))
       payload = JSON.parse(payloadJson)
-    } catch (err) {
+    } catch {
       throw new Error('无法解码 JWT Payload')
     }
 
@@ -66,6 +66,7 @@ export default function JwtDecoderPage() {
 
   const isExpired = (exp?: number): boolean => {
     if (!exp) return false
+    // eslint-disable-next-line react-hooks/purity -- 判断 JWT 过期需要当前时间，仅用于展示
     return Date.now() / 1000 > exp
   }
 

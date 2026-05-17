@@ -96,13 +96,13 @@ export function Footer() {
 
           {/* Logo — desktop only top section; on mobile shown above accordion */}
           <div className="py-8 md:py-0 md:col-span-1">
-            <a href="/" className="inline-flex items-center gap-2">
+            <Link href="/" className="inline-flex items-center gap-2">
               <svg className="h-6 w-6 text-primary" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M3 12L12 3l9 9v9H3v-9z" opacity="0.2" />
                 <path d="M3 12L12 3l9 9" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
               <span className="font-mono font-bold text-foreground text-lg tracking-tight">idcd</span>
-            </a>
+            </Link>
           </div>
 
           {/* Accordion sections */}

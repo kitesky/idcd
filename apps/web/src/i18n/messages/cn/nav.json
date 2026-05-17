@@ -4,6 +4,7 @@
   },
   "links": {
     "tools": "工具",
+    "monitors": "监控",
     "agent": "AI Agent",
     "nodes": "节点",
     "becomeNode": "成为节点",

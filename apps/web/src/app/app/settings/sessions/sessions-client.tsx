@@ -112,6 +112,7 @@ export function SessionsClient() {
 
   useEffect(() => {
     let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初次挂载重置 loading，随后异步 fetch
     setLoading(true)
     fetchSessions()
       .then((data) => {

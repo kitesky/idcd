@@ -93,11 +93,9 @@ func newHandler(t *testing.T, lookup OrderLookup, orders OrderStatusUpdater, rdb
 func doRequest(t *testing.T, h *Handler, method string, body []byte, hdr http.Header) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(method, "/webhooks/paymenthub", bytes.NewReader(body))
-	if hdr != nil {
-		for k, vv := range hdr {
-			for _, v := range vv {
-				req.Header.Add(k, v)
-			}
+	for k, vv := range hdr {
+		for _, v := range vv {
+			req.Header.Add(k, v)
 		}
 	}
 	rec := httptest.NewRecorder()

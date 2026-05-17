@@ -1,8 +1,12 @@
 import Link from "next/link"
-import { cookies } from "next/headers"
+import { cookies, headers } from "next/headers"
+import { redirect } from "next/navigation"
 import { getT } from "@/i18n/getT"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { LanguageSwitcher } from "./lang-switcher"
+import { logoutAction } from "./login/actions"
+
+const ADMIN_SESSION_COOKIE = "admin_session"
 
 async function getAdminLocale(): Promise<Locale> {
   const cookieStore = await cookies()
@@ -10,7 +14,36 @@ async function getAdminLocale(): Promise<Locale> {
   return isValidLocale(val) ? val : defaultLocale
 }
 
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+async function isAuthenticated(): Promise<boolean> {
+  const expected = process.env.ADMIN_PORTAL_TOKEN ?? ""
+  if (!expected) return false
+  const store = await cookies()
+  const tok = store.get(ADMIN_SESSION_COOKIE)?.value ?? ""
+  return Boolean(tok) && timingSafeEqual(tok, expected)
+}
+
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
+  const hdrs = await headers()
+  const pathname = hdrs.get("x-pathname") ?? ""
+
+  // Login route renders bare — no nav, no auth gate (the form sets the cookie).
+  if (pathname === "/admin/login" || pathname.startsWith("/admin/login/")) {
+    return <>{children}</>
+  }
+
+  // Defence-in-depth: middleware already redirects unauthenticated requests,
+  // but if it ever fails open we still refuse to render protected pages.
+  if (!(await isAuthenticated())) {
+    redirect(`/admin/login?next=${encodeURIComponent(pathname || "/admin")}`)
+  }
+
   const locale = await getAdminLocale()
   const t = await getT("admin", locale)
 
@@ -45,7 +78,14 @@ export default async function AdminLayout({ children }: { children: React.ReactN
               ))}
             </nav>
           </div>
-          <LanguageSwitcher currentLocale={locale} label={t("lang.switchTo")} />
+          <div className="flex items-center gap-3">
+            <LanguageSwitcher currentLocale={locale} label={t("lang.switchTo")} />
+            <form action={logoutAction}>
+              <button type="submit" className="text-sm text-muted-foreground hover:text-foreground">
+                Sign out
+              </button>
+            </form>
+          </div>
         </div>
       </header>
       <main className="flex-1 container mx-auto px-6 py-6">{children}</main>

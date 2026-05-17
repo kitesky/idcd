@@ -218,7 +218,7 @@ func (s *Server) setupRouter() {
 		sessSvc := session.NewService(s.redis)
 		q := idcdmain.New(s.pgxPool)
 
-		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
+		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.config.Server.Env, s.logger)
 
 		// Wire async dispatch via asynq (uses the same Redis instance as the notifier).
 		// One asynq.Client is shared across all enqueuer adapters (auth emails,
@@ -804,10 +804,15 @@ func (s *Server) Router() chi.Router {
 }
 
 // newFieldCipher creates the AES-256-GCM cipher used for field-level at-rest
-// encryption.  If fieldKey is empty a dev-only all-zeros key is used with a
-// warning; production should always supply a real key.
-func newFieldCipher(fieldKey string, log *slog.Logger) *aesenc.Cipher {
+// encryption. Fail-closed in staging / production: a missing key panics
+// at startup so we never silently encrypt data with an all-zero key.
+// Development keeps the zero-key fallback so contributors don't need to
+// generate a key locally.
+func newFieldCipher(fieldKey, env string, log *slog.Logger) *aesenc.Cipher {
 	if fieldKey == "" {
+		if env != "" && env != "development" && env != "dev" && env != "test" {
+			panic("encryption.field_key required in " + env + " — refusing to start with dev fallback key")
+		}
 		log.Warn("encryption.field_key not set — using dev fallback key, NOT safe for production")
 		c, _ := aesenc.New(make([]byte, 32))
 		return c

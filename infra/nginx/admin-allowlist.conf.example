@@ -1,0 +1,12 @@
+# Admin API allowlist — copy to /etc/nginx/conf.d/admin-allowlist.conf
+# and edit with your VPN / office CIDRs BEFORE reloading nginx.
+#
+# nginx will refuse to start if /etc/nginx/conf.d/admin-allowlist.conf does
+# not exist, ensuring admin.idcd.com is never open to the public by default.
+# After this include there is a `deny all;` that denies anything not allowed
+# above.
+#
+# Examples:
+# allow 10.0.0.0/8;        # office VPN
+# allow 192.168.0.0/16;    # bastion
+# allow 203.0.113.42;      # specific operator IP

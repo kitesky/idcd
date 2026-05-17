@@ -108,10 +108,59 @@ function withSecurityHeaders(
   return response
 }
 
+// Admin portal token — gated separately from the user-facing ADMIN_TOKEN that
+// the server-side admin actions use, so a leaked portal cookie cannot directly
+// authenticate admin API calls (which still require Authorization: Bearer).
+const ADMIN_PORTAL_TOKEN = process.env.ADMIN_PORTAL_TOKEN ?? ''
+const ADMIN_SESSION_COOKIE = 'admin_session'
+
+// Paths inside /admin that are reachable without the portal cookie — only the
+// login form itself.
+function isAdminPublicPath(pathname: string): boolean {
+  return pathname === '/admin/login' || pathname.startsWith('/admin/login/')
+}
+
+// constant-time string compare to avoid leaking the token via timing.
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  let diff = 0
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
+  return diff === 0
+}
+
+function adminPortalGate(
+  request: NextRequest,
+  pathname: string,
+): NextResponse | null {
+  if (!pathname.startsWith('/admin')) return null
+  if (isAdminPublicPath(pathname)) return null
+
+  // Fail-closed: if the env token isn't configured, the portal is locked.
+  if (!ADMIN_PORTAL_TOKEN) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/admin/login'
+    url.searchParams.set('reason', 'not_configured')
+    return NextResponse.redirect(url)
+  }
+
+  const cookie = request.cookies.get(ADMIN_SESSION_COOKIE)?.value ?? ''
+  if (!cookie || !timingSafeEqual(cookie, ADMIN_PORTAL_TOKEN)) {
+    const url = request.nextUrl.clone()
+    url.pathname = '/admin/login'
+    url.searchParams.set('next', pathname)
+    return NextResponse.redirect(url)
+  }
+  return null
+}
+
 export function proxy(request: NextRequest): NextResponse {
   const host = request.headers.get('host') ?? ''
   const hostname = host.split(':')[0]!
   const isDev = process.env.NODE_ENV === 'development'
+
+  // ── Admin portal gate (runs before everything else for /admin/*) ─────────
+  const adminBlock = adminPortalGate(request, request.nextUrl.pathname)
+  if (adminBlock) return withSecurityHeaders(adminBlock, isDev)
 
   // ── Status subdomain: <slug>.status.idcd.com ─────────────────────────────
   if (hostname.endsWith('.status.idcd.com') && hostname !== 'status.idcd.com') {
@@ -146,6 +195,7 @@ export function proxy(request: NextRequest): NextResponse {
     ...Object.fromEntries(request.headers),
     'x-nonce': nonce,
     'x-locale': locale,
+    'x-pathname': pathname,
   })
 
   // When the URL carries a non-default locale prefix, rewrite to the un-prefixed

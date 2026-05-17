@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
@@ -25,25 +27,49 @@ const (
 	signerCertExpiryWarnWindow = 30 * 24 * time.Hour
 )
 
+// signerPubKeySource is the minimal interface wireSignerCert needs to
+// bind the loaded X.509 cert to the KMS-held signing key. The concrete
+// implementation passed at runtime is a sign.Verifier (built from the
+// same KMS config as the sign.Signer), which exposes both KeyID() and
+// PublicKey(ctx) — we accept it as a local interface so this file
+// stays decoupled from the sign package's broader API surface and so
+// tests can fake it without spinning up a KMS client.
+type signerPubKeySource interface {
+	KeyID() string
+	PublicKey(ctx context.Context) ([]byte, error)
+}
+
 // wireSignerCert resolves the X.509 cert pdfsign attaches to the CMS
 // SignedData. Picks production loader when ATTEST_SIGNER_CERT_PEM is
 // set; otherwise falls back to the dev fixture and logs a loud warning.
 //
+// When a production cert loads successfully, wireSignerCert ALSO binds
+// the cert's public key to the KMS signer's public key — a mismatch
+// here would mean every PDF we sign fails /verify with "pubkey
+// mismatch", so we refuse to start. The bind is intentionally skipped
+// for the dev fixture path because the self-signed dev cert is never
+// expected to match the KMS key (pre-prod runs validate pipeline
+// mechanics only; verifiers are expected to reject those PDFs).
+//
 // The production loader implementation lives next to this function
 // (loadProdSignerCert). It is intentionally kept out of main.go so the
 // cmd-wiring file stays at one screen.
-func wireSignerCert(log *slog.Logger) (*x509.Certificate, []*x509.Certificate, error) {
+func wireSignerCert(log *slog.Logger, signer signerPubKeySource) (*x509.Certificate, []*x509.Certificate, error) {
 	cert, chain, source, err := loadProdSignerCert()
 	if err != nil {
 		return nil, nil, err
 	}
 	if cert != nil {
+		if err := bindCertToKMS(cert, signer); err != nil {
+			return nil, nil, err
+		}
 		log.Info("attest-generator: signer certificate loaded",
 			"source", source,
 			"subject", cert.Subject.CommonName,
 			"issuer", cert.Issuer.CommonName,
 			"not_after", cert.NotAfter.Format(time.RFC3339),
 			"chain_len", len(chain),
+			"kms_key_id", signer.KeyID(),
 		)
 		return cert, chain, nil
 	}
@@ -57,6 +83,53 @@ func wireSignerCert(log *slog.Logger) (*x509.Certificate, []*x509.Certificate, e
 		"not_after", devCert.NotAfter.Format(time.RFC3339),
 	)
 	return devCert, devChain, nil
+}
+
+// bindCertToKMS verifies that cert.PublicKey is bit-for-bit identical
+// to the public key the KMS signer would expose via GetPublicKey. We
+// compare PKIX SubjectPublicKeyInfo DER bytes (via
+// crypto/x509.MarshalPKIXPublicKey) on both sides — that works for
+// RSA / ECDSA / Ed25519 uniformly without per-type type switches.
+//
+// signer.PublicKey returns a PEM-wrapped PKIX SubjectPublicKeyInfo (the
+// convention all KMS adapters in this repo follow). We parse it back
+// into a crypto.PublicKey and re-marshal so the comparison is robust to
+// trailing whitespace / extra PEM headers from different KMS providers.
+func bindCertToKMS(cert *x509.Certificate, signer signerPubKeySource) error {
+	if signer == nil {
+		return fmt.Errorf("bind signer cert to KMS: signer is nil")
+	}
+	// Use a fresh, bounded context: at startup we don't yet have a
+	// request-scoped ctx, and KMS GetPublicKey should comfortably
+	// finish in seconds.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	pemBytes, err := signer.PublicKey(ctx)
+	if err != nil {
+		return fmt.Errorf("bind signer cert to KMS: fetch KMS public key (key_id=%q, subject=%q): %w",
+			signer.KeyID(), cert.Subject.CommonName, err)
+	}
+	block, _ := pem.Decode(pemBytes)
+	if block == nil {
+		return fmt.Errorf("bind signer cert to KMS: KMS PublicKey not PEM-encoded (key_id=%q)", signer.KeyID())
+	}
+	kmsPub, err := x509.ParsePKIXPublicKey(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("bind signer cert to KMS: parse KMS PKIX (key_id=%q): %w", signer.KeyID(), err)
+	}
+	kmsDER, err := x509.MarshalPKIXPublicKey(kmsPub)
+	if err != nil {
+		return fmt.Errorf("bind signer cert to KMS: marshal KMS pubkey (key_id=%q): %w", signer.KeyID(), err)
+	}
+	certDER, err := x509.MarshalPKIXPublicKey(cert.PublicKey)
+	if err != nil {
+		return fmt.Errorf("bind signer cert to KMS: marshal cert pubkey (subject=%q): %w", cert.Subject.CommonName, err)
+	}
+	if !bytes.Equal(kmsDER, certDER) {
+		return fmt.Errorf("bind signer cert to KMS: public key mismatch (kms_key_id=%q, cert_subject=%q) — the cert in ATTEST_SIGNER_CERT_PEM does not match the KMS-held key; every PDF would fail /verify",
+			signer.KeyID(), cert.Subject.CommonName)
+	}
+	return nil
 }
 
 // loadProdSignerCert is the production-cert loader. The first return
@@ -173,20 +246,9 @@ func readCertChainPEM(path string) ([]*x509.Certificate, error) {
 
 // loadDevSignerCert returns a freshly-generated self-signed RSA-2048
 // certificate that pdfsign can attach to the CMS SignedData. The cert
-// chain is empty (self-signed).
-//
-// TODO(prod): replace this with a real cert loaded from
-//
-//	ATTEST_SIGNER_CERT_PEM
-//	ATTEST_SIGNER_CHAIN_PEM
-//
-// before S2 GA. The dev fixture lets the binary boot in pre-prod /
-// integration environments without external secrets; verifiers will
-// reject signatures (the public key won't match the KMS-held key
-// returned by verifier.PublicKey() during the bind-to-KMS check).
-//
-// This is intentional: pre-prod runs validate the pipeline mechanics
-// without producing PDFs that pass /verify.
+// chain is empty (self-signed). This is the pre-prod fallback used
+// when ATTEST_SIGNER_CERT_PEM is unset; verifiers will reject the
+// resulting PDFs because the dev key never matches the KMS-held key.
 func loadDevSignerCert() (*x509.Certificate, []*x509.Certificate, error) {
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {

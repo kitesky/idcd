@@ -14,9 +14,11 @@
 //   - KMS Signer (aws|ali)  → chosen by ATTEST_SIGN_BACKEND.
 //   - tsa.Multi of providers → primaryAdapter wraps it back to tsa.Provider.
 //   - Local file archiver   → S2 MVP; S3+ObjectLock lands in W7+.
-//   - Signer X.509 cert     → loadDevSignerCert returns a self-signed
-//     RSA-2048 cert each start; PROD must override before S2 GA (see
-//     TODO inside loadDevSignerCert).
+//   - Signer X.509 cert     → wireSignerCert prefers ATTEST_SIGNER_CERT_PEM;
+//     falls back to loadDevSignerCert (self-signed RSA-2048) in pre-prod.
+//     When a production cert is configured wireSignerCert also binds
+//     the cert's public key to the KMS signer's public key — start-up
+//     refuses to proceed on mismatch.
 package main
 
 import (
@@ -100,6 +102,18 @@ func main() {
 		"algorithm", signer.Algorithm(),
 	)
 
+	// --- Verifier (KMS) -----------------------------------------------
+	// We build a sign.Verifier alongside the sign.Signer so wireSignerCert
+	// can bind the loaded X.509 cert's public key to the KMS-held key at
+	// start-up (the Signer interface itself does not expose PublicKey;
+	// the Verifier does). Both adapters point at the same KeyID so the
+	// bind check is meaningful.
+	verifier, err := buildVerifier(cfg)
+	if err != nil {
+		log.Error("attest-generator: verifier init", "err", err)
+		os.Exit(1)
+	}
+
 	// --- TSA ----------------------------------------------------------
 	multi, primary, err := buildTSA(cfg, log)
 	if err != nil {
@@ -113,7 +127,7 @@ func main() {
 	tsaProvider := &multiProviderAdapter{multi: multi, fallbackName: primary.name}
 
 	// --- Signer X.509 cert -------------------------------------------
-	signerCert, certChain, err := wireSignerCert(log)
+	signerCert, certChain, err := wireSignerCert(log, verifier)
 	if err != nil {
 		log.Error("attest-generator: signer cert load", "err", err)
 		os.Exit(1)
@@ -200,6 +214,37 @@ func buildSigner(cfg *config.Config) (sign.Signer, error) {
 		})
 	case config.SignBackendAliyun:
 		return alikms.New(alikms.Config{
+			RegionID:        cfg.AliKMSRegionID,
+			AccessKeyID:     cfg.AliKMSAccessKeyID,
+			AccessKeySecret: cfg.AliKMSAccessKeySecret,
+			KeyID:           cfg.AliKMSKeyID,
+			Algorithm:       cfg.AliKMSAlgorithm,
+		})
+	default:
+		return nil, fmt.Errorf("ATTEST_SIGN_BACKEND must be set to %q or %q",
+			config.SignBackendAWS, config.SignBackendAliyun)
+	}
+}
+
+// --- buildVerifier --------------------------------------------------
+
+// buildVerifier mirrors buildSigner but constructs a sign.Verifier
+// pointed at the same KMS KeyID. It's used at start-up only — to bind
+// the loaded X.509 signer cert's public key to the KMS-held key. The
+// generator does NOT verify signatures at runtime (Self-Verify Worker
+// owns that, D6); this verifier exists solely for the pubkey bind.
+func buildVerifier(cfg *config.Config) (sign.Verifier, error) {
+	switch cfg.SignBackend {
+	case config.SignBackendAWS:
+		return awskms.NewVerifier(awskms.Config{
+			Region:          cfg.AWSKMSRegion,
+			AccessKeyID:     cfg.AWSKMSAccessKeyID,
+			SecretAccessKey: cfg.AWSKMSSecretAccessKey,
+			KeyID:           cfg.AWSKMSKeyID,
+			Algorithm:       cfg.AWSKMSAlgorithm,
+		})
+	case config.SignBackendAliyun:
+		return alikms.NewVerifier(alikms.Config{
 			RegionID:        cfg.AliKMSRegionID,
 			AccessKeyID:     cfg.AliKMSAccessKeyID,
 			AccessKeySecret: cfg.AliKMSAccessKeySecret,

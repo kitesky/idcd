@@ -1,11 +1,18 @@
 package main
 
 import (
+	"bytes"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/pem"
+	"errors"
+	"io"
+	"log/slog"
 	"math/big"
 	"os"
 	"path/filepath"
@@ -387,6 +394,234 @@ func TestLoadProdSignerCert_MultiBlockChainSkipsNonCert(t *testing.T) {
 	}
 	if chain[0].Subject.CommonName != "intermediate-multi" || chain[1].Subject.CommonName != "ca-multi" {
 		t.Fatalf("chain order wrong: %q, %q", chain[0].Subject.CommonName, chain[1].Subject.CommonName)
+	}
+}
+
+// --- bindCertToKMS / wireSignerCert tests ----------------------------------
+
+// fakeSigner satisfies signerPubKeySource. Tests inject a fixed PEM-
+// encoded public key (or an error) to drive the bind check without
+// touching a real KMS client.
+type fakeSigner struct {
+	keyID  string
+	pemKey []byte
+	err    error
+}
+
+func (f *fakeSigner) KeyID() string { return f.keyID }
+func (f *fakeSigner) PublicKey(ctx context.Context) ([]byte, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	return f.pemKey, nil
+}
+
+// pubPEM encodes pub as a PEM-wrapped PKIX SubjectPublicKeyInfo — the
+// same shape KMS adapters return.
+func pubPEM(t *testing.T, pub any) []byte {
+	t.Helper()
+	der, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		t.Fatalf("MarshalPKIXPublicKey: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := pem.Encode(&buf, &pem.Block{Type: "PUBLIC KEY", Bytes: der}); err != nil {
+		t.Fatalf("pem encode: %v", err)
+	}
+	return buf.Bytes()
+}
+
+// discardLogger returns a slog.Logger that drops everything — keeps test
+// output clean while still exercising the log.Info/log.Warn paths.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+func TestBindCertToKMS_Match(t *testing.T) {
+	leaf := genCert(t, "happy-bound", nil, nil)
+	signer := &fakeSigner{
+		keyID:  "alias/idcd-attest",
+		pemKey: pubPEM(t, &leaf.key.PublicKey),
+	}
+	if err := bindCertToKMS(leaf.cert, signer); err != nil {
+		t.Fatalf("expected bind success, got %v", err)
+	}
+}
+
+func TestBindCertToKMS_MismatchRSA(t *testing.T) {
+	leaf := genCert(t, "mismatch-cert", nil, nil)
+	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa gen: %v", err)
+	}
+	signer := &fakeSigner{
+		keyID:  "alias/idcd-attest-A",
+		pemKey: pubPEM(t, &otherKey.PublicKey),
+	}
+	err = bindCertToKMS(leaf.cert, signer)
+	if err == nil {
+		t.Fatal("expected bind error")
+	}
+	if !strings.Contains(err.Error(), "public key mismatch") {
+		t.Fatalf("error should mention 'public key mismatch', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "alias/idcd-attest-A") {
+		t.Fatalf("error should mention KMS KeyID, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "mismatch-cert") {
+		t.Fatalf("error should mention cert subject, got: %v", err)
+	}
+}
+
+func TestBindCertToKMS_MismatchAcrossKeyTypes(t *testing.T) {
+	// Cert holds RSA pubkey; signer reports an ECDSA pubkey. DER bytes
+	// differ trivially — we want to confirm the comparison handles
+	// heterogeneous algorithms without panicking.
+	leaf := genCert(t, "rsa-cert", nil, nil)
+	ecKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("ecdsa gen: %v", err)
+	}
+	signer := &fakeSigner{
+		keyID:  "alias/ec-key",
+		pemKey: pubPEM(t, &ecKey.PublicKey),
+	}
+	if err := bindCertToKMS(leaf.cert, signer); err == nil ||
+		!strings.Contains(err.Error(), "public key mismatch") {
+		t.Fatalf("expected pubkey mismatch across key types, got: %v", err)
+	}
+}
+
+func TestBindCertToKMS_NilSigner(t *testing.T) {
+	leaf := genCert(t, "no-signer", nil, nil)
+	if err := bindCertToKMS(leaf.cert, nil); err == nil || !strings.Contains(err.Error(), "signer is nil") {
+		t.Fatalf("expected nil-signer error, got: %v", err)
+	}
+}
+
+func TestBindCertToKMS_PublicKeyFetchError(t *testing.T) {
+	leaf := genCert(t, "kms-down", nil, nil)
+	upstream := errors.New("kms upstream timeout")
+	signer := &fakeSigner{keyID: "alias/down", err: upstream}
+	err := bindCertToKMS(leaf.cert, signer)
+	if err == nil || !errors.Is(err, upstream) {
+		t.Fatalf("expected wrapped upstream error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "alias/down") {
+		t.Fatalf("error should mention KeyID, got: %v", err)
+	}
+}
+
+func TestBindCertToKMS_NotPEM(t *testing.T) {
+	leaf := genCert(t, "garbage-pem", nil, nil)
+	signer := &fakeSigner{keyID: "alias/garbage", pemKey: []byte("not pem at all")}
+	err := bindCertToKMS(leaf.cert, signer)
+	if err == nil || !strings.Contains(err.Error(), "not PEM-encoded") {
+		t.Fatalf("expected not-PEM error, got: %v", err)
+	}
+}
+
+func TestBindCertToKMS_BadDERInsidePEM(t *testing.T) {
+	leaf := genCert(t, "bad-der", nil, nil)
+	var buf bytes.Buffer
+	_ = pem.Encode(&buf, &pem.Block{Type: "PUBLIC KEY", Bytes: []byte("not-real-der")})
+	signer := &fakeSigner{keyID: "alias/bad-der", pemKey: buf.Bytes()}
+	err := bindCertToKMS(leaf.cert, signer)
+	if err == nil || !strings.Contains(err.Error(), "parse KMS PKIX") {
+		t.Fatalf("expected parse PKIX error, got: %v", err)
+	}
+}
+
+func TestWireSignerCert_ProdPath_BindOK(t *testing.T) {
+	leaf := genCert(t, "wired-leaf", nil, func(c *x509.Certificate) {
+		c.KeyUsage = x509.KeyUsageDigitalSignature
+	})
+	dir := t.TempDir()
+	leafPath := filepath.Join(dir, "leaf.pem")
+	writePEM(t, leafPath, leaf.der)
+	setEnv(t, envSignerCertPEM, leafPath)
+	setEnv(t, envSignerChainPEM, "")
+
+	signer := &fakeSigner{
+		keyID:  "alias/wired",
+		pemKey: pubPEM(t, &leaf.key.PublicKey),
+	}
+	cert, chain, err := wireSignerCert(discardLogger(), signer)
+	if err != nil {
+		t.Fatalf("wireSignerCert: %v", err)
+	}
+	if cert == nil || cert.Subject.CommonName != "wired-leaf" {
+		t.Fatalf("unexpected cert: %+v", cert)
+	}
+	if len(chain) != 0 {
+		t.Fatalf("expected empty chain, got %d", len(chain))
+	}
+}
+
+func TestWireSignerCert_ProdPath_BindMismatch(t *testing.T) {
+	leaf := genCert(t, "wire-mismatch-leaf", nil, func(c *x509.Certificate) {
+		c.KeyUsage = x509.KeyUsageDigitalSignature
+	})
+	dir := t.TempDir()
+	leafPath := filepath.Join(dir, "leaf.pem")
+	writePEM(t, leafPath, leaf.der)
+	setEnv(t, envSignerCertPEM, leafPath)
+	setEnv(t, envSignerChainPEM, "")
+
+	// Different key on the KMS side → bind must fail.
+	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("rsa: %v", err)
+	}
+	signer := &fakeSigner{
+		keyID:  "alias/wire-mismatch",
+		pemKey: pubPEM(t, &otherKey.PublicKey),
+	}
+	_, _, err = wireSignerCert(discardLogger(), signer)
+	if err == nil {
+		t.Fatal("expected wireSignerCert to refuse on pubkey mismatch")
+	}
+	if !strings.Contains(err.Error(), "public key mismatch") {
+		t.Fatalf("expected 'public key mismatch' error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "alias/wire-mismatch") {
+		t.Fatalf("expected KMS KeyID in error, got: %v", err)
+	}
+}
+
+func TestWireSignerCert_DevFallback_SkipsBindCheck(t *testing.T) {
+	setEnv(t, envSignerCertPEM, "")
+	setEnv(t, envSignerChainPEM, "")
+	// fakeSigner with a deliberately-broken PublicKey() must NOT be
+	// invoked when the dev path runs — otherwise pre-prod boots would
+	// crash on every restart.
+	signer := &fakeSigner{
+		keyID: "alias/should-not-be-called",
+		err:   errors.New("bind check must not run on dev path"),
+	}
+	cert, chain, err := wireSignerCert(discardLogger(), signer)
+	if err != nil {
+		t.Fatalf("wireSignerCert dev path: %v", err)
+	}
+	if cert == nil || !strings.Contains(cert.Subject.CommonName, "DEV") {
+		t.Fatalf("expected dev cert, got %+v", cert)
+	}
+	if chain != nil {
+		t.Fatalf("expected nil chain for dev cert, got %v", chain)
+	}
+}
+
+func TestWireSignerCert_ProdLoaderError(t *testing.T) {
+	// File missing → loadProdSignerCert returns an error; wireSignerCert
+	// must propagate without touching the dev fallback or the signer.
+	dir := t.TempDir()
+	setEnv(t, envSignerCertPEM, filepath.Join(dir, "nope.pem"))
+	setEnv(t, envSignerChainPEM, "")
+
+	signer := &fakeSigner{keyID: "alias/unused", err: errors.New("must not be called")}
+	_, _, err := wireSignerCert(discardLogger(), signer)
+	if err == nil || !strings.Contains(err.Error(), "load signer leaf cert") {
+		t.Fatalf("expected leaf-load propagation, got: %v", err)
 	}
 }
 

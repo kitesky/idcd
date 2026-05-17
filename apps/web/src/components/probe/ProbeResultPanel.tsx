@@ -368,6 +368,7 @@ export function ProbeResultPanel({ result, target, probeType = "http", isLoading
   const [timestamp, setTimestamp] = useState("")
   const [shareUrl, setShareUrl] = useState("")
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 客户端首次挂载读取 Date/window 避免 hydration mismatch
     setTimestamp(new Date().toLocaleString("zh-CN", { year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit", second: "2-digit" }))
     setShareUrl(window.location.href)
   }, [])

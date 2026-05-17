@@ -131,7 +131,8 @@ export default function PostmortemDetailPage() {
   }, [id])
 
   useEffect(() => {
-    fetchPostmortem()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchPostmortem 内部 await 后 setState；初次挂载触发
+    void fetchPostmortem()
   }, [fetchPostmortem])
 
   function startEdit() {

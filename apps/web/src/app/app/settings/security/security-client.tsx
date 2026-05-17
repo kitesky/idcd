@@ -62,6 +62,7 @@ export function SecurityClient() {
   }, [])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 初次挂载重置 loading，随后异步 fetch
     setPasskeyLoading(true)
     apiRequest<{ data: { passkeys: PasskeyItem[] } }>("/v1/account/passkeys")
       .then((res) => setPasskeys(res.data.passkeys ?? []))
@@ -337,6 +338,7 @@ export function SecurityClient() {
                     {t("security.step1Loading")}
                   </div>
                 ) : (
+                  // eslint-disable-next-line @next/next/no-img-element -- TOTP QR 是动态 data URL，next/image 优化不适用
                   <img
                     src={qrURL}
                     alt="TOTP QR code"

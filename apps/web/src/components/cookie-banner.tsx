@@ -16,11 +16,8 @@ export function CookieBanner() {
   useEffect(() => {
     const saved = localStorage.getItem(COOKIE_CONSENT_KEY)
     const valid: ConsentType[] = ["all", "essential"]
-    if (valid.includes(saved as ConsentType)) {
-      setIsVisible(false)
-    } else {
-      setIsVisible(true)
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 仅客户端可读 localStorage 判断是否显示
+    setIsVisible(!valid.includes(saved as ConsentType))
   }, [])
 
   const handleConsent = (type: ConsentType) => {

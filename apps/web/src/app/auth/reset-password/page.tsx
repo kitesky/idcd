@@ -26,21 +26,14 @@ function ResetPasswordForm() {
   const searchParams = useSearchParams()
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [email, setEmail] = useState("")
-  const [otpId, setOtpId] = useState("")
+  const email = searchParams.get("email") ?? ""
+  const otpId = searchParams.get("otp_id") ?? ""
 
   useEffect(() => {
-    const emailParam = searchParams.get("email")
-    const otpIdParam = searchParams.get("otp_id")
-
-    if (!emailParam || !otpIdParam) {
+    if (!email || !otpId) {
       router.push("/auth/forgot-password" as any)
-      return
     }
-
-    setEmail(emailParam)
-    setOtpId(otpIdParam)
-  }, [searchParams, router])
+  }, [email, otpId, router])
 
   const resetPasswordSchema = z.object({
     password: z

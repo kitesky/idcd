@@ -48,7 +48,7 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
 
   const [authChecked, setAuthChecked] = useState(false)
-  const [plan, setPlan]         = useState("Free")
+  const plan = "Free"
   const [email, setEmail]       = useState("user@example.com")
   const [displayName, setDisplayName] = useState<string | null>(null)
   const [avatarUrl, setAvatarUrl] = useState<string | null>(null)

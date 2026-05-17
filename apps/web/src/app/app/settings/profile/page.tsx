@@ -45,9 +45,11 @@ function getCurrentLocale(): string {
 
 function LanguageSwitcher() {
   const t = useTranslations("settings")
+  // 初始用 "zh" 保证 SSR 与 hydration 一致；客户端挂载后再从 cookie 同步真实值
   const [locale, setLocale] = useState<string>("zh")
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 客户端挂载后从 cookie 同步实际 locale
     setLocale(getCurrentLocale())
   }, [])
 
@@ -134,10 +136,11 @@ export default function ProfilePage() {
       }
     }
 
-    loadProfile()
+    void loadProfile()
   }, [router, form])
 
   // Derive initials for the Avatar fallback from display_name or email
+  // eslint-disable-next-line react-hooks/incompatible-library -- react-hook-form 的 form.watch 返回值不能被 memoized (库限制)
   const displayName = form.watch("display_name")
   const email = form.watch("email")
   const initials = (() => {

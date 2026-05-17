@@ -9,7 +9,7 @@ import {
   urlEncode, urlDecode,
   charToCodePoint, codePointToChar, stringToUnicode, unicodeToString,
   decodeJWT,
-  numberToAllBases, convertBase,
+  numberToAllBases,
   jsonToYaml, formatYAML, formatXML,
   parseURL,
   parseUserAgent,
@@ -202,6 +202,7 @@ export function JwtDecodeClient() {
   }
 
   const fmt = (ts: number) => new Date(ts * 1000).toLocaleString('zh-CN')
+  // eslint-disable-next-line react-hooks/purity -- 判断 JWT 过期需要当前时间，仅用于展示
   const expired = (exp?: number) => exp ? Date.now() / 1000 > exp : false
 
   return (
@@ -614,7 +615,7 @@ export function UserAgentClient() {
 // ── 数字格式化 ────────────────────────────────────────────────────────────────
 export function NumberFormatClient() {
   const [input, setInput] = useState('1234567.89')
-  const [error, setError] = useState('')
+  const [_error, setError] = useState('')
 
   const num = parseFloat(input)
   const valid = !isNaN(num)

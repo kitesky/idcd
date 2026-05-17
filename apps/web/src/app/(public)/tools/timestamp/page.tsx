@@ -235,7 +235,7 @@ export default function TimestampPage() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>• <strong>时间戳输入</strong>：自动识别秒级（10位）或毫秒级（13位）时间戳</p>
-          <p>• <strong>日期时间输入</strong>：支持多种格式，如 "2023-12-31 08:00:00" 或 ISO 8601</p>
+          <p>• <strong>日期时间输入</strong>：支持多种格式，如 &quot;2023-12-31 08:00:00&quot; 或 ISO 8601</p>
           <p>• <strong>当前时间</strong>：快速获取当前 Unix 时间戳</p>
           <p>• 输出包含 ISO 8601、本地时间、UTC 时间以及 Unix 时间戳</p>
         </CardContent>

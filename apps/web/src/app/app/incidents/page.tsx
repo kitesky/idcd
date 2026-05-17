@@ -88,6 +88,7 @@ export default function IncidentsPage() {
   }
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- incidents 异步加载完成后重置 loadingMore，无法 derive
     setLoadingMore(false)
   }, [incidents])
 

@@ -75,6 +75,7 @@ export function DataTable<TData>({
     sort ? [{ id: sort.column, desc: sort.direction === "desc" }] : []
   )
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table 返回的函数不能被 memoized (库限制)
   const table = useReactTable({
     data,
     columns,

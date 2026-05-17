@@ -139,7 +139,8 @@ export default function NodesPage() {
   }
 
   useEffect(() => {
-    fetchApplications()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchApplications 内部 await 后 setState
+    void fetchApplications()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 

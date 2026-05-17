@@ -11,7 +11,7 @@ import nextConfig from "eslint-config-next/core-web-vitals"
 //     RSS 狂飙被 kill。原 import/no-cycle 是 warn，dev 启动也不跑 lint —— 全程
 //     无拦截。本配置把这一类全部升 error，并直接禁 "./page" / "../page" 反向
 //     import 这条具体模式。
-export default [
+const config = [
   ...nextConfig,
   {
     settings: {
@@ -60,6 +60,10 @@ export default [
   },
 
   // 测试 / 脚本 / 配置文件放宽 (大量 mock 和 any，强约束反而干扰)
+  //
+  // 关键豁免: no-restricted-imports 不适用于测试文件
+  //   测试文件 import "../page" 是合法的 (渲染并断言)，不会形成 RSC/client
+  //   运行时循环 (vitest 跑的是 Node 环境，没有 Turbopack 编译图)。
   {
     files: [
       "**/*.test.ts",
@@ -73,7 +77,10 @@ export default [
     ],
     rules: {
       "@typescript-eslint/no-unused-vars": "off",
-      "import/no-unresolved": "off"
+      "import/no-unresolved": "off",
+      "no-restricted-imports": "off"
     }
   }
 ]
+
+export default config

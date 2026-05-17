@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Link from "next/link"
 import { ChevronDown, Search, Settings2, ArrowRight, MapPin, RotateCcw, Check } from "lucide-react"
 import { useTranslations } from "next-intl"
 import { Button } from "@/components/ui/button"
@@ -300,7 +301,6 @@ export function HeroSearch() {
   const [probeError, setProbeError] = useState("")
 
   const catConfig = CATEGORY_CONFIGS.find(c => c.key === activeCat) ?? CATEGORY_CONFIGS[1]!
-  const tool = catConfig.tools.find(t => t.key === activeTool) ?? catConfig.tools[0]
 
   const handleCatChange = (key: string) => {
     setActiveCat(key)
@@ -426,15 +426,15 @@ export function HeroSearch() {
             <span>{t("hero.advancedConfig")}</span>
             <span className="mx-2 opacity-30">|</span>
             <span>
-              <a href="/app/monitors/new" className="text-primary underline underline-offset-4">
+              <Link href="/app/monitors/new" className="text-primary underline underline-offset-4">
                 {t("hero.createMonitor")}
-              </a>
+              </Link>
               {t("hero.createMonitorDesc")}
             </span>
           </div>
-          <a href="/tools/diagnose" className="text-xs text-primary underline underline-offset-4">
+          <Link href="/tools/diagnose" className="text-xs text-primary underline underline-offset-4">
             {t("hero.compareCheck")}
-          </a>
+          </Link>
         </div>
       </div>
     </section>

@@ -150,6 +150,94 @@ notifier:
 	}
 }
 
+// TestLoad_CertStreamDefaults covers the S2 W8 defaults: with no notifier
+// section the cert consumer is enabled and bound to the default stream /
+// consumer group that match cert-svc's producer.
+func TestLoad_CertStreamDefaults(t *testing.T) {
+	cfg, err := Load(writeConfig(t, baseYAML))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Notifier.CertStreamEnabledOrDefault(); !got {
+		t.Errorf("CertStreamEnabledOrDefault() = %v, want true (default on)", got)
+	}
+	if cfg.Notifier.CertStreamName != "cert:notifications" {
+		t.Errorf("CertStreamName = %q, want default cert:notifications", cfg.Notifier.CertStreamName)
+	}
+	if cfg.Notifier.CertConsumerGroup != "cert-notifier" {
+		t.Errorf("CertConsumerGroup = %q, want default cert-notifier", cfg.Notifier.CertConsumerGroup)
+	}
+}
+
+// TestLoad_CertStreamExplicitDisable covers an operator explicitly turning
+// the consumer off via cert_stream_enabled: false.
+func TestLoad_CertStreamExplicitDisable(t *testing.T) {
+	yaml := baseYAML + `
+notifier:
+  cert_stream_enabled: false
+`
+	cfg, err := Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if got := cfg.Notifier.CertStreamEnabledOrDefault(); got {
+		t.Errorf("CertStreamEnabledOrDefault() = %v, want false (explicit disable)", got)
+	}
+}
+
+// TestLoad_CertStreamExplicitEnableTrue covers explicit cert_stream_enabled:
+// true. This is a no-op vs the default but exercises the pointer non-nil
+// path.
+func TestLoad_CertStreamExplicitEnableTrue(t *testing.T) {
+	yaml := baseYAML + `
+notifier:
+  cert_stream_enabled: true
+`
+	cfg, err := Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Notifier.CertStreamEnabled == nil {
+		t.Fatal("CertStreamEnabled should be non-nil after explicit true")
+	}
+	if *cfg.Notifier.CertStreamEnabled != true {
+		t.Errorf("CertStreamEnabled = %v, want true", *cfg.Notifier.CertStreamEnabled)
+	}
+	if !cfg.Notifier.CertStreamEnabledOrDefault() {
+		t.Errorf("CertStreamEnabledOrDefault() = false, want true")
+	}
+}
+
+// TestLoad_CertStreamOverrideNames covers operator overrides for the stream
+// name + consumer group (e.g. environment-scoped streams).
+func TestLoad_CertStreamOverrideNames(t *testing.T) {
+	yaml := baseYAML + `
+notifier:
+  cert_stream_name: "staging:cert:notifications"
+  cert_consumer_group: "cert-notifier-staging"
+`
+	cfg, err := Load(writeConfig(t, yaml))
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if cfg.Notifier.CertStreamName != "staging:cert:notifications" {
+		t.Errorf("CertStreamName = %q", cfg.Notifier.CertStreamName)
+	}
+	if cfg.Notifier.CertConsumerGroup != "cert-notifier-staging" {
+		t.Errorf("CertConsumerGroup = %q", cfg.Notifier.CertConsumerGroup)
+	}
+}
+
+// TestCertStreamEnabledOrDefault_NilReceiver guards against a nil pointer
+// (matters when the embedded config wasn't constructed via Load — defensive
+// for callers that allocate NotifierConfig{} directly in tests).
+func TestCertStreamEnabledOrDefault_NilReceiver(t *testing.T) {
+	var n *NotifierConfig
+	if got := n.CertStreamEnabledOrDefault(); !got {
+		t.Errorf("nil receiver: got %v, want true (default on)", got)
+	}
+}
+
 func TestMustLoad_PanicsOnError(t *testing.T) {
 	defer func() {
 		if r := recover(); r == nil {

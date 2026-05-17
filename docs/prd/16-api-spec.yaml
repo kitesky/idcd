@@ -1453,6 +1453,270 @@ paths:
               schema:
                 $ref: '#/components/schemas/LeaderboardOptoutRequest'
 
+  # =====================================================================
+  # SECTION: Free Cert Module (apps/cert-svc, /v1/cert/*, 详 20-free-cert.md)
+  # =====================================================================
+  /v1/cert/orders:
+    post:
+      tags: [Cert]
+      summary: 创建证书签发订单
+      operationId: certCreateOrder
+      description: |
+        提交一笔免费证书签发请求。SANs / challenge_type / dns_credential_id
+        必填(manual 模式 dns_credential_id 留空)。返回订单 id 与初始 status=draft。
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sans, challenge_type]
+              properties:
+                sans: { type: array, items: { type: string } }
+                common_name: { type: string }
+                challenge_type: { type: string, enum: [dns-01] }
+                dns_credential_id: { type: integer, format: int64 }
+                ca: { type: string, enum: [lets-encrypt, zerossl, buypass] }
+                tier: { type: string, default: free-dv }
+                idempotency_key: { type: string }
+      responses:
+        '201':
+          description: 订单已创建
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertOrderResponse'
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '409': { $ref: '#/components/responses/Conflict' }
+        '429': { $ref: '#/components/responses/RateLimited' }
+    get:
+      tags: [Cert]
+      summary: 列出本账号证书订单
+      operationId: certListOrders
+      parameters:
+        - { in: query, name: status, schema: { type: string } }
+        - { in: query, name: limit,  schema: { type: integer, default: 20, maximum: 100 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: 订单列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CertOrderResponse' }
+
+  /v1/cert/orders/{id}:
+    get:
+      tags: [Cert]
+      summary: 查询单条订单详情
+      operationId: certGetOrder
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: 订单详情(含 WAL 进度摘要)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertOrderResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cert/orders/{id}/retry:
+    post:
+      tags: [Cert]
+      summary: 显式重试 failed 订单
+      operationId: certRetryOrder
+      description: 仅对 status=failed 的订单生效;复用既有 WAL 步骤。
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '202': { description: 已重新入队 }
+        '409': { description: 订单状态非 failed }
+
+  /v1/cert/orders/{id}/manual-ready:
+    post:
+      tags: [Cert]
+      summary: 手动 DNS 模式 — 通知平台 TXT 记录已生效
+      operationId: certManualReady
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [fqdn, value]
+              properties:
+                fqdn:  { type: string }
+                value: { type: string }
+      responses:
+        '202': { description: 已注入 Coordinator,worker 将继续 challenge }
+        '404': { description: 无活跃 manual coordinator(worker 重启) }
+
+  /v1/cert/certs:
+    get:
+      tags: [Cert]
+      summary: 列出本账号已签发证书
+      operationId: certListCerts
+      parameters:
+        - { in: query, name: status, schema: { type: string, enum: [issued, revoked, expired] } }
+        - { in: query, name: limit,  schema: { type: integer, default: 20, maximum: 100 } }
+        - { in: query, name: offset, schema: { type: integer, default: 0 } }
+      responses:
+        '200':
+          description: 证书列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/CertResponse' }
+
+  /v1/cert/certs/{id}:
+    get:
+      tags: [Cert]
+      summary: 查询单张证书元数据(不含私钥)
+      operationId: certGetCert
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: 证书详情
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CertResponse' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/cert/certs/{id}/download:
+    post:
+      tags: [Cert]
+      summary: 申请一次性签名下载链接(包含私钥)
+      operationId: certIssueDownloadLink
+      description: |
+        生成 HMAC-SHA256 签名的一次性 token,5 分钟过期。返回的 download_url
+        指向 /v1/cert/dl/{token},该子路径无需鉴权(token 本身即凭证)。
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: 下载链接
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  download_url: { type: string, format: uri }
+                  expires_at:   { type: string, format: date-time }
+        '503': { description: CERT_DOWNLOAD_SECRET 未配置 — 下载关闭 }
+
+  /v1/cert/certs/{id}/revoke:
+    post:
+      tags: [Cert]
+      summary: 撤销已签发证书
+      operationId: certRevokeCert
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                reason: { type: string, enum: [unspecified, keyCompromise, superseded, cessationOfOperation] }
+      responses:
+        '202': { description: 撤销已入队(WAL 写入 revoke_started) }
+
+  /v1/cert/dns-credentials:
+    post:
+      tags: [Cert]
+      summary: 新建 DNS Provider 凭据(字段级 KMS 加密)
+      operationId: certCreateDNSCredential
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [provider, display_name, credential]
+              properties:
+                provider:     { type: string, enum: [cloudflare, aliyun, dnspod, route53, gcloud, manual] }
+                display_name: { type: string }
+                credential:   { type: object, additionalProperties: { type: string } }
+      responses:
+        '201':
+          description: 凭据已创建
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DNSCredentialResponse' }
+    get:
+      tags: [Cert]
+      summary: 列出本账号 DNS 凭据
+      operationId: certListDNSCredentials
+      responses:
+        '200':
+          description: 凭据列表
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DNSCredentialResponse' }
+
+  /v1/cert/dns-credentials/{id}:
+    delete:
+      tags: [Cert]
+      summary: 撤销 DNS 凭据
+      operationId: certDeleteDNSCredential
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '204': { description: 已撤销 }
+
+  /v1/cert/dns-credentials/{id}/health-check:
+    post:
+      tags: [Cert]
+      summary: 触发 DNS 凭据健康检查
+      operationId: certHealthCheckDNSCredential
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '200':
+          description: 健康检查结果
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, enum: [ok, error, unknown] }
+                  error:  { type: string }
+
+  /v1/cert/dl/{token}:
+    get:
+      tags: [Cert]
+      summary: 一次性 token 兑换 — 下载证书包
+      operationId: certDownloadByToken
+      security: []  # token 本身即凭证
+      parameters:
+        - { in: path, name: token, required: true, schema: { type: string } }
+      responses:
+        '200':
+          description: 证书 ZIP / PEM 包
+          content:
+            application/zip:
+              schema: { type: string, format: binary }
+        '404': { description: token 不存在 / 已使用 }
+        '410': { description: token 已过期 }
+
+  # ---- Admin (VPN-only,后端通过 middleware 限路由) ----
+  /v1/cert/admin/orders/{id}/force-fail:
+    post:
+      tags: [Cert]
+      summary: 管理员强制将订单置为 failed(运维抢救)
+      operationId: certAdminForceFail
+      parameters:
+        - { in: path, name: id, required: true, schema: { type: integer, format: int64 } }
+      responses:
+        '202': { description: 已置 failed }
+
 # =====================================================================
 # COMPONENTS
 # =====================================================================
@@ -3390,6 +3654,54 @@ components:
           description: 勘误原因(厂商申诉 / 内部修订 等)
         published_at: { type: string, format: date-time, nullable: true }
         created_at: { type: string, format: date-time }
+
+    # ---- Free Cert Module schemas (S2 W8, 详 20-free-cert.md) ----
+    CertOrderResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        account_id: { type: integer, format: int64 }
+        sans: { type: array, items: { type: string } }
+        common_name: { type: string, nullable: true }
+        tier: { type: string }
+        ca: { type: string }
+        status: { type: string, enum: [draft, validating, awaiting_org_validation, issuing, issued, failed, revoking, revoked] }
+        challenge_type: { type: string }
+        dns_credential_id: { type: integer, format: int64, nullable: true }
+        cert_id: { type: integer, format: int64, nullable: true }
+        retry_count: { type: integer }
+        last_error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        finalized_at: { type: string, format: date-time, nullable: true }
+
+    CertResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        order_id: { type: integer, format: int64 }
+        account_id: { type: integer, format: int64 }
+        sans: { type: array, items: { type: string } }
+        issuer: { type: string }
+        serial_hex: { type: string }
+        fingerprint_sha256: { type: string }
+        not_before: { type: string, format: date-time }
+        not_after: { type: string, format: date-time }
+        status: { type: string, enum: [issued, revoked, expired] }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        revoke_reason: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    DNSCredentialResponse:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        account_id: { type: integer, format: int64 }
+        provider: { type: string }
+        display_name: { type: string }
+        health_status: { type: string, enum: [ok, error, unknown] }
+        health_checked_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time, nullable: true }
 
 # =====================================================================
 # x-mcp-protocol — MCP 协议附录(非 OpenAPI;描述性文档)

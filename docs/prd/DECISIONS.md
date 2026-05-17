@@ -419,3 +419,36 @@
 - 招二人 Operator → P0 7×24 双保险
 
 ---
+
+## O. 免费证书模块 D-FC 决策(2026-05-17 锁定, S2 W8 PRD §18 同步)
+
+> 详 [`20-free-cert.md §16`](./20-free-cert.md#16-决策清单d-fc-前缀待-decisionsmd-§n-收口)。本节是 §16 表的 SSOT 收口副本,实施改动以本节为准。
+
+### O.1 D-FC 决策矩阵
+
+| ID | 决策 | 锁定选项 | 状态 | 实施位置 |
+|---|---|---|---|---|
+| **D-FC-01** | S1 是否仅 Let's Encrypt | **A) 仅 LE** | ✅ 已锁定(S1) | apps/cert-svc S1 单 CA;S2 多 CA Router 在 §6 §8 |
+| **D-FC-02** | 私钥下载策略 | **B) 加密落库可下载** | ✅ 已锁定 | KMS 信封 → key_kms_handle;一次性签名 URL(W5 已上) |
+| **D-FC-03** | DNS provider 实现 | **B) 全用 lego** | ✅ 已锁定 | lib/cert/dns/* 桥接 go-acme/lego v4(详 §8) |
+| **D-FC-04** | KMS 选型 | **A+B+C 三路径**:阿里 KMS(国内)+ AWS KMS(海外)+ HashiCorp Vault(自托管) | ✅ 已锁定(S2 W4 完成) | lib/cert/vault/{alikms,awskms,hashivault} |
+| **D-FC-05** | 是否做 HTTP-01 challenge | **B) 不做,仅 DNS-01** | ✅ 已锁定 | 用户零运维 + 所有场景覆盖;减少安全面 |
+| **D-FC-06** | 续期失败兜底 | **B) 3 次后停 + 强告警** | ✅ 已锁定(S2 W7) | renewal_jobs.attempt_count;notifier 推强告警邮件 |
+| **D-FC-07** | 域名黑名单维护 | **B) 配置中心动态拉** | ✅ 已锁定 | abuse_blocklist 表 + admin 后台维护(运营可改不发版) |
+| **D-FC-08** | 是否做自动部署 | **B) 永不做** | ✅ 已锁定 | 合规风险 + 用户服务器多样性;让用户手动部署 |
+| **D-FC-09** | 商业化时点 | **B) S3 商业化** | ✅ 已锁定 | S2 全免费建生态,S3 引入付费档(详 §20) |
+| **D-FC-10** | 是否暴露 MCP tool | **A) S3 做** | ⏳ 待决(S3 评估) | 与 19-ai-agent 协同,优先级低 |
+| **D-FC-11** | 付费 CA 渠道首选 | **C) GoGetSSL 单渠道试水 → D) 多渠道(S4)** | ⏳ 待决(S3) | §20.X 接口已留 sales_channel 字段 |
+| **D-FC-12** | OV / EV 流程归属 | **A) 本模块扩展** | ✅ 已锁定 | 复用订单 / 状态机 / 通知 / 凭据;独立模块成本太高 |
+| **D-FC-13** | 付费证书私钥策略 | **A + B 两档**(基础档同免费,企业档强制 KMS 不可导出) | ✅ 已锁定 | cert.certs.key_kms_handle 区分两档 |
+
+### O.2 实施 SSOT 索引
+
+- 模块 PRD:`docs/prd/20-free-cert.md`
+- 数据模型:`docs/prd/15-data-model.md §4.X cert.*`
+- 状态机:`docs/prd/STATE-MACHINES.md` CertOrder / RenewalJob
+- API:`docs/prd/16-api-spec.yaml /v1/cert/*`
+- ER 图:`docs/prd/ER-DIAGRAM.md` cert 实体段
+- 路线图:`docs/prd/17-roadmap.md` S1/S2/S3 cert 里程碑
+
+---

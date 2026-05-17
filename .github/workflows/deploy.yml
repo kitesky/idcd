@@ -152,6 +152,34 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+  build-cert-svc:
+    name: Build Cert-svc
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_OWNER }}/idcd-cert-svc
+          tags: |
+            type=sha,prefix=main-
+            type=raw,value=latest
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/cert-svc/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
   build-agent:
     name: Build Agent
     runs-on: ubuntu-latest
@@ -191,6 +219,7 @@ jobs:
       - build-notifier
       - build-gateway
       - build-scheduler
+      - build-cert-svc
       - build-agent
     steps:
       - uses: actions/checkout@v4

@@ -195,6 +195,20 @@ idcd 是**三栈叠加**的产品阵型，不是单一品类的"另一个监控 
 | 假数据生成（开发用） | P2 | S2 | |
 | Markdown 预览 / 表格生成 | P2 | S2 | |
 
+#### 免费证书工具（S2 切入,详 [20-free-cert.md](./20-free-cert.md)）
+| 功能 | P | S | 备注 |
+|---|---|---|---|
+| 一键申请免费 SSL 证书（Let's Encrypt） | P0 | S2 | DNS-01 challenge,90 天有效 |
+| 多 CA 自动路由 / 失败兜底（LE → ZeroSSL → Buypass） | P0 | S2 | CA 配额 70% 阈值切备份 |
+| 自动续期（到期前 30 天） | P0 | S2 | 续期 job 持久化,失败 3 次告警 |
+| DNS provider 凭据托管（Cloudflare/Aliyun/DNSPod/Route53/Gcloud） | P0 | S2 | 字段级加密 + KMS 信封 |
+| 手动 DNS-01 模式（无凭据用户） | P1 | S2 | 30 分钟超时,SSE 推 challenge 状态 |
+| 证书下载（一次性签名链接） | P0 | S2 | HMAC token,5 分钟过期 |
+| 证书撤销 / 重新签发 | P1 | S2 | revoke 通过 ACME accountKey |
+| 私钥加密落库（KMS 信封,阿里 + AWS 双路径） | P0 | S2 | D-FC-04 决策 |
+| 通配符证书（*.example.com） | P1 | S2 | DNS-01 默认支持 |
+| 付费 CA 扩展（OV/EV,DigiCert / Sectigo） | P2 | S3 | §20.X 接口兼容 |
+
 ### 4.2 账号 & 用户系统
 
 | 功能 | P | S | 备注 |

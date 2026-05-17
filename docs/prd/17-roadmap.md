@@ -47,7 +47,15 @@
 - 帮助中心 30 篇
 - 节点扩至 60+
 
-### M4：S1 收官
+### M4：S1 收官 + 免费证书 S1
+**v2 NEW(免费证书 S1,详 [20-free-cert.md §15.1](./20-free-cert.md#151-s14-周)):**
+- W1 cert.* schema 落地 + apps/cert-svc HTTP 骨架 + Let's Encrypt adapter
+- W2 ACME 完整状态机 + WAL 重放 + Pebble 集成测试
+- W3 Cloudflare DNS provider + 手动模式 + DNS 凭据加密
+- W4 前端申请向导 + 订单页 + 下载弹窗 + staging 端到端冒烟
+
+**S1 验收(证书)**:登录用户 5 分钟内完成 Cloudflare 模式签发 `*.example.com` 并部署 Nginx 验证 HTTPS。
+
 - 节点扩至 100+
 - 完整反滥用测试（红队演练）
 - ICP 备案完成
@@ -110,6 +118,11 @@
 - **v2 NEW: LLM 故障复盘自动起草上线(从 P3 提前)— 离线 eval ≥ 4.0/5 才上线**
 - **v2 NEW: Verdict 自检 daily 抽样审计 + transparency 页**
 - **v2 NEW: Verdict 件价首月销售目标 ≥ 50 份**
+- **v2 NEW(免费证书 S2 收官,详 [20-free-cert.md §15.2](./20-free-cert.md#152-s24-周))**:
+  - W5 ZeroSSL + Buypass adapter + CA 路由策略(70% 配额阈值切备份)+ CAA 预检
+  - W6 阿里云 / DNSPod / Route53 / GCP DNS provider + 真 KMS 接入(阿里云 / AWS / Vault 三路径)
+  - W7 自动续期 cron + retry 队列(3 次后停 + 强告警)+ 撤销 + PKCS#12 导出
+  - W8 abuse-detection + admin 面板 + Prometheus /metrics + PRD 8 项文档同步
 
 ### M9：API 完善 + MCP server alpha 准备(v2)
 - API v1 公开 GA（仍可邀请制提高限速）
@@ -170,7 +183,7 @@
 - **v2 NEW: 司法鉴定所合作通道初步对接(1-2 家)**
 - **v2 NEW: 报告嵌入卡片(iframe / OG)**
 
-### M14：S3 收官 + Evidence GA + Agent obs GA(v2)
+### M14：S3 收官 + Evidence GA + Agent obs GA(v2) + 免费证书 S3
 - 出海英文站完整（500+ 工具页 + 50 篇博客 + **/leaderboard 中英双语**）
 - 排班（On-Call rotation）
 - 告警噪音分析
@@ -184,6 +197,11 @@
 - **v2 NEW: MCP 月调用量 ≥ 1M;Agent obs 监控数 ≥ 5,000**
 - **v2 NEW: TimescaleDB 容量评估报告 + ClickHouse PoC**(D14):S3 末必备,基于单日 monitor_check 新增 + P99 write latency 监控指标,准备好 CK 代码与切换 SOP
 - **v2 NEW: KMS 应急 SOP 年度演练**(D11):S3 末再做 1 次模拟,与 M6 演练数据对比 + 监控趋势
+- **v2 NEW(免费证书 S3,详 [20-free-cert.md §15.3](./20-free-cert.md#153-s34-6-周))**:
+  - 付费 CA 通道试水(GoGetSSL / DigiCert reseller,详 §20)
+  - 团队席位 + 凭据共享(企业向)
+  - Webhook 通知(签发 / 续期 / 撤销事件外推)
+  - D-FC-10 MCP tool 评估(与 19-ai-agent 协同)
 
 ### M15+（S4，按需展开)
 - Enterprise 档定价正式上线

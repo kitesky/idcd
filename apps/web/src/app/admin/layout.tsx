@@ -22,6 +22,7 @@ export default async function AdminLayout({ children }: { children: React.ReactN
     { href: "/admin/refund-failed",    label: t("nav.refundFailed") },
     { href: "/admin/beta-invitations", label: t("nav.betaInvitations") },
     { href: "/admin/upgrades",         label: t("nav.upgrades") },
+    { href: "/admin/cert",             label: t("nav.cert") },
   ]
 
   return (

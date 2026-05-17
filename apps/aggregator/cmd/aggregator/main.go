@@ -79,8 +79,8 @@ func main() {
 
 	// Start the internal metrics listener (Prometheus default registry).
 	metricsPort := 9091
-	if cfg.Config != nil && cfg.Config.Observability.PrometheusPort > 0 {
-		metricsPort = cfg.Config.Observability.PrometheusPort
+	if cfg.Config != nil && cfg.Observability.PrometheusPort > 0 {
+		metricsPort = cfg.Observability.PrometheusPort
 	}
 	metricsSrv := startMetricsServer(metricsPort, logger)
 	defer func() {

@@ -17,11 +17,31 @@ type Config struct {
 
 // NotifierConfig holds notifier-specific configuration.
 type NotifierConfig struct {
-	SMTP      SMTPConfig      `yaml:"smtp"`
-	SES       SESConfig       `yaml:"ses"`
-	AsynqDSN  string          `yaml:"asynq_redis_dsn"`
-	Workers   int             `yaml:"workers"`          // number of worker goroutines (default: 4)
-	Queues    map[string]int  `yaml:"queues"`           // queue name -> priority mapping
+	SMTP     SMTPConfig     `yaml:"smtp"`
+	SES      SESConfig      `yaml:"ses"`
+	AsynqDSN string         `yaml:"asynq_redis_dsn"`
+	Workers  int            `yaml:"workers"` // number of worker goroutines (default: 4)
+	Queues   map[string]int `yaml:"queues"`  // queue name -> priority mapping
+
+	// CertStreamEnabled toggles the S2 W8 cert:notifications Redis Stream
+	// consumer. Pointer-typed so the default (true) can be distinguished from
+	// an explicit "false" override in YAML — nil means "use default, on";
+	// *false means the operator explicitly disabled it; *true means the
+	// operator explicitly enabled it (no-op vs default).
+	//
+	// Callers should use CertStreamEnabledOrDefault() to read the resolved
+	// boolean.
+	CertStreamEnabled *bool `yaml:"cert_stream_enabled"`
+
+	// CertStreamName is the Redis Stream key the cert consumer reads from.
+	// Matches apps/cert-svc/internal/service/notifications.go
+	// DefaultNotificationStream ("cert:notifications").
+	CertStreamName string `yaml:"cert_stream_name"`
+
+	// CertConsumerGroup is the Redis consumer group name used by XREADGROUP.
+	// Defaults to "cert-notifier" so all notifier replicas share work via the
+	// same group (each message handled by exactly one replica).
+	CertConsumerGroup string `yaml:"cert_consumer_group"`
 }
 
 // SMTPConfig holds SMTP server configuration.
@@ -78,6 +98,16 @@ func MustLoad(path string) *Config {
 	return cfg
 }
 
+// CertStreamEnabledOrDefault resolves the pointer-typed CertStreamEnabled
+// field to a concrete bool. nil → true (default on); otherwise honour the
+// operator override.
+func (n *NotifierConfig) CertStreamEnabledOrDefault() bool {
+	if n == nil || n.CertStreamEnabled == nil {
+		return true
+	}
+	return *n.CertStreamEnabled
+}
+
 // setDefaults sets default values for notifier configuration.
 func setDefaults(n *NotifierConfig) {
 	if n.Workers == 0 {
@@ -114,5 +144,15 @@ func setDefaults(n *NotifierConfig) {
 	}
 	if n.SES.FromName == "" {
 		n.SES.FromName = "idcd" // default sender name
+	}
+
+	// S2 W8 cert:notifications consumer defaults.  CertStreamEnabled is a
+	// pointer so its zero value (nil) is distinguishable from explicit
+	// false; CertStreamEnabledOrDefault() collapses nil to true.
+	if n.CertStreamName == "" {
+		n.CertStreamName = "cert:notifications"
+	}
+	if n.CertConsumerGroup == "" {
+		n.CertConsumerGroup = "cert-notifier"
 	}
 }

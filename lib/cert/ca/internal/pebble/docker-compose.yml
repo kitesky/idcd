@@ -1,0 +1,46 @@
+# Pebble + challtestsrv fixture for local / CI integration tests.
+#
+# Local one-shot:
+#   docker compose -f lib/cert/ca/internal/pebble/docker-compose.yml up -d
+#   export PEBBLE_DIRECTORY_URL=https://127.0.0.1:14000/dir
+#   export PEBBLE_CHALLTESTSRV_URL=http://127.0.0.1:8055
+#   export PEBBLE_DNS_SERVER=127.0.0.1:8053
+#   # Lego needs to trust Pebble's self-signed root:
+#   docker compose -f lib/cert/ca/internal/pebble/docker-compose.yml exec -T pebble \
+#       cat /test/certs/pebble.minica.pem > /tmp/pebble.minica.pem
+#   export LEGO_CA_CERTIFICATES=/tmp/pebble.minica.pem
+#   go test -tags integration ./lib/cert/ca/letsencrypt/... -run Integration_Pebble -v
+#   docker compose -f lib/cert/ca/internal/pebble/docker-compose.yml down
+#
+# When PEBBLE_DIRECTORY_URL is unset, the pebble harness instead boots
+# its own one-off containers via `docker run` (linux-only).
+version: "3.8"
+services:
+  pebble:
+    image: letsencrypt/pebble:latest
+    command: pebble -dnsserver challtestsrv:8053
+    environment:
+      PEBBLE_VA_NOSLEEP: "1"
+      PEBBLE_WFE_NONCEREJECT: "0"
+    ports:
+      - "14000:14000"   # ACME directory (HTTPS)
+      - "15000:15000"   # Management API (CA root fetch)
+    depends_on:
+      - challtestsrv
+
+  challtestsrv:
+    image: letsencrypt/pebble-challtestsrv:latest
+    command: >
+      pebble-challtestsrv
+      -defaultIPv4 127.0.0.1
+      -defaultIPv6 ""
+      -dns01 :8053
+      -management :8055
+      -http01 ""
+      -https01 ""
+      -tlsalpn01 ""
+      -doh ""
+    ports:
+      - "8053:8053/udp" # DNS (Pebble VA → here)
+      - "8053:8053/tcp"
+      - "8055:8055"     # Management HTTP API (test process → here)

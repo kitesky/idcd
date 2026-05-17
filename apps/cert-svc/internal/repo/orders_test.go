@@ -322,6 +322,69 @@ func TestOrdersRepo_ListPickable_DBError(t *testing.T) {
 	require.Error(t, err)
 }
 
+func TestOrdersRepo_AdminListOrders_NoFilters(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+
+	mock.ExpectQuery(`SELECT .+ FROM cert\.orders ORDER BY created_at DESC LIMIT \$1 OFFSET \$2`).
+		WithArgs(50, 0).
+		WillReturnRows(pgxmock.NewRows(orderColumns()).
+			AddRow(sampleOrderRow(1)...).
+			AddRow(sampleOrderRow(2)...))
+
+	out, err := r.AdminListOrders(context.Background(), AdminOrderFilter{})
+	require.NoError(t, err)
+	require.Len(t, out, 2)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOrdersRepo_AdminListOrders_AllFilters(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	st := OrderStatusIssued
+	acct := int64(42)
+	ca := "lets-encrypt"
+
+	mock.ExpectQuery(`SELECT .+ FROM cert\.orders WHERE status = \$1 AND account_id = \$2 AND ca = \$3 ORDER BY created_at DESC LIMIT \$4 OFFSET \$5`).
+		WithArgs("issued", int64(42), "lets-encrypt", 25, 10).
+		WillReturnRows(pgxmock.NewRows(orderColumns()).AddRow(sampleOrderRow(7)...))
+
+	out, err := r.AdminListOrders(context.Background(), AdminOrderFilter{
+		Status: &st, AccountID: &acct, CA: &ca, Limit: 25, Offset: 10,
+	})
+	require.NoError(t, err)
+	require.Len(t, out, 1)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+func TestOrdersRepo_AdminListOrders_LimitClamped(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	mock.ExpectQuery(`SELECT .+ FROM cert\.orders ORDER BY created_at DESC LIMIT \$1 OFFSET \$2`).
+		WithArgs(50, 0). // 500 → clamped to 50; -3 → clamped to 0
+		WillReturnRows(pgxmock.NewRows(orderColumns()))
+
+	_, err := r.AdminListOrders(context.Background(), AdminOrderFilter{Limit: 500, Offset: -3})
+	require.NoError(t, err)
+}
+
+func TestOrdersRepo_AdminListOrders_DBError(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	mock.ExpectQuery(`SELECT .+ FROM cert\.orders`).
+		WithArgs(50, 0).
+		WillReturnError(errors.New("boom"))
+	_, err := r.AdminListOrders(context.Background(), AdminOrderFilter{})
+	require.Error(t, err)
+}
+
+func TestOrdersRepo_AdminListOrders_ScanError(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	// Return a row missing one column → Scan fails.
+	cols := []string{"id"}
+	mock.ExpectQuery(`SELECT .+ FROM cert\.orders`).
+		WithArgs(50, 0).
+		WillReturnRows(pgxmock.NewRows(cols).AddRow(int64(1)))
+	_, err := r.AdminListOrders(context.Background(), AdminOrderFilter{})
+	require.Error(t, err)
+}
+
 func TestOrdersRepo_CountByCASince(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 	since := time.Now().UTC()

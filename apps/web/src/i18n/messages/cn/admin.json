@@ -7,7 +7,8 @@
     "upgrades": "升级管理",
     "betaInvitations": "内测邀请",
     "refundFailed": "退款失败",
-    "nodeApplications": "节点申请"
+    "nodeApplications": "节点申请",
+    "cert": "证书管理"
   },
   "home": {
     "title": "管理首页",
@@ -280,5 +281,105 @@
     "zh": "中文",
     "en": "English",
     "switchTo": "切换语言"
+  },
+  "cert": {
+    "title": "证书管理后台",
+    "subtitle": "免费 DV 证书订单 / 配额 / DNS 健康 / 账号封禁",
+    "nav": {
+      "dashboard": "总览",
+      "orders": "订单管理",
+      "quota": "CA 配额",
+      "dnsHealth": "DNS 健康",
+      "abuse": "账号封禁"
+    },
+    "dashboard": {
+      "title": "证书系统总览",
+      "subtitle": "关键指标一览",
+      "totalOrders": "订单总数",
+      "expiringSoon": "30 天内到期",
+      "caQuotaLabel": "CA 配额状态",
+      "dnsHealthLabel": "DNS 健康度",
+      "noData": "暂无数据",
+      "viewAll": "查看全部"
+    },
+    "orders": {
+      "title": "证书订单",
+      "subtitle": "管理所有账号的证书订单",
+      "filterStatus": "状态",
+      "filterCa": "CA",
+      "filterAccountId": "账号 ID",
+      "filterAll": "全部",
+      "apply": "筛选",
+      "refresh": "刷新",
+      "loading": "加载中…",
+      "noData": "暂无订单",
+      "forceFail": "强制失败",
+      "confirmForceFailTitle": "确认强制失败？",
+      "confirmForceFailDesc": "该操作将把订单 #{id} 推入 failed 终态，无法撤销。请填写原因。",
+      "reasonLabel": "原因",
+      "reasonPlaceholder": "操作员备注…",
+      "cancel": "取消",
+      "confirm": "确认",
+      "processing": "处理中…",
+      "table": {
+        "id": "订单 ID",
+        "accountId": "账号",
+        "ca": "CA",
+        "status": "状态",
+        "sans": "域名",
+        "retry": "重试次数",
+        "createdAt": "创建时间",
+        "actions": "操作"
+      },
+      "status": {
+        "draft": "草稿",
+        "validating": "验证中",
+        "awaiting_org_validation": "等待人工审核",
+        "issuing": "签发中",
+        "issued": "已签发",
+        "failed": "失败",
+        "revoking": "吊销中",
+        "revoked": "已吊销"
+      }
+    },
+    "quota": {
+      "title": "CA 配额仪表盘",
+      "subtitle": "实时显示各 CA 配额用量，超过 {threshold}% 自动 fall-over",
+      "refresh": "刷新",
+      "ca": "CA",
+      "per3h": "3 小时窗口",
+      "perWeek": "周窗口（每注册域）",
+      "switched": "已切换",
+      "normal": "正常",
+      "unknown": "未知",
+      "noData": "暂无数据"
+    },
+    "dnsHealth": {
+      "title": "DNS Provider 健康度",
+      "subtitle": "最近 24 小时各 DNS provider TXT 写入成功率",
+      "refresh": "刷新",
+      "provider": "Provider",
+      "successRate": "成功率",
+      "samples": "样本数",
+      "window": "窗口（小时）",
+      "unknown": "—",
+      "noData": "暂无数据"
+    },
+    "abuse": {
+      "title": "账号封禁",
+      "subtitle": "永久禁止指定账号申请证书",
+      "accountIdLabel": "账号 ID",
+      "accountIdPlaceholder": "例如 42",
+      "reasonLabel": "原因",
+      "reasonPlaceholder": "操作员备注…",
+      "banButton": "封禁账号",
+      "confirmTitle": "确认封禁账号 {id}？",
+      "confirmDesc": "封禁后该账号将无法创建新订单。操作记录会写入 audit_logs。",
+      "cancel": "取消",
+      "confirm": "确认封禁",
+      "processing": "处理中…",
+      "success": "账号 {id} 已成功封禁",
+      "error": "封禁失败：{message}"
+    }
   }
 }

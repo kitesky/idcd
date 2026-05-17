@@ -325,6 +325,90 @@ func scanOrder(r rowScanner) (*Order, error) {
 	return &o, nil
 }
 
+// AdminOrderFilter is the filter set the admin handler passes to
+// AdminListOrders. Each pointer-typed field is treated as optional:
+// a nil pointer means "do not filter on this dimension". The result
+// set is ordered by created_at DESC (newest first) with a hard cap
+// applied by the caller via Limit / Offset.
+type AdminOrderFilter struct {
+	Status    *OrderStatus
+	AccountID *int64
+	CA        *string
+	Limit     int
+	Offset    int
+}
+
+// AdminListOrders is the cross-account variant of ListByAccount used by
+// /v1/admin/cert/orders. All filters are optional. The query is composed
+// dynamically (positional pgx args) because the cross-product of optional
+// filters is small (8 combinations) and keeping the predicate explicit
+// keeps the EXPLAIN trivially readable for an ops engineer.
+func (r *OrdersRepo) AdminListOrders(ctx context.Context, f AdminOrderFilter) ([]*Order, error) {
+	limit := f.Limit
+	if limit <= 0 || limit > 200 {
+		limit = 50
+	}
+	offset := f.Offset
+	if offset < 0 {
+		offset = 0
+	}
+
+	sql := "SELECT " + ordersColumns + " FROM cert.orders"
+	args := make([]any, 0, 5)
+	clauses := make([]string, 0, 3)
+	if f.Status != nil {
+		args = append(args, string(*f.Status))
+		clauses = append(clauses, fmt.Sprintf("status = $%d", len(args)))
+	}
+	if f.AccountID != nil {
+		args = append(args, *f.AccountID)
+		clauses = append(clauses, fmt.Sprintf("account_id = $%d", len(args)))
+	}
+	if f.CA != nil {
+		args = append(args, *f.CA)
+		clauses = append(clauses, fmt.Sprintf("ca = $%d", len(args)))
+	}
+	if len(clauses) > 0 {
+		sql += " WHERE " + joinAnd(clauses)
+	}
+	args = append(args, limit)
+	args = append(args, offset)
+	sql += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", len(args)-1, len(args))
+
+	rows, err := r.pool.Query(ctx, sql, args...)
+	if err != nil {
+		return nil, fmt.Errorf("orders admin list: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*Order, 0)
+	for rows.Next() {
+		o, scanErr := scanOrder(rows)
+		if scanErr != nil {
+			return nil, fmt.Errorf("orders admin list scan: %w", scanErr)
+		}
+		out = append(out, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("orders admin list rows: %w", err)
+	}
+	return out, nil
+}
+
+// joinAnd concatenates SQL predicate fragments with " AND ". Defined here
+// rather than imported from strings to keep the file's dependency surface
+// minimal (the only other strings.* use is in scanOrder).
+func joinAnd(parts []string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += " AND "
+		}
+		out += p
+	}
+	return out
+}
+
 const ordersCountByCASinceSQL = `
 	SELECT count(*) FROM cert.orders
 	WHERE ca = $1 AND created_at >= $2

@@ -7,7 +7,8 @@
     "upgrades": "Upgrades",
     "betaInvitations": "Beta Invitations",
     "refundFailed": "Refund Failed",
-    "nodeApplications": "Node Applications"
+    "nodeApplications": "Node Applications",
+    "cert": "Cert Admin"
   },
   "home": {
     "title": "Admin Home",
@@ -62,5 +63,105 @@
     "zh": "中文",
     "en": "English",
     "switchTo": "Switch Language"
+  },
+  "cert": {
+    "title": "Cert Admin",
+    "subtitle": "Free DV certs: orders, quota, DNS health, abuse",
+    "nav": {
+      "dashboard": "Overview",
+      "orders": "Orders",
+      "quota": "CA Quota",
+      "dnsHealth": "DNS Health",
+      "abuse": "Account Ban"
+    },
+    "dashboard": {
+      "title": "Cert System Overview",
+      "subtitle": "Key indicators at a glance",
+      "totalOrders": "Total Orders",
+      "expiringSoon": "Expiring in 30d",
+      "caQuotaLabel": "CA Quota",
+      "dnsHealthLabel": "DNS Health",
+      "noData": "No data",
+      "viewAll": "View all"
+    },
+    "orders": {
+      "title": "Cert Orders",
+      "subtitle": "Manage orders across all accounts",
+      "filterStatus": "Status",
+      "filterCa": "CA",
+      "filterAccountId": "Account ID",
+      "filterAll": "All",
+      "apply": "Filter",
+      "refresh": "Refresh",
+      "loading": "Loading…",
+      "noData": "No orders",
+      "forceFail": "Force Fail",
+      "confirmForceFailTitle": "Force-fail order?",
+      "confirmForceFailDesc": "This pushes order #{id} into the failed terminal state. Cannot be undone. Please enter a reason.",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "Operator note…",
+      "cancel": "Cancel",
+      "confirm": "Confirm",
+      "processing": "Processing…",
+      "table": {
+        "id": "Order ID",
+        "accountId": "Account",
+        "ca": "CA",
+        "status": "Status",
+        "sans": "SANs",
+        "retry": "Retries",
+        "createdAt": "Created",
+        "actions": "Actions"
+      },
+      "status": {
+        "draft": "Draft",
+        "validating": "Validating",
+        "awaiting_org_validation": "Awaiting Review",
+        "issuing": "Issuing",
+        "issued": "Issued",
+        "failed": "Failed",
+        "revoking": "Revoking",
+        "revoked": "Revoked"
+      }
+    },
+    "quota": {
+      "title": "CA Quota Dashboard",
+      "subtitle": "Live usage per CA — auto fall-over above {threshold}%",
+      "refresh": "Refresh",
+      "ca": "CA",
+      "per3h": "3h window",
+      "perWeek": "Weekly (per registered domain)",
+      "switched": "Switched",
+      "normal": "Normal",
+      "unknown": "Unknown",
+      "noData": "No data"
+    },
+    "dnsHealth": {
+      "title": "DNS Provider Health",
+      "subtitle": "TXT-record write success rate over the last 24 hours",
+      "refresh": "Refresh",
+      "provider": "Provider",
+      "successRate": "Success Rate",
+      "samples": "Samples",
+      "window": "Window (h)",
+      "unknown": "—",
+      "noData": "No data"
+    },
+    "abuse": {
+      "title": "Account Ban",
+      "subtitle": "Permanently block an account from requesting new certs",
+      "accountIdLabel": "Account ID",
+      "accountIdPlaceholder": "e.g. 42",
+      "reasonLabel": "Reason",
+      "reasonPlaceholder": "Operator note…",
+      "banButton": "Ban Account",
+      "confirmTitle": "Ban account {id}?",
+      "confirmDesc": "The account will no longer be able to create new orders. The action is recorded in audit_logs.",
+      "cancel": "Cancel",
+      "confirm": "Confirm Ban",
+      "processing": "Processing…",
+      "success": "Account {id} banned successfully",
+      "error": "Ban failed: {message}"
+    }
   }
 }

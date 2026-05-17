@@ -52,6 +52,22 @@ type Deps struct {
 	// misconfigured deploy quickly instead of silently letting traffic
 	// through unauthenticated.
 	AuthnMiddleware func(http.Handler) http.Handler
+
+	// AdminAuthnMiddleware wraps every /v1/admin/cert route. Distinct
+	// from AuthnMiddleware so the admin surface can demand a stronger
+	// credential (operator JWT, VPN-only header). When nil, every admin
+	// route returns 401 — admin endpoints fail closed by default.
+	AdminAuthnMiddleware func(http.Handler) http.Handler
+
+	// AdminQuota is the read-side surface for /v1/admin/cert/ca-quota.
+	// Production wiring passes *service.RepoQuotaChecker. nil disables
+	// the endpoint (returns 503).
+	AdminQuota AdminQuotaSource
+
+	// AdminAbuse is the gate for /v1/admin/cert/accounts/{id}/ban.
+	// Production wiring wraps the in-memory AbuseDetector. nil
+	// disables the endpoint (returns 503).
+	AdminAbuse AdminAbuseGate
 }
 
 // Pinger is the minimum surface readyz needs. Both pgxpool.Pool and
@@ -83,6 +99,19 @@ func New(deps Deps) chi.Router {
 		mountOrders(r, deps)
 		mountDNSCredentials(r, deps)
 		mountCerts(r, deps)
+	})
+
+	// Admin surface — guarded by AdminAuthnMiddleware. Mounted on a
+	// separate /v1/admin/cert prefix so an upstream gateway can route
+	// to a different access-control profile (e.g. VPN-only) without
+	// inspecting handler internals.
+	r.Route("/v1/admin/cert", func(r chi.Router) {
+		if deps.AdminAuthnMiddleware != nil {
+			r.Use(deps.AdminAuthnMiddleware)
+		} else {
+			r.Use(rejectAllAdminUnauthenticated)
+		}
+		mountAdmin(r, deps)
 	})
 
 	return r

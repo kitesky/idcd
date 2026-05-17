@@ -650,6 +650,318 @@ func TestRecordFailure_EnqueueErrorDoesNotMask(t *testing.T) {
 	}
 }
 
+// TestNew_DefaultNowFunc covers the `cfg.now == nil` defaulting branch
+// in New(). The shared newWorker helper always pins now, so this test
+// constructs the Worker directly.
+func TestNew_DefaultNowFunc(t *testing.T) {
+	w := New(Config{
+		Lister:             &fakeLister{},
+		Updater:            &fakeUpdater{},
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{},
+		VerifyEndpoint:     "https://example.test/verify",
+	})
+	got := w.cfg.now()
+	if got.IsZero() {
+		t.Fatal("default now() should return non-zero time")
+	}
+	if got.Location() != time.UTC {
+		t.Errorf("default now() should be UTC, got %v", got.Location())
+	}
+}
+
+// TestRun_TickerBranchFires covers the `<-t.C` case in Run's select.
+// We use a very short PollInterval so the ticker fires before context
+// cancellation.
+func TestRun_TickerBranchFires(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: true})
+
+	lister := &fakeLister{
+		// Two batches: the immediate tick consumes the first, the
+		// ticker-driven tick consumes the second.
+		batches: [][]*PendingReport{
+			{{ID: "vr_1", PDFURL: "f"}},
+			{{ID: "vr_2", PDFURL: "f"}},
+		},
+	}
+	upd := &fakeUpdater{}
+	w := newWorker(t, Config{
+		Lister:             lister,
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+		PollInterval:       10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- w.Run(ctx) }()
+
+	// Wait until both batches have been processed.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if len(upd.Calls()) >= 2 {
+			break
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	cancel()
+	<-done
+
+	if got := len(upd.Calls()); got < 2 {
+		t.Fatalf("expected ticker-driven tick to consume second batch; calls=%d", got)
+	}
+}
+
+// TestTick_CtxCancelMidBatch covers the `ctx.Err() != nil` check inside
+// the for-loop in tick(). We feed a batch of 3 reports; the first
+// VerifyOne call also cancels the ctx, so the loop should bail before
+// reaching report #2.
+type cancellingLister struct {
+	once    bool
+	reports []*PendingReport
+}
+
+func (c *cancellingLister) ListPendingSelfVerify(_ context.Context, _ int) ([]*PendingReport, error) {
+	if c.once {
+		return nil, nil
+	}
+	c.once = true
+	return c.reports, nil
+}
+
+type cancellingUpdater struct {
+	cancel func()
+	calls  []updaterCall
+}
+
+func (c *cancellingUpdater) UpdateSelfVerify(_ context.Context, id, st string, at time.Time) error {
+	c.calls = append(c.calls, updaterCall{id, st, at})
+	// Cancel after the first call so the loop's per-iteration ctx.Err()
+	// check trips before the next report is processed.
+	c.cancel()
+	return nil
+}
+
+func TestTick_CtxCancelMidBatch(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: true})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	upd := &cancellingUpdater{cancel: cancel}
+
+	w := newWorker(t, Config{
+		Lister: &cancellingLister{reports: []*PendingReport{
+			{ID: "vr_1", PDFURL: "f"},
+			{ID: "vr_2", PDFURL: "f"},
+			{ID: "vr_3", PDFURL: "f"},
+		}},
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+		PollInterval:       time.Hour,
+	})
+
+	w.tick(ctx)
+	// Exactly one report should have been processed before ctx-cancel
+	// short-circuited the loop.
+	if len(upd.calls) != 1 {
+		t.Fatalf("expected 1 update before cancel, got %d", len(upd.calls))
+	}
+}
+
+// TestVerifyOne_HTTPDoError covers the http.Client.Do error branch when
+// the endpoint is unreachable.
+func TestVerifyOne_HTTPDoError(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	upd := &fakeUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		// 127.0.0.1:1 is reserved + unbound — Do() will fail with a
+		// connection-refused error.
+		VerifyEndpoint: "http://127.0.0.1:1/verify",
+		HTTPClient:     &http.Client{Timeout: 200 * time.Millisecond},
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_do", PDFURL: "f"})
+	if err == nil || !strings.Contains(err.Error(), "self-verify failed") {
+		t.Fatalf("err=%v want self-verify failed", err)
+	}
+	if upd.Calls()[0].Status != StatusFail {
+		t.Fatal("expected fail status flip")
+	}
+}
+
+// TestVerifyOne_JSONDecodeError covers the json.NewDecoder.Decode error
+// branch (server returns 200 + non-JSON body).
+func TestVerifyOne_JSONDecodeError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("this is not json {{"))
+	}))
+	t.Cleanup(srv.Close)
+
+	upd := &fakeUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": []byte("x")}},
+		VerifyEndpoint:     srv.URL,
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_j", PDFURL: "f"})
+	if err == nil {
+		t.Fatal("expected decode error")
+	}
+	if upd.Calls()[0].Status != StatusFail {
+		t.Fatal("expected fail status flip")
+	}
+}
+
+// TestVerifyOne_NewRequestError covers the http.NewRequestWithContext
+// error branch. We trigger it with a URL containing a NUL byte, which
+// net/http rejects.
+func TestVerifyOne_NewRequestError(t *testing.T) {
+	upd := &fakeUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": []byte("x")}},
+		VerifyEndpoint:     "http://example.test/\x00bad",
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_n", PDFURL: "f"})
+	if err == nil || !strings.Contains(err.Error(), "self-verify failed") {
+		t.Fatalf("err=%v want self-verify failed", err)
+	}
+	if upd.Calls()[0].Status != StatusFail {
+		t.Fatal("expected fail status flip")
+	}
+}
+
+// erroringRecords always returns a non-duplicate Insert error so the
+// "Insert WAL failed (logged + continue)" branch in both recordSuccess
+// and recordFailure runs.
+type erroringRecords struct{}
+
+func (erroringRecords) Insert(context.Context, *attestrec.Record) error {
+	return fmt.Errorf("disk full")
+}
+func (erroringRecords) Get(context.Context, string, attestrec.Action) (*attestrec.Record, error) {
+	return nil, attestrec.ErrNotFound
+}
+func (erroringRecords) Update(context.Context, *attestrec.Record) error { return nil }
+func (erroringRecords) ListByReport(context.Context, string) ([]*attestrec.Record, error) {
+	return nil, nil
+}
+
+func TestRecordSuccess_WALInsertErrorIsLogged(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: true})
+
+	upd := &fakeUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: erroringRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+	})
+
+	// Insert errors but recordSuccess proceeds to flip status — return is nil.
+	if err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_w1", PDFURL: "f"}); err != nil {
+		t.Fatalf("VerifyOne: %v", err)
+	}
+	if upd.Calls()[0].Status != StatusPass {
+		t.Fatal("expected pass status flip despite WAL insert error")
+	}
+}
+
+func TestRecordFailure_WALInsertErrorIsLogged(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: false, Reason: "boom"})
+
+	upd := &fakeUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: erroringRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_w2", PDFURL: "f"})
+	if err == nil {
+		t.Fatal("expected failure error")
+	}
+	if upd.Calls()[0].Status != StatusFail {
+		t.Fatal("expected fail status flip despite WAL insert error")
+	}
+}
+
+// erroringUpdater returns an error from UpdateSelfVerify so both
+// recordSuccess and recordFailure exercise their updater-failure branch.
+type erroringUpdater struct {
+	mu    sync.Mutex
+	calls []updaterCall
+}
+
+func (e *erroringUpdater) UpdateSelfVerify(_ context.Context, id, st string, at time.Time) error {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.calls = append(e.calls, updaterCall{id, st, at})
+	return fmt.Errorf("db down")
+}
+
+func TestRecordSuccess_UpdaterErrorPropagates(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: true})
+
+	upd := &erroringUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_u1", PDFURL: "f"})
+	if err == nil || !strings.Contains(err.Error(), "update self_verify_status") {
+		t.Fatalf("err=%v want update error", err)
+	}
+}
+
+func TestRecordFailure_UpdaterErrorIsLoggedNotMasked(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: false, Reason: "rejected"})
+
+	upd := &erroringUpdater{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            upd,
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_u2", PDFURL: "f"})
+	// The original failure reason must surface, not the updater error.
+	if err == nil || !strings.Contains(err.Error(), "rejected") {
+		t.Fatalf("err=%v want original 'rejected' reason", err)
+	}
+}
+
 // mimeBoundary parses a Content-Type header without importing mime in
 // the production file; mirrors mime.ParseMediaType.
 func mimeBoundary(ct string) (string, map[string]string, error) {

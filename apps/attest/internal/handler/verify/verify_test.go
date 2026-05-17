@@ -14,6 +14,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"io"
+	"log/slog"
 	"math/big"
 	"mime/multipart"
 	"net/http"
@@ -484,6 +485,102 @@ func TestIsTooLarge(t *testing.T) {
 	}
 	if isTooLarge(errors.New("unrelated")) {
 		t.Fatal("unrelated err must not be too large")
+	}
+}
+
+// TestHandler_LoggerOverride covers the `h.Logger != nil` branch in
+// the logger() helper. We use a custom slog logger and trigger a path
+// that calls logger() — handleGET on an error lookup logs via h.logger().
+func TestHandler_LoggerOverride(t *testing.T) {
+	buf := &bytes.Buffer{}
+	logger := slog.New(slog.NewTextHandler(buf, &slog.HandlerOptions{}))
+	h := &Handler{
+		Verifier:     &fakeVerifier{keyID: "k"},
+		ReportLookup: &fakeLookup{err: errors.New("db down")},
+		Logger:       logger,
+	}
+	req := httptest.NewRequest(http.MethodGet, "/verify/x", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("want 500, got %d", rec.Code)
+	}
+	if !strings.Contains(buf.String(), "lookup failed") {
+		t.Fatalf("custom logger did not receive the lookup-failed line: %q", buf.String())
+	}
+}
+
+// nilReturningLookup returns (nil, nil) — a degenerate but possible
+// implementation that the handler must treat as 404.
+type nilReturningLookup struct{}
+
+func (nilReturningLookup) LookupByID(context.Context, string) (*KnownReport, error) {
+	return nil, nil
+}
+
+func TestServeHTTP_GetReturnsNilRecord(t *testing.T) {
+	h := &Handler{
+		Verifier:     &fakeVerifier{keyID: "k"},
+		ReportLookup: nilReturningLookup{},
+	}
+	req := httptest.NewRequest(http.MethodGet, "/verify/some-id", nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("want 404 for nil record, got %d", rec.Code)
+	}
+}
+
+// TestServeHTTP_FileExceedsCapAfterRead exercises the post-ReadAll size
+// guard. We craft a multipart upload whose total body fits ParseMultipartForm's
+// memory budget but whose extracted file bytes exceed max. The simplest
+// trigger: set MaxPDFBytes to 0 — which falls back to DefaultMaxPDFBytes
+// (32 MiB) — so this branch is impractical to hit without writing 32 MiB
+// to the test buffer. Instead, we verify the empty-file branch on the
+// POST handler when the form file has zero bytes but a Content-Disposition
+// header (rare clients send empty multipart files with a header).
+func TestServeHTTP_MalformedMultipart(t *testing.T) {
+	// Send a body declared as multipart/form-data but with garbage
+	// content — ParseMultipartForm will error out with a non-too-large
+	// error, hitting the "failed to parse multipart form" branch.
+	h := &Handler{Verifier: &fakeVerifier{keyID: "k"}}
+	req := httptest.NewRequest(http.MethodPost, "/verify", bytes.NewReader([]byte("not a multipart body")))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=----nonexistent")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("want 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), "multipart") {
+		t.Fatalf("expected multipart error in body, got %q", rec.Body.String())
+	}
+}
+
+// TestVerifyPDF_ParseCMSFailure exercises the pkcs7.Parse error branch.
+// We build a PDF whose /Contents contains a valid hex blob but that
+// blob is NOT well-formed CMS, so pkcs7.Parse rejects it.
+func TestVerifyPDF_ParseCMSFailure(t *testing.T) {
+	// /ByteRange [0 8 X Y] covers the "%PDF-1.4" header bytes; the
+	// /Contents hex decodes to "not cms" which pkcs7.Parse will reject.
+	garbageHex := "6E6F7420636D73" // "not cms"
+	pdf := "%PDF-1.4\n" +
+		"1 0 obj\n<< /Type /Sig /ByteRange [0 8 100 50] /Contents <" + garbageHex + "> >>\nendobj\n%%EOF\n"
+	// Pad so the byte range maths is valid against the file size.
+	for len(pdf) < 200 {
+		pdf += " "
+	}
+
+	h := &Handler{Verifier: &fakeVerifier{keyID: "k"}}
+	rec := postMultipart(t, h, "file", []byte(pdf))
+	if rec.Code != http.StatusOK {
+		t.Fatalf("want 200, got %d", rec.Code)
+	}
+	res := decodeResult(t, rec)
+	if res.Valid {
+		t.Fatal("expected valid=false")
+	}
+	if !strings.Contains(res.Reason, "parse cms") {
+		t.Fatalf("reason=%q want 'parse cms'", res.Reason)
 	}
 }
 

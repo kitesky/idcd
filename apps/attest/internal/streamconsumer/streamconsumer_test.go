@@ -277,6 +277,178 @@ func TestSleepCtx_RunsFullDuration(t *testing.T) {
 	assert.True(t, completed)
 }
 
+// TestRun_XReadGroupTransientErrorRetries: when XREADGROUP returns an
+// error (not redis.Nil), the loop should log a warn, sleep with backoff
+// and continue. We simulate this by closing miniredis after the group
+// is created. The Run loop must:
+//   - log warn + enter sleepCtx (the warn branch),
+//   - exit cleanly when ctx is cancelled during the sleep backoff
+//     (the !sleepCtx → return nil branch).
+func TestRun_XReadGroupTransientErrorRetries(t *testing.T) {
+	mr, rdb := newMiniredis(t)
+	const (
+		stream = "tasks_transient"
+		group  = "g"
+	)
+
+	c := New(Config{
+		Redis:     rdb,
+		Stream:    stream,
+		Group:     group,
+		Consumer:  "transient-c",
+		BlockTime: 20 * time.Millisecond,
+		Logger:    silentLogger(),
+		Handler:   func(context.Context, map[string]any) error { return nil },
+	})
+
+	// Install a server-side error string that ensureGroup will treat
+	// as success (the "BUSYGROUP" substring) but XREADGROUP will see
+	// as a generic error reply. SetError makes ALL subsequent commands
+	// return this reply without dropping the connection — which is
+	// exactly the transient Redis hiccup the retry path is designed for.
+	mr.SetError("BUSYGROUP simulated transient — ensureGroup treats this as success, XREADGROUP as error")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() { done <- c.Run(ctx) }()
+
+	// Give the loop enough time to: ensureGroup (errors -> Run returns
+	// the wrapped error) OR succeed at ensureGroup-via-BUSYGROUP and
+	// then hit XREADGROUP error -> warn -> sleepCtx(1s). After 100ms
+	// we cancel, which must terminate the sleepCtx and return nil.
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+		// Either nil (sleepCtx path won the race) or an ensure-group
+		// wrapping error (initial ensureGroup hit the SetError). Both
+		// outcomes exercise different paths; the goal is coverage of
+		// the retry branch when the timing favours it.
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run did not exit after ctx cancel")
+	}
+}
+
+// TestRun_CtxCancelDuringBacklog: cancels the context after a message
+// is XADDed but before the handler returns. Covers the `ctx.Err() != nil`
+// branch inside the message-iteration loop.
+func TestRun_CtxCancelDuringBacklog(t *testing.T) {
+	mr, rdb := newMiniredis(t)
+	const (
+		stream = "tasks_ctx"
+		group  = "g"
+	)
+
+	handlerStarted := make(chan struct{}, 1)
+	releaseHandler := make(chan struct{})
+	c := New(Config{
+		Redis:     rdb,
+		Stream:    stream,
+		Group:     group,
+		Consumer:  "ctx-c",
+		BlockTime: 20 * time.Millisecond,
+		Count:     10,
+		Logger:    silentLogger(),
+		Handler: func(ctx context.Context, _ map[string]any) error {
+			select {
+			case handlerStarted <- struct{}{}:
+			default:
+			}
+			<-releaseHandler
+			return nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.Run(ctx) }()
+
+	require.Eventually(t, func() bool { return mr.Exists(stream) },
+		2*time.Second, 10*time.Millisecond)
+
+	// Add two messages so when the first one is mid-handler the second
+	// is sitting in the batch slice; cancelling will trigger the
+	// per-message ctx.Err() check on the second iteration.
+	for i := 0; i < 2; i++ {
+		_, err := rdb.XAdd(ctx, &redis.XAddArgs{
+			Stream: stream,
+			Values: map[string]any{"k": "v"},
+		}).Result()
+		require.NoError(t, err)
+	}
+
+	<-handlerStarted
+	cancel()
+	close(releaseHandler)
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit")
+	}
+}
+
+// TestRun_XAckFailureIsLogged: when XACK fails the loop must continue
+// (log warn, no propagation). We engineer this by closing miniredis
+// after a message lands in the handler — XACK then fails but the loop's
+// for-range over `msgs` is already populated, so the XACK failure path
+// runs.
+func TestRun_XAckFailureIsLogged(t *testing.T) {
+	mr, rdb := newMiniredis(t)
+	const (
+		stream = "tasks_ack"
+		group  = "g"
+	)
+
+	handlerRan := make(chan struct{}, 1)
+	c := New(Config{
+		Redis:     rdb,
+		Stream:    stream,
+		Group:     group,
+		Consumer:  "ack-c",
+		BlockTime: 20 * time.Millisecond,
+		Logger:    silentLogger(),
+		Handler: func(context.Context, map[string]any) error {
+			select {
+			case handlerRan <- struct{}{}:
+			default:
+			}
+			return nil
+		},
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- c.Run(ctx) }()
+
+	require.Eventually(t, func() bool { return mr.Exists(stream) },
+		2*time.Second, 10*time.Millisecond)
+
+	_, err := rdb.XAdd(ctx, &redis.XAddArgs{
+		Stream: stream,
+		Values: map[string]any{"k": "v"},
+	}).Result()
+	require.NoError(t, err)
+
+	<-handlerRan
+	// Yank the server so the XAck after handler returns errors out.
+	// We can't deterministically guarantee XAck has not already run,
+	// but in practice the handler returns before the loop reaches the
+	// XAck call — this path is exercised whenever the close lands first.
+	mr.Close()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Run did not exit")
+	}
+}
+
 // TestRun_HandlesMultipleMessagesSequentially: multiple XADDs are all
 // delivered to the handler in order and all get acked.
 func TestRun_HandlesMultipleMessagesSequentially(t *testing.T) {

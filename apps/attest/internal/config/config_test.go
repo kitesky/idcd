@@ -137,3 +137,129 @@ func TestAddr(t *testing.T) {
 		t.Errorf("Addr() = %q", got)
 	}
 }
+
+// TestLoad_ValidPort exercises the success branch of the port override
+// (defaultPort is hit by every other test, but the "valid integer port"
+// branch needs an explicit override).
+func TestLoad_ValidPort(t *testing.T) {
+	t.Setenv(envPort, "12345")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Port != 12345 {
+		t.Errorf("Port = %d, want 12345", cfg.Port)
+	}
+}
+
+func TestLoad_PortNonNumeric(t *testing.T) {
+	t.Setenv(envPort, "abc")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error for non-numeric port")
+	}
+}
+
+// TestLoad_AllScalarOverrides hits every "if v := strings.TrimSpace(...); v != ""
+// {cfg.X = v}" branch in one shot so the per-field overrides all count
+// as covered.
+func TestLoad_AllScalarOverrides(t *testing.T) {
+	t.Setenv(envEnv, "production")
+	t.Setenv(envLogLevel, "DEBUG")
+	t.Setenv(envDB, "postgres://example")
+	t.Setenv(envRedis, "redis:6379")
+	t.Setenv(envS3Bucket, "bucket-x")
+	t.Setenv(envVerifyEndpoint, "https://attest.example/verify")
+	t.Setenv(envAWSKMSAlgorithm, "ECDSA_SHA_384")
+	t.Setenv(envAliKMSAlgorithm, "ECDSA_SHA_384")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Env != "production" {
+		t.Errorf("Env = %q", cfg.Env)
+	}
+	if cfg.LogLevel != "debug" {
+		t.Errorf("LogLevel = %q (expect lowercased)", cfg.LogLevel)
+	}
+	if cfg.DatabaseDSN != "postgres://example" {
+		t.Errorf("DatabaseDSN = %q", cfg.DatabaseDSN)
+	}
+	if cfg.RedisAddr != "redis:6379" {
+		t.Errorf("RedisAddr = %q", cfg.RedisAddr)
+	}
+	if cfg.S3Bucket != "bucket-x" {
+		t.Errorf("S3Bucket = %q", cfg.S3Bucket)
+	}
+	if cfg.VerifyEndpoint != "https://attest.example/verify" {
+		t.Errorf("VerifyEndpoint = %q", cfg.VerifyEndpoint)
+	}
+	if cfg.AWSKMSAlgorithm != "ECDSA_SHA_384" {
+		t.Errorf("AWSKMSAlgorithm = %q", cfg.AWSKMSAlgorithm)
+	}
+	if cfg.AliKMSAlgorithm != "ECDSA_SHA_384" {
+		t.Errorf("AliKMSAlgorithm = %q", cfg.AliKMSAlgorithm)
+	}
+}
+
+// TestLoad_AWSKMSFullCredentials covers the "both halves set" branch of
+// the credential check (existing TestLoad_SignBackendAWS_HalfCredentials
+// only exercises the mismatch error branch).
+func TestLoad_AWSKMSFullCredentials(t *testing.T) {
+	t.Setenv(envSignBackend, "aws")
+	t.Setenv(envAWSKMSRegion, "us-east-1")
+	t.Setenv(envAWSKMSKeyID, "alias/x")
+	t.Setenv(envAWSKMSAccessKeyID, "AKID")
+	t.Setenv(envAWSKMSSecretAccessKey, "SECRET")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AWSKMSAccessKeyID != "AKID" || cfg.AWSKMSSecretAccessKey != "SECRET" {
+		t.Errorf("AWS creds not populated: %+v", cfg)
+	}
+}
+
+// TestLoad_SignBackendAliyun_MissingFields covers the validation branch
+// for Aliyun when partial fields are supplied. Each subcase omits one
+// required field.
+func TestLoad_SignBackendAliyun_MissingFields(t *testing.T) {
+	cases := []struct {
+		name string
+		set  map[string]string
+	}{
+		{"no region", map[string]string{
+			envAliKMSAccessKeyID:     "ak",
+			envAliKMSAccessKeySecret: "sk",
+			envAliKMSKeyID:           "key",
+		}},
+		{"no access key id", map[string]string{
+			envAliKMSRegionID:        "cn-hangzhou",
+			envAliKMSAccessKeySecret: "sk",
+			envAliKMSKeyID:           "key",
+		}},
+		{"no secret", map[string]string{
+			envAliKMSRegionID:    "cn-hangzhou",
+			envAliKMSAccessKeyID: "ak",
+			envAliKMSKeyID:       "key",
+		}},
+		{"no key id", map[string]string{
+			envAliKMSRegionID:        "cn-hangzhou",
+			envAliKMSAccessKeyID:     "ak",
+			envAliKMSAccessKeySecret: "sk",
+		}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Setenv(envSignBackend, "aliyun")
+			for k, v := range c.set {
+				t.Setenv(k, v)
+			}
+			_, err := Load()
+			if err == nil {
+				t.Fatal("expected error for partial aliyun config")
+			}
+		})
+	}
+}

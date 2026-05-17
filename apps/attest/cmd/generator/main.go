@@ -140,11 +140,24 @@ func main() {
 		os.Exit(1)
 	}
 
+	// --- Observation pool (cross-schema read on idcd_main) -----------
+	// Owned by main() and Close()d on shutdown — D1 cross-schema reads
+	// go through this dedicated pool rather than reusing the attest
+	// repos.New(pool) which talks to idcd_attest.
+	obsPool, err := service.NewObservationPoolFromEnv(ctx)
+	if err != nil {
+		log.Error("attest-generator: observation pool init", "err", err)
+		os.Exit(1)
+	}
+	defer obsPool.Close()
+	log.Info("attest-generator: observation pool wired")
+
 	// --- Service orchestrator ----------------------------------------
 	svc := service.New(service.Config{
 		Orders:             serviceadapter.WrapOrders(repos.Orders),
 		Reports:            serviceadapter.WrapReports(repos.Reports),
 		AttestationRecords: repos.AttestationRecords,
+		Observations:       obsPool,
 		Signer:             signer,
 		TSA:                tsaProvider,
 		SignerCert:         signerCert,

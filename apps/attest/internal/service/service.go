@@ -22,6 +22,17 @@ type Config struct {
 	Reports            ReportRepo
 	AttestationRecords attestrec.Repository
 
+	// Observations is the cross-schema (idcd_main.monitor_check) read
+	// pool used by step 1 of the pipeline. Required when GenerateVerdict
+	// is exercised; tests that stop before step 1 may leave it nil.
+	// Construct via service.NewObservationPoolFromEnv(ctx) or pass a
+	// custom ObservationPool for integration tests.
+	//
+	// Replaces the old package-level singleton (observationPoolOnce /
+	// observationPoolMu) which made parallel testing fragile and made
+	// graceful shutdown hard.
+	Observations ObservationPool
+
 	// External adapters
 	Signer sign.Signer
 	// TSA is a single-provider view. Wrap *tsa.Multi behind a small

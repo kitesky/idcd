@@ -3,9 +3,7 @@ package service
 import (
 	"context"
 	"errors"
-	"os"
 	"strings"
-	"sync"
 	"testing"
 	"time"
 
@@ -18,9 +16,7 @@ import (
 // no matter the args. It backstops orchestrator tests in this package
 // that construct minimal Orders (no Target / OwnerID / window) and rely
 // on fetchObservations producing realistic data without touching a real
-// DB. Tests that need to assert the SQL or simulate failure modes call
-// setObservationPool(pgxmockPool) for the duration of one test and then
-// restoreSyntheticObservationPool() in a defer to put this default back.
+// DB. Used by newHarness in orchestrator_test.go.
 type syntheticObservationPool struct{}
 
 func (syntheticObservationPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
@@ -32,7 +28,6 @@ func (syntheticObservationPool) Query(_ context.Context, _ string, _ ...any) (pg
 		AddRow(now.Add(-3*time.Second), json1).
 		AddRow(now.Add(-2*time.Second), json2).
 		AddRow(now.Add(-1*time.Second), json3)
-	// pgxmock.Rows implements pgx.Rows via Kind().
 	return rows.Kind(), nil
 }
 
@@ -44,38 +39,21 @@ func (syntheticObservationPool) Exec(_ context.Context, _ string, _ ...any) (pgc
 	return pgconn.CommandTag{}, nil
 }
 
-// installSyntheticPool reinstalls the default synthetic pool. Cheap and
-// idempotent; safe to call at the end of every test.
-func installSyntheticPool() {
-	setObservationPool(syntheticObservationPool{})
-}
-
-// restoreSyntheticObservationPool resets the lazy-init state then
-// reinstalls the synthetic default. Tests that mutate env vars or
-// install a pgxmock pool should defer this to keep the package
-// well-behaved for any later test.
-func restoreSyntheticObservationPool() {
-	resetObservationPoolForTest()
-	installSyntheticPool()
-}
-
-// guardSyntheticPool serialises tests that mutate the package-level
-// pool singleton so they cannot trample each other under -parallel or
-// -count=N (where N>1 reuses the same binary).
-var guardSyntheticPool sync.Mutex
-
-func TestMain(m *testing.M) {
-	installSyntheticPool()
-	os.Exit(m.Run())
-}
-
 // ---------------------------------------------------------------------------
 // nil order
 // ---------------------------------------------------------------------------
 
 func TestFetchObservations_NilOrderRejected(t *testing.T) {
-	if _, err := fetchObservations(context.Background(), nil); err == nil {
+	if _, err := fetchObservations(context.Background(), syntheticObservationPool{}, nil); err == nil {
 		t.Fatalf("expected error for nil order")
+	}
+}
+
+func TestFetchObservations_NilPoolRejected(t *testing.T) {
+	order := newObservationOrder(time.Now().UTC())
+	_, err := fetchObservations(context.Background(), nil, order)
+	if !errors.Is(err, ErrObservationPoolNotConfigured) {
+		t.Fatalf("expected ErrObservationPoolNotConfigured, got %v", err)
 	}
 }
 
@@ -96,16 +74,11 @@ func newObservationOrder(t time.Time) *Order {
 // ---------------------------------------------------------------------------
 
 func TestFetchObservations_HappyPath_FlattensNodeResults(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("pgxmock: %v", err)
 	}
 	defer mock.Close()
-	setObservationPool(mock)
 
 	base := time.Date(2026, 5, 17, 12, 0, 0, 0, time.UTC)
 	order := newObservationOrder(base.Add(1 * time.Hour))
@@ -131,7 +104,7 @@ func TestFetchObservations_HappyPath_FlattensNodeResults(t *testing.T) {
 			AddRow(row1At, row1JSON).
 			AddRow(row2At, row2JSON))
 
-	obs, err := fetchObservations(context.Background(), order)
+	obs, err := fetchObservations(context.Background(), mock, order)
 	if err != nil {
 		t.Fatalf("fetchObservations: %v", err)
 	}
@@ -177,23 +150,18 @@ func TestFetchObservations_HappyPath_FlattensNodeResults(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFetchObservations_ZeroRowsReturnsError(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("pgxmock: %v", err)
 	}
 	defer mock.Close()
-	setObservationPool(mock)
 
 	order := newObservationOrder(time.Now().UTC())
 	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
 		WithArgs(order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd).
 		WillReturnRows(pgxmock.NewRows([]string{"started_at", "node_results"}))
 
-	obs, err := fetchObservations(context.Background(), order)
+	obs, err := fetchObservations(context.Background(), mock, order)
 	if err == nil {
 		t.Fatalf("expected error for zero rows, got %d obs", len(obs))
 	}
@@ -210,16 +178,11 @@ func TestFetchObservations_ZeroRowsReturnsError(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFetchObservations_BadJSONWrapped(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("pgxmock: %v", err)
 	}
 	defer mock.Close()
-	setObservationPool(mock)
 
 	order := newObservationOrder(time.Now().UTC())
 	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
@@ -227,7 +190,7 @@ func TestFetchObservations_BadJSONWrapped(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{"started_at", "node_results"}).
 			AddRow(time.Now().UTC(), []byte("{ this is not json")))
 
-	if _, err := fetchObservations(context.Background(), order); err == nil {
+	if _, err := fetchObservations(context.Background(), mock, order); err == nil {
 		t.Fatalf("expected JSON decode error, got nil")
 	} else if !strings.Contains(err.Error(), "decode node_results json") {
 		t.Fatalf("expected wrapped decode error, got: %v", err)
@@ -239,23 +202,18 @@ func TestFetchObservations_BadJSONWrapped(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestFetchObservations_QueryErrorWrapped(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("pgxmock: %v", err)
 	}
 	defer mock.Close()
-	setObservationPool(mock)
 
 	order := newObservationOrder(time.Now().UTC())
 	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
 		WithArgs(order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd).
 		WillReturnError(errors.New("boom"))
 
-	if _, err := fetchObservations(context.Background(), order); err == nil {
+	if _, err := fetchObservations(context.Background(), mock, order); err == nil {
 		t.Fatalf("expected query error, got nil")
 	} else if !strings.Contains(err.Error(), "query monitor_check") {
 		t.Fatalf("expected wrapped query error, got: %v", err)
@@ -263,63 +221,35 @@ func TestFetchObservations_QueryErrorWrapped(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// missing env vars → clear error from lazy pool init
+// NewObservationPoolFromEnv: env-var fallbacks + missing both
 // ---------------------------------------------------------------------------
 
-func TestGetObservationPool_NoEnvErrors(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-	resetObservationPoolForTest()
-
+func TestNewObservationPoolFromEnv_NoEnvErrors(t *testing.T) {
 	t.Setenv("IDCD_MAIN_DB_DSN", "")
 	t.Setenv("ATTEST_DB_DSN", "")
 
-	if _, err := getObservationPool(context.Background()); err == nil {
+	_, err := NewObservationPoolFromEnv(context.Background())
+	if err == nil {
 		t.Fatalf("expected error when neither DSN env is set")
-	} else if !strings.Contains(err.Error(), "IDCD_MAIN_DB_DSN") {
-		t.Fatalf("expected error to mention IDCD_MAIN_DB_DSN, got: %v", err)
 	}
-
-	// Second call must hit the cached-error branch.
-	if _, err := getObservationPool(context.Background()); err == nil {
-		t.Fatalf("expected cached error on second call")
+	if !errors.Is(err, ErrObservationPoolNotConfigured) {
+		t.Fatalf("expected ErrObservationPoolNotConfigured, got: %v", err)
 	}
 }
 
-func TestFetchObservations_PoolInitErrorPropagates(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-	resetObservationPoolForTest()
-
-	t.Setenv("IDCD_MAIN_DB_DSN", "")
+func TestNewObservationPoolFromEnv_BadDSN(t *testing.T) {
+	// pgxpool.New parses the DSN eagerly; an invalid format triggers
+	// the wrapped error path.
+	t.Setenv("IDCD_MAIN_DB_DSN", "not-a-valid-dsn-#$%^&")
 	t.Setenv("ATTEST_DB_DSN", "")
 
-	order := newObservationOrder(time.Now().UTC())
-	if _, err := fetchObservations(context.Background(), order); err == nil {
-		t.Fatalf("expected pool init error to propagate")
+	_, err := NewObservationPoolFromEnv(context.Background())
+	if err == nil {
+		t.Fatalf("expected error for malformed DSN")
 	}
-}
-
-func TestSetObservationPool_OverridesLazyInit(t *testing.T) {
-	guardSyntheticPool.Lock()
-	defer guardSyntheticPool.Unlock()
-	defer restoreSyntheticObservationPool()
-	resetObservationPoolForTest()
-
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock: %v", err)
-	}
-	defer mock.Close()
-	setObservationPool(mock)
-
-	p, err := getObservationPool(context.Background())
-	if err != nil {
-		t.Fatalf("getObservationPool: %v", err)
-	}
-	if p == nil {
-		t.Fatalf("expected non-nil pool")
+	// Either ErrObservationPoolNotConfigured (if pgxpool tolerated it
+	// and returned nil — unlikely) or a wrapped pgxpool error.
+	if errors.Is(err, ErrObservationPoolNotConfigured) {
+		t.Fatalf("expected pgxpool.New wrapped error, got ErrObservationPoolNotConfigured")
 	}
 }

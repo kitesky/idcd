@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"os"
 	"sort"
-	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -25,95 +24,54 @@ type observation struct {
 	OK        bool
 }
 
-// observationPool is the narrow pgx surface fetchObservations exercises.
-// Both *pgxpool.Pool and pgxmock.PgxPoolIface satisfy it, so the
-// production path and unit tests share one call site.
-type observationPool interface {
+// ObservationPool is the narrow pgx surface fetchObservations exercises
+// against the idcd_main schema (cross-schema READ, allowed by D1 — no
+// FK is created across schemas; reads through Repository are fine).
+//
+// Both *pgxpool.Pool and pgxmock.PgxPoolIface satisfy it, so production
+// and unit tests share one call site. The interface is exported so
+// callers in cmd/generator and integration tests can pass their own
+// implementations without touching internals.
+type ObservationPool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// Compile-time guarantee: *pgxpool.Pool satisfies observationPool.
-var _ observationPool = (*pgxpool.Pool)(nil)
+// Compile-time guarantee: *pgxpool.Pool satisfies ObservationPool.
+var _ ObservationPool = (*pgxpool.Pool)(nil)
 
-// observationPoolState holds the lazily initialised pool plus an error
-// captured from the first init attempt. A successful init wins; if any
-// init returns an error it is returned to every caller until the
-// singleton is replaced (e.g. by setObservationPool in tests).
-var (
-	observationPoolOnce sync.Once
-	observationPoolVar  observationPool
-	observationPoolErr  error
-	observationPoolMu   sync.RWMutex
-)
+// ErrObservationPoolNotConfigured signals that fetchObservations was
+// invoked on a Service whose Config.Observations was nil. cmd/generator
+// is expected to wire a real pool at process start; tests that never
+// reach fetchObservations may legitimately leave it nil, but reaching
+// the pipeline without one is a wiring bug we surface as a typed error
+// rather than a nil-pointer panic.
+var ErrObservationPoolNotConfigured = errors.New("attest/service: ObservationPool is not configured")
 
-// getObservationPool returns the lazily initialised pool, or the test
-// override if one was installed via setObservationPool. The DSN comes
-// from IDCD_MAIN_DB_DSN (the main / TimescaleDB DB) and falls back to
-// ATTEST_DB_DSN for single-node dev where both schemas live in the same
-// physical DB. Both unset → clear error.
-func getObservationPool(ctx context.Context) (observationPool, error) {
-	observationPoolMu.RLock()
-	if observationPoolVar != nil || observationPoolErr != nil {
-		p, e := observationPoolVar, observationPoolErr
-		observationPoolMu.RUnlock()
-		if p != nil {
-			return p, nil
-		}
-		return nil, e
+// NewObservationPoolFromEnv constructs a pgxpool.Pool against the
+// idcd_main TimescaleDB, picking the DSN from IDCD_MAIN_DB_DSN with
+// fallback to ATTEST_DB_DSN (single-node dev). The returned pool
+// satisfies ObservationPool. Callers (cmd/generator) own the pool's
+// lifecycle and MUST Close it on shutdown — there is no longer a
+// process-singleton.
+//
+// Both env vars unset returns ErrObservationPoolNotConfigured so the
+// caller can decide whether to abort startup or run in a degraded mode
+// that skips verdict generation.
+func NewObservationPoolFromEnv(ctx context.Context) (*pgxpool.Pool, error) {
+	dsn := os.Getenv("IDCD_MAIN_DB_DSN")
+	if dsn == "" {
+		dsn = os.Getenv("ATTEST_DB_DSN")
 	}
-	observationPoolMu.RUnlock()
-
-	observationPoolOnce.Do(func() {
-		dsn := os.Getenv("IDCD_MAIN_DB_DSN")
-		if dsn == "" {
-			dsn = os.Getenv("ATTEST_DB_DSN")
-		}
-		if dsn == "" {
-			observationPoolMu.Lock()
-			observationPoolErr = errors.New("fetchObservations: neither IDCD_MAIN_DB_DSN nor ATTEST_DB_DSN is set")
-			observationPoolMu.Unlock()
-			return
-		}
-		pool, err := pgxpool.New(ctx, dsn)
-		observationPoolMu.Lock()
-		if err != nil {
-			observationPoolErr = fmt.Errorf("fetchObservations: pgxpool.New: %w", err)
-		} else {
-			observationPoolVar = pool
-		}
-		observationPoolMu.Unlock()
-	})
-
-	observationPoolMu.RLock()
-	defer observationPoolMu.RUnlock()
-	if observationPoolVar != nil {
-		return observationPoolVar, nil
+	if dsn == "" {
+		return nil, fmt.Errorf("%w: neither IDCD_MAIN_DB_DSN nor ATTEST_DB_DSN is set", ErrObservationPoolNotConfigured)
 	}
-	return nil, observationPoolErr
-}
-
-// setObservationPool installs an explicit pool, bypassing the lazy DSN
-// init. Package-private; intended for tests in the same package.
-func setObservationPool(p observationPool) {
-	observationPoolMu.Lock()
-	defer observationPoolMu.Unlock()
-	observationPoolVar = p
-	observationPoolErr = nil
-	// Mark the sync.Once as fired so a later real init does not
-	// overwrite the test pool mid-test.
-	observationPoolOnce.Do(func() {})
-}
-
-// resetObservationPoolForTest restores the package-level singleton to a
-// pristine state so a subsequent test can exercise the lazy init.
-func resetObservationPoolForTest() {
-	observationPoolMu.Lock()
-	defer observationPoolMu.Unlock()
-	observationPoolVar = nil
-	observationPoolErr = nil
-	observationPoolOnce = sync.Once{}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("attest/service: pgxpool.New: %w", err)
+	}
+	return pool, nil
 }
 
 // nodeResult is the per-node payload nested inside monitor_check.node_results.
@@ -133,14 +91,16 @@ type nodeResult struct {
 //
 // Empty-result semantics: returns (nil, error). The error mentions the
 // target + window so logs / refund emails can quote it back to the user.
-func fetchObservations(ctx context.Context, order *Order) ([]observation, error) {
+//
+// Receives the pool as a parameter rather than reading a package
+// singleton; this lets the service.Service hold the pool as an injected
+// dependency, enabling parallel tests + graceful Close() on shutdown.
+func fetchObservations(ctx context.Context, pool ObservationPool, order *Order) ([]observation, error) {
 	if order == nil {
 		return nil, fmt.Errorf("fetchObservations: nil order")
 	}
-
-	pool, err := getObservationPool(ctx)
-	if err != nil {
-		return nil, err
+	if pool == nil {
+		return nil, ErrObservationPoolNotConfigured
 	}
 
 	// Single statement: monitor_check joined to monitor on monitor_id,

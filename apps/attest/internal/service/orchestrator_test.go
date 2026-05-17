@@ -299,6 +299,7 @@ func newHarness(t *testing.T, order *Order, withRealTSAEndpoint bool) *harness {
 		Orders:             h.orders,
 		Reports:            h.reports,
 		AttestationRecords: h.wal,
+		Observations:       syntheticObservationPool{},
 		Signer:             h.signer,
 		TSA:                h.tsa,
 		SignerCert:         cert,

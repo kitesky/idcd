@@ -99,7 +99,7 @@ func (s *Service) GenerateVerdict(ctx context.Context, orderID string) error {
 	replayer := &attestrec.Replayer{Repo: s.cfg.AttestationRecords}
 
 	// ----- Steps 1-4: deterministic reads / renders ------------------
-	obs, err := fetchObservations(ctx, order)
+	obs, err := fetchObservations(ctx, s.cfg.Observations, order)
 	if err != nil {
 		return s.failPipeline(ctx, order, "fetch observations", err)
 	}

@@ -2,9 +2,11 @@
 package config
 
 import (
+	"os"
 	"time"
 
 	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"gopkg.in/yaml.v3"
 )
 
 // Load returns a Config populated from the shared dev.env.yaml, falling back
@@ -30,7 +32,39 @@ func Load() *Config {
 	if shared.AgentGateway.Addr != "" {
 		cfg.ListenAddr = shared.AgentGateway.Addr
 	}
+	// Re-read the YAML file directly for gateway-only knobs that the shared
+	// config schema does not model (cert_svc_url). Failure is non-fatal —
+	// we keep the Default() value (empty string disables the proxy).
+	if extra, ok := loadGatewayExtras(sharedconfig.DefaultPath()); ok {
+		if extra.CertSvcURL != "" {
+			cfg.CertSvcURL = extra.CertSvcURL
+		}
+	}
 	return cfg
+}
+
+// gatewayExtras captures gateway-only YAML keys that live in dev.env.yaml
+// but are not part of the shared config schema.
+type gatewayExtras struct {
+	CertSvcURL string `yaml:"cert_svc_url"`
+}
+
+// loadGatewayExtras decodes the gateway-only knobs from the YAML config file.
+// Returns ok=false if the file is missing or cannot be parsed; callers fall
+// back to Default() / Load() values in that case.
+func loadGatewayExtras(path string) (gatewayExtras, bool) {
+	var extras gatewayExtras
+	f, err := os.Open(path)
+	if err != nil {
+		return extras, false
+	}
+	defer f.Close()
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(false)
+	if err := dec.Decode(&extras); err != nil {
+		return extras, false
+	}
+	return extras, true
 }
 
 // Config holds the Gateway service configuration.
@@ -49,6 +83,12 @@ type Config struct {
 	// Authorization: Bearer <token>. Leave empty in dev to skip the check.
 	MetricsToken  string                           `yaml:"metrics_token"`
 	Observability sharedconfig.ObservabilityConfig `yaml:"observability"`
+	// CertSvcURL is the base URL (scheme://host:port) of the cert-svc
+	// HTTP service that owns /v1/cert/*. When non-empty, the gateway
+	// reverse-proxies /v1/cert/* and the unauthenticated one-shot
+	// /v1/cert/certs/{id}/download endpoint to this upstream.
+	// Empty disables the proxy (legacy / standalone gateway deploys).
+	CertSvcURL string `yaml:"cert_svc_url"`
 }
 
 // Default returns a Config with sensible defaults for development.

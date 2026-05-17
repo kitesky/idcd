@@ -586,13 +586,13 @@ export const API_GROUPS: EndpointGroup[] = [
         method: "POST",
         path: "/v1/billing/subscribe",
         summary: "订阅付费计划",
-        description: "发起付费计划订阅，返回 Paddle 支付跳转 URL。",
+        description: "发起付费计划订阅，返回 PaymentHub 支付跳转 URL。",
         auth: true,
         parameters: [
           { name: "plan", location: "body", required: true, type: "string", description: "计划名称：pro / business", example: "pro" },
         ],
         responseExample: JSON.stringify({
-          data: { checkout_url: "https://checkout.paddle.com/..." },
+          data: { checkout_url: "https://checkout.paymenthub.com/..." },
           request_id: "req_01J8XXXXX",
         }, null, 2),
       },

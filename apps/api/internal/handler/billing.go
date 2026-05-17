@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -16,6 +17,22 @@ import (
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
+// VerdictStreamPublisher publishes a paid verdict_order onto the Redis
+// Stream `verdict_generation_queue` so the apps/attest worker can pick it up
+// (D4: webhook is the single source of truth for "payment cleared → start
+// generation").
+//
+// Implementations must be safe for concurrent use.  A nil VerdictStreamPublisher
+// is acceptable in tests / minimal harnesses: the webhook still flips the
+// verdict_order row to "paid" so admin tooling can manually re-enqueue, but
+// no automated processing happens.
+type VerdictStreamPublisher interface {
+	// EnqueueVerdict pushes one entry onto `verdict_generation_queue` with the
+	// fields {order_id, owner_id, enqueued_at}.  The implementation is
+	// responsible for serialising values (XAdd uses string fields).
+	EnqueueVerdict(ctx context.Context, orderID, ownerID string) error
+}
+
 // BillingHandler handles user-facing billing endpoints.
 //
 // All routes except /webhook and /stub-confirm require Bearer token auth.
@@ -23,9 +40,10 @@ import (
 // the billing tables are not yet in the sqlc schema (they are pending sqlc regen
 // after the 00010 migration lands).
 type BillingHandler struct {
-	pool     BillingPool // reuse the interface from admin_billing.go
-	provider billing.Provider
-	enqueuer BillingEnqueuer // optional: nil disables automatic refund retry scheduling
+	pool             BillingPool // reuse the interface from admin_billing.go
+	provider         billing.Provider
+	enqueuer         BillingEnqueuer        // optional: nil disables automatic refund retry scheduling
+	verdictPublisher VerdictStreamPublisher // optional: nil disables verdict_generation_queue push
 }
 
 // NewBillingHandler wires a BillingHandler with the given DB pool and payment provider.
@@ -39,6 +57,13 @@ func NewBillingHandler(pool BillingPool, provider billing.Provider) *BillingHand
 // dashboard remains the only recovery path.
 func (h *BillingHandler) WithEnqueuer(enq BillingEnqueuer) *BillingHandler {
 	h.enqueuer = enq
+	return h
+}
+
+// WithVerdictPublisher wires the Redis Stream publisher used to push paid
+// verdict_order rows onto `verdict_generation_queue` (S2 Evidence flow).
+func (h *BillingHandler) WithVerdictPublisher(pub VerdictStreamPublisher) *BillingHandler {
+	h.verdictPublisher = pub
 	return h
 }
 
@@ -416,6 +441,38 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 			`, invID, event.UserID, event.SubscriptionID, h.provider.Name(), event.ExtTxnID,
 				event.AmountCents, currency, now); err != nil {
 				return fmt.Errorf("billing: insert invoice record inv=%s: %w", invID, err)
+			}
+		}
+
+		// S2 Evidence: if this payment carried a verdict_order_id in metadata,
+		// flip the verdict_order row to "paid" and push it onto the Redis
+		// Stream `verdict_generation_queue` for apps/attest to consume.
+		// Cross-schema is read/write-only (D1): no FK to idcd_main.users.
+		if vid := event.Metadata["verdict_order_id"]; vid != "" {
+			tag, err := h.pool.Exec(ctx, `
+				UPDATE idcd_attest.verdict_order
+				SET status = 'paid',
+				    paid_at = $2,
+				    ext_order_id = $3,
+				    price_paid_cny = $4
+				WHERE id = $1 AND status = 'pending'
+			`, vid, now, event.ExtTxnID, float64(event.AmountCents)/100)
+			if err != nil {
+				return fmt.Errorf("billing: mark verdict_order %s paid: %w", vid, err)
+			}
+			// Only enqueue if the UPDATE actually flipped a row — guards
+			// against duplicate webhooks re-pushing the same generation job.
+			if tag.RowsAffected() > 0 && h.verdictPublisher != nil {
+				if err := h.verdictPublisher.EnqueueVerdict(ctx, vid, event.UserID); err != nil {
+					// Non-fatal: webhook ack still returns 200; row is in
+					// "paid" state so admin can manually re-enqueue.  Log at
+					// warn so P1 monitoring fires.
+					slog.Default().Warn("verdict enqueue failed",
+						"order_id", vid,
+						"owner_id", event.UserID,
+						"err", err,
+					)
+				}
 			}
 		}
 

@@ -1,6 +1,8 @@
 package config
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 )
@@ -26,6 +28,66 @@ func TestDefault(t *testing.T) {
 
 	if cfg.Env != "development" {
 		t.Errorf("expected Env %q, got %q", "development", cfg.Env)
+	}
+
+	// CertSvcURL should default to empty — the reverse-proxy mount is opt-in
+	// so standalone gateway deploys (S1) don't accidentally try to talk to a
+	// non-existent cert-svc upstream.
+	if cfg.CertSvcURL != "" {
+		t.Errorf("expected CertSvcURL %q, got %q", "", cfg.CertSvcURL)
+	}
+}
+
+// TestLoadGatewayExtras_CertSvcURL verifies that the gateway-only
+// cert_svc_url YAML key is decoded from the shared config file even though
+// the shared config schema does not model it.
+func TestLoadGatewayExtras_CertSvcURL(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dev.env.yaml")
+	yamlBody := "" +
+		"cert_svc_url: \"http://cert-svc:8082\"\n" +
+		"redis:\n  addr: \"localhost:6379\"\n"
+	if err := os.WriteFile(path, []byte(yamlBody), 0o600); err != nil {
+		t.Fatalf("write tmp yaml: %v", err)
+	}
+	extras, ok := loadGatewayExtras(path)
+	if !ok {
+		t.Fatalf("loadGatewayExtras returned ok=false for valid file")
+	}
+	if extras.CertSvcURL != "http://cert-svc:8082" {
+		t.Errorf("expected CertSvcURL %q, got %q", "http://cert-svc:8082", extras.CertSvcURL)
+	}
+}
+
+// TestLoadGatewayExtras_Missing verifies graceful fallback when the YAML
+// file is absent — gateway should not crash, just keep Default() values.
+func TestLoadGatewayExtras_Missing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "does-not-exist.yaml")
+	extras, ok := loadGatewayExtras(path)
+	if ok {
+		t.Errorf("expected ok=false for missing file, got ok=true")
+	}
+	if extras.CertSvcURL != "" {
+		t.Errorf("expected zero-value CertSvcURL, got %q", extras.CertSvcURL)
+	}
+}
+
+// TestLoadGatewayExtras_NoKey verifies that omitting cert_svc_url leaves
+// the field empty rather than triggering a decode error — backward compat
+// with pre-S2 dev.env.yaml files.
+func TestLoadGatewayExtras_NoKey(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "dev.env.yaml")
+	yamlBody := "redis:\n  addr: \"localhost:6379\"\n"
+	if err := os.WriteFile(path, []byte(yamlBody), 0o600); err != nil {
+		t.Fatalf("write tmp yaml: %v", err)
+	}
+	extras, ok := loadGatewayExtras(path)
+	if !ok {
+		t.Fatalf("loadGatewayExtras returned ok=false for valid file without cert_svc_url")
+	}
+	if extras.CertSvcURL != "" {
+		t.Errorf("expected empty CertSvcURL when key absent, got %q", extras.CertSvcURL)
 	}
 }
 

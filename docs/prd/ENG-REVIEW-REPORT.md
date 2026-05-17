@@ -13,7 +13,7 @@
 **CLEAR_WITH_CONCERNS** — v2 PRD 整体设计扎实,但有 **3 个 CRITICAL GAP** 必须 S2 上线前 100% 解决,**7 个 HIGH** 必须 S2 上线前规约,**5 个 MEDIUM** 可 S3 GA 前完善。所有 14 项 reviewer 提出的工程化决策点用户均选择最完整路径(选项 A),工程方向清晰。
 
 **关键阻塞项**:
-- Verdict CRITICAL GAP 三件套(WAL 状态机 / Paddle refund / Self-verify 独立性)必须实施前演示
+- Verdict CRITICAL GAP 三件套(WAL 状态机 / 聚合支付 refund / Self-verify 独立性)必须实施前演示
 - KMS Shamir 应急 SOP 必须 S2 上线前演练 12h 主路径(**Pre-4 调整:Backup HSM 推迟 S4**)
 - Anchor 偏差阈值必须 S1 后 30 天 baseline 数据校准
 
@@ -81,15 +81,15 @@
 - **必演示项**:在 staging 注入 KMS / TSA / S3 / Self-verify 各 step 失败,验证 worker crash 后重启续跑无重复 sign
 - **Effort**:human ~1.5 days / CC ~2 hours
 
-### D5 — Paddle refund API 失败无兑底 [CRITICAL][8/10]
+### D5 — 聚合支付 refund API 失败无兑底 [CRITICAL][8/10]
 
-- **问题**:`09 §13.5` 写"失败 → 自动 Paddle refund",但 Paddle refund API 本身可能失败(网络 / 风控)。用户拿不到报告 + 拿不到退款 = 品牌灾难。
+- **问题**:`09 §13.5` 写"失败 → 自动 聚合支付 refund",但 聚合支付 refund API 本身可能失败(网络 / 风控)。用户拿不到报告 + 拿不到退款 = 品牌灾难。
 - **决策 D5.A**:refund 走 retry queue(5min retry → 30min retry);30min 失败后**立即**发送用户道歉邮箱 + P0 告警;PRD 增加 `verdict_order.status = refund_failed` 状态;admin 后台 dashboard 可查所有 refund_failed。
 - **PRD 必改**:
   - `09 §13.5`:在"失败路径"块新增 refund retry 子流程 + status=refund_failed
   - `15 §4.X.1` `verdict_order`:status enum 增加 `refund_failed`;新增 `refund_attempt_count int` 字段
   - `11 §15.4`:Verdict 工单分类 SLA 表新增"refund_failed → P0 + 道歉邮箱已发"
-- **必演示项**:staging 注入 Paddle 50% refund 失败率,验证 30min 内用户收到道歉邮箱
+- **必演示项**:staging 注入 支付通道 50% refund 失败率,验证 30min 内用户收到道歉邮箱
 - **Effort**:human ~0.5 day / CC ~30 min
 
 ### D6 — Self-verify 独立性未规约 [CRITICAL][9/10]
@@ -202,7 +202,7 @@
 
 - ✅ WAL 状态机实施 = attestation_record 充 WAL(每 step 写 success + external_id),worker 续跑跳过已成功 step
 - ✅ KMS sign 启用 idempotency token(AWS KMS 支持)防重复签名
-- ✅ Paddle refund 走 retry queue(5min → 30min)+ 30min 失败后用户道歉邮箱 + P0 告警
+- ✅ 聚合支付 refund 走 retry queue(5min → 30min)+ 30min 失败后用户道歉邮箱 + P0 告警
 - ✅ DLQ 监控:任何 message 出现 5min 内必告警
 - ✅ **必演示**:staging 注入 KMS / TSA / S3 / refund 各 step 失败,验证退款链路;30min 内用户收到道歉邮箱
 
@@ -325,7 +325,7 @@ v1 PRD 已具备 v2 所需的底层能力:
 | TimescaleDB Hypertable + 自动连续聚合 | mcp_tool_call / agent_obs_event 直接复用 |
 | Redis Streams 事件总线 | verdict_generation_queue 复用 |
 | Cloudflare WAF / Turnstile | attest / mcp 子域复用 |
-| Paddle MoR 支付通道 | Verdict 件价 / Compliance 年订复用 |
+| 聚合支付 支付通道 | Verdict 件价 / Compliance 年订复用 |
 | mTLS Agent Gateway + 节点 fingerprint | v2 短期证书 + CRL/OCSP 增量改造 |
 | Loki + Prometheus + Grafana 可观测 | v2 新服务直接接入 |
 | Anchor 锚定基准 | v2 偏差告警基于现有 anchor 机制扩展 |

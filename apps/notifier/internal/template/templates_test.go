@@ -258,6 +258,289 @@ func TestTemplates_RenderRefundFailed(t *testing.T) {
 	}
 }
 
+// TestTemplates_RenderCertIssued locks in the S2 W8 cert.issued template.
+// Both locales must include the primary domain, the dashboard URL, and the
+// locale-specific copy without leaking the other locale's headline.
+func TestTemplates_RenderCertIssued(t *testing.T) {
+	templates, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	data := CertIssuedData{
+		Domain:       "api.example.com",
+		SANs:         "api.example.com, www.example.com",
+		CA:           "lets-encrypt",
+		NotAfter:     "2026-08-15 12:00 UTC",
+		CertID:       42,
+		DashboardURL: "https://idcd.com/app/cert/42",
+	}
+	cases := []struct {
+		locale         string
+		mustContain    []string
+		mustNotContain []string
+	}{
+		{
+			locale: "cn",
+			mustContain: []string{
+				"api.example.com",
+				"https://idcd.com/app/cert/42",
+				"已签发",
+				"您的 SSL 证书已签发",
+				"lets-encrypt",
+				"2026-08-15 12:00 UTC",
+				"DOCTYPE html",
+				`lang="zh-CN"`,
+			},
+			mustNotContain: []string{"Your SSL certificate is ready"},
+		},
+		{
+			locale: "en",
+			mustContain: []string{
+				"api.example.com",
+				"https://idcd.com/app/cert/42",
+				"Your SSL certificate is ready",
+				"lets-encrypt",
+				"DOCTYPE html",
+				`lang="en-US"`,
+			},
+			mustNotContain: []string{"您的 SSL 证书已签发"},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			html, err := templates.RenderCertIssued(tc.locale, data)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for _, want := range tc.mustContain {
+				if !strings.Contains(html, want) {
+					t.Errorf("locale=%s missing %q", tc.locale, want)
+				}
+			}
+			for _, banned := range tc.mustNotContain {
+				if strings.Contains(html, banned) {
+					t.Errorf("locale=%s should NOT contain %q", tc.locale, banned)
+				}
+			}
+		})
+	}
+}
+
+// TestTemplates_RenderCertFailed locks in the cert.failed template — must
+// surface the error message (including the apology copy) for both locales.
+func TestTemplates_RenderCertFailed(t *testing.T) {
+	templates, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	data := CertFailedData{
+		Domain:       "api.example.com",
+		SANs:         "api.example.com",
+		CA:           "lets-encrypt",
+		OrderID:      99,
+		ErrorMessage: "dns-01: NXDOMAIN for _acme-challenge.api.example.com",
+		DashboardURL: "https://idcd.com/app/cert/orders/99",
+	}
+	cases := []struct {
+		locale      string
+		mustContain []string
+	}{
+		{
+			locale: "cn",
+			mustContain: []string{
+				"api.example.com",
+				"NXDOMAIN",
+				"证书申请失败",
+				"签发失败",
+				"https://idcd.com/app/cert/orders/99",
+			},
+		},
+		{
+			locale: "en",
+			mustContain: []string{
+				"api.example.com",
+				"NXDOMAIN",
+				"Certificate request failed",
+				"sorry",
+				"https://idcd.com/app/cert/orders/99",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			html, err := templates.RenderCertFailed(tc.locale, data)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for _, want := range tc.mustContain {
+				if !strings.Contains(html, want) {
+					t.Errorf("locale=%s missing %q", tc.locale, want)
+				}
+			}
+		})
+	}
+}
+
+// TestTemplates_RenderCertExpiring locks in the cert.expiring template. The
+// big days number must appear in both locales and copy must localise.
+func TestTemplates_RenderCertExpiring(t *testing.T) {
+	templates, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	data := CertExpiringData{
+		Domain:       "api.example.com",
+		SANs:         "api.example.com",
+		CA:           "lets-encrypt",
+		NotAfter:     "2026-06-01 00:00 UTC",
+		CertID:       42,
+		Days:         7,
+		DashboardURL: "https://idcd.com/app/cert/42",
+	}
+	cases := []struct {
+		locale      string
+		mustContain []string
+	}{
+		{
+			locale: "cn",
+			mustContain: []string{
+				"api.example.com",
+				">7<",
+				"证书即将到期提醒",
+				"天后到期",
+				"https://idcd.com/app/cert/42",
+			},
+		},
+		{
+			locale: "en",
+			mustContain: []string{
+				"api.example.com",
+				">7<",
+				"Certificate expiring soon",
+				"days remaining",
+				"https://idcd.com/app/cert/42",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			html, err := templates.RenderCertExpiring(tc.locale, data)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for _, want := range tc.mustContain {
+				if !strings.Contains(html, want) {
+					t.Errorf("locale=%s missing %q", tc.locale, want)
+				}
+			}
+		})
+	}
+}
+
+// TestTemplates_RenderCertRenewalFailed locks in the cert.renewal_failed
+// template — must surface the error message and the "action required" copy.
+func TestTemplates_RenderCertRenewalFailed(t *testing.T) {
+	templates, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	data := CertRenewalFailedData{
+		Domain:       "api.example.com",
+		SANs:         "api.example.com",
+		CA:           "lets-encrypt",
+		NotAfter:     "2026-05-25 00:00 UTC",
+		CertID:       42,
+		ErrorMessage: "dns provider auth failed (HTTP 401)",
+		DashboardURL: "https://idcd.com/app/cert/42",
+	}
+	cases := []struct {
+		locale      string
+		mustContain []string
+	}{
+		{
+			locale: "cn",
+			mustContain: []string{
+				"api.example.com",
+				"dns provider auth failed",
+				"证书自动续期失败",
+				"续期失败",
+				"https://idcd.com/app/cert/42",
+			},
+		},
+		{
+			locale: "en",
+			mustContain: []string{
+				"api.example.com",
+				"dns provider auth failed",
+				"Auto-renewal failed",
+				"action required",
+				"https://idcd.com/app/cert/42",
+			},
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.locale, func(t *testing.T) {
+			html, err := templates.RenderCertRenewalFailed(tc.locale, data)
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			for _, want := range tc.mustContain {
+				if !strings.Contains(html, want) {
+					t.Errorf("locale=%s missing %q", tc.locale, want)
+				}
+			}
+		})
+	}
+}
+
+// TestTemplates_RenderCertEmptyDataDoesNotPanic guards the new cert
+// templates against zero-valued inputs — the {{if}} guards must keep the
+// HTML structurally valid.
+func TestTemplates_RenderCertEmptyDataDoesNotPanic(t *testing.T) {
+	templates, err := New()
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	for _, loc := range []string{"cn", "en"} {
+		t.Run("cert_issued/"+loc, func(t *testing.T) {
+			html, err := templates.RenderCertIssued(loc, CertIssuedData{})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if !strings.Contains(html, "DOCTYPE html") {
+				t.Errorf("empty cert_issued data: missing DOCTYPE; got %s", html[:min(120, len(html))])
+			}
+		})
+		t.Run("cert_failed/"+loc, func(t *testing.T) {
+			html, err := templates.RenderCertFailed(loc, CertFailedData{})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if !strings.Contains(html, "DOCTYPE html") {
+				t.Error("empty cert_failed data: missing DOCTYPE")
+			}
+		})
+		t.Run("cert_expiring/"+loc, func(t *testing.T) {
+			html, err := templates.RenderCertExpiring(loc, CertExpiringData{})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if !strings.Contains(html, "DOCTYPE html") {
+				t.Error("empty cert_expiring data: missing DOCTYPE")
+			}
+		})
+		t.Run("cert_renewal_failed/"+loc, func(t *testing.T) {
+			html, err := templates.RenderCertRenewalFailed(loc, CertRenewalFailedData{})
+			if err != nil {
+				t.Fatalf("render: %v", err)
+			}
+			if !strings.Contains(html, "DOCTYPE html") {
+				t.Error("empty cert_renewal_failed data: missing DOCTYPE")
+			}
+		})
+	}
+}
+
 // TestTemplates_RenderFallsBackToDefaultLocale covers the registry fallback
 // chain: requesting an unsupported locale should resolve to the registry
 // default (cn) without erroring.

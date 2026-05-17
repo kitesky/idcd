@@ -381,6 +381,183 @@ func TestBillingHandler_Webhook_InvalidPayload(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
+// stubVerdictPublisher records EnqueueVerdict calls for assertions.
+type stubVerdictPublisher struct {
+	calls []stubVerdictCall
+	err   error
+}
+
+type stubVerdictCall struct {
+	OrderID string
+	OwnerID string
+}
+
+func (s *stubVerdictPublisher) EnqueueVerdict(_ context.Context, orderID, ownerID string) error {
+	if s.err != nil {
+		return s.err
+	}
+	s.calls = append(s.calls, stubVerdictCall{OrderID: orderID, OwnerID: ownerID})
+	return nil
+}
+
+// TestBillingHandler_Webhook_PaymentSucceeded_VerdictOrderEnqueues asserts the
+// S2 Evidence flow: when a payment.succeeded webhook carries
+// metadata.verdict_order_id, the handler MUST
+//   1. flip the verdict_order row pending→paid (with paid_at + ext_order_id + price_paid_cny),
+//   2. push the order onto the Redis Stream `verdict_generation_queue` via
+//      the VerdictStreamPublisher.
+func TestBillingHandler_Webhook_PaymentSucceeded_VerdictOrderEnqueues(t *testing.T) {
+	h, mockPool, _ := newBillingTestHandler(t)
+	defer mockPool.Close()
+	pub := &stubVerdictPublisher{}
+	h = h.WithVerdictPublisher(pub)
+
+	// 1. subscription activation UPDATE — fires when SubscriptionID != "".
+	//    For verdict orders the subscription_id is empty, so no UPDATE on
+	//    subscriptions. But we DO write a payment + invoice (AmountCents > 0).
+	mockPool.ExpectExec("INSERT INTO payments").
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mockPool.ExpectExec("INSERT INTO invoices").
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	// 2. verdict_order UPDATE pending→paid.
+	mockPool.ExpectExec(`UPDATE idcd_attest\.verdict_order`).
+		WithArgs(
+			"v_test_001",      // id
+			pgxmock.AnyArg(),  // paid_at
+			"stub_ext_txn_v1", // ext_order_id (= ExtTxnID)
+			float64(199),      // price_paid_cny (yuan)
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	payload := billing.StubWebhookPayload{
+		EventType:   billing.EventPaymentSucceeded,
+		ExtTxnID:    "stub_ext_txn_v1",
+		AmountCents: 19900,
+		Currency:    "CNY",
+		UserID:      "u_buyer",
+		// SubscriptionID intentionally empty — verdict orders are one-shot.
+		Metadata: map[string]string{
+			"verdict_order_id": "v_test_001",
+		},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader(body))
+	req = withRequestID(req, "test-req-verdict")
+	rr := httptest.NewRecorder()
+
+	h.Webhook(rr, req)
+
+	assert.Equal(t, http.StatusOK, rr.Code, "body=%s", rr.Body.String())
+	require.Len(t, pub.calls, 1, "verdict should be enqueued exactly once")
+	assert.Equal(t, "v_test_001", pub.calls[0].OrderID)
+	assert.Equal(t, "u_buyer", pub.calls[0].OwnerID)
+	assert.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestBillingHandler_Webhook_PaymentSucceeded_VerdictDuplicateNoEnqueue checks
+// that a replayed webhook (verdict_order already 'paid') does NOT re-push the
+// generation job — guards against duplicate Stream entries.
+func TestBillingHandler_Webhook_PaymentSucceeded_VerdictDuplicateNoEnqueue(t *testing.T) {
+	h, mockPool, _ := newBillingTestHandler(t)
+	defer mockPool.Close()
+	pub := &stubVerdictPublisher{}
+	h = h.WithVerdictPublisher(pub)
+
+	mockPool.ExpectExec("INSERT INTO payments").
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mockPool.ExpectExec("INSERT INTO invoices").
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	// UPDATE matches WHERE status='pending' but no rows change (already paid).
+	mockPool.ExpectExec(`UPDATE idcd_attest\.verdict_order`).
+		WithArgs(
+			"v_test_002", pgxmock.AnyArg(), "stub_ext_txn_v2", float64(199),
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	payload := billing.StubWebhookPayload{
+		EventType:   billing.EventPaymentSucceeded,
+		ExtTxnID:    "stub_ext_txn_v2",
+		AmountCents: 19900,
+		Currency:    "CNY",
+		UserID:      "u_buyer",
+		Metadata:    map[string]string{"verdict_order_id": "v_test_002"},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader(body))
+	req = withRequestID(req, "test-req-verdict-dup")
+	rr := httptest.NewRecorder()
+
+	h.Webhook(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.Empty(t, pub.calls, "duplicate webhook must not re-enqueue")
+	assert.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+// TestBillingHandler_Webhook_PaymentSucceeded_VerdictPublisherFailDoesNotFailWebhook
+// verifies that an enqueue failure is logged-and-swallowed so the gateway
+// still gets a 200 (otherwise it would retry forever).
+func TestBillingHandler_Webhook_PaymentSucceeded_VerdictPublisherFailDoesNotFailWebhook(t *testing.T) {
+	h, mockPool, _ := newBillingTestHandler(t)
+	defer mockPool.Close()
+	pub := &stubVerdictPublisher{err: assertEnqueueError{}}
+	h = h.WithVerdictPublisher(pub)
+
+	mockPool.ExpectExec("INSERT INTO payments").
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mockPool.ExpectExec("INSERT INTO invoices").
+		WithArgs(
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+		).
+		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mockPool.ExpectExec(`UPDATE idcd_attest\.verdict_order`).
+		WithArgs(
+			"v_test_003", pgxmock.AnyArg(), "stub_ext_txn_v3", float64(199),
+		).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	payload := billing.StubWebhookPayload{
+		EventType:   billing.EventPaymentSucceeded,
+		ExtTxnID:    "stub_ext_txn_v3",
+		AmountCents: 19900,
+		Currency:    "CNY",
+		UserID:      "u_buyer",
+		Metadata:    map[string]string{"verdict_order_id": "v_test_003"},
+	}
+	body, _ := json.Marshal(payload)
+	req := httptest.NewRequest(http.MethodPost, "/v1/billing/webhook", bytes.NewReader(body))
+	req = withRequestID(req, "test-req-verdict-fail")
+	rr := httptest.NewRecorder()
+
+	h.Webhook(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code, "enqueue failure must not break webhook ack")
+	assert.NoError(t, mockPool.ExpectationsWereMet())
+}
+
+type assertEnqueueError struct{}
+
+func (assertEnqueueError) Error() string { return "stub: redis stream unavailable" }
+
 // TestBillingHandler_Webhook_RefundFailed_EnqueuesRetry asserts the D5 fix:
 // on EventRefundFailed, the handler both records the failure in the DB AND
 // schedules an asynq refund retry task 5 minutes out.  Without the enqueue

@@ -97,6 +97,63 @@ services:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
 
+  # S2 cert platform — HTTP API, ACME worker, renewal cron.
+  # Three replicas of one image; CMD selects the binary. Each reads its
+  # own CERT_* env vars (config loader in apps/cert-svc/internal/config).
+  cert-svc:
+    image: ghcr.io/${GHCR_OWNER}/idcd-cert-svc:latest
+    container_name: idcd-cert-svc
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8086:8080"
+      - "127.0.0.1:9096:9090"  # /metrics (VPN-bound scraper)
+    environment:
+      - TZ=Asia/Shanghai
+    env_file:
+      - /opt/idcd/config/cert-svc.env
+    command: ["/bin/cert-svc"]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options: {max-size: "50m", max-file: "3"}
+
+  cert-worker:
+    image: ghcr.io/${GHCR_OWNER}/idcd-cert-svc:latest
+    container_name: idcd-cert-worker
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    env_file:
+      - /opt/idcd/config/cert-svc.env
+    command: ["/bin/cert-worker"]
+    depends_on:
+      cert-svc:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options: {max-size: "50m", max-file: "3"}
+
+  cert-renewer:
+    image: ghcr.io/${GHCR_OWNER}/idcd-cert-svc:latest
+    container_name: idcd-cert-renewer
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    env_file:
+      - /opt/idcd/config/cert-svc.env
+    command: ["/bin/cert-renewer"]
+    depends_on:
+      cert-svc:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options: {max-size: "50m", max-file: "3"}
+
   nginx:
     image: nginx:alpine
     container_name: idcd-nginx

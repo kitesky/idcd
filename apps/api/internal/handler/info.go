@@ -148,6 +148,19 @@ func (h *InfoHandler) IP(w http.ResponseWriter, r *http.Request) {
 		ip = host
 	}
 
+	// If the caller supplied a non-IP hostname, CheckTarget may return the
+	// original target verbatim on DNS failure (so the downstream probe can
+	// surface a clearer error). For this endpoint, however, an unresolvable
+	// hostname means we have nothing meaningful to look up upstream — and
+	// ip-api.com will respond with an HTML error page that breaks our
+	// JSON-decode path. Reject it as a validation error up front.
+	if net.ParseIP(ip) == nil {
+		if _, lookupErr := net.DefaultResolver.LookupHost(r.Context(), ip); lookupErr != nil {
+			response.Error(w, r, apperr.Validation("invalid or unresolvable domain", "q"))
+			return
+		}
+	}
+
 	// Query ip-api.com
 	apiURL := fmt.Sprintf("http://ip-api.com/json/%s?lang=zh-CN&fields=status,message,country,city,isp,as,hosting,proxy", ip)
 	req, err := http.NewRequestWithContext(r.Context(), "GET", apiURL, nil)
@@ -169,6 +182,15 @@ func (h *InfoHandler) IP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Defensive: ip-api.com occasionally returns an HTML error page (e.g. when
+	// the upstream cannot resolve the target). Treat anything that is not JSON
+	// as a validation failure rather than a 500 — the user-facing semantics
+	// match "unresolvable / unsupported input".
+	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(strings.ToLower(ct), "json") {
+		response.Error(w, r, apperr.Validation("invalid or unresolvable domain", "q"))
+		return
+	}
+
 	// Parse ip-api response
 	var apiResp struct {
 		Status  string `json:"status"`
@@ -181,7 +203,7 @@ func (h *InfoHandler) IP(w http.ResponseWriter, r *http.Request) {
 		Proxy   bool   `json:"proxy"`
 	}
 	if err := json.Unmarshal(body, &apiResp); err != nil {
-		response.Error(w, r, apperr.Internal("Failed to parse IP API response", err))
+		response.Error(w, r, apperr.Validation("invalid or unresolvable domain", "q"))
 		return
 	}
 

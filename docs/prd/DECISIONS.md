@@ -44,7 +44,7 @@
 | C5 | "按量纯付费"档（不订阅） | ✅ S3 推出（¥0.5/1k 调用） | 09 §17、08 §22 |
 | C6 | 学生 / NGO 折扣 | ✅ 提供 5 折（.edu 邮箱 / NGO 资质审核） | 09 §2.5 |
 | C7 | 短信 / 语音计费 | ✅ 订阅档赠送配额 + 超额按量 | 09 §2.3 |
-| C8 | **经营性 ICP 许可证** | ⚠️ **暂不办理**。备选：①海外主体 + Paddle 收款；②找有许可证合作方代收；③转海外路线。**影响国内微信/支付宝商户号开通** | 09 §3、12 §2、17 §8.1 |
+| C8 | **经营性 ICP 许可证** | ⚠️ **暂不办理**。备选:①聚合支付服务商代办商户;②找有许可证合作方代收;③S3+ 视量自建商户号。**影响自建微信/支付宝商户号开通** | 09 §3、12 §2、17 §8.1 |
 
 ## D. API / 开发者决策
 
@@ -104,11 +104,11 @@
 
 | 路径 | 描述 | 时间表 |
 |---|---|---|
-| **路径 A：海外主体 + Paddle** | 注册香港/新加坡公司作为收款主体；Paddle 作为 MoR 处理所有国内/海外用户支付；微信/支付宝通过 Paddle 路由（Paddle 支持微信支付） | 立即可行，S2 上线 |
-| **路径 B：找合作方代收** | 与已有"经营性 ICP"的公司签代收协议；他们代为开通微信/支付宝商户号；按比例分润（典型 3-5%） | M5-M6 谈合作 |
-| **路径 C：转纯出海路线** | 放弃国内付费市场，主攻海外；定价美元；用户群转向开发者 + 国际 SaaS | 需重大转向 |
+| **路径 A:聚合支付服务商**(已选) | 通过聚合服务商对接微信支付 + 支付宝,商户资质由聚合方代办,~1% 手续费,人民币 T+1 清算 | 立即可行,S2 上线,`packages/payment-go-sdk` 已集成 |
+| **路径 B:找合作方代收** | 与已有"经营性 ICP"的公司签代收协议;他们代为开通微信/支付宝商户号;按比例分润(典型 3-5%) | S3+ 视量再评估 |
+| **路径 C:自建商户号** | 月流水 > ¥500k 后自办经营性 ICP + 直连微信/支付宝商户号,把通道费率从 ~1% 压到 0.6%/0.55% | S4+ |
 
-**推荐组合**：S1-S2 走路径 A（Paddle 即可覆盖国内 + 海外），S3 视情况再加路径 B（更高费率但本地化好）。
+**已锁定**:S1-S2 走路径 A(聚合支付主通道),不上海外路线,无需海外公司主体。
 
 ### H2. "匿名 API 不开放"（D1）的影响
 
@@ -157,7 +157,7 @@
 
 **影响**:
 1. **09-billing.md §2**:新增 §2.6 Verdict 件价档 + §2.7 Compliance 年订档 + §2.8 Agent Pro 档
-2. **09-billing.md §3**:Paddle 通道支持件价(non-subscription)+ 年订(annual subscription)
+2. **09-billing.md §3**:聚合支付通道支持件价(non-subscription)+ 年订(annual subscription)
 3. **09-billing.md §13**:新增"Verdict 件价下单 → 报告生成 → 自检失败自动退款"流程
 4. **09-billing.md §16**:新增风险 — Verdict 付费后生成失败的"WAL 状态机 + 工单兜底"流程
 5. **OVERVIEW.md §6.1**:收入结构重写,Verdict + Compliance 占 30%
@@ -283,7 +283,7 @@
 | # | 决策 | 锁定结论 | 影响模块 |
 |---|------|---------|---------|
 | D4 | Verdict WAL 状态机 | ✅ attestation_record 充 WAL(每 step 写 success+external_id+idempotency_key);UNIQUE(report_id, action)防重复;KMS sign 启用 idempotency token | 09 §13.5, 18 §3.2, 14 §4.11, 15 §4.X.3 |
-| D5 | Paddle refund 兑底 | ✅ refund retry queue(5min/30min)+ 30min 强制道歉邮箱 + refund_failed 状态 + P0 告警 | 09 §13.5, 09 §16, 11 §15.4, 15 §4.X.1 |
+| D5 | 聚合支付 refund 兑底 | ✅ refund retry queue(5min/30min)+ 30min 强制道歉邮箱 + refund_failed 状态 + P0 告警 | 09 §13.5, 09 §16, 11 §15.4, 15 §4.X.1 |
 | D6 | Self-verify 独立 | ✅ 独立进程 / 独立 VPC subnet / 独立 KMS 客户端实例 / 仅调 verify HTTPS 公开接口 | 18 §3.5, 14 §4.9 |
 | D7 | 数据模型 3 修正 | ✅ 原子 UPDATE budget / +session_id 索引 / 失败 case 临时存 7 天原 payload(用户授权) | 15 §4.X.7/4.X.9, 19 §6.3 |
 
@@ -417,5 +417,38 @@
 **升级路径**(S4 企业越劤时):
 - 补 Backup HSM(¥3000)→ KMS 应急 4h 加速通道
 - 招二人 Operator → P0 7×24 双保险
+
+---
+
+## O. 免费证书模块 D-FC 决策(2026-05-17 锁定, S2 W8 PRD §18 同步)
+
+> 详 [`20-free-cert.md §16`](./20-free-cert.md#16-决策清单d-fc-前缀待-decisionsmd-§n-收口)。本节是 §16 表的 SSOT 收口副本,实施改动以本节为准。
+
+### O.1 D-FC 决策矩阵
+
+| ID | 决策 | 锁定选项 | 状态 | 实施位置 |
+|---|---|---|---|---|
+| **D-FC-01** | S1 是否仅 Let's Encrypt | **A) 仅 LE** | ✅ 已锁定(S1) | apps/cert-svc S1 单 CA;S2 多 CA Router 在 §6 §8 |
+| **D-FC-02** | 私钥下载策略 | **B) 加密落库可下载** | ✅ 已锁定 | KMS 信封 → key_kms_handle;一次性签名 URL(W5 已上) |
+| **D-FC-03** | DNS provider 实现 | **B) 全用 lego** | ✅ 已锁定 | lib/cert/dns/* 桥接 go-acme/lego v4(详 §8) |
+| **D-FC-04** | KMS 选型 | **A+B+C 三路径**:阿里 KMS(国内)+ AWS KMS(海外)+ HashiCorp Vault(自托管) | ✅ 已锁定(S2 W4 完成) | lib/cert/vault/{alikms,awskms,hashivault} |
+| **D-FC-05** | 是否做 HTTP-01 challenge | **B) 不做,仅 DNS-01** | ✅ 已锁定 | 用户零运维 + 所有场景覆盖;减少安全面 |
+| **D-FC-06** | 续期失败兜底 | **B) 3 次后停 + 强告警** | ✅ 已锁定(S2 W7) | renewal_jobs.attempt_count;notifier 推强告警邮件 |
+| **D-FC-07** | 域名黑名单维护 | **B) 配置中心动态拉** | ✅ 已锁定 | abuse_blocklist 表 + admin 后台维护(运营可改不发版) |
+| **D-FC-08** | 是否做自动部署 | **B) 永不做** | ✅ 已锁定 | 合规风险 + 用户服务器多样性;让用户手动部署 |
+| **D-FC-09** | 商业化时点 | **B) S3 商业化** | ✅ 已锁定 | S2 全免费建生态,S3 引入付费档(详 §20) |
+| **D-FC-10** | 是否暴露 MCP tool | **A) S3 做** | ⏳ 待决(S3 评估) | 与 19-ai-agent 协同,优先级低 |
+| **D-FC-11** | 付费 CA 渠道首选 | **C) GoGetSSL 单渠道试水 → D) 多渠道(S4)** | ⏳ 待决(S3) | §20.X 接口已留 sales_channel 字段 |
+| **D-FC-12** | OV / EV 流程归属 | **A) 本模块扩展** | ✅ 已锁定 | 复用订单 / 状态机 / 通知 / 凭据;独立模块成本太高 |
+| **D-FC-13** | 付费证书私钥策略 | **A + B 两档**(基础档同免费,企业档强制 KMS 不可导出) | ✅ 已锁定 | cert.certs.key_kms_handle 区分两档 |
+
+### O.2 实施 SSOT 索引
+
+- 模块 PRD:`docs/prd/20-free-cert.md`
+- 数据模型:`docs/prd/15-data-model.md §4.X cert.*`
+- 状态机:`docs/prd/STATE-MACHINES.md` CertOrder / RenewalJob
+- API:`docs/prd/16-api-spec.yaml /v1/cert/*`
+- ER 图:`docs/prd/ER-DIAGRAM.md` cert 实体段
+- 路线图:`docs/prd/17-roadmap.md` S1/S2/S3 cert 里程碑
 
 ---

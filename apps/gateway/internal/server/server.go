@@ -6,6 +6,8 @@ import (
 	"crypto/subtle"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -73,7 +75,60 @@ func (s *Server) setupRouter() {
 	upgradeHandler := handler.NewUpgradeHandler(s.hub)
 	r.Post("/internal/broadcast-upgrade", upgradeHandler.BroadcastUpgrade)
 
+	// S2 W8: reverse-proxy /v1/cert/* to cert-svc. The proxy preserves
+	// Authorization headers and cookies so the user's session / JWT flows
+	// through unchanged. The one-shot /v1/cert/certs/{id}/download endpoint
+	// is mounted explicitly (rather than relying solely on the /v1/cert/*
+	// wildcard) so its OUTSIDE-auth-middleware shape on cert-svc is
+	// preserved end-to-end; gateway adds no extra auth either.
+	if s.config.CertSvcURL != "" {
+		if proxy, err := newCertSvcProxy(s.config.CertSvcURL, s.logger); err == nil {
+			r.Handle("/v1/cert/*", proxy)
+			r.Handle("/v1/cert", proxy)
+			// Admin surface on the same upstream; cert-svc enforces a
+			// separate Bearer admin token on /v1/admin/cert/*. Gateway
+			// adds no extra auth — the upstream is the source of truth.
+			r.Handle("/v1/admin/cert/*", proxy)
+			r.Handle("/v1/admin/cert", proxy)
+		} else {
+			s.logger.Error("cert-svc reverse proxy disabled — invalid CertSvcURL",
+				"url", s.config.CertSvcURL, "error", err)
+		}
+	}
+
 	s.router = r
+}
+
+// newCertSvcProxy returns an http.Handler that reverse-proxies requests to
+// the cert-svc upstream identified by rawURL. The returned proxy:
+//
+//   - preserves Authorization headers and cookies (httputil.ReverseProxy's
+//     default Director copies r.Header verbatim, so no extra wiring needed)
+//   - responds with 502 Bad Gateway when the upstream is unreachable or
+//     returns a transport-level error (avoids leaking Go's default
+//     "http: proxy error" text)
+//   - logs upstream errors via the gateway's structured logger so SREs can
+//     correlate 502s with cert-svc availability
+//
+// rawURL must be a fully qualified scheme://host[:port] base URL, e.g.
+// "http://cert-svc:8082" — paths in rawURL are preserved as a prefix.
+func newCertSvcProxy(rawURL string, logger *slog.Logger) (http.Handler, error) {
+	target, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if target.Scheme == "" || target.Host == "" {
+		return nil, &url.Error{Op: "parse", URL: rawURL, Err: http.ErrAbortHandler}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		if logger != nil {
+			logger.Error("cert-svc upstream unreachable",
+				"method", r.Method, "path", r.URL.Path, "upstream", target.String(), "error", err)
+		}
+		http.Error(w, "bad gateway: cert-svc unreachable", http.StatusBadGateway)
+	}
+	return proxy, nil
 }
 
 func (s *Server) setupHTTPServer() {

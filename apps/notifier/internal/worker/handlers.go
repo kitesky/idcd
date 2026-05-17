@@ -26,11 +26,29 @@ const (
 	TaskSendResetPassword = "task:send_reset_password"
 	TypeAlertNotification = "alert:notification"
 
-	// TaskRefundRetry is the asynq task type for retrying a failed Paddle
+	// TaskRefundRetry is the asynq task type for retrying a failed PaymentHub
 	// refund (D5).  Payload: RefundRetryPayload (JSON).  The task is
 	// scheduled with explicit asynq.ProcessIn delays (5min / 30min) and MUST
 	// NOT rely on the generic exponential backoff configured in worker.go.
 	TaskRefundRetry = "payment:refund_retry"
+
+	// TaskRefundApology is the asynq task type emitted by the attest-side
+	// refund-worker (apps/attest/cmd/refund-worker) once the D5 retry ladder
+	// is exhausted and the verdict_order row has flipped to refund_failed.
+	//
+	// Payload: RefundApologyPayload (JSON) — self-contained: the producer
+	// has already resolved user_email / ext_order_id / refund amount
+	// (via an application-level idcd_attest → idcd_main."user" join, D1)
+	// so the notifier renders and sends the email without any extra DB
+	// hop. This keeps notifier deployable without the idcd_attest DSN.
+	//
+	// Contract (DO NOT change without coordinating with refund-worker):
+	//   queue        = "billing"
+	//   task type    = "payment:refund_apology"
+	//   payload keys = order_id, user_email, ext_order_id,
+	//                  refund_amount_cents, currency, failure_reason,
+	//                  enqueued_at, locale (optional)
+	TaskRefundApology = "payment:refund_apology"
 )
 
 // Refund retry timing constants (D5).
@@ -101,7 +119,7 @@ type PaymentRefunder interface {
 }
 
 // PaymentStore is the persistence interface used by the refund retry handler
-// to update the payment row after a Paddle call.
+// to update the payment row after a PaymentHub call.
 type PaymentStore interface {
 	// MarkRefunded transitions the payment to status='refunded'.
 	MarkRefunded(ctx context.Context, paymentID string) error
@@ -115,6 +133,26 @@ type PaymentStore interface {
 // must use asynq.ProcessIn (or equivalent) to respect explicit delay semantics.
 type RefundRetryEnqueuer interface {
 	EnqueueRefundRetry(ctx context.Context, payload RefundRetryPayload, delay time.Duration) error
+}
+
+// RefundApologyPayload mirrors the payload emitted by the attest-side
+// refund-worker's asynqApologyMailer (apps/attest/cmd/refund-worker/main.go).
+// The producer pre-resolves every field needed to render and ship the
+// apology email; the notifier does NOT perform any DB lookup of its own
+// (D1: the cross-schema owner_id → user.email join lives in the refund
+// worker, where the verdict_order row is already loaded).
+//
+// IMPORTANT: do not rename fields or add new ones without coordinating with
+// the refund-worker — the task type is a wire contract.
+type RefundApologyPayload struct {
+	OrderID           string `json:"order_id"`              // verdict_order id (v_*)
+	UserEmail         string `json:"user_email"`            // recipient (may be empty → ACK + P0 warn)
+	ExtOrderID     string `json:"ext_order_id"`       // upstream gateway reference for support
+	RefundAmountCents int64  `json:"refund_amount_cents"`   // paid amount that failed to refund
+	Currency          string `json:"currency"`              // ISO 4217-ish; producer hard-codes "CNY" today
+	FailureReason     string `json:"failure_reason"`        // final failure reason from last retry
+	EnqueuedAt        string `json:"enqueued_at,omitempty"` // RFC3339Nano UTC, informational only
+	Locale            string `json:"locale,omitempty"`      // optional override; resolveLocale falls back
 }
 
 // SendVerifyEmailPayload holds the payload for sending verification email.
@@ -414,7 +452,7 @@ func (h *Handlers) buildChannel(channelType string, cfgJSON []byte) (channel.Cha
 // HandleRefundRetry processes a payment:refund_retry asynq task (D5).
 //
 // Flow:
-//  1. Call PaymentRefunder.RefundPayment (Paddle Refund API).
+//  1. Call PaymentRefunder.RefundPayment (PaymentHub Refund API).
 //  2. On success: PaymentStore.MarkRefunded(paymentID) → ack task.
 //  3. On failure:
 //     - If attempt_count < RefundRetryMaxAttempts: bump attempt_count and
@@ -453,10 +491,10 @@ func (h *Handlers) HandleRefundRetry(ctx context.Context, task *asynq.Task) erro
 		return apperr.Internal("refund retry deps not wired (refunder / store / enqueuer)", nil)
 	}
 
-	// Attempt the Paddle refund.
+	// Attempt the PaymentHub refund.
 	refundErr := h.refunder.RefundPayment(ctx, payload.ExtTxnID, payload.AmountCents, payload.Reason)
 	if refundErr == nil {
-		// Paddle accepted the refund — persist the new state.
+		// PaymentHub accepted the refund — persist the new state.
 		if err := h.paymentStore.MarkRefunded(ctx, payload.PaymentID); err != nil {
 			h.logger.Error("标记 payment 为 refunded 失败",
 				"payment_id", payload.PaymentID,
@@ -554,6 +592,90 @@ func (h *Handlers) sendRefundApologyEmail(ctx context.Context, p RefundRetryPayl
 	return h.sendEmail(ctx, msg)
 }
 
+// HandleRefundApology processes a payment:refund_apology asynq task emitted
+// by the attest-side refund-worker once the D5 retry ladder is exhausted
+// and the verdict_order has flipped to status='refund_failed'.
+//
+// The payload is self-contained — the producer has already resolved
+// user_email / ext_order_id / amount / currency via an
+// application-level join (D1) — so this handler is pure render-and-send:
+//
+//  1. Decode the payload; bad JSON or missing order_id → asynq.SkipRetry so
+//     the task drains instead of clogging the billing queue.
+//  2. Resolve the locale via the i18n registry (default zh-CN equivalent).
+//  3. If user_email is empty (rare race — user deleted after refund
+//     failure?) ACK with a P0 alert hook; do not retry forever (D5
+//     fail-open).
+//  4. Render the localized refund_failed template and ship via the regular
+//     email channel. Transient send errors bubble up → asynq retries.
+//
+// IMPORTANT: this handler remains decoupled from the apps/attest
+// internal packages (D1: no cross-schema imports). Every datum required
+// to build the email is on the asynq payload itself.
+func (h *Handlers) HandleRefundApology(ctx context.Context, task *asynq.Task) error {
+	var payload RefundApologyPayload
+	if err := json.Unmarshal(task.Payload(), &payload); err != nil {
+		// Malformed payloads are unrecoverable — skip retry so the task
+		// drains instead of clogging the billing queue forever.
+		MetricsRefundRetries.WithLabelValues("apology_bad_payload").Inc()
+		return fmt.Errorf("%w: decode refund apology payload: %v", asynq.SkipRetry, err)
+	}
+
+	if strings.TrimSpace(payload.OrderID) == "" {
+		MetricsRefundRetries.WithLabelValues("apology_bad_payload").Inc()
+		return fmt.Errorf("%w: refund apology task missing order_id", asynq.SkipRetry)
+	}
+
+	locale := resolveLocale(payload.Locale)
+
+	if strings.TrimSpace(payload.UserEmail) == "" {
+		// D5 fail-open: ACK with a P0 alert hook so ops can find the row
+		// on the admin dashboard and send the email manually. Looping
+		// forever helps nobody.
+		MetricsRefundRetries.WithLabelValues("apology_no_email").Inc()
+		h.logger.Warn("退款道歉任务缺少用户邮箱, 已 ACK (P0)",
+			"order_id", payload.OrderID,
+			"failure_reason", payload.FailureReason,
+			"alert", "refund_apology_no_email",
+		)
+		return nil
+	}
+
+	amountDisplay := formatAmountDisplay(payload.RefundAmountCents, payload.Currency)
+	html, err := h.templates.RenderRefundFailed(locale, template.RefundFailedData{
+		PaymentID:     payload.OrderID,
+		ExtTxnID:      payload.ExtOrderID,
+		AmountDisplay: amountDisplay,
+	})
+	if err != nil {
+		return fmt.Errorf("refund apology: render template: %w", err)
+	}
+
+	msg := email.Message{
+		To:      payload.UserEmail,
+		Subject: catalogProvider().T(locale, "email.refund_failed.subject", nil),
+		HTML:    html,
+	}
+
+	if err := h.sendEmail(ctx, msg); err != nil {
+		h.logger.Error("发送退款道歉邮件失败",
+			"order_id", payload.OrderID,
+			"user_email", payload.UserEmail,
+			"error", err,
+		)
+		return fmt.Errorf("refund apology: send email: %w", err)
+	}
+
+	MetricsRefundRetries.WithLabelValues("apology_sent").Inc()
+	h.logger.Info("退款道歉邮件发送成功",
+		"order_id", payload.OrderID,
+		"user_email", payload.UserEmail,
+		"locale", locale,
+		"failure_reason", payload.FailureReason,
+	)
+	return nil
+}
+
 // sendEmail is the metric-instrumented wrapper around the raw Sender.Send call.
 // It infers the provider label from the concrete sender type and records both
 // the outcome counter and the send-duration histogram. Centralising the
@@ -608,6 +730,9 @@ func (h *Handlers) GetMux() *asynq.ServeMux {
 	mux.HandleFunc(TypeAlertNotification, h.withRetry(h.HandleAlertNotification))
 	// D5: refund retry — explicit schedule via asynq.ProcessIn, NOT generic backoff.
 	mux.HandleFunc(TaskRefundRetry, h.withRetry(h.HandleRefundRetry))
+	// D5: refund apology — emitted by attest-side refund-worker once the
+	// retry ladder is exhausted. Same queue ("billing"), separate handler.
+	mux.HandleFunc(TaskRefundApology, h.withRetry(h.HandleRefundApology))
 
 	return mux
 }

@@ -20,7 +20,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ### Added
 - **P0#2** ACME 接线 `/.well-known/acme-challenge/{token}` HTTP-01 + autocert，env-gated（9f9bde2）
-- **P0#3** D5 退款重试链路：webhook 失败 → asynq 5min/30min retry → max 后道歉邮件；notifier worker handler + Paddle 适配器（9f9bde2 / 565a398）
+- **P0#3** D5 退款重试链路：webhook 失败 → asynq 5min/30min retry → max 后道歉邮件；notifier worker handler + PaymentHub 适配器（9f9bde2 / 565a398）
 - **P0#9** Probe handler 无 active 节点显式 503 + admin `POST /v1/admin/nodes/{id}/activate` + 完整状态机文档（9f9bde2）
 - **P1#15** Aggregator scaling：ConsumerName 动态化 `{HOSTNAME}-{idx}`、周期 1min XAUTOCLAIM、`delivery_count > 5` 入 DLQ stream `{name}:dlq`、`/metrics` 五个 metric（ec736a1）
 - **P1#16** Cloudflare Workers `[env.staging]` / `[env.production]` + secrets 注释；nginx upstream `api:8080` + admin/cname 子域 + http2（ec736a1）

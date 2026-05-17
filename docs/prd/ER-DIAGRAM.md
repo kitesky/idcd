@@ -201,7 +201,7 @@ erDiagram
         text status "pending|paid|generating|delivered|failed|refunded|refund_failed"
         numeric price_cny
         numeric price_paid_cny
-        text paddle_order_id "cross-schema → idcd_main.order"
+        text ext_order_id "cross-schema → idcd_main.order"
         text refund_reason
         int refund_attempt_count "v2 D5: retry queue 计数"
         text refund_last_error "v2 D5"
@@ -872,7 +872,7 @@ erDiagram
     payment_method {
         text id PK "pm_*"
         text owner_id
-        text type "wechat|alipay|paddle|stripe|bank"
+        text type "wechat|alipay|bank"
         text external_id
         text display
         bool is_default
@@ -1022,7 +1022,7 @@ erDiagram
         int free_verdict_count "Pro=5 / Enterprise=不限"
         int free_verdict_used
         numeric price_cny
-        text paddle_subscription_id
+        
         timestamptz canceled_at
     }
     leaderboard_report {
@@ -1287,6 +1287,125 @@ erDiagram
 
 ---
 
+### 2.10 cert schema(免费证书模块,S2 上线)
+
+> 详 [`20-free-cert.md §5`](./20-free-cert.md#5-领域模型与数据表) / [`15-data-model.md §4.X.15`](./15-data-model.md#4x15-cert-schemav2-免费证书模块-s2-上线)。
+>
+> **D1 跨 schema 不写 FK**:`cert.orders.account_id` / `cert.dns_credentials.account_id` / `cert.certs.account_id` 等列指向 `account.users.id` 但**不**声明 FK,走 Repository 应用层 join。
+
+```mermaid
+erDiagram
+    cert_domains {
+        bigserial id PK
+        bigint account_id "cross-schema → account.users.id (无 FK)"
+        text fqdn
+        text caa_status
+        timestamptz caa_checked_at
+        timestamptz created_at
+    }
+    cert_dns_credentials {
+        bigserial id PK
+        bigint account_id "cross-schema (无 FK)"
+        text provider "cloudflare|aliyun|dnspod|route53|gcloud|manual"
+        text display_name
+        bytea encrypted_blob "KMS DEK 加密载荷"
+        bytea dek_wrapped "KEK 包裹的 DEK"
+        text kek_key_id
+        text health_status
+        timestamptz health_checked_at
+        timestamptz created_at
+        timestamptz revoked_at
+    }
+    cert_acme_accounts {
+        bigserial id PK
+        text ca "lets-encrypt|zerossl|buypass"
+        text env "production|staging"
+        text account_url
+        text key_kms_handle
+        text eab_kid
+        text eab_hmac_kms_handle
+        timestamptz created_at
+    }
+    cert_orders {
+        bigserial id PK
+        bigint account_id "cross-schema (无 FK)"
+        text_array sans
+        text_array sans_unicode
+        text common_name
+        text tier "free-dv | paid-dv | paid-ov | paid-ev (S3+)"
+        text ca
+        text reseller_channel "paid 预留"
+        text reseller_order_ref "paid 预留"
+        bigint organization_id "paid OV/EV 预留"
+        int validity_days
+        text challenge_type "dns-01"
+        bigint dns_credential_id "→ cert_dns_credentials.id (同 schema, 无 FK)"
+        text status "draft|validating|issuing|issued|failed|revoking|revoked"
+        bigint cert_id "→ cert_certs.id (无 FK)"
+        text billing_invoice_id "paid 预留"
+        int retry_count
+        text last_error
+        text idempotency_key
+        timestamptz created_at
+        timestamptz finalized_at
+    }
+    cert_order_events {
+        bigserial id PK
+        bigint order_id "→ cert_orders.id (无 FK)"
+        int action_seq "UNIQUE(order_id, action_seq)"
+        text action
+        jsonb payload_jsonb
+        timestamptz occurred_at "WAL — D4 同源思路"
+    }
+    cert_certs {
+        bigserial id PK
+        bigint order_id "→ cert_orders.id (无 FK)"
+        bigint account_id "cross-schema (无 FK)"
+        text_array sans
+        text issuer "lets-encrypt|zerossl|buypass"
+        text serial_hex
+        text fingerprint_sha256
+        text leaf_pem
+        text chain_pem
+        text key_kms_handle "KMS 信封加密的私钥句柄"
+        timestamptz not_before
+        timestamptz not_after
+        text status "issued|revoked|expired"
+        timestamptz revoked_at
+        text revoke_reason
+        timestamptz created_at
+    }
+    cert_renewal_jobs {
+        bigserial id PK
+        bigint cert_id "→ cert_certs.id (无 FK)"
+        timestamptz scheduled_at "= not_after - 30d"
+        int attempt_count
+        text last_error
+        text status "scheduled|queued|running|succeeded|failed|aborted"
+        bigint new_order_id "→ cert_orders.id (无 FK)"
+        timestamptz created_at
+    }
+    cert_audit_logs {
+        bigserial id PK
+        bigint account_id "cross-schema (无 FK)"
+        text actor
+        text action
+        text target_kind
+        bigint target_id
+        jsonb payload_jsonb
+        timestamptz occurred_at "append-only"
+    }
+
+    cert_orders ||--o{ cert_order_events : "WAL"
+    cert_orders ||--o| cert_certs : "签发完成时 1:1"
+    cert_certs ||--o{ cert_renewal_jobs : "续期任务(到期前 30d)"
+    cert_dns_credentials ||--o{ cert_orders : "可选附加"
+```
+
+> 注意:`cert.acme_accounts` / `cert.audit_logs` 与其他表无显式关系(账号级与审计独立)。`cert.domains` 是缓存表(CAA 状态),不强制与 orders 关联 — 同一域名可多次签发不同 SANs 组合。
+
+---
+
 ## 3. 关键设计说明
 
 ### 3.1 跨 schema FK 不写(v2 D1)
@@ -1294,7 +1413,7 @@ erDiagram
 | 跨 schema 引用 | 来源表(schema) | 目标表(schema) | join 方式 |
 |---|---|---|---|
 | `verdict_order.owner_id` | idcd_attest | idcd_main.user | Repository.GetUser(id) |
-| `verdict_order.paddle_order_id` | idcd_attest | idcd_main.order | Repository.GetOrder(id) |
+| `verdict_order.ext_order_id` | idcd_attest | idcd_main.order | Repository.GetOrder(id) |
 | `mcp_token.owner_id` | idcd_mcp | idcd_main.user/team | Repository |
 | `mcp_session.owner_id` | idcd_mcp | idcd_main.user | Repository |
 | `mcp_tool_call.owner_id` | idcd_mcp | idcd_main.user | Repository |

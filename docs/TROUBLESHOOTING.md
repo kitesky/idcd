@@ -17,6 +17,7 @@
 | Agent OTA 灰度失败 | `RUNBOOKS/agent-mass-rollback.md` |
 | TSA 三家全挂 | `RUNBOOKS/tsa-all-down.md` |
 | Anchor 偏差 / 数据污染 | `RUNBOOKS/data-poisoning-recovery.md` |
+| cert-svc 首次部署 / KMS 切换 | `RUNBOOKS/cert-svc-deploy.md` |
 
 ---
 

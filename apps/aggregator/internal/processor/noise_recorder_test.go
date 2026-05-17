@@ -106,3 +106,4 @@ func TestRecordNoise_UnknownEventType(t *testing.T) {
 		t.Fatal("expected error for unknown eventType")
 	}
 }
+

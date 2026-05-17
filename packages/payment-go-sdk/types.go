@@ -6,7 +6,7 @@ import "encoding/json"
 const (
 	ChannelWeChatPay  = "wechat_pay"
 	ChannelAlipay     = "alipay"
-	ChannelPaddle     = "paddle"
+	ChannelPaymentHub     = "paymenthub"
 	ChannelAppleIAP   = "apple_iap"
 	ChannelGooglePlay = "google_play"
 )

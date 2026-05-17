@@ -28,7 +28,7 @@ type PaymentHubConfig struct {
 	APISecret     string
 	WebhookSecret string
 	// Channel is the default channel when the user does not specify one:
-	// "alipay", "wechat_pay", or "paddle".
+	// "alipay", "wechat_pay", or "paymenthub".
 	Channel string
 	// Currency is ISO 4217, e.g. "CNY" or "USD".
 	Currency string
@@ -135,10 +135,92 @@ func (p *PaymentHubProvider) Subscribe(ctx context.Context, req SubscribeRequest
 
 // Cancel implements Provider.
 // The payment platform does not expose a public subscription-cancel endpoint;
-// Paddle subscriptions are cancelled via Paddle's customer portal. The DB state
+// PaymentHub subscriptions are cancelled via PaymentHub's customer portal. The DB state
 // is updated when the subscription.cancelled webhook arrives.
 func (p *PaymentHubProvider) Cancel(_ context.Context, _ CancelRequest) error {
 	return nil
+}
+
+// Charge implements Provider.
+// It creates a one-shot order on the payment platform and returns the checkout
+// URL. The caller-supplied Metadata is merged with idcd-internal keys and
+// passed through verbatim so order.paid webhooks round-trip every entry back
+// to the BillingHandler (e.g. verdict_order_id).
+func (p *PaymentHubProvider) Charge(ctx context.Context, req ChargeRequest) (*ChargeResult, error) {
+	if req.UserID == "" {
+		return nil, errors.New("billing/payment_hub: Charge: user_id is required")
+	}
+	if req.AmountCents <= 0 {
+		return nil, fmt.Errorf("billing/payment_hub: Charge: amount_cents must be positive, got %d", req.AmountCents)
+	}
+
+	currency := req.Currency
+	if currency == "" {
+		currency = p.cfg.Currency
+	}
+	if currency == "" {
+		currency = "CNY"
+	}
+
+	channel := req.Channel
+	if channel == "" {
+		channel = p.cfg.Channel
+	}
+	method := channelWebMethod(channel)
+	if method == "" {
+		method = "checkout"
+	}
+
+	chargeID := idgen.New("chg_")
+	appOrderID := idgen.Order()
+
+	// Merge caller metadata first (so internal keys take precedence).
+	metadata := make(map[string]string, len(req.Metadata)+3)
+	maps.Copy(metadata, req.Metadata)
+	metadata["idcd_charge_id"] = chargeID
+	metadata["user_id"] = req.UserID
+	if req.ItemRef != "" {
+		metadata["item_ref"] = req.ItemRef
+	}
+
+	subject := req.Description
+	if subject == "" {
+		subject = "idcd charge"
+	}
+
+	resp, err := p.client.CreateOrder(ctx, &payment.CreateOrderReq{
+		AppOrderID: appOrderID,
+		Channel:    channel,
+		Method:     method,
+		Amount:     req.AmountCents,
+		Currency:   currency,
+		Subject:    subject,
+		ProductID:  req.ItemRef,
+		ReturnURL:  req.ReturnURL,
+		Metadata:   metadata,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("billing/payment_hub: Charge: %w", err)
+	}
+
+	payURL := extractPayURL(resp.PayData)
+	if payURL == "" {
+		payURL = req.ReturnURL
+	}
+
+	expiresAt := time.Now().UTC().Add(2 * time.Hour)
+	if resp.ExpiredAt != "" {
+		if t, err := time.Parse(time.RFC3339, resp.ExpiredAt); err == nil {
+			expiresAt = t
+		}
+	}
+
+	return &ChargeResult{
+		ChargeID:  chargeID,
+		ExtTxnID:  resp.OrderNo,
+		PayURL:    payURL,
+		ExpiresAt: expiresAt,
+	}, nil
 }
 
 // ParseWebhook implements Provider.
@@ -304,7 +386,7 @@ func channelWebMethod(channel string) string {
 		return "page" // PC 扫码/跳转页面
 	case ChannelWeChatPay:
 		return "native" // 生成二维码
-	case ChannelPaddle:
+	case ChannelPaymentHub:
 		return "checkout"
 	default:
 		return ""
@@ -318,7 +400,7 @@ func extractPayURL(payData map[string]any) string {
 		return ""
 	}
 	candidates := []string{
-		"checkout_url", // Paddle
+		"checkout_url", // PaymentHub
 		"pay_url",
 		"code_url",     // WeChat Native (QR code)
 		"h5_url",       // WeChat H5

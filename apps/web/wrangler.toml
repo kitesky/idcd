@@ -7,7 +7,7 @@
 # Secrets（不在本文件，用 wrangler secret put 注入）:
 #   ADMIN_TOKEN              — admin 后台调用 /internal/admin/* 的 service token
 #   INTERNAL_API_TOKEN       — 服务端组件直连内网 API 的 token（如和 ADMIN_TOKEN 一致可省略）
-#   PADDLE_WEBHOOK_SECRET    — Paddle webhook 签名（如前端代理 webhook 才需要）
+#   PAYMENT_HUB_WEBHOOK_SECRET — 聚合支付 webhook 签名（如前端代理 webhook 才需要）
 #   SENTRY_DSN               — Sentry SDK DSN（前端错误聚合）
 #
 # 设置 secret 示例:

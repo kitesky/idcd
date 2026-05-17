@@ -14,14 +14,14 @@
 1. **订阅 SaaS**（主要收入）：4 档订阅 + 月/年付
 2. **按量计费**（API + 短信 + 语音）：开发者市场
 3. **CPS / 联盟**（旁路收入）：主机商推广 + 用户推荐
-4. **支付通道**：Paddle MoR 主通道（含微信支付/支付宝 via Paddle，因经营性 ICP 暂不办）
+4. **支付通道**：聚合支付 主通道（含微信支付/支付宝 ，因经营性 ICP 暂不办）
 5. **发票 / 退款 / 审计**：合规闭环
 
 ### 设计原则
 
 1. **定价透明**：无隐藏条款，差额可秒算
 2. **配额硬上限**：超额优雅降级（不直接停服）+ 引导升级
-3. **跨境无感**：Paddle 作为 MoR 一站式处理国内外用户（含微信支付/支付宝），用户体验一致
+3. **跨境无感**：聚合支付 一站式处理国内外用户（含微信支付/支付宝），用户体验一致
 4. **可审计**：每笔交易、每次扣量、每次退款都有完整记录
 
 ### 关键指标
@@ -100,7 +100,7 @@
 
 ### 2.6 Verdict 报告件价档(v2 NEW, 详见 18-evidence §2.1)
 
-| 模板 | 目标场景 | 价格 | 含税(Paddle 5%+$0.5 后实收) |
+| 模板 | 目标场景 | 价格 | 含税 |
 |---|---|---|---|
 | **故障取证(Incident)** | 故障复盘 | ¥199/份 | 实收 ~¥185 |
 | **SLA 索赔证据** | 企业 vs CDN/云 SLA 争议 | ¥299/份 | 实收 ~¥280 |
@@ -116,7 +116,7 @@
 
 **生成流程**(详见 09 §13.5 + 18 §3.2):
 ```
-用户选模板 + 目标 + 时间窗 → 数据可用性预检 → Paddle 结账 → 异步生成 →
+用户选模板 + 目标 + 时间窗 → 数据可用性预检 → 聚合支付结账 → 异步生成 →
 自检通过 → 邮件通知 + 站内可下载 → 6 年归档
 ```
 
@@ -164,21 +164,19 @@
 
 | 通道 | 适用 | 费率 | 备注 |
 |---|---|---|---|
-| **Paddle**（主通道，国内 + 海外） | 全场景 | 5% + $0.5 | **Merchant of Record**，处理税务 + 支持微信支付/支付宝/卡 |
+| **聚合支付**（主通道,通过 `payment-go-sdk`） | 国内 | ~1% | 同时承接微信支付 + 支付宝,由聚合支付服务商统一结算 |
 | 对公转账 | 大额企业 | 0% | 手动确认 |
-| 微信支付（自家商户号） | 国内 | 0.6% | ⚠️ 受经营性 ICP 限制，**走"合作方代收"或 S3+ 自行开通** |
+| 微信支付（自家商户号） | 国内 | 0.6% | ⚠️ 需经营性 ICP,S3+ 视量再评估 |
 | 支付宝（自家商户号） | 国内 | 0.55% | ⚠️ 同上 |
-| Stripe（备选） | 海外 | 2.9% + $0.3 | S3 后期评估，仅作为 Paddle 备份 |
 
-> **重要决策（C8）**：经营性 ICP 许可证暂不办理。这意味着 S1-S2 期间，**自家微信 / 支付宝商户号无法直接开通**。
+> **重要决策（C8）**:经营性 ICP 许可证暂不办理。
 >
-> **解决方案**：S1-S2 完全依赖 **Paddle 作为聚合支付主通道**：
-> - Paddle 是 Merchant of Record（销售商责任方），自动处理 VAT / GST / 销售税
-> - Paddle 支持微信支付 + 支付宝 + 卡 + PayPal，覆盖国内外用户
-> - Paddle 通过 idcd 注册的香港 / 新加坡主体收款，绕开国内经营性 ICP 限制
-> - 费率 5% + $0.5 是付出的代价，但换取合规简化与上线速度
+> **解决方案**:S1-S2 完全依赖 **聚合支付服务商**(对接微信 + 支付宝),通过 `packages/payment-go-sdk` 调用,内部由聚合方分发到具体通道。优点:
+> - 1% 上下费率,远低于跨境 MoR 的 5%+$0.5
+> - 资金 T+1 清算,人民币结算,不涉及境外主体
+> - 商户资质由聚合服务商代办,无需自行 ICP/微信/支付宝商户号申请
 >
-> **S3+ 视情况**：可加路径 B（找已有经营性 ICP 的合作方代收，3-5% 分润换取直连微信/支付宝商户号），降低 Paddle 费率压力。
+> **S3+ 视量**:若月流水 > ¥500k 可考虑直连微信 / 支付宝商户号,把聚合通道费率从 ~1% 压到 0.6%/0.55%。
 
 ### 3.2 聚合支付架构
 
@@ -187,7 +185,7 @@ User 选择档位 + 周期
   → 跳到 /app/billing/checkout/<order_id>
   → 选择支付方式
        • 微信 / 支付宝（国内）
-       • Paddle / Stripe（海外）
+       • 
        • 对公转账（企业）
   → 自家 Payment Gateway 路由到对应通道
   → 通道完成支付
@@ -210,11 +208,11 @@ interface PaymentAdapter {
 }
 ```
 
-### 3.4 Paddle 特别说明
-- Paddle 是 Merchant of Record（销售记录方）：自动处理跨境 VAT / GST / 销售税
-- 大幅降低出海合规成本
-- 缺点：5% + $0.5 费率较高
-- 适合：海外用户、需要发英文 invoice 的场景
+### 3.4 聚合支付特别说明
+- 通过 `packages/payment-go-sdk` 调用,客户端不区分微信/支付宝,聚合服务商按用户选择路由
+- 国内人民币 T+1 清算,无跨境结算与汇率风险
+- 费率 ~1%,远低于 MoR(5%+$0.5),不必为海外用户/英文 invoice 场景买单(本期不出海)
+- 缺点:聚合服务商兜底依赖第三方,需在合同里锁定 SLA + 资金安全条款
 
 ### 3.5 微信支付 / 支付宝特别说明
 - 国内必须实名 + 企业资质（个体户也行）
@@ -271,7 +269,7 @@ User → 升级页 → 选档位 + 周期
 ### 4.3 自动续费
 
 - 续费前 7 天：邮件提醒 + 站内通知
-- 周期结束当天：扣款（微信 / Paddle 自动；支付宝按时弹通知）
+- 周期结束当天：扣款（微信支付 自动；支付宝按时弹通知）
 - 扣款失败：3 天内重试 3 次（递增间隔）
 - 仍失败：状态 past_due → 7 天宽限期 → canceled
 
@@ -385,7 +383,7 @@ User → 升级页 → 选档位 + 周期
 | 电子普通发票（增值税普通） | 个人用户 |
 | 电子专用发票（增值税专票） | 一般纳税人企业 |
 | 形式发票（Pro Forma Invoice） | 海外用户 / 对公转账前 |
-| Paddle 自动发票 | 海外用户（Paddle 出具） |
+| 聚合支付电子发票 | 普票自动出具 |
 
 ### 8.2 开票流程
 
@@ -443,7 +441,7 @@ User → /app/billing/invoices → 申请开票
 - 推荐返利存入
 
 ### 10.2 充值
-- 微信 / 支付宝 / Paddle 直接充值
+- 微信 / 支付宝 直接充值
 - 最小 ¥50 起
 - 永不过期（合规要求，避免被认定"预付卡"）
 
@@ -497,7 +495,7 @@ subscription
   created_at, canceled_at
 
 payment_method
-  id, owner_id, type (wechat|alipay|paddle|stripe|bank),
+  id, owner_id, type (wechat|alipay|bank),
   external_id (在支付商的标识),
   display (脱敏卡号等), is_default,
   created_at
@@ -564,16 +562,16 @@ User → /pricing → 点 Pro 升级
   → 前端轮询订单状态变为 success → 跳转 "升级成功"页
 ```
 
-### 13.2 出海年付订阅（Paddle）
+### 13.2 出海年付订阅
 
 ```
 User → /pricing (en) → 选 Team Annual
-  → Paddle Checkout 内嵌
+  → 聚合支付 checkout 跳转
   → 用户填邮箱 + 卡 + 公司信息（VAT 自动计算）
-  → Paddle 处理支付 + 税
+  → 聚合服务商处理支付清算
   → Webhook 通知订单 paid + 含税金额
   → 创建 subscription
-  → Paddle 自动发英文 invoice
+  → 系统自动出具普票
 ```
 
 ### 13.3 续费失败处理
@@ -608,7 +606,7 @@ User → /app/billing/orders → 选订单 → 退款
 >
 > **三件套 CRITICAL GAP 闭合方案(v2 D4 + D5 + D6)**:
 > 1. **D4 WAL**:`attestation_record` 表充当 step-level WAL;每 step 完成写一条 `(action, status=success, external_id, idempotency_key)`;Worker crash 后续跑时先查 attestation_record 跳过已成功 step。KMS sign 调用启用 idempotency token,防止重试导致 KMS audit log 重复 sign。详 18 §3.2。
-> 2. **D5 Refund retry queue**:Paddle refund API 失败本身有 retry queue(5min retry → 30min retry);**无论 refund 是否成功,30min 内必发用户道歉邮箱**;30min 后仍失败 → `verdict_order(status=refund_failed)` + P0 告警 + admin dashboard 入兜底队列。
+> 2. **D5 Refund retry queue**:聚合支付 refund API 失败本身有 retry queue(5min retry → 30min retry);**无论 refund 是否成功,30min 内必发用户道歉邮箱**;30min 后仍失败 → `verdict_order(status=refund_failed)` + P0 告警 + admin dashboard 入兜底队列。
 > 3. **D6 Self-verify 独立**:Self-Verify Worker 不同进程 / 不同 VPC subnet / 独立 KMS 客户端实例 / 仅调 attest.idcd.com/verify 公开接口。详 18 §3.5。
 
 ```
@@ -616,8 +614,8 @@ T0    User → /pricing → 选 Verdict 模板 + 目标 + 时间窗
         → /v1/verdict/quote 数据可用性预检
         → 若数据不足 / 目标黑名单 / 节点<3 → 拒绝下单 + 解释
         → 数据 OK → 创建 verdict_order(status=pending)
-T+0    User 跳 Paddle Checkout → 完成支付
-T+10s  Paddle webhook → verdict_order(status=paid)
+T+0    User 跳聚合支付 checkout → 完成支付
+T+10s  聚合支付 webhook → verdict_order(status=paid)
         → 入 verdict_generation_queue(Redis Stream, idempotency by order_id)
 T+15s  Generator Worker 拉 task
         → verdict_order(status=generating)
@@ -637,23 +635,23 @@ T+90s  Self-Verify Worker(独立进程)从 S3 重读 PDF → 走 attest.idcd.com
 T+5min Generator step 三次重试失败 / Self-verify 失败 → DLQ
         ↓
         【Refund Worker】
-        Step 1: 调用 Paddle refund API
+        Step 1: 调用 聚合支付 refund API
                 ├─ success → verdict_order(status=refunded) → 通知用户(成功)
                 └─ failure → refund_attempt_count=1, refund_last_error=记录 → 5min 后 retry
-T+10min Step 1 retry: Paddle refund API 再调用
+T+10min Step 1 retry: 聚合支付 refund API 再调用
                 ├─ success → status=refunded → 通知用户
                 └─ failure → refund_attempt_count=2 → 30min 后 retry
 T+15min 【强制道歉邮箱(无论后续 refund 成功否)】
         发送用户:"由于 [失败类别] 无法生成报告,已发起全额退款 ¥XXX。
                    若 1-3 工作日内未到账,请回复此邮件,我们手动处理。"
         → verdict_order.refund_apology_sent_at = now()
-T+45min Step 2 retry: Paddle refund API 再调用
+T+45min Step 2 retry: 聚合支付 refund API 再调用
                 ├─ success → verdict_order(status=refunded) → 通知用户(已通过道歉信)
                 └─ failure → refund_attempt_count=3 → 终止自动 retry
                             → verdict_order(status=refund_failed)
                             → P0 告警(创始人 7×24 手机)
                             → admin dashboard "refund_failed" 队列
-                            → 人工手动处理(联系 Paddle 支持 / 手动退款)
+                            → 人工手动处理(联系聚合服务商支持 / 手动退款)
 T+24h  人工 review:若手动 refund 成功 → status=refunded;否则保留 refund_failed
 ```
 
@@ -661,7 +659,7 @@ T+24h  人工 review:若手动 refund 成功 → status=refunded;否则保留 re
 - 90% 报告在 60 秒内生成
 - 99% 报告在 5 分钟内生成
 - 任何自检失败的订单 → **30 分钟内** 发送道歉邮箱 + 触发全额退款流程
-- 退款最迟 1-3 工作日到账(Paddle 风控 / 银行处理时间);超出时间用户回复邮件 → 创始人手动跟进
+- 退款最迟 1-3 工作日到账(支付通道风控 / 银行处理时间);超出时间用户回复邮件 → 创始人手动跟进
 - 任何 refund 失败 → 道歉邮箱已发(用户先知道) + 创始人 P0 告警 + admin dashboard 入队
 
 ### 13.6 Compliance 年订续费(v2 NEW)
@@ -698,9 +696,9 @@ T+24h  人工 review:若手动 refund 成功 → status=refunded;否则保留 re
 
 ### S2（4–8 月）必交付
 - 4 档定价 + 月 / 年付
-- 支付通道：Paddle MoR 为主 (含微信/支付宝 via Paddle);企业用户对公转账
+- 支付通道：聚合支付 为主 (含微信/支付宝 );企业用户对公转账
 - 升级 / 降级 / 取消 / 续费完整
-- 发票（普票自动开 + 专票申请;Paddle 海外自动 invoice）
+- 发票（普票自动开 + 专票申请;聚合支付电子普票）
 - 退款（自助首次 + 工单中途）
 - 余额系统
 - 配额管理 + 超额提醒
@@ -739,15 +737,15 @@ T+24h  人工 review:若手动 refund 成功 → status=refunded;否则保留 re
 
 | 风险 | 缓解 |
 |---|---|
-| 经营性 ICP 未办，无法直连微信 / 支付宝 | ✅ 已采决策 C8：走 Paddle MoR；S3+ 视情况引入合作方代收 |
-| 海外税务踩坑 | Paddle 做 MoR，规避 |
+| 经营性 ICP 未办，无法直连微信 / 支付宝 | ✅ 已采决策 C8：走 聚合支付；S3+ 视情况引入合作方代收 |
+| 海外税务踩坑 | 不涉及海外税务 |
 | 退款率高 → 微信通道关停 | 严控退款流程 + 客服培训 |
 | 优惠券被薅羊毛 | 风控规则 + 限领 + 黑名单 |
-| Paddle 价格不竞争 | S3 引入 Stripe 备选 |
+| 聚合支付通道费率上涨 | S3 引入 Stripe 备选 |
 | 价格战导致利润压缩 | 差异化（API + 一键诊断）+ 不打价格战 |
-| 跨境收款合规 | Paddle MoR + 不直接处理外汇 |
-| **v2 NEW: Verdict 付费后生成失败 = 品牌灾难** | ✅ 13.5 attestation_record 充 WAL + step-level idempotency + Self-Verify 独立部署(D4/D6);Paddle refund retry queue + 30min 强制道歉邮箱(D5);P0 告警 + admin dashboard "refund_failed" 队列 |
-| **v2 NEW: Paddle refund API 自身失败** | ✅ 13.5 refund retry queue(5min→30min);refund_failed 状态保留兜底;道歉邮箱 30min 内必发,优于退款到账;P0 告警创始人手机 7×24 |
+| 跨境收款合规 | 聚合支付 + 不直接处理外汇 |
+| **v2 NEW: Verdict 付费后生成失败 = 品牌灾难** | ✅ 13.5 attestation_record 充 WAL + step-level idempotency + Self-Verify 独立部署(D4/D6);聚合支付 refund retry queue + 30min 强制道歉邮箱(D5);P0 告警 + admin dashboard "refund_failed" 队列 |
+| **v2 NEW: 聚合支付 refund API 自身失败** | ✅ 13.5 refund retry queue(5min→30min);refund_failed 状态保留兜底;道歉邮箱 30min 内必发,优于退款到账;P0 告警创始人手机 7×24 |
 | **v2 NEW: Compliance 年订客户中途取消(企业财务流程)** | 取消生效在下周期 + 历史报告永久可访问;协议明确"年订不退款"但允许 30 天宽限 |
 | **v2 NEW: Agent Pro 用户 MCP 调用爆账单(死循环)** | 80%/95%/100% 三级提醒 + 用户可设硬上限自动停服;Service account token 强制 IP 白名单 |
 | **v2 NEW: Verdict 报告被滥用(诬告竞品)** | 12 §3 目标黑名单 + 单 24h 多用户同目标 → 人工审核 + 申诉通道 |
@@ -764,7 +762,7 @@ T+24h  人工 review:若手动 refund 成功 → status=refunded;否则保留 re
 - ✅ **C5** "按量纯付费"档：**S3 推出**（¥0.5 / 1k 调用）
 - ✅ **C6** 学生 / NGO 折扣：**5 折**（.edu / NGO 资质审核）
 - ✅ **C7** 短信 / 语音：**订阅档赠送配额 + 超额按量**
-- ✅ **C8** 经营性 ICP：**暂不办理**，主走 Paddle；详见 DECISIONS.md §H1
+- ✅ **C8** 经营性 ICP：**暂不办理**，主走聚合支付；详见 DECISIONS.md §H1
 
 ### v2.0 决策(K 节, 2026-05-12 plan-ceo-review EXPANSION)
 - ✅ **K5** Verdict 件价档:¥199 / ¥299 / ¥499 / ¥999 共 4 档

@@ -20,6 +20,7 @@
 | 工程审查 14 项 D 决策 | `docs/prd/ENG-REVIEW-REPORT.md` |
 | 实施 TODO | `docs/prd/ENG-REVIEW-TODOS.md` |
 | 路线图 | `docs/prd/17-roadmap.md` |
+| 免费证书模块 PRD | `docs/prd/20-free-cert.md` |
 
 ---
 
@@ -66,7 +67,7 @@
 - **D1 跨 schema 不写 FK**:`15-data-model §4.X` 所有 v2 表 DDL 无 cross-schema REFERENCES;走 Repository 应用层 join
 - **D2 Token 90d 上限**:所有 MCP token(personal 24h / workspace 90d / service 90d auto_renewal),**无永久 token**;MCP units 与 API 配额完全独立池
 - **D4 Verdict WAL**:`attestation_record` 充当 WAL;step-level `UNIQUE(report_id, action)`;KMS sign 必传 idempotency token
-- **D5 Refund retry queue**:Paddle refund 失败 5min/30min retry;30min 内强制发用户道歉邮箱;`refund_failed` 状态入 admin dashboard + P0
+- **D5 Refund retry queue**:聚合支付 refund 失败 5min/30min retry;30min 内强制发用户道歉邮箱;`refund_failed` 状态入 admin dashboard + P0
 - **D6 Self-Verify 独立**:Self-Verify Worker 独立进程 / 独立 VPC subnet / 独立 KMS 客户端;仅调 `attest.idcd.com/verify` 公开接口
 - **D11 KMS 应急 SOP**:**12h Shamir 3-of-5 单路径**(Pre-4 调整);Backup HSM 加速通道**推迟 S4**;S2 上线前必演练 12h 路径;接受 SLA 偶尔滑至 24h+ 现实风险
 - **D12 3 档 SLA**:Verdict 失败纯自动 / 1h 仅 P0(KMS / 节点失窃)/ 24h 常规客服

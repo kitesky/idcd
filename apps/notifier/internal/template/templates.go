@@ -23,10 +23,14 @@ var embedFS embed.FS
 // added here and accompanied by `<base>.<locale>.html` files for every
 // supported locale in the registry.
 const (
-	BaseVerifyEmail   = "verify_email"
-	BaseWelcome       = "welcome"
-	BaseResetPassword = "reset_password"
-	BaseRefundFailed  = "refund_failed"
+	BaseVerifyEmail       = "verify_email"
+	BaseWelcome           = "welcome"
+	BaseResetPassword     = "reset_password"
+	BaseRefundFailed      = "refund_failed"
+	BaseCertIssued        = "cert_issued"
+	BaseCertFailed        = "cert_failed"
+	BaseCertExpiring      = "cert_expiring"
+	BaseCertRenewalFailed = "cert_renewal_failed"
 )
 
 // registeredBases returns the known template base names. Tests assert every
@@ -37,6 +41,10 @@ func registeredBases() []string {
 		BaseWelcome,
 		BaseResetPassword,
 		BaseRefundFailed,
+		BaseCertIssued,
+		BaseCertFailed,
+		BaseCertExpiring,
+		BaseCertRenewalFailed,
 	}
 }
 
@@ -71,6 +79,53 @@ type RefundFailedData struct {
 	PaymentID     string
 	ExtTxnID      string
 	AmountDisplay string
+}
+
+// CertIssuedData holds variables for the "SSL certificate issued" email
+// rendered by RenderCertIssued. All optional fields render gracefully when
+// empty / zero (the template guards each row with {{if}}).
+type CertIssuedData struct {
+	Domain       string // primary domain (typically SANs[0])
+	SANs         string // comma-joined SAN list (caller formats)
+	CA           string // issuing CA identifier ("lets-encrypt", etc)
+	NotAfter     string // formatted expiry timestamp (caller formats)
+	CertID       int64  // cert.certs row id; rendered when > 0
+	DashboardURL string // deep link to the cert detail page in /app
+}
+
+// CertFailedData holds variables for the "certificate issuance failed" email
+// rendered by RenderCertFailed.
+type CertFailedData struct {
+	Domain       string
+	SANs         string
+	CA           string
+	OrderID      int64
+	ErrorMessage string // ACME / orchestrator error string passed through verbatim
+	DashboardURL string
+}
+
+// CertExpiringData holds variables for the "certificate expiring soon" email
+// rendered by RenderCertExpiring. Days is the configured bucket (30/14/7/1).
+type CertExpiringData struct {
+	Domain       string
+	SANs         string
+	CA           string
+	NotAfter     string
+	CertID       int64
+	Days         int
+	DashboardURL string
+}
+
+// CertRenewalFailedData holds variables for the "auto-renewal failed" email
+// rendered by RenderCertRenewalFailed.
+type CertRenewalFailedData struct {
+	Domain       string
+	SANs         string
+	CA           string
+	NotAfter     string
+	CertID       int64
+	ErrorMessage string
+	DashboardURL string
 }
 
 // Templates provides access to all email templates. Internally it caches one
@@ -163,4 +218,24 @@ func (t *Templates) RenderResetPassword(locale string, data ResetPasswordData) (
 // RenderRefundFailed renders the refund-failed apology email for the locale.
 func (t *Templates) RenderRefundFailed(locale string, data RefundFailedData) (string, error) {
 	return t.render(BaseRefundFailed, locale, data)
+}
+
+// RenderCertIssued renders the "SSL certificate issued" email for the locale.
+func (t *Templates) RenderCertIssued(locale string, data CertIssuedData) (string, error) {
+	return t.render(BaseCertIssued, locale, data)
+}
+
+// RenderCertFailed renders the "certificate issuance failed" email.
+func (t *Templates) RenderCertFailed(locale string, data CertFailedData) (string, error) {
+	return t.render(BaseCertFailed, locale, data)
+}
+
+// RenderCertExpiring renders the "certificate expiring soon" email.
+func (t *Templates) RenderCertExpiring(locale string, data CertExpiringData) (string, error) {
+	return t.render(BaseCertExpiring, locale, data)
+}
+
+// RenderCertRenewalFailed renders the "auto-renewal failed" email.
+func (t *Templates) RenderCertRenewalFailed(locale string, data CertRenewalFailedData) (string, error) {
+	return t.render(BaseCertRenewalFailed, locale, data)
 }

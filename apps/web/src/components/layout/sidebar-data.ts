@@ -8,8 +8,10 @@ import {
   Gift,
   Globe,
   LayoutDashboard,
+  Lock,
   Server,
   Settings,
+  ShieldCheck,
   UserCheck,
 } from "lucide-react"
 import type { NavGroup } from "./types"
@@ -48,9 +50,20 @@ export const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    title: "证书",
+    items: [
+      { title: "总览", url: "/app/cert", icon: Lock },
+      { title: "申请证书", url: "/app/cert/new", icon: undefined },
+      { title: "订单", url: "/app/cert/orders", icon: undefined },
+      { title: "已签证书", url: "/app/cert/certs", icon: undefined },
+      { title: "DNS 凭据", url: "/app/cert/dns-credentials", icon: undefined },
+    ],
+  },
+  {
     title: "报告",
     items: [
       { title: "月度报告", url: "/app/reports", icon: FileText },
+      { title: "证据报告", url: "/app/verdict/new", icon: ShieldCheck },
     ],
   },
   {

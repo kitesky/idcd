@@ -28,6 +28,16 @@ export default async function AdminLoginPage({ searchParams }: PageProps) {
               </AlertDescription>
             </Alert>
           )}
+          {reason === "invalid_token" && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>Invalid token.</AlertDescription>
+            </Alert>
+          )}
+          {reason === "missing_token" && (
+            <Alert variant="destructive" className="mb-4">
+              <AlertDescription>Token required.</AlertDescription>
+            </Alert>
+          )}
           <form action={loginAction} className="flex flex-col gap-4">
             <input type="hidden" name="next" value={next} />
             <div className="flex flex-col gap-2">

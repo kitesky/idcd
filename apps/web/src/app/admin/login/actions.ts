@@ -13,14 +13,18 @@ function timingSafeEqual(a: string, b: string): boolean {
   return diff === 0
 }
 
-export async function loginAction(formData: FormData): Promise<{ error?: string }> {
+export async function loginAction(formData: FormData): Promise<void> {
   const token = String(formData.get("token") ?? "")
   const next = String(formData.get("next") ?? "/admin")
   const expected = process.env.ADMIN_PORTAL_TOKEN ?? ""
 
-  if (!expected) return { error: "ADMIN_PORTAL_TOKEN not configured on server" }
-  if (!token) return { error: "token required" }
-  if (!timingSafeEqual(token, expected)) return { error: "invalid token" }
+  // Failures redirect back to /admin/login with an error reason — keeping the
+  // action signature `Promise<void>` so it's usable directly as `<form action>`.
+  if (!expected) redirect("/admin/login?reason=not_configured")
+  if (!token) redirect(`/admin/login?reason=missing_token&next=${encodeURIComponent(next)}`)
+  if (!timingSafeEqual(token, expected)) {
+    redirect(`/admin/login?reason=invalid_token&next=${encodeURIComponent(next)}`)
+  }
 
   const safeNext = next.startsWith("/admin") && !next.startsWith("/admin/login") ? next : "/admin"
 

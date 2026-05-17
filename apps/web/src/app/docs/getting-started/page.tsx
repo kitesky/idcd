@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 
 export const metadata: Metadata = { title: "快速开始 | idcd 文档" }
 
@@ -26,7 +27,7 @@ export default function GettingStartedPage() {
 
       <h2>快速使用</h2>
       <ol>
-        <li>访问 <a href="/tools">在线工具</a> 页面</li>
+        <li>访问 <Link href="/tools">在线工具</Link> 页面</li>
         <li>选择需要的工具（如 HTTP 拨测、Ping 测试）</li>
         <li>输入目标域名或 IP</li>
         <li>点击开始，等待全球节点返回结果</li>
@@ -44,7 +45,7 @@ export default function GettingStartedPage() {
       <h2>步骤 1：创建你的第一个监控</h2>
       <ol>
         <li>
-          登录后进入 <a href="/app/monitors">监控列表</a>，点击右上角"创建监控"按钮
+          登录后进入 <Link href="/app/monitors">监控列表</Link>，点击右上角&quot;创建监控&quot;按钮
         </li>
         <li>
           选择监控类型：
@@ -77,7 +78,7 @@ export default function GettingStartedPage() {
           进入 <a href="/app/alerts">告警中心</a> → 告警通道标签页
         </li>
         <li>
-          点击"添加通道"，选择通知方式：
+          点击&quot;添加通道&quot;，选择通知方式：
           <ul>
             <li><strong>Email</strong>：直接发送到你的邮箱</li>
             <li><strong>企业微信</strong>：通过 Webhook 机器人推送</li>
@@ -86,7 +87,7 @@ export default function GettingStartedPage() {
           </ul>
         </li>
         <li>
-          点击通道右侧的"测试"按钮，确认通道可正常接收消息
+          点击通道右侧的&quot;测试&quot;按钮，确认通道可正常接收消息
         </li>
         <li>
           创建告警策略：绑定监控项 + 通知通道，并设置告警延迟（0 = 立即告警，建议设 2-3 分钟避免误报）
@@ -133,12 +134,12 @@ export default function GettingStartedPage() {
 
         <dt><strong>Q：收到太多告警误报怎么办？</strong></dt>
         <dd>
-          在告警策略中调整"延迟分钟数"，例如设为 3 分钟，即连续失败超过 3 分钟才触发通知，可有效过滤短暂抖动。
+          在告警策略中调整&quot;延迟分钟数&quot;，例如设为 3 分钟，即连续失败超过 3 分钟才触发通知，可有效过滤短暂抖动。
         </dd>
 
         <dt><strong>Q：如何对外共享服务状态？</strong></dt>
         <dd>
-          在 <a href="/app/status-pages">状态页</a> 中创建公开状态页，可自定义域名，适合对用户或客户公开服务健康状况。
+          在 <Link href="/app/status-pages">状态页</Link> 中创建公开状态页，可自定义域名，适合对用户或客户公开服务健康状况。
         </dd>
 
         <dt><strong>Q：多人团队如何协作？</strong></dt>

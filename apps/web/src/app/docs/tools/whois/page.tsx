@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 
 export const metadata: Metadata = { title: "WHOIS 查询 | idcd 工具文档" }
 
@@ -54,7 +55,7 @@ export default function WhoisToolPage() {
 }`}</code></pre>
 
       <h2>在线工具</h2>
-      <p>无需 API Key，直接在 <a href="/tools/whois">在线工具</a> 中试用。</p>
+      <p>无需 API Key，直接在 <Link href="/tools/whois">在线工具</Link> 中试用。</p>
     </article>
   )
 }

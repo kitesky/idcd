@@ -54,10 +54,6 @@ export default function IPv6ConverterPage() {
     let compressed = groups.join(':')
 
     // Find longest sequence of consecutive zeros
-    let longestZeroSeq = ''
-    let currentZeroSeq = ''
-    let inZeroSeq = false
-
     const temp = compressed.split(':')
     let sequences: { start: number, length: number }[] = []
     let currentSeq = { start: -1, length: 0 }

@@ -12,7 +12,6 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui"
-import { Skeleton } from "@/components/ui/skeleton"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 
 export const metadata: Metadata = {
@@ -96,28 +95,6 @@ function severityBadge(severity: string) {
   if (severity === "low") return <Badge variant="secondary">低</Badge>
   if (severity === "medium") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">中</Badge>
   return <Badge variant="destructive">高</Badge>
-}
-
-function TransparencyLoadingSkeleton() {
-  return (
-    <main className="min-h-screen bg-background">
-      <div className="container mx-auto px-4 py-8 max-w-5xl">
-        <div className="mb-8">
-          <Skeleton className="h-9 w-48 mb-2" />
-          <Skeleton className="h-5 w-96" />
-        </div>
-        <Skeleton className="h-16 w-full mb-6" />
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-          {[1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-32 w-full" />
-          ))}
-        </div>
-        <Skeleton className="h-40 w-full mb-6" />
-        <Skeleton className="h-48 w-full mb-6" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    </main>
-  )
 }
 
 export default async function TransparencyPage() {

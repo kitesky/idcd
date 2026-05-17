@@ -212,7 +212,8 @@ export function BillingClient() {
   }, [])
 
   useEffect(() => {
-    loadData()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadData 内部 await 后 setState；初次挂载触发
+    void loadData()
   }, [loadData])
 
   // Handle ?success=1 redirect back from payment gateway

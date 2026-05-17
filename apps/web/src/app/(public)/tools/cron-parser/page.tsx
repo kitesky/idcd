@@ -28,7 +28,6 @@ export default function CronParserPage() {
 
       // Get next 5 execution times
       const times: string[] = []
-      const now = new Date()
 
       for (let i = 0; i < 5; i++) {
         const next = cron.nextRun()

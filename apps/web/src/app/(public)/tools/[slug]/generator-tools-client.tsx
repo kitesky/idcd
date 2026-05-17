@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react'
 import {
   Card, CardContent, CardHeader, CardTitle,
-  Button, Badge, Label, Input, Separator, Textarea,
+  Button, Badge, Label, Input, Textarea,
 } from '@/components/ui'
 import {
   generatePassword,

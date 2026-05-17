@@ -231,6 +231,7 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
                   <FormControl>
                     <Input
                       placeholder={
+                        // eslint-disable-next-line react-hooks/incompatible-library -- react-hook-form 的 form.watch 返回值不能被 memoized (库限制)
                         form.watch("group_by") === "tag"
                           ? "输入标签名称，例：prod"
                           : form.watch("group_by") === "monitor_prefix"
@@ -338,7 +339,7 @@ export default function AlertGroupsPage() {
       <Alert>
         <Info className="h-4 w-4" />
         <AlertDescription>
-          告警分组可将相关监控的告警合并，避免重复通知。配置"等待秒数"，在该窗口内同组监控的告警会合并为一条通知。
+          告警分组可将相关监控的告警合并，避免重复通知。配置&quot;等待秒数&quot;，在该窗口内同组监控的告警会合并为一条通知。
         </AlertDescription>
       </Alert>
 
@@ -359,7 +360,7 @@ export default function AlertGroupsPage() {
             <div className="flex flex-col items-center justify-center py-12 text-center text-muted-foreground">
               <Layers className="mb-3 h-10 w-10 opacity-30" />
               <p className="text-sm font-medium">暂无告警分组</p>
-              <p className="mt-1 text-xs">点击"新建分组"配置第一个告警分组规则</p>
+              <p className="mt-1 text-xs">点击&quot;新建分组&quot;配置第一个告警分组规则</p>
             </div>
           ) : (
             <Table>

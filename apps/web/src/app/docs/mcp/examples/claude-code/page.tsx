@@ -71,9 +71,9 @@ HTTP 检测结果（北京节点）：
       </ul>
 
       <h2>常见问题</h2>
-      <h3>提示"找不到 mcp 命令"</h3>
+      <h3>提示&quot;找不到 mcp 命令&quot;</h3>
       <p>确认 <code>$GOPATH/bin</code> 在 PATH 中：</p>
-      <pre><code>export PATH="$PATH:$(go env GOPATH)/bin"</code></pre>
+      <pre><code>export PATH=&quot;$PATH:$(go env GOPATH)/bin&quot;</code></pre>
 
       <h3>API Key 无效</h3>
       <p>前往 <a href="/app/settings/api-keys">控制台</a> 检查 Key 是否过期，Personal Key 有效期为 24 小时。</p>

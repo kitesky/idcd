@@ -111,7 +111,7 @@ export default function ToolRenderer({ slug }: ToolRendererProps) {
   return (
     <Card>
       <CardContent className="pt-6 text-center text-muted-foreground">
-        <p className="text-lg">工具 "{slug}" 暂未实现</p>
+        <p className="text-lg">工具 &quot;{slug}&quot; 暂未实现</p>
         <p className="text-sm mt-2">请返回工具列表选择其他工具</p>
       </CardContent>
     </Card>

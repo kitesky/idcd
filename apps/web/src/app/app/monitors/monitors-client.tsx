@@ -8,6 +8,8 @@ import {
   Activity,
   AlertCircle,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
   MoreVertical,
   Pause,
   Play,
@@ -54,7 +56,6 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
-import { ChevronLeft, ChevronRight } from "lucide-react"
 import { type MonitorType, TYPE_LABELS } from "./types"
 
 // ── Backend API types ────────────────────────────────────────────────────────
@@ -192,7 +193,8 @@ export function MonitorsClient() {
 
   // Initial load and re-fetch when page/search/status change
   useEffect(() => {
-    fetchMonitors(page, search, statusFilter)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchMonitors 内部 await 后 setState
+    void fetchMonitors(page, search, statusFilter)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, statusFilter])
 

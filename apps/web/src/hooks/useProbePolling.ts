@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useRef } from "react"
+import { useState, useEffect } from "react"
 import { getProbeTask, type ProbeTaskResult } from "@/lib/api"
 
 interface UseProbePollingResult {
@@ -17,49 +17,57 @@ export function useProbePolling(taskId: string | null): UseProbePollingResult {
   const [taskResult, setTaskResult] = useState<ProbeTaskResult | null>(null)
   const [isPolling, setIsPolling] = useState(false)
   const [error, setError] = useState("")
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
-  const startedAtRef = useRef<number>(0)
-
-  const stopPolling = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current)
-      timerRef.current = null
-    }
-    setIsPolling(false)
-  }, [])
-
-  const poll = useCallback(async (id: string) => {
-    if (Date.now() - startedAtRef.current > TIMEOUT_MS) {
-      stopPolling()
-      setError("拨测超时（30s），请重试")
-      return
-    }
-    try {
-      const data = await getProbeTask(id)
-      setTaskResult(data)
-      if (TERMINAL_STATUSES.has(data.status)) {
-        stopPolling()
-        return
-      }
-    } catch (e) {
-      stopPolling()
-      setError(e instanceof Error ? e.message : "查询结果失败")
-      return
-    }
-    timerRef.current = setTimeout(() => poll(id), INTERVAL_MS)
-  }, [stopPolling])
 
   useEffect(() => {
     if (!taskId) return
+
+    let cancelled = false
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const startedAt = Date.now()
+
+    const stop = () => {
+      if (timer) {
+        clearTimeout(timer)
+        timer = null
+      }
+      if (!cancelled) setIsPolling(false)
+    }
+
+    const poll = async () => {
+      if (cancelled) return
+      if (Date.now() - startedAt > TIMEOUT_MS) {
+        stop()
+        if (!cancelled) setError("拨测超时（30s），请重试")
+        return
+      }
+      try {
+        const data = await getProbeTask(taskId)
+        if (cancelled) return
+        setTaskResult(data)
+        if (TERMINAL_STATUSES.has(data.status)) {
+          stop()
+          return
+        }
+      } catch (e) {
+        if (cancelled) return
+        stop()
+        setError(e instanceof Error ? e.message : "查询结果失败")
+        return
+      }
+      timer = setTimeout(poll, INTERVAL_MS)
+    }
+
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 新 taskId 触发：重置状态后启动轮询
     setTaskResult(null)
     setError("")
     setIsPolling(true)
-    startedAtRef.current = Date.now()
-    poll(taskId)
+    void poll()
+
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current)
+      cancelled = true
+      if (timer) clearTimeout(timer)
     }
-  }, [taskId, poll])
+  }, [taskId])
 
   return { taskResult, isPolling, error }
 }

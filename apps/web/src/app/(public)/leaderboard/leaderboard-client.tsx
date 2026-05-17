@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useMemo, useRef } from "react"
 import { ArrowDown, ArrowUp, Minus, Info, Globe } from "lucide-react"
 import {
   Tabs,
@@ -17,7 +17,6 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -250,8 +249,10 @@ function getSelectedMonthDefault(): string {
 export function LeaderboardClient() {
   const [lang, setLang] = useState<Lang>('zh')
   const langRef = useRef<Lang>(lang)
+  // 同步更新 ref 必须发生在 render 中, useEffect 会延迟一帧导致读取到旧值
+  // eslint-disable-next-line react-hooks/refs -- ref 在 render 中赋值是 React 官方文档允许的模式
   langRef.current = lang
-  const [selectedMonth, setSelectedMonth] = useState<string>(getSelectedMonthDefault)
+  const selectedMonth = useMemo(() => getSelectedMonthDefault(), [])
   const [data, setData] = useState<CdnEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -260,13 +261,14 @@ export function LeaderboardClient() {
   const monthNumber = parseInt(selectedMonth.split('-')[1] ?? '1', 10)
 
   useEffect(() => {
-    setLoading(true)
-    setError(null)
     type ApiEntry = {
       rank: number; name: string; target: string
       avg_latency_ms: number; p50_latency_ms: number; p95_latency_ms: number
       uptime_pct: number; check_count: number
     }
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetch 触发的初始 loading 同步设置是标准模式
+    setLoading(true)
+    setError(null)
     apiRequest<{ data: { entries: ApiEntry[]; total: number } }>(
       `/v1/leaderboard/cdn?month=${selectedMonth}`
     )

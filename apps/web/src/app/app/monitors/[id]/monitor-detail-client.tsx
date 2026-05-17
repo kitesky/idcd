@@ -130,7 +130,7 @@ function EditMonitorDialog({ monitor, onUpdated }: EditMonitorDialogProps) {
   const t = useTranslations("monitors")
   const [open, setOpen] = useState(false)
   const [name, setName] = useState(monitor.name)
-  const [target, setTarget] = useState(monitor.target)
+  const [_target, setTarget] = useState(monitor.target)
   const [intervalSeconds, setIntervalSeconds] = useState(monitor.intervalSeconds)
   const [advancedOpen, setAdvancedOpen] = useState(false)
   // Advanced config fields
@@ -422,6 +422,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   }, [id])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- id 变化时需重置 loading，随后异步 fetch
     setAlertsLoading(true)
     apiRequest<{ data: { items: AlertEvent[] } }>(
       `/v1/alert-events?monitor_id=${id}&limit=10`
@@ -450,6 +451,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   }, [id])
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- id 变化时需重置 loading，随后异步 fetch
     setBucketLoading(true)
     apiRequest<{ data: { buckets: CheckBucket[] } }>(
       `/v1/monitors/${id}/checks?hours=24`
@@ -467,6 +469,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   }, [id])
 
   function relativeTime(iso: string): string {
+    // eslint-disable-next-line react-hooks/purity -- 相对时间展示需要当前时间
     const diffMs = Date.now() - new Date(iso).getTime()
     const diffS = Math.floor(diffMs / 1000)
     if (diffS < 10) return t("time.justNow")
@@ -901,6 +904,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                 alertEvents.map((event) => {
                   const endMs = event.resolved_at
                     ? new Date(event.resolved_at).getTime()
+                    // eslint-disable-next-line react-hooks/purity -- 未结束告警的时长展示需要当前时间
                     : Date.now()
                   const durationMs = endMs - new Date(event.fired_at).getTime()
                   const durationS = Math.floor(durationMs / 1000)

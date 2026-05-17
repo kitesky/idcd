@@ -101,10 +101,12 @@ export function TokensClient() {
     } finally {
       setLoading(false)
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定
   }, [])
 
   useEffect(() => {
-    loadTokens()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadTokens 内部 await 后 setState；初次挂载触发
+    void loadTokens()
   }, [loadTokens])
 
   // ── Handlers ─────────────────────────────────────────────────────────────

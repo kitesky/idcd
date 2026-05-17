@@ -258,7 +258,8 @@ function NoiseTab() {
   }, [])
 
   useEffect(() => {
-    loadNoise(days)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadNoise 内部 await 后 setState；days 变化触发
+    void loadNoise(days)
   }, [days, loadNoise])
 
   const noMonitors = !data || data.noisiest_monitors.length === 0
@@ -464,7 +465,8 @@ export default function ReportsPage() {
   }, [])
 
   useEffect(() => {
-    loadData(months)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadData 内部 await 后 setState；months 变化触发
+    void loadData(months)
   }, [months, loadData])
 
   function handleMonthsChange(val: string) {

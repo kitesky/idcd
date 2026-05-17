@@ -66,16 +66,6 @@ function ReviewDialog({ app, onDone }: ReviewDialogProps) {
   const [note, setNote] = useState("")
   const [pending, startTransition] = useTransition()
 
-  function statusBadge(status: NodeApplication["status"]) {
-    switch (status) {
-      case "pending":   return <Badge variant="outline">{t("nodeApplications.status.pending")}</Badge>
-      case "probation": return <Badge variant="secondary">{t("nodeApplications.status.probation")}</Badge>
-      case "approved":  return <Badge variant="default">{t("nodeApplications.status.approved")}</Badge>
-      case "active":    return <Badge variant="success">{t("nodeApplications.status.active")}</Badge>
-      case "rejected":  return <Badge variant="destructive">{t("nodeApplications.status.rejected")}</Badge>
-    }
-  }
-
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     startTransition(async () => {

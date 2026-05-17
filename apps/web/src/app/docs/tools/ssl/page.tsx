@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import Link from "next/link"
 
 export const metadata: Metadata = { title: "SSL 证书检测 | idcd 工具文档" }
 
@@ -56,10 +57,10 @@ export default function SslToolPage() {
 }`}</code></pre>
 
       <h2>配合监控使用</h2>
-      <p>在 <a href="/app/monitors/new">新建监控</a> 时选择「SSL 证书」类型，可在证书到期前 30/15/7 天自动发送告警。</p>
+      <p>在 <Link href="/app/monitors/new">新建监控</Link> 时选择「SSL 证书」类型，可在证书到期前 30/15/7 天自动发送告警。</p>
 
       <h2>在线工具</h2>
-      <p>无需 API Key，直接在 <a href="/tools/ssl">在线工具</a> 中试用。</p>
+      <p>无需 API Key，直接在 <Link href="/tools/ssl">在线工具</Link> 中试用。</p>
     </article>
   )
 }

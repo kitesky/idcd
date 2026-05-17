@@ -500,6 +500,7 @@ function ActiveOverridesList({ scheduleId, refreshToken }: ActiveOverridesListPr
 
   useEffect(() => {
     if (!scheduleId) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- scheduleId 变化时重置 loading，随后异步 fetch
     setLoading(true)
     apiRequest<{ data: { overrides: Override[] } }>(
       `/v1/oncall/schedules/${scheduleId}/overrides?active=true`,
@@ -642,6 +643,7 @@ function AlertEventsTab() {
 
   useEffect(() => {
     if (loaded) return
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 首次挂载重置 loading/error，随后异步 fetch
     setLoaded(true)
     setLoading(true)
     setError(null)
@@ -768,7 +770,8 @@ export default function OncallPage() {
   }
 
   useEffect(() => {
-    loadData()
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadData 内部 await 后 setState；初次挂载触发
+    void loadData()
   }, [])
 
   // Derived values

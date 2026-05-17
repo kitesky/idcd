@@ -126,7 +126,7 @@ func (c *Client) Run(ctx context.Context) {
 				return
 			case <-time.After(backoff):
 			}
-			backoff = min(backoff*2, backoffMax) //nolint:min — built-in available in Go 1.21+
+			backoff = min(backoff*2, backoffMax)
 			continue
 		}
 
@@ -284,7 +284,7 @@ func (c *Client) closeConn() {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.conn != nil {
-		c.conn.WriteMessage(websocket.CloseMessage,
+		_ = c.conn.WriteMessage(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseGoingAway, ""))
 		c.conn.Close()
 		c.conn = nil

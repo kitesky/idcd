@@ -41,15 +41,21 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
+	"github.com/kite365/idcd/lib/shared/rediskey"
+	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
 // Notification Redis stream + event-type constants.
+//
+// 命名约定：DefaultNotificationStream 是 cert-svc 服务内的入口符号，但具体
+// 字符串值来自 lib/shared/stream（与 notifier/cert_consumer 等下游服务共享真值）。
 const (
 	// DefaultNotificationStream is the Redis Stream the watcher writes to.
-	DefaultNotificationStream = "cert:notifications"
+	// 真值: stream.CertNotifications = "cert:notifications"。
+	DefaultNotificationStream = sharedstream.CertNotifications
 	// DefaultNotificationCursorKey holds the last processed
 	// cert.order_events.id so we never re-emit on restart.
-	DefaultNotificationCursorKey = "cert:notifications:cursor"
+	DefaultNotificationCursorKey = sharedstream.CertNotificationsCursor
 	// DefaultNotificationPollInterval is the tick between watcher passes.
 	DefaultNotificationPollInterval = 60 * time.Second
 
@@ -494,7 +500,7 @@ func (w *NotificationWatcher) processExpiringCerts(ctx context.Context) error {
 		if bucket == 0 {
 			continue
 		}
-		key := fmt.Sprintf("cert:expiring:notified:%d:%d", r.CertID, bucket)
+		key := rediskey.CertExpiringNotifiedKey(r.CertID, bucket)
 		set, err := w.rdb.SetNX(ctx, key, "1", expiringTTL).Result()
 		if err != nil {
 			w.logger.Warn("notification: setnx expiring", "cert_id", r.CertID, "bucket", bucket, "err", err)
@@ -593,7 +599,7 @@ func (w *NotificationWatcher) processRenewalFailures(ctx context.Context) error 
 	}
 
 	for _, r := range collected {
-		key := fmt.Sprintf("cert:renewal_failed:notified:%d", r.JobID)
+		key := rediskey.CertRenewalFailedNotifiedKey(r.JobID)
 		set, err := w.rdb.SetNX(ctx, key, "1", renewalFailedTTL).Result()
 		if err != nil {
 			w.logger.Warn("notification: setnx renewal_failed", "job_id", r.JobID, "err", err)

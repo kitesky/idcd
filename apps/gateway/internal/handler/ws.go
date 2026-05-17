@@ -21,6 +21,7 @@ import (
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/idgen"
 	"github.com/kite365/idcd/lib/shared/stream"
+	"github.com/kite365/idcd/lib/shared/wstimeouts"
 )
 
 // defaultAllowedOrigins are the production origins permitted when
@@ -87,13 +88,13 @@ const (
 	MsgTypeReloadConfig = "reload_config"
 )
 
+// WebSocket 协议级超时统一在 lib/shared/wstimeouts 维护，
+// 与 agent 客户端 (apps/agent/internal/ws) 保持配套。
 const (
-	wsReadDeadline  = 60 * time.Second
-	wsWriteDeadline = 10 * time.Second
-	wsPingInterval  = 54 * time.Second
-	// 单帧上限：agent 上报的 heartbeat / result / cmd_ack 都远小于 64KB；
-	// 显式 SetReadLimit 防止恶意 agent 发巨型 frame 把 gateway 内存打爆。
-	wsMaxMessageBytes = 64 * 1024
+	wsReadDeadline    = wstimeouts.PongTimeout
+	wsWriteDeadline   = wstimeouts.WriteTimeout
+	wsPingInterval    = wstimeouts.PingInterval
+	wsMaxMessageBytes = wstimeouts.MaxMessageBytes
 )
 
 // Message is the WebSocket wire format.

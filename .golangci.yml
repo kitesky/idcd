@@ -19,18 +19,43 @@ linters:
     errcheck:
       check-blank: false
       check-type-assertions: false
+    # 关掉风格类建议,只留 SA*(真 bug 检查)和 S1*(实质简化,除 S1016 之外):
+    # - QF*: Quick Fix 风格建议(use tagged switch / Fprintf / remove embedded field)
+    # - ST*: 命名/包注释风格指南(ST1000 缺 package comment 50+ 处, 仓库历来不要求)
+    # - S1016: 结构体字面量 vs 转型, 写法偏好
+    staticcheck:
+      checks: ["all", "-QF*", "-ST*", "-S1016"]
+    # govet inline check 提示常量内联,属性能微调,不应阻塞 CI。
+    govet:
+      disable:
+        - inline
 
   exclusions:
     rules:
       - path: _test\.go
         linters:
           - errcheck
-          - bodyclose   # tests may legitimately leak bodies in synthetic flows
+          - bodyclose       # tests may legitimately leak bodies in synthetic flows
+          - unused          # test 里的 mock 类型/未来 fixture scaffolding 容忍
       - path: cmd/
         linters:
           - errcheck
+      # 测试场景常见 staticcheck 抑制:
+      # - SA1029: mock middleware 用 string 字符串作 context key
+      # - SA1012: 显式测试 nil context 容错路径(WithLocale(nil) 等)
+      # - SA9003: 显式空 if 分支 + 注释说明"此处通过即可"
+      - path: _test\.go
+        linters: [staticcheck]
+        text: 'SA1029|SA1012|SA9003'
+      # errcheck 安全惯例豁免(Go 社区普遍按"未恢复 IO 失败,直接日志/丢弃"处理):
+      # - Close / SetReadDeadline / SetWriteDeadline / Flush / Quit / WriteMessage: I/O cleanup
+      # - Write / Encode: HTTP body 写失败客户端会先察觉,服务端无补救空间
+      # 用 text 正则而非 errcheck.exclude-functions 是因为后者只匹配静态接口类型,
+      # 不覆盖 *sql.DB / *os.File / *websocket.Conn 这类具体类型。
       - linters: [errcheck]
-        text: 'Error return value of `[^`]+\.(Close|SetReadDeadline|SetWriteDeadline)` is not checked'
+        text: 'Error return value of `[^`]+\.(Close|SetReadDeadline|SetWriteDeadline|Flush|Quit|WriteMessage|Write|Encode)` is not checked'
+      - linters: [errcheck]
+        text: 'Error return value of `fmt\.(Fprintf|Fprintln|Fprint)` is not checked'
 
 issues:
   max-issues-per-linter: 0

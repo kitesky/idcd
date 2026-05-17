@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/redis/go-redis/v9"
-
 	mdns "github.com/miekg/dns"
 )
 
@@ -104,17 +102,15 @@ func (s *Service) checkCAAOne(ctx context.Context, san, caID, wantedTag string, 
 		cacheKey += ":wild"
 	}
 
+	// Cache lookup errors other than redis.Nil are non-fatal — fall through to live.
 	if s.cfg.Redis != nil {
-		v, err := s.cfg.Redis.Get(ctx, cacheKey).Result()
-		if err == nil {
+		if v, err := s.cfg.Redis.Get(ctx, cacheKey).Result(); err == nil {
 			switch v {
 			case "ok":
 				return nil
 			case "forbid":
 				return fmt.Errorf("%w: %s", ErrCAAForbidden, san)
 			}
-		} else if !errors.Is(err, redis.Nil) {
-			// Cache lookup error is non-fatal; fall through to live.
 		}
 	}
 

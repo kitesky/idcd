@@ -27,10 +27,12 @@ import (
 	"github.com/kite365/idcd/lib/shared/stream"
 )
 
-const (
-	// ProbeTasksStream is the Redis Stream that nodes consume for probe tasks.
-	ProbeTasksStream = "probe.tasks"
+// ProbeTasksStream is re-exported here for backward compatibility with existing
+// callers / tests. The canonical name lives in lib/shared/stream — new code
+// should reference stream.ProbeTasks directly.
+const ProbeTasksStream = stream.ProbeTasks
 
+const (
 	// monitorPollInterval is how often the monitor poller queries for due
 	// monitors. Kept short enough that a leader transition + the next poll
 	// stays within the user-perceived monitor cadence.

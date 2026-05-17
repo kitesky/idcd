@@ -18,13 +18,48 @@ import (
 // Override per stream via Options.MaxLen.
 const DefaultMaxLen = 500_000
 
-// Well-known stream names used across idcd services.
+// Well-known stream / pubsub names used across idcd services.
+//
+// 集中管理位置：跨服务的 Redis Stream / Key 名称 "魔法字符串" 一律在这里登记，
+// 调用方通过 stream.<Name> 引用，避免散落多处后改名困难。新增条目请同时给一句
+// 业务用途说明 + 生产者/消费者关系。
 const (
-	Probe   = "probe.results"   // node probe results → Aggregator
-	Monitor = "monitor.events"  // monitor state changes → Notifier
-	Alert   = "alert.events"    // alert events → Notifier / SSE fanout
-	Audit   = "audit.events"    // audit log entries → AuditLog writer
-	Usage   = "usage.events"    // API usage events → billing/quota
+	// ProbeResults — 节点上报的探测结果流。
+	// 生产者: agent (via gateway hub)；消费者: aggregator。
+	Probe = "probe.results"
+
+	// MonitorEvents — 监控状态机变化流（up/down/degraded）。
+	// 生产者: aggregator；消费者: notifier、SSE fanout。
+	Monitor = "monitor.events"
+
+	// AlertEvents — 告警触发事件流。
+	// 生产者: monitor evaluator；消费者: notifier、SSE fanout。
+	Alert = "alert.events"
+
+	// AuditEvents — 审计日志事件流。
+	// 生产者: API handlers (中间件)；消费者: auditlog writer。
+	Audit = "audit.events"
+
+	// UsageEvents — API 配额 / 计费用量事件流。
+	// 生产者: API handlers；消费者: billing、quota enforcer。
+	Usage = "usage.events"
+
+	// ProbeTasks — 调度器分发的探测任务流。
+	// 生产者: scheduler；消费者: gateway dispatcher → agent WebSocket。
+	// 命名沿用历史 "." 分隔约定（与 probe.results 对应）。
+	ProbeTasks = "probe.tasks"
+
+	// CertNotifications — 证书相关通知事件流（issued/failed/expiring/renewal_failed/revoked）。
+	// 生产者: cert-svc NotificationWatcher；消费者: notifier cert consumer。
+	// 命名沿用 cert-svc 服务前缀（":" 分隔约定）。
+	CertNotifications = "cert:notifications"
+)
+
+// Well-known Redis key names (非 stream，但同样需要跨服务一致命名).
+const (
+	// CertNotificationsCursor — NotificationWatcher 的 last-event-id 游标键，
+	// 重启后从此恢复，避免重复发送通知。TTL: 无（持久）。
+	CertNotificationsCursor = "cert:notifications:cursor"
 )
 
 // Client wraps a Redis client for Streams operations.

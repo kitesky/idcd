@@ -194,9 +194,10 @@ func TestListCerts_PathRespectsLimitClamp(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 
-	// limit > 100 → clamped back to 20.
+	// limit > MaxPageSize (100) → clamped down to MaxPageSize (was: re-default to 20).
+	// 契约迁移到 lib/shared/pagination.Clamp：超过上限给上限，不静默退回默认值。
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE account_id`).
-		WithArgs(int64(42), 20, 0).
+		WithArgs(int64(42), 100, 0).
 		WillReturnRows(pgxmock.NewRows(certColumns()))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/certs?limit=99999", nil, "42")

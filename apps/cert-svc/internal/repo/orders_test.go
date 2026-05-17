@@ -382,8 +382,10 @@ func TestOrdersRepo_AdminListOrders_AllFilters(t *testing.T) {
 
 func TestOrdersRepo_AdminListOrders_LimitClamped(t *testing.T) {
 	r, mock := newOrdersRepo(t)
+	// 500 → clamped to RepoMaxPageSize (200, 集中在 lib/shared/pagination);
+	// -3 offset → 0.
 	mock.ExpectQuery(`SELECT .+ FROM cert\.orders ORDER BY created_at DESC LIMIT \$1 OFFSET \$2`).
-		WithArgs(50, 0). // 500 → clamped to 50; -3 → clamped to 0
+		WithArgs(200, 0).
 		WillReturnRows(pgxmock.NewRows(orderColumns()))
 
 	_, err := r.AdminListOrders(context.Background(), AdminOrderFilter{Limit: 500, Offset: -3})

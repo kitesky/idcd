@@ -16,51 +16,27 @@ import (
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/asynqtask"
 	"github.com/kite365/idcd/lib/shared/i18n"
 )
 
-// Task type constants for different email types.
+// 通知器自有的 email task 类型（与外部 producer 无关，本服务内部 producer/consumer）。
 const (
 	TaskSendVerifyEmail   = "task:send_verify_email"
 	TaskSendWelcome       = "task:send_welcome"
 	TaskSendResetPassword = "task:send_reset_password"
-	TypeAlertNotification = "alert:notification"
-
-	// TaskRefundRetry is the asynq task type for retrying a failed PaymentHub
-	// refund (D5).  Payload: RefundRetryPayload (JSON).  The task is
-	// scheduled with explicit asynq.ProcessIn delays (5min / 30min) and MUST
-	// NOT rely on the generic exponential backoff configured in worker.go.
-	TaskRefundRetry = "payment:refund_retry"
-
-	// TaskRefundApology is the asynq task type emitted by the attest-side
-	// refund-worker (apps/attest/cmd/refund-worker) once the D5 retry ladder
-	// is exhausted and the verdict_order row has flipped to refund_failed.
-	//
-	// Payload: RefundApologyPayload (JSON) — self-contained: the producer
-	// has already resolved user_email / ext_order_id / refund amount
-	// (via an application-level idcd_attest → idcd_main."user" join, D1)
-	// so the notifier renders and sends the email without any extra DB
-	// hop. This keeps notifier deployable without the idcd_attest DSN.
-	//
-	// Contract (DO NOT change without coordinating with refund-worker):
-	//   queue        = "billing"
-	//   task type    = "payment:refund_apology"
-	//   payload keys = order_id, user_email, ext_order_id,
-	//                  refund_amount_cents, currency, failure_reason,
-	//                  enqueued_at, locale (optional)
-	TaskRefundApology = "payment:refund_apology"
 )
 
-// Refund retry timing constants (D5).
-//
-// The first retry runs 5 minutes after the original refund.failed webhook.
-// The second retry runs 25 minutes after the first (≈30 minutes total).
-// After both attempts fail (attempt_count >= 2) we send an apology email
-// and leave the payment in 'refund_failed' status for the admin dashboard.
+// 跨服务共享的 asynq wire 名称 + D5 refund retry 策略集中在
+// lib/shared/asynqtask；这里仅 re-export 给 worker 内的旧引用。新增 task
+// 类型时先评估是否跨服务，如是则统一登记在 asynqtask 包。
 const (
-	RefundRetryFirstDelay  = 5 * time.Minute
-	RefundRetrySecondDelay = 25 * time.Minute
-	RefundRetryMaxAttempts = 2
+	TypeAlertNotification  = asynqtask.TaskAlertNotification
+	TaskRefundRetry        = asynqtask.TaskRefundRetry
+	TaskRefundApology      = asynqtask.TaskRefundApology
+	RefundRetryFirstDelay  = asynqtask.RefundRetryFirstDelay
+	RefundRetrySecondDelay = asynqtask.RefundRetrySecondDelay
+	RefundRetryMaxAttempts = asynqtask.RefundRetryMaxAttempts
 )
 
 // catalogProvider is the test-overridable source of the shared i18n catalog

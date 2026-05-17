@@ -11,6 +11,32 @@ import (
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 )
 
+// 滥用检测规则的默认参数。集中在此便于业务方调整（PRD §12.2）。
+//
+// 调参指南
+//
+//	defaultBurstWindow / defaultBurstDistinctMax
+//	  规则 2 — 单账号 burstWindow 内出现 >= distinctMax 个不同根域名即认为
+//	  在 "扫域"，立刻 reject。窗口越短 / 阈值越低 → 误杀正常用户的概率越大；
+//	  反之纵容机刷流量。
+//
+//	defaultSustainedWindow / defaultSustainedMax
+//	  规则 3 — 单账号在 sustainedWindow 内对同一个根域名下单 >= sustainedMax
+//	  次即认为是脚本重试，reject。主要防 Let's Encrypt 配额被烧光。
+//
+//	defaultAbuseLookbackLimit
+//	  burst / sustained 都从 cert.orders.ListByAccount 拉一批近期订单做内存
+//	  聚合。该值是 SQL LIMIT，要 ≥ "burstWindow / 最小下单间隔" 与
+//	  "sustainedWindow / 最小下单间隔" 中的较大者，否则 false negative。
+//	  500 已覆盖 24h 配额路径上限。
+const (
+	defaultBurstWindow       = time.Hour
+	defaultBurstDistinctMax  = 5
+	defaultSustainedWindow   = 7 * 24 * time.Hour
+	defaultSustainedMax      = 10
+	defaultAbuseLookbackLimit = 500
+)
+
 // ErrAbuseBlocked is returned by AbuseDetector.Check when an order would
 // trip one of the rate / reputation rules in PRD §12.2. The handler maps
 // this onto 403 + CERT_ABUSE_BLOCKED.
@@ -137,11 +163,11 @@ func NewAbuseDetector(repos *repo.Repos, opts ...AbuseOption) *AbuseDetector {
 		blocklist:        defaultBlocklist,
 		now:              time.Now,
 		logger:           slog.Default(),
-		burstWindow:      time.Hour,
-		burstDistinctMax: 5,
-		sustainedWindow:  7 * 24 * time.Hour,
-		sustainedMax:     10,
-		lookbackLimit:    500, // enough headroom for the 24h quota path
+		burstWindow:      defaultBurstWindow,
+		burstDistinctMax: defaultBurstDistinctMax,
+		sustainedWindow:  defaultSustainedWindow,
+		sustainedMax:     defaultSustainedMax,
+		lookbackLimit:    defaultAbuseLookbackLimit,
 	}
 	for _, o := range opts {
 		o(a)

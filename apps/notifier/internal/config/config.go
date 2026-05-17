@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/stream"
 	"gopkg.in/yaml.v3"
 )
 
@@ -150,7 +151,9 @@ func setDefaults(n *NotifierConfig) {
 	// pointer so its zero value (nil) is distinguishable from explicit
 	// false; CertStreamEnabledOrDefault() collapses nil to true.
 	if n.CertStreamName == "" {
-		n.CertStreamName = "cert:notifications"
+		// 真值集中在 lib/shared/stream.CertNotifications，
+		// 与 cert-svc 生产端保持一致，避免双写后不一致。
+		n.CertStreamName = stream.CertNotifications
 	}
 	if n.CertConsumerGroup == "" {
 		n.CertConsumerGroup = "cert-notifier"

@@ -3,12 +3,20 @@
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import type { ProbeResult, ProbeTaskResult } from "@/lib/api"
+import type { SingleProbeReport } from "@/lib/diagnose-store"
+import ShareResultButton from "./ShareResultButton"
 
 interface ProbeResultsProps {
   result?: ProbeResult | null  // legacy prop mode
   taskId?: string | null       // new polling mode
   loading?: boolean
   error?: string
+  // When set, render a "Share Result" button once the task reaches a terminal state.
+  shareContext?: {
+    tool: SingleProbeReport["tool"]
+    target: string
+    params?: Record<string, unknown>
+  }
 }
 
 interface DisplayItem {
@@ -50,6 +58,7 @@ export default function ProbeResults({
   taskId,
   loading = false,
   error: externalError,
+  shareContext,
 }: ProbeResultsProps) {
   const { taskResult, isPolling, error: pollError } = useProbePolling(taskId ?? null)
 
@@ -115,11 +124,21 @@ export default function ProbeResults({
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>拨测结果</CardTitle>
-          {totalCount > 0 && (
-            <Badge variant={successCount === totalCount ? "default" : "secondary"}>
-              成功 {successCount} / {totalCount}
-            </Badge>
-          )}
+          <div className="flex items-center gap-3">
+            {totalCount > 0 && (
+              <Badge variant={successCount === totalCount ? "default" : "secondary"}>
+                成功 {successCount} / {totalCount}
+              </Badge>
+            )}
+            {shareContext && taskResult && (
+              <ShareResultButton
+                tool={shareContext.tool}
+                target={shareContext.target}
+                params={shareContext.params}
+                taskResult={taskResult}
+              />
+            )}
+          </div>
         </div>
       </CardHeader>
       <CardContent>

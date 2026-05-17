@@ -81,6 +81,35 @@ type CancelRequest struct {
 	Reason         string
 }
 
+// ChargeRequest 一次性收款（非订阅）。Verdict 报告 / 单次报告订单走它。
+type ChargeRequest struct {
+	UserID      string
+	AmountCents int64
+	Currency    string // "CNY" / "USD"
+	Channel     string // alipay / wechat_pay
+	ReturnURL   string
+	NotifyURL   string
+
+	// ItemRef 是业务订单 id（如 v_xxx）。透传到 Provider，部分通道
+	// 会把它放回 metadata 让 webhook 找到上下文。
+	ItemRef string
+
+	// Description 在支付页显示给用户。
+	Description string
+
+	// Metadata 由调用方塞业务字段（如 verdict_order_id）。
+	// Provider 必须把 Metadata 透传到 webhook event.Metadata。
+	Metadata map[string]string
+}
+
+// ChargeResult 一次性收款结果。
+type ChargeResult struct {
+	ChargeID  string    // 我们系统的 chg_xxx
+	ExtTxnID  string    // 支付商交易 id
+	PayURL    string    // 拉起支付的 URL
+	ExpiresAt time.Time
+}
+
 // WebhookEvent 支付回调事件（各支付商 webhook 解析后统一为此结构）
 type WebhookEvent struct {
 	// EventType is one of the EventType* constants below.
@@ -121,6 +150,11 @@ type Provider interface {
 
 	// Cancel cancels an active subscription.
 	Cancel(ctx context.Context, req CancelRequest) error
+
+	// Charge initiates a one-shot payment (Verdict reports, single
+	// invoice purchases). Implementations MUST round-trip Metadata
+	// into WebhookEvent.Metadata so the caller can correlate.
+	Charge(ctx context.Context, req ChargeRequest) (*ChargeResult, error)
 
 	// ParseWebhook parses a provider webhook HTTP body into a WebhookEvent.
 	// headers contains the raw request headers (for signature verification).

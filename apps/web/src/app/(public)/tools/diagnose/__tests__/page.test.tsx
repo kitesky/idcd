@@ -131,7 +131,7 @@ describe('DiagnoseClient', () => {
       currentES!.emit({ type: 'complete', reportId: 'abc-123' })
     })
 
-    expect(mockPush).toHaveBeenCalledWith('/report/abc-123')
+    expect(mockPush).toHaveBeenCalledWith('/r/abc-123')
   })
 
   it('strips https:// prefix from domain before sending', () => {

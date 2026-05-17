@@ -1,10 +1,10 @@
 "use client"
 
 import { useState } from "react"
-import { Button } from "@/components/ui"
 import { Share2, Check } from "lucide-react"
+import { Button } from "@/components/ui"
 
-export default function ShareButton() {
+export default function ShareLinkButton() {
   const [copied, setCopied] = useState(false)
 
   const handleShare = async () => {
@@ -13,7 +13,7 @@ export default function ShareButton() {
       setCopied(true)
       setTimeout(() => setCopied(false), 2000)
     } catch {
-      // fallback: select text
+      // clipboard blocked (insecure context / permission denied) — silently no-op
     }
   }
 

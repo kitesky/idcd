@@ -907,3 +907,214 @@ func TestEnqueueEmail_NilClient(t *testing.T) {
 		t.Fatal("expected error for nil client")
 	}
 }
+
+// ---- HandleRefundApology tests (D5 / attest-side refund-worker) ----
+//
+// The apology task payload is now self-contained (the refund-worker
+// pre-resolves user_email / paddle_order_id / amount via an
+// application-level join). These tests therefore exercise the
+// render-and-send path directly, plus the fail-open ACK when
+// user_email is empty (rare race after a user deletion).
+
+func newApologyTask(t *testing.T, p RefundApologyPayload) *asynq.Task {
+	t.Helper()
+	body, err := json.Marshal(p)
+	if err != nil {
+		t.Fatalf("marshal apology payload: %v", err)
+	}
+	return asynq.NewTask(TaskRefundApology, body)
+}
+
+func TestHandlers_HandleRefundApology_Success(t *testing.T) {
+	cases := []struct {
+		name            string
+		locale          string
+		expectedSubject string
+		expectInBody    []string
+	}{
+		{
+			name:            "cn locale on payload",
+			locale:          "cn",
+			expectedSubject: "【idcd】关于您退款延迟的致歉说明",
+			expectInBody:    []string{"致歉", "v_001", "paddle_abc", "99.00 CNY"},
+		},
+		{
+			name:            "en locale on payload",
+			locale:          "en",
+			expectedSubject: "[IDCD] We're sorry about your delayed refund",
+			expectInBody:    []string{"sorry", "v_001", "paddle_abc", "99.00 CNY"},
+		},
+		{
+			name:            "empty locale falls back to registry default",
+			locale:          "",
+			expectedSubject: "【idcd】关于您退款延迟的致歉说明",
+			expectInBody:    []string{"致歉"},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			handlers, sender := setupHandlers(t)
+
+			payload := RefundApologyPayload{
+				OrderID:           "v_001",
+				UserEmail:         "user@example.com",
+				PaddleOrderID:     "paddle_abc",
+				RefundAmountCents: 9900,
+				Currency:          "CNY",
+				FailureReason:     "max_retries_exhausted",
+				Locale:            tc.locale,
+			}
+			if err := handlers.HandleRefundApology(context.Background(), newApologyTask(t, payload)); err != nil {
+				t.Fatalf("expected success, got: %v", err)
+			}
+
+			msgs := sender.Messages()
+			if len(msgs) != 1 {
+				t.Fatalf("expected 1 apology email, got %d", len(msgs))
+			}
+			msg := msgs[0]
+			if msg.To != "user@example.com" {
+				t.Errorf("To = %q", msg.To)
+			}
+			if msg.Subject != tc.expectedSubject {
+				t.Errorf("Subject = %q, want %q", msg.Subject, tc.expectedSubject)
+			}
+			for _, want := range tc.expectInBody {
+				if !strings.Contains(msg.HTML, want) {
+					t.Errorf("HTML missing %q\nbody=%s", want, msg.HTML)
+				}
+			}
+		})
+	}
+}
+
+func TestHandlers_HandleRefundApology_InvalidJSON(t *testing.T) {
+	handlers, sender := setupHandlers(t)
+
+	task := asynq.NewTask(TaskRefundApology, []byte("{not json"))
+	err := handlers.HandleRefundApology(context.Background(), task)
+	if err == nil {
+		t.Fatal("expected error for malformed JSON")
+	}
+	if !errors.Is(err, asynq.SkipRetry) {
+		t.Errorf("expected asynq.SkipRetry, got: %v", err)
+	}
+	if len(sender.Messages()) != 0 {
+		t.Errorf("no email should be sent on malformed payload")
+	}
+}
+
+func TestHandlers_HandleRefundApology_MissingOrderID(t *testing.T) {
+	handlers, _ := setupHandlers(t)
+
+	payload := RefundApologyPayload{OrderID: "  ", FailureReason: "x"}
+	err := handlers.HandleRefundApology(context.Background(), newApologyTask(t, payload))
+	if err == nil {
+		t.Fatal("expected error for missing order_id")
+	}
+	if !errors.Is(err, asynq.SkipRetry) {
+		t.Errorf("expected asynq.SkipRetry, got: %v", err)
+	}
+}
+
+// TestHandlers_HandleRefundApology_NoUserEmailAcks covers the D5
+// fail-open path: when the producer could not resolve a recipient
+// (user_email empty), the handler ACKs with a P0-tagged warning rather
+// than retrying forever.
+func TestHandlers_HandleRefundApology_NoUserEmailAcks(t *testing.T) {
+	handlers, sender := setupHandlers(t)
+
+	payload := RefundApologyPayload{
+		OrderID:           "v_001",
+		UserEmail:         "", // rare race — user deleted post-failure
+		PaddleOrderID:     "paddle_xyz",
+		RefundAmountCents: 1000,
+		Currency:          "CNY",
+		FailureReason:     "x",
+	}
+	if err := handlers.HandleRefundApology(context.Background(), newApologyTask(t, payload)); err != nil {
+		t.Fatalf("expected fail-open ACK, got: %v", err)
+	}
+	if len(sender.Messages()) != 0 {
+		t.Errorf("no email when recipient is empty")
+	}
+}
+
+func TestHandlers_HandleRefundApology_EmailSendErrorRetries(t *testing.T) {
+	handlers, _ := setupHandlers(t)
+	// Rebuild with a failing sender to drive the transient-retry path.
+	failing := &mockSender{sendError: errors.New("ses 5xx")}
+	templates, err := template.New()
+	if err != nil {
+		t.Fatalf("template.New: %v", err)
+	}
+	handlers = NewHandlers(failing, templates, handlers.logger)
+
+	payload := RefundApologyPayload{
+		OrderID:           "v_001",
+		UserEmail:         "u@example.com",
+		PaddleOrderID:     "paddle_abc",
+		RefundAmountCents: 1500,
+		Currency:          "CNY",
+		FailureReason:     "x",
+		Locale:            "cn",
+	}
+	err = handlers.HandleRefundApology(context.Background(), newApologyTask(t, payload))
+	if err == nil {
+		t.Fatal("expected error so asynq retries on SES failure")
+	}
+	if errors.Is(err, asynq.SkipRetry) {
+		t.Errorf("email failures must retry, got SkipRetry: %v", err)
+	}
+	if !strings.Contains(err.Error(), "send email") {
+		t.Errorf("error should mention email send path: %v", err)
+	}
+}
+
+// TestHandlers_HandleRefundApology_PayloadContract pins the wire-level
+// JSON keys: the producer (apps/attest/cmd/refund-worker) emits exactly
+// these names, and a rename here without a coordinated change there
+// would silently break apology delivery in prod.
+func TestHandlers_HandleRefundApology_PayloadContract(t *testing.T) {
+	handlers, sender := setupHandlers(t)
+	rawJSON := []byte(`{
+		"order_id":"v_001",
+		"user_email":"user@example.com",
+		"paddle_order_id":"paddle_abc",
+		"refund_amount_cents":9900,
+		"currency":"CNY",
+		"failure_reason":"max_retries_exhausted",
+		"enqueued_at":"2026-05-17T10:00:00Z",
+		"locale":"cn"
+	}`)
+	task := asynq.NewTask(TaskRefundApology, rawJSON)
+	if err := handlers.HandleRefundApology(context.Background(), task); err != nil {
+		t.Fatalf("expected success on contract payload, got: %v", err)
+	}
+	msgs := sender.Messages()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 email, got %d", len(msgs))
+	}
+	if msgs[0].To != "user@example.com" {
+		t.Errorf("To = %q", msgs[0].To)
+	}
+	for _, want := range []string{"paddle_abc", "99.00 CNY", "v_001"} {
+		if !strings.Contains(msgs[0].HTML, want) {
+			t.Errorf("HTML missing %q", want)
+		}
+	}
+}
+
+func TestHandlers_HandleRefundApology_MuxRegistered(t *testing.T) {
+	handlers, _ := setupHandlers(t)
+	mux := handlers.GetMux()
+	if mux == nil {
+		t.Fatal("nil mux")
+	}
+	// Empty user_email → handler ACKs (fail-open) → ProcessTask returns nil.
+	task := asynq.NewTask(TaskRefundApology, []byte(`{"order_id":"v_999"}`))
+	if err := mux.ProcessTask(context.Background(), task); err != nil {
+		t.Errorf("mux did not route %s correctly: %v", TaskRefundApology, err)
+	}
+}

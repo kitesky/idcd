@@ -27,6 +27,8 @@ linters:
       - path: cmd/
         linters:
           - errcheck
+      - linters: [errcheck]
+        text: 'Error return value of `[^`]+\.(Close|SetReadDeadline|SetWriteDeadline)` is not checked'
 
 issues:
   max-issues-per-linter: 0

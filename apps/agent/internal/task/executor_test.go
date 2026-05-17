@@ -70,7 +70,7 @@ func TestNewExecutor(t *testing.T) {
 	executor := NewExecutor(secretKey)
 
 	if executor == nil {
-		t.Error("Expected non-nil executor")
+		t.Fatal("Expected non-nil executor")
 	}
 
 	if executor.httpProbe == nil {

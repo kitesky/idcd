@@ -59,8 +59,12 @@ describe("diagnose-store", () => {
       const result = await getReport("rpt_test123")
       expect(result).not.toBeNull()
       expect(result?.id).toBe("rpt_test123")
-      expect(result?.domain).toBe("example.com")
-      expect(result?.checks).toHaveLength(1)
+      // getReport now returns AnyReport; narrow to DiagnoseReport for combo
+      // assertions. The mock payload above has no `type` field so it lands on
+      // the combo branch of the union.
+      const combo = result as DiagnoseReport | null
+      expect(combo?.domain).toBe("example.com")
+      expect(combo?.checks).toHaveLength(1)
     })
 
     it("returns null on 404 response", async () => {

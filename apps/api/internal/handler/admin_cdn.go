@@ -73,12 +73,6 @@ func NewAdminCDNHandler(pool *pgxpool.Pool) *AdminCDNHandler {
 	return &AdminCDNHandler{pool: &cdnPoolAdapter{pool: pool}}
 }
 
-// newAdminCDNHandlerWithPool creates an AdminCDNHandler using the CDNPool interface directly
-// (used in tests with pgxmock).
-func newAdminCDNHandlerWithPool(pool CDNPool) *AdminCDNHandler {
-	return &AdminCDNHandler{pool: pool}
-}
-
 // CDNSeedResponse is the JSON response for POST /internal/admin/cdn-monitors/seed.
 type CDNSeedResponse struct {
 	Created int `json:"created"`

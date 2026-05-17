@@ -2,8 +2,6 @@ package processor
 
 import (
 	"context"
-	"io"
-	"log/slog"
 	"testing"
 	"time"
 
@@ -107,16 +105,4 @@ func TestRecordNoise_UnknownEventType(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error for unknown eventType")
 	}
-}
-
-func newNoiseTestTrigger(t *testing.T) (pgxmock.PgxPoolIface, *AlertTrigger) {
-	t.Helper()
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock.NewPool: %v", err)
-	}
-	enq := &mockEnqueuer{}
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
-	trigger := newAlertTriggerWithQuerier(mock, enq, logger)
-	return mock, trigger
 }

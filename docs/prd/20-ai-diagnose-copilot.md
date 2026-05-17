@@ -177,9 +177,11 @@ func (o *Orchestrator) Run(ctx, intent, plan) <-chan Event {
     out := make(chan Event)
     go func() {
         defer close(out)
+        results := make([]ToolResult, 0, len(plan.Steps))
         for _, step := range plan.Steps {
             out <- Event{Type: "step_start", Tool: step.Tool}
             res, err := o.mcp.Call(ctx, step.Tool, step.Args)
+            results = append(results, ToolResult{Tool: step.Tool, Result: res, Err: err})
             out <- Event{Type: "step_done", Tool: step.Tool, Result: res, Err: err}
         }
         verdict, _ := o.llm.Verdict(ctx, intent, plan, results)
@@ -196,7 +198,7 @@ func (o *Orchestrator) Run(ctx, intent, plan) <-chan Event {
 | 风险 | 缓解 |
 |---|---|
 | LLM prompt injection 让助手执行恶意目标 | (a) 工具参数 type-safe schema,LLM 输出 JSON 解析失败/越界直接拒;(b) target 域名走 SSRF 防御网关(已有);(c) 用户 IP 限速 |
-| 用户拿来跑大量诊断(撸羊毛) | Free 5 次/日(IP+cookie),Pro 100 次/日,Pro+ 500 次/日;Service Token 走 MCP unit 配额(K1) |
+| 用户拿来跑大量诊断(撸羊毛) | Free 5 次/日(IP+cookie),Pro 100 次/日,Pro+ 500 次/日;Service Token 走 MCP unit 配额(K3 / D2) |
 | LLM 输出敏感内容(政治/色情) | qwen / DeepSeek 都自带审核;输出落地前过一遍敏感词过滤 |
 | LLM 幻觉(给出不存在的结论) | (a) 所有诊断结论都必须**有 tool result 作为 evidence**,LLM prompt 强制"无证据不结论";(b) UI 上每条结论都点击展开看原始工具输出 |
 | 用户绕过付费墙 | session 落 Redis,匿名 IP 限速;登录用户走 quota |
@@ -255,7 +257,7 @@ func (o *Orchestrator) Run(ctx, intent, plan) <-chan Event {
 | Free | 5 次/日 | 历史保留 7 天 |
 | Pro | 100 次/日 | 历史保留 90 天,可下载 PDF |
 | Pro+ | 500 次/日 | 历史保留 1 年,可批量诊断 |
-| Service Token(MCP) | 走 MCP unit 配额(K1) | 独立池,不占 Copilot 额度 |
+| Service Token(MCP) | 走 MCP unit 配额(K3 / D2) | 独立池,不占 Copilot 额度 |
 
 每次诊断的工具调用**也吃 API 配额**(§09-billing),但 LLM 推理成本由 idcd 吸收(已计入档位定价)。
 

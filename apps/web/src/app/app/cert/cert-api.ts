@@ -482,6 +482,11 @@ export async function createDnsCredential(
     payload.secrets = { api_token: req.apiToken }
     // Some backends accept the flat field too; include it as a fallback.
     payload.api_token = req.apiToken
+  } else if (req.credential) {
+    // S2 multi-provider path: aliyun / dnspod / route53 / gcloud all
+    // pass their fields verbatim under `secrets` per the cert-svc
+    // dns_credentials API contract.
+    payload.secrets = req.credential
   }
   const raw = await request<RawDnsCredential>("/dns-credentials", {
     method: "POST",

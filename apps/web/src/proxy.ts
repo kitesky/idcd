@@ -1,4 +1,5 @@
 import { type NextRequest, NextResponse } from 'next/server'
+import { ADMIN_SESSION_COOKIE, timingSafeEqual } from './lib/admin-auth'
 import {
   defaultLocale,
   isSupported,
@@ -112,20 +113,9 @@ function withSecurityHeaders(
 // the server-side admin actions use, so a leaked portal cookie cannot directly
 // authenticate admin API calls (which still require Authorization: Bearer).
 const ADMIN_PORTAL_TOKEN = process.env.ADMIN_PORTAL_TOKEN ?? ''
-const ADMIN_SESSION_COOKIE = 'admin_session'
 
-// Paths inside /admin that are reachable without the portal cookie — only the
-// login form itself.
 function isAdminPublicPath(pathname: string): boolean {
   return pathname === '/admin/login' || pathname.startsWith('/admin/login/')
-}
-
-// constant-time string compare to avoid leaking the token via timing.
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
 }
 
 function adminPortalGate(

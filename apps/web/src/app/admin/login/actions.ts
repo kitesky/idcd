@@ -2,16 +2,9 @@
 
 import { cookies } from "next/headers"
 import { redirect } from "next/navigation"
+import { ADMIN_SESSION_COOKIE, timingSafeEqual } from "@/lib/admin-auth"
 
-const ADMIN_SESSION_COOKIE = "admin_session"
 const SESSION_MAX_AGE = 60 * 60 * 8 // 8h
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
-}
 
 export async function loginAction(formData: FormData): Promise<void> {
   const token = String(formData.get("token") ?? "")

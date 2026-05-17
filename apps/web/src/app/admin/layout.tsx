@@ -3,22 +3,14 @@ import { cookies, headers } from "next/headers"
 import { redirect } from "next/navigation"
 import { getT } from "@/i18n/getT"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
+import { ADMIN_SESSION_COOKIE, timingSafeEqual } from "@/lib/admin-auth"
 import { LanguageSwitcher } from "./lang-switcher"
 import { logoutAction } from "./login/actions"
-
-const ADMIN_SESSION_COOKIE = "admin_session"
 
 async function getAdminLocale(): Promise<Locale> {
   const cookieStore = await cookies()
   const val = cookieStore.get("locale")?.value ?? ""
   return isValidLocale(val) ? val : defaultLocale
-}
-
-function timingSafeEqual(a: string, b: string): boolean {
-  if (a.length !== b.length) return false
-  let diff = 0
-  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i)
-  return diff === 0
 }
 
 async function isAuthenticated(): Promise<boolean> {

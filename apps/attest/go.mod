@@ -7,8 +7,10 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.17
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.101.0
+	github.com/digitorus/pdf v0.1.2
 	github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352
 	github.com/digitorus/timestamp v0.0.0-20250524132541-c45532741eea
+	github.com/go-pdf/fpdf v0.9.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kite365/idcd/lib/attest v0.0.0
 	github.com/pashagolub/pgxmock/v4 v4.9.0
@@ -51,7 +53,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
-	github.com/digitorus/pdf v0.1.2 // indirect
 	github.com/digitorus/pdfsign v0.0.0-20260407063256-85ede6424a74 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect

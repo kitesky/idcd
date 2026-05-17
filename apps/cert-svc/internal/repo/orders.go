@@ -7,6 +7,8 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+
+	"github.com/kite365/idcd/lib/shared/pagination"
 )
 
 // OrdersRepo is the cert.orders data-access surface used by the service
@@ -360,10 +362,9 @@ type AdminOrderFilter struct {
 // filters is small (8 combinations) and keeping the predicate explicit
 // keeps the EXPLAIN trivially readable for an ops engineer.
 func (r *OrdersRepo) AdminListOrders(ctx context.Context, f AdminOrderFilter) ([]*Order, error) {
-	limit := f.Limit
-	if limit <= 0 || limit > 200 {
-		limit = 50
-	}
+	// Repo 层使用 RepoMaxPageSize 作为硬上限——handler 应已先 Clamp 到
+	// MaxPageSize；这层只是内部脚本 / migration 误传超大值时的兜底。
+	limit := pagination.ClampWith(f.Limit, pagination.AdminDefaultPageSize, pagination.RepoMaxPageSize)
 	offset := f.Offset
 	if offset < 0 {
 		offset = 0

@@ -300,7 +300,7 @@ func (h *ProbeHandler) createProbeTask(
 		return "", fmt.Errorf("insert probe_task: %w", err)
 	}
 
-	// Push to Redis Stream "probe.tasks"
+	// Push to Redis Stream stream.ProbeTasks ("probe.tasks").
 	streamData := map[string]any{
 		"task_id":           taskID,
 		"type":              probeType,
@@ -312,7 +312,7 @@ func (h *ProbeHandler) createProbeTask(
 		"created_at":        time.Now().Unix(),
 	}
 
-	if _, err := h.streamClient.Add(ctx, "probe.tasks", streamData); err != nil {
+	if _, err := h.streamClient.Add(ctx, stream.ProbeTasks, streamData); err != nil {
 		return "", fmt.Errorf("push to stream: %w", err)
 	}
 

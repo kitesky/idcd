@@ -19,6 +19,7 @@ import (
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
 	"github.com/kite365/idcd/lib/cert/ca"
 	"github.com/kite365/idcd/lib/cert/vault"
+	"github.com/kite365/idcd/lib/shared/pagination"
 )
 
 func mountCerts(r chi.Router, deps Deps) {
@@ -54,10 +55,7 @@ func listCerts(deps Deps) http.HandlerFunc {
 			writeErr(w, http.StatusInternalServerError, codeInternal, "repos not configured", nil)
 			return
 		}
-		limit := queryIntDefault(r, "limit", 20)
-		if limit <= 0 || limit > 100 {
-			limit = 20
-		}
+		limit := pagination.Clamp(queryIntDefault(r, "limit", pagination.DefaultPageSize))
 		offset := queryIntDefault(r, "offset", 0)
 		if offset < 0 {
 			offset = 0

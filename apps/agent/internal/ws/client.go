@@ -16,16 +16,19 @@ import (
 	"github.com/gorilla/websocket"
 
 	"github.com/kite365/idcd/apps/agent/internal/fingerprint"
+	"github.com/kite365/idcd/lib/shared/wstimeouts"
 )
 
+// 与 gateway 服务端 (apps/gateway/internal/handler/ws.go) 一一对应的超时常量
+// 集中在 lib/shared/wstimeouts。两端必须配套修改。
 const (
-	heartbeatInterval = 30 * time.Second
-	writeTimeout      = 10 * time.Second
-	pongTimeout       = 60 * time.Second
-	pingInterval      = 54 * time.Second
+	heartbeatInterval = wstimeouts.HeartbeatInterval
+	writeTimeout      = wstimeouts.WriteTimeout
+	pongTimeout       = wstimeouts.PongTimeout
+	pingInterval      = wstimeouts.PingInterval
 
-	backoffMin = 1 * time.Second
-	backoffMax = 60 * time.Second
+	backoffMin = wstimeouts.BackoffMin
+	backoffMax = wstimeouts.BackoffMax
 )
 
 // MessageHandler is called when the gateway sends a control message.

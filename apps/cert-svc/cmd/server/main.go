@@ -249,7 +249,7 @@ func main() {
 	}
 	collector := metrics.NewCollector(rdb, quotaSampler,
 		metrics.WithLogger(slogLogger),
-		metrics.WithStreams(service.DefaultStream, "cert:notifications"),
+		metrics.WithStreams(service.DefaultStream, service.DefaultNotificationStream),
 		metrics.WithCAs(router.Names()...),
 	)
 	go func() {

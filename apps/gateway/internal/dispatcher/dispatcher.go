@@ -24,18 +24,32 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
+	"github.com/kite365/idcd/lib/shared/stream"
 )
 
+// Dispatcher tuning constants. 这些是 dispatcher 内部的批处理 / 超时参数，
+// 与具体业务规则无关 (与 scheduler 的探测周期、agent 的心跳无关)，
+// 出问题时只需在这里调整：
+//
+//   - batchSize: 单次 XREADGROUP 拉取的任务条数。
+//     上调可提升吞吐但增大单实例突发负载；下调使任务派发更平滑。
+//   - blockTimeout: 无任务时 XREADGROUP 的阻塞时长。短则空轮询多 CPU 高；
+//     长则关闭/重载时 shutdown 延迟变大。
+//   - claimMinIdle: PEL 中超过此时长仍未 ACK 的任务允许被其他 dispatcher
+//     XAutoClaim 接管，应大于单次任务处理 P99 时延。
 const (
-	probeTasksStream = "probe.tasks"
-	consumerGroup    = "gateway-dispatch"
-	batchSize        = 20
-	blockTimeout     = 2 * time.Second
-	claimMinIdle     = 60 * time.Second // reclaim tasks stuck > 60s in PEL
+	consumerGroup = "gateway-dispatch"
+	batchSize     = 20
+	blockTimeout  = 2 * time.Second
+	claimMinIdle  = 60 * time.Second
 
 	// redisBusyGroup is the error string Redis returns when the consumer group already exists.
 	redisBusyGroup = "BUSYGROUP Consumer Group name already exists"
 )
+
+// probeTasksStream 是被 dispatcher 消费的探测任务流名，跨服务一致命名，
+// 集中登记在 lib/shared/stream，不要在此就地写字符串字面量。
+const probeTasksStream = stream.ProbeTasks
 
 // taskMessage is the WebSocket payload sent to the agent.
 type taskMessage struct {

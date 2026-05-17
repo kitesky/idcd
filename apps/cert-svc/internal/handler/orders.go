@@ -12,6 +12,7 @@ import (
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
+	"github.com/kite365/idcd/lib/shared/pagination"
 )
 
 // daily order quota per account. S1 simplification — the real model
@@ -286,10 +287,7 @@ func listOrders(deps Deps) http.HandlerFunc {
 			writeErr(w, http.StatusInternalServerError, codeInternal, "repos not configured", nil)
 			return
 		}
-		limit := queryIntDefault(r, "limit", 20)
-		if limit <= 0 || limit > 100 {
-			limit = 20
-		}
+		limit := pagination.Clamp(queryIntDefault(r, "limit", pagination.DefaultPageSize))
 		offset := queryIntDefault(r, "offset", 0)
 		if offset < 0 {
 			offset = 0

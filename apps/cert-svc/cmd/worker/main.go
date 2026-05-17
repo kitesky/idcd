@@ -96,9 +96,19 @@ func main() {
 		extras = append(extras, buypass.New(buypass.Config{Env: buypass.Env(cfg.BuypassEnv)}))
 	}
 	router := service.NewRouter(leCA, extras...)
-	log.Info("ca router wired", "cas", router.Names())
-
 	repos := repo.New(pool)
+
+	// Quota-based fallover: when default CA's usage exceeds 70%, route
+	// new orders to the first registered secondary (preference order:
+	// zerossl → buypass). Secondary unset / unregistered keeps default.
+	if secondary := pickSecondaryCA(router); secondary != "" {
+		router = router.
+			WithSecondary(secondary).
+			WithQuota(service.NewRepoQuotaChecker(repos.Orders, repos.Certs, nil)).
+			WithLogger(log)
+		log.Info("ca quota router wired", "default", "lets-encrypt", "secondary", secondary)
+	}
+	log.Info("ca router wired", "cas", router.Names())
 
 	// Long-lived ACME account key persisted in cert.acme_accounts. The
 	// first invocation for a (CA, env) pair generates + inserts; later
@@ -152,6 +162,21 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("cert-worker stopped")
+}
+
+// pickSecondaryCA returns the first registered fallover CA (preference
+// order: zerossl → buypass), or "" when no candidate is registered.
+// The Router quota path is wired only when a candidate exists.
+func pickSecondaryCA(r *service.Router) string {
+	names := r.Names()
+	for _, want := range []string{"zerossl", "buypass"} {
+		for _, n := range names {
+			if n == want {
+				return want
+			}
+		}
+	}
+	return ""
 }
 
 // buildVault picks the vault.Vault implementation per Config.VaultBackend.

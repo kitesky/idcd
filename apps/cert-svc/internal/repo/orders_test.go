@@ -321,3 +321,25 @@ func TestOrdersRepo_ListPickable_DBError(t *testing.T) {
 	_, err := r.ListPickable(context.Background(), []OrderStatus{OrderStatusDraft}, 10)
 	require.Error(t, err)
 }
+
+func TestOrdersRepo_CountByCASince(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	since := time.Now().UTC()
+
+	mock.ExpectQuery(`SELECT count\(\*\) FROM cert.orders\s+WHERE ca = \$1 AND created_at >= \$2`).
+		WithArgs("lets-encrypt", since).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(int64(123)))
+
+	n, err := r.CountByCASince(context.Background(), "lets-encrypt", since)
+	require.NoError(t, err)
+	require.Equal(t, 123, n)
+}
+
+func TestOrdersRepo_CountByCASince_DBError(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	mock.ExpectQuery(`SELECT count`).
+		WithArgs("lets-encrypt", pgxmock.AnyArg()).
+		WillReturnError(errors.New("io"))
+	_, err := r.CountByCASince(context.Background(), "lets-encrypt", time.Now())
+	require.Error(t, err)
+}

@@ -210,3 +210,29 @@ func scanCert(r rowScanner) (*Cert, error) {
 	c.Status = CertStatus(statusText)
 	return &c, nil
 }
+
+// Registered-domain peak query. Group by the last two labels of the
+// first SAN to approximate Let's Encrypt's "Registered Domain" bucket
+// (PRD §8.1 — 50 certs / RD / week). This is a 2-label heuristic that
+// undercounts ccTLDs like .co.uk (treats "co.uk" as the RD), which
+// makes the Router *more* conservative there — acceptable for a
+// fallover signal.
+const certsMaxPerRDSinceSQL = `
+	SELECT COALESCE(MAX(c), 0) FROM (
+		SELECT count(*) AS c
+		FROM cert.certs
+		WHERE issuer = $1 AND created_at >= $2 AND array_length(sans, 1) >= 1
+		GROUP BY regexp_replace(sans[1], '^.*\.([^.]+\.[^.]+)$', '\1')
+	) g
+`
+
+// MaxCertsPerRegisteredDomainSince returns the peak per-RD issuance
+// count for issuer in the supplied window. Used by the Router's
+// QuotaChecker (LE: 50 certs / RD / week).
+func (r *CertsRepo) MaxCertsPerRegisteredDomainSince(ctx context.Context, issuer string, since time.Time) (int, error) {
+	var n int
+	if err := r.pool.QueryRow(ctx, certsMaxPerRDSinceSQL, issuer, since).Scan(&n); err != nil {
+		return 0, fmt.Errorf("certs max per registered domain since: %w", err)
+	}
+	return n, nil
+}

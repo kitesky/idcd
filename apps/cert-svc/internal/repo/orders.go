@@ -324,3 +324,21 @@ func scanOrder(r rowScanner) (*Order, error) {
 	o.Status = OrderStatus(statusText)
 	return &o, nil
 }
+
+const ordersCountByCASinceSQL = `
+	SELECT count(*) FROM cert.orders
+	WHERE ca = $1 AND created_at >= $2
+`
+
+// CountByCASince returns the number of cert.orders rows for a given CA
+// created since the supplied timestamp. Empty caName matches the orders
+// that left the CA field blank (legacy / default Router branch). Used
+// by the Router's QuotaChecker for the per-account-3h dimension (PRD
+// §8.1, LE 300 newOrder / account / 3h).
+func (r *OrdersRepo) CountByCASince(ctx context.Context, caName string, since time.Time) (int, error) {
+	var n int
+	if err := r.pool.QueryRow(ctx, ordersCountByCASinceSQL, caName, since).Scan(&n); err != nil {
+		return 0, fmt.Errorf("orders count by ca since: %w", err)
+	}
+	return n, nil
+}

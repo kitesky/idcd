@@ -199,3 +199,25 @@ func TestCertsRepo_UpdateStatus_DBError(t *testing.T) {
 	err := r.UpdateStatus(context.Background(), 1, CertStatusIssued, CertStatusRevoked, nil, nil)
 	require.Error(t, err)
 }
+
+func TestCertsRepo_MaxCertsPerRegisteredDomainSince(t *testing.T) {
+	r, mock := newCertsRepo(t)
+	since := time.Now().UTC()
+
+	mock.ExpectQuery(`WHERE issuer = \$1 AND created_at >= \$2`).
+		WithArgs("lets-encrypt", since).
+		WillReturnRows(pgxmock.NewRows([]string{"max"}).AddRow(37))
+
+	n, err := r.MaxCertsPerRegisteredDomainSince(context.Background(), "lets-encrypt", since)
+	require.NoError(t, err)
+	require.Equal(t, 37, n)
+}
+
+func TestCertsRepo_MaxCertsPerRegisteredDomainSince_DBError(t *testing.T) {
+	r, mock := newCertsRepo(t)
+	mock.ExpectQuery(`MAX`).
+		WithArgs("lets-encrypt", pgxmock.AnyArg()).
+		WillReturnError(errors.New("io"))
+	_, err := r.MaxCertsPerRegisteredDomainSince(context.Background(), "lets-encrypt", time.Now())
+	require.Error(t, err)
+}

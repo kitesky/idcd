@@ -33,7 +33,7 @@
 - Base Color = **Zinc**（深色偏蓝灰），shadcn/ui 官方预设
 - 字体 = Geist Sans + Geist Mono（Next.js / shadcn 默认）
 - 中文字体 fallback = PingFang SC / Microsoft YaHei
-- 默认深色模式（`next-themes` 动态控制，不硬编码 `className="dark"`）
+- 默认亮色模式（`defaultTheme="light"`，`next-themes` 动态控制，不硬编码 `className="dark"`；用户可在 UI 中切换暗色 / 跟随系统）
 - 业务语义色扩展：success / warning / info（在 theme.css 定义）
 - `/app/*` 后台使用 shadcn `Sidebar` 组件（`SidebarProvider` + `AppSidebar` + `SidebarInset`）
 - idcd 特定组件通过 composition，不重写 shadcn 已有组件

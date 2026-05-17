@@ -43,12 +43,12 @@ interface AppShellProps {
   email: string
   displayName: string | null
   avatarUrl: string | null
+  plan?: string
   children: React.ReactNode
 }
 
-export function AppShell({ email, displayName, avatarUrl, children }: AppShellProps) {
+export function AppShell({ email, displayName, avatarUrl, plan = "Free", children }: AppShellProps) {
   const pathname = usePathname()
-  const plan = "Free"
 
   const pageTitle =
     ROUTE_TITLES[pathname] ??

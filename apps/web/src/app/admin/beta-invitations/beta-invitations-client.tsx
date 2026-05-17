@@ -87,7 +87,7 @@ export function BetaInvitationsClient({ initialInvitations }: { initialInvitatio
   return (
     <div className="space-y-4">
       {toast && (
-        <div className={cn("fixed right-4 top-4 z-50 rounded-md px-4 py-3 text-sm shadow-lg", toast.ok ? "bg-green-600 text-white" : "bg-destructive text-destructive-foreground")}>
+        <div className={cn("fixed right-4 top-4 z-50 rounded-md px-4 py-3 text-sm shadow-lg", toast.ok ? "bg-success text-success-foreground" : "bg-destructive text-destructive-foreground")}>
           {toast.message}
         </div>
       )}

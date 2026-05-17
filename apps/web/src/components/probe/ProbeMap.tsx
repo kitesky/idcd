@@ -56,7 +56,7 @@ function stripSuffix(name: string) {
 
 function Legend() {
   return (
-    <div className="flex items-center gap-4 text-xs text-slate-500 px-3 py-2 border-t bg-slate-50">
+    <div className="flex items-center gap-4 text-xs text-muted-foreground px-3 py-2 border-t bg-muted/50">
       {[
         { color: "#22c55e", label: "< 300ms" },
         { color: "#f59e0b", label: "300–1000ms" },
@@ -64,7 +64,7 @@ function Legend() {
         { color: "#dde6ee", label: "无节点" },
       ].map(({ color, label }) => (
         <span key={label} className="flex items-center gap-1.5">
-          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 border border-slate-300" style={{ background: color }} />
+          <span className="h-2.5 w-2.5 rounded-full flex-shrink-0 border border-border" style={{ background: color }} />
           {label}
         </span>
       ))}
@@ -84,7 +84,7 @@ export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
       .catch(console.error)
   }, [])
 
-  if (!mapData) return <div className="w-full h-48 bg-slate-100 animate-pulse rounded" />
+  if (!mapData) return <div className="w-full h-48 bg-muted animate-pulse rounded" />
 
   // Build name → latency lookup
   const lookup = new Map<string, number>()
@@ -113,7 +113,7 @@ export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
   const { w, h } = mapData
 
   return (
-    <div className="w-full rounded border border-slate-200 overflow-hidden">
+    <div className="w-full rounded border border-border overflow-hidden">
       <svg
         viewBox={`0 0 ${w} ${h}`}
         style={{ width: "100%", display: "block", background: "#f0f9ff" }}
@@ -242,7 +242,7 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
   }, [nodeNameKey])
 
   return (
-    <div className="w-full rounded border border-slate-200 overflow-hidden">
+    <div className="w-full rounded border border-border overflow-hidden">
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", background: "#dbeafe" }}>
         {geoPaths.map((d, i) => (
           <path key={i} d={d} fill="#bfdbfe" stroke="#ffffff" strokeWidth={0.5} />

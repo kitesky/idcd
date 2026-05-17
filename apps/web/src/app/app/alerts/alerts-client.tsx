@@ -697,7 +697,7 @@ function ChannelsTab({ channels, testingIds, onTest, onDelete, onAdd }: Channels
                 <p className="text-xs text-muted-foreground">
                   {CHANNEL_TYPE_LABELS[ch.type]}
                   {!ch.verified && (
-                    <span className="ml-1 text-amber-600 dark:text-amber-400">
+                    <span className="ml-1 text-warning">
                       {t("channels.unverifiedHint")}
                     </span>
                   )}

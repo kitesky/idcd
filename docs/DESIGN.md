@@ -80,7 +80,7 @@ apps/web/src/
 | Style | new-york |
 | Base Color | **Zinc**（偏蓝灰，深色模式效果最佳） |
 | 色彩空间 | OKLCH |
-| 默认模式 | 暗色（`defaultTheme="dark"`） |
+| 默认模式 | 亮色（`defaultTheme="light"`），用户可手动切换暗色或跟随系统 |
 
 ### 3.4 修改主题的方法
 
@@ -249,6 +249,7 @@ stroke="#3B82F6"            // ❌
 |---|---|---|
 | 2026-05-13 | 完整采用 shadcn/ui 官方体系 | 极简维护 + plug-and-play + 升级路径清晰 |
 | 2026-05-13 | 默认深色模式 | 技术品牌 + 开发者偏好 + dashboard 长时间观看 |
+| 2026-05-17 | 默认改回亮色模式 | 公开页 / 营销页对新访客可读性更高；用户仍可手动切换暗色或跟随系统 |
 | 2026-05-13 | idcd 特定组件通过 composition，不重写 | 保持 shadcn 升级兼容 |
 | 2026-05-15 | 迁移到 OKLCH 色彩空间 | Tailwind v4 标准，感知均匀，支持透明度 |
 | 2026-05-15 | Base Color 改为 Zinc（原 Blue） | 深色模式偏蓝灰更自然，shadcn-admin 同款 |

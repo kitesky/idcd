@@ -69,7 +69,7 @@ function RoleBadge({ role }: { role: string }) {
     return (
       <Badge
         variant="outline"
-        className="border-purple-400 text-purple-500 text-xs"
+        className="border-primary text-primary text-xs"
         data-testid={`role-badge-${role}`}
       >
         owner
@@ -80,7 +80,7 @@ function RoleBadge({ role }: { role: string }) {
     return (
       <Badge
         variant="outline"
-        className="border-blue-400 text-blue-500 text-xs"
+        className="border-info text-info text-xs"
         data-testid={`role-badge-${role}`}
       >
         admin

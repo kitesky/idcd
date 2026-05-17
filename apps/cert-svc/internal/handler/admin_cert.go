@@ -42,6 +42,7 @@ import (
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
+	"github.com/kite365/idcd/lib/shared/pagination"
 )
 
 // AdminQuotaSource is the narrow surface admin handlers need to render the
@@ -138,7 +139,10 @@ func adminListOrders(deps Deps) http.HandlerFunc {
 			return
 		}
 		q := r.URL.Query()
-		limit := queryIntDefault(r, "limit", 50)
+		limit := pagination.ClampWith(
+			queryIntDefault(r, "limit", pagination.AdminDefaultPageSize),
+			pagination.AdminDefaultPageSize, pagination.MaxPageSize,
+		)
 		offset := queryIntDefault(r, "offset", 0)
 		f := repo.AdminOrderFilter{Limit: limit, Offset: offset}
 		if s := strings.TrimSpace(q.Get("status")); s != "" {

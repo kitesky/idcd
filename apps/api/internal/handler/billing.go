@@ -15,6 +15,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/idgen"
+	"github.com/kite365/idcd/lib/shared/pagination"
 )
 
 // VerdictStreamPublisher publishes a paid verdict_order onto the Redis
@@ -307,10 +308,7 @@ func (h *BillingHandler) ListInvoices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	page := parseIntParam(r.URL.Query().Get("page"), 1)
-	pageSize := parseIntParam(r.URL.Query().Get("page_size"), 20)
-	if pageSize > 100 {
-		pageSize = 100
-	}
+	pageSize := pagination.Clamp(parseIntParam(r.URL.Query().Get("page_size"), pagination.DefaultPageSize))
 	if page < 1 {
 		page = 1
 	}

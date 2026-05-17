@@ -4,7 +4,6 @@ package server
 import (
 	"context"
 	"crypto/tls"
-	"database/sql"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -42,7 +41,6 @@ type Server struct {
 	httpServer *http.Server
 	logger     *slog.Logger
 	config     *config.Config
-	db         *sql.DB
 	pgxPool    *pgxpool.Pool
 	redis      *redis.Client
 
@@ -52,10 +50,9 @@ type Server struct {
 }
 
 // New creates a new server instance with all middleware and routes configured.
-func New(cfg *config.Config, db *sql.DB, pgxPool *pgxpool.Pool, redis *redis.Client, logger *slog.Logger) *Server {
+func New(cfg *config.Config, pgxPool *pgxpool.Pool, redis *redis.Client, logger *slog.Logger) *Server {
 	s := &Server{
 		config:  cfg,
-		db:      db,
 		pgxPool: pgxPool,
 		redis:   redis,
 		logger:  logger,
@@ -87,7 +84,28 @@ func (s *Server) setupMetrics() {
 		[]string{"method", "path"},
 	)
 
-	// Register metrics — tolerate duplicate registration (e.g., tests creating multiple Server instances).
+	// Register metrics on the Prometheus default registry.
+	//
+	// We intentionally tolerate AlreadyRegisteredError here rather than
+	// switching to a dedicated *prometheus.Registry. Rationale:
+	//   1. apps/api/internal/metrics uses promauto against the default
+	//      registry, so /metrics MUST gather from the default registry to
+	//      include those business metrics (active monitors, total users,
+	//      alert events, etc.). Switching server metrics to a dedicated
+	//      registry would split the surface in two and either drop the
+	//      business metrics or force a multi-registry Gatherer.
+	//   2. Tests may construct multiple *Server instances in the same
+	//      process (httptest harness, parallel suites). The default
+	//      registry is process-global, so the second New() would panic
+	//      without this tolerance.
+	//   3. The collectors created above are identical across instances
+	//      (same name, help, label set), so returning the AlreadyRegistered
+	//      original collector for subsequent registrations is the documented
+	//      and safe contract — see prometheus.AlreadyRegisteredError docs.
+	// If we ever need true per-instance isolation, the right fix is to move
+	// ALL metrics (server + apps/api/internal/metrics) onto a shared
+	// *prometheus.Registry and update promhttp.HandlerFor() at /metrics —
+	// not a partial migration of this file alone.
 	for _, c := range []prometheus.Collector{s.requestsTotal, s.requestDuration} {
 		if err := prometheus.Register(c); err != nil {
 			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {
@@ -186,7 +204,7 @@ func (s *Server) setupRouter() {
 	r.Use(s.metricsMiddleware())
 
 	// Health check routes
-	healthHandler := handler.NewHealthHandler(s.db, s.redis)
+	healthHandler := handler.NewHealthHandler(s.pgxPool, s.redis)
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/deep", healthHandler.DeepHealth)
 
@@ -218,7 +236,7 @@ func (s *Server) setupRouter() {
 		sessSvc := session.NewService(s.redis)
 		q := idcdmain.New(s.pgxPool)
 
-		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.logger)
+		fieldCipher := newFieldCipher(s.config.Encryption.FieldKey, s.config.Server.Env, s.logger)
 
 		// Wire async dispatch via asynq (uses the same Redis instance as the notifier).
 		// One asynq.Client is shared across all enqueuer adapters (auth emails,
@@ -640,13 +658,14 @@ func (s *Server) setupRouter() {
 			r.Post("/{node_id}/reload-config", nodeCmdH.QueueReloadConfig)
 		})
 
-		// Prometheus metrics endpoint — VPN/internal only (no auth; rely on network policy).
-		// Exposes the default Prometheus registry including idcd business metrics from
-		// the internal/metrics package.
-		r.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
-
 		// Admin management endpoints (token-protected, VPN-only in production).
 		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+
+		// Prometheus metrics endpoint — gated by the same admin Bearer token
+		// as /internal/admin/*. Network policy alone is not enough: metrics
+		// leak rich business data (user counts, billing volume, error rates)
+		// that an attacker inside the VPN must not freely scrape.
+		r.With(adminH.AdminAuthMiddleware).Get("/internal/metrics", promhttp.Handler().ServeHTTP)
 		var blocklistHandlerStore handler.BlocklistStore
 		if s.redis != nil {
 			blocklistHandlerStore = &redisBlocklistAdapter{client: s.redis}
@@ -804,10 +823,15 @@ func (s *Server) Router() chi.Router {
 }
 
 // newFieldCipher creates the AES-256-GCM cipher used for field-level at-rest
-// encryption.  If fieldKey is empty a dev-only all-zeros key is used with a
-// warning; production should always supply a real key.
-func newFieldCipher(fieldKey string, log *slog.Logger) *aesenc.Cipher {
+// encryption. Fail-closed in staging / production: a missing key panics
+// at startup so we never silently encrypt data with an all-zero key.
+// Development keeps the zero-key fallback so contributors don't need to
+// generate a key locally.
+func newFieldCipher(fieldKey, env string, log *slog.Logger) *aesenc.Cipher {
 	if fieldKey == "" {
+		if env != "" && env != "development" && env != "dev" && env != "test" {
+			panic("encryption.field_key required in " + env + " — refusing to start with dev fallback key")
+		}
 		log.Warn("encryption.field_key not set — using dev fallback key, NOT safe for production")
 		c, _ := aesenc.New(make([]byte, 32))
 		return c

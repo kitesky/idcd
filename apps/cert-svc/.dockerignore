@@ -1,0 +1,45 @@
+# Per-app .dockerignore — only consulted when build context = apps/cert-svc/.
+# The canonical build uses repo-root context (see Dockerfile COPY paths), in
+# which case the root /.dockerignore applies. Keep both in sync.
+
+# Version control
+.git/
+.gitignore
+
+# Node (none expected here, but defensive)
+**/node_modules/
+**/.next/
+
+# Build / dist
+dist/
+build/
+bin/
+out/
+tmp/
+coverage/
+*.log
+
+# Go-specific (vendor not committed; tests / coverage / local binaries)
+vendor/
+*.test
+*.out
+*.prof
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Docs / markdown (keep README only)
+*.md
+!README.md
+
+# IDE / editor
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Dockerfile self
+Dockerfile
+.dockerignore

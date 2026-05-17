@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -25,9 +26,14 @@ var ErrBufferFull = fmt.Errorf("buffer size limit exceeded")
 
 // Buffer provides SQLite-based buffering for probe results.
 type Buffer struct {
-	db   *sql.DB
-	path string
+	db     *sql.DB
+	path   string
+	logger *slog.Logger
 }
+
+// SetLogger installs a logger; nil disables the per-call diagnostics in
+// Pending. The default constructor leaves it nil for backward compatibility.
+func (b *Buffer) SetLogger(l *slog.Logger) { b.logger = l }
 
 // New creates a new buffer instance with the given data directory.
 func New(dataDir string) (*Buffer, error) {
@@ -112,7 +118,9 @@ func (b *Buffer) MarkSent(id string) error {
 	return nil
 }
 
-// Pending returns all results that haven't been sent yet.
+// Pending returns all results that haven't been sent yet. Malformed rows
+// are skipped but counted + surfaced via the logger so persistent
+// corruption is visible instead of silently shrinking the upload set.
 func (b *Buffer) Pending() ([]PendingResult, error) {
 	rows, err := b.db.Query(`
 		SELECT id, task_id, payload, created_at
@@ -125,24 +133,47 @@ func (b *Buffer) Pending() ([]PendingResult, error) {
 	}
 	defer rows.Close()
 
-	var results []PendingResult
+	var (
+		results        []PendingResult
+		scanErrors     int
+		unmarshalError int
+		firstErr       error
+	)
 	for rows.Next() {
 		var pr PendingResult
 		var payload string
 		var createdAt int64
 
-		err := rows.Scan(&pr.ID, &pr.TaskID, &payload, &createdAt)
-		if err != nil {
-			continue // Skip malformed rows
+		if err := rows.Scan(&pr.ID, &pr.TaskID, &payload, &createdAt); err != nil {
+			scanErrors++
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 
-		// Deserialize result
 		if err := json.Unmarshal([]byte(payload), &pr.Result); err != nil {
-			continue // Skip malformed results
+			unmarshalError++
+			if firstErr == nil {
+				firstErr = err
+			}
+			continue
 		}
 
 		pr.CreatedAt = time.Unix(createdAt, 0)
 		results = append(results, pr)
+	}
+
+	if err := rows.Err(); err != nil {
+		return results, fmt.Errorf("rows iteration: %w", err)
+	}
+
+	if b.logger != nil && (scanErrors > 0 || unmarshalError > 0) {
+		b.logger.Warn("buffer pending: dropped malformed rows",
+			"scan_errors", scanErrors,
+			"unmarshal_errors", unmarshalError,
+			"first_err", firstErr,
+		)
 	}
 
 	return results, nil

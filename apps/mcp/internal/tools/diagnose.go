@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,13 +29,14 @@ func diagnoseDef() protocol.ToolDefinition {
 
 func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		target, _ := args["target"].(string)
-		if target == "" {
-			return "", errors.New("target is required")
+		rawTarget, _ := args["target"].(string)
+		target, err := validateTarget(rawTarget)
+		if err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		host := target

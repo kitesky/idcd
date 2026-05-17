@@ -3,27 +3,38 @@ package handler
 
 import (
 	"context"
-	"database/sql"
 	"fmt"
 	"net/http"
 	"os"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/api/internal/response"
 )
 
+// PgPinger is the minimal Postgres surface the health check needs.
+// Implemented by *pgxpool.Pool; lets tests pass a nil or fake without
+// pulling in database/sql.
+type PgPinger interface {
+	Ping(ctx context.Context) error
+}
+
 // HealthHandler handles health check endpoints.
 type HealthHandler struct {
-	db    *sql.DB
+	db    PgPinger
 	redis *redis.Client
 }
 
 // NewHealthHandler creates a new health handler.
-func NewHealthHandler(db *sql.DB, redis *redis.Client) *HealthHandler {
+func NewHealthHandler(db *pgxpool.Pool, redis *redis.Client) *HealthHandler {
+	var p PgPinger
+	if db != nil {
+		p = db
+	}
 	return &HealthHandler{
-		db:    db,
+		db:    p,
 		redis: redis,
 	}
 }
@@ -99,7 +110,7 @@ func (h *HealthHandler) DeepHealth(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, statusCode, deepHealthResp)
 }
 
-// checkPostgreSQL performs a PostgreSQL connectivity check.
+// checkPostgreSQL performs a PostgreSQL connectivity check via pgxpool.Ping.
 func (h *HealthHandler) checkPostgreSQL(ctx context.Context) CheckStatus {
 	if h.db == nil {
 		return CheckStatus{
@@ -107,24 +118,12 @@ func (h *HealthHandler) checkPostgreSQL(ctx context.Context) CheckStatus {
 			Error:  "database connection not configured",
 		}
 	}
-
-	// Simple SELECT 1 query to test connectivity
-	var result int
-	err := h.db.QueryRowContext(ctx, "SELECT 1").Scan(&result)
-	if err != nil {
+	if err := h.db.Ping(ctx); err != nil {
 		return CheckStatus{
 			Status: "error",
-			Error:  fmt.Sprintf("database query failed: %v", err),
+			Error:  fmt.Sprintf("database ping failed: %v", err),
 		}
 	}
-
-	if result != 1 {
-		return CheckStatus{
-			Status: "error",
-			Error:  "database returned unexpected result",
-		}
-	}
-
 	return CheckStatus{Status: "ok"}
 }
 

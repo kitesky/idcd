@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -23,10 +24,40 @@ import (
 	"github.com/kite365/idcd/lib/shared/wstimeouts"
 )
 
+// defaultAllowedOrigins are the production origins permitted when
+// GATEWAY_WS_ALLOWED_ORIGINS is unset. Kept as a fallback so a misconfigured
+// deployment fails closed to production rather than opening up dev hosts.
+var defaultAllowedOrigins = []string{
+	"https://idcd.com",
+	"https://app.idcd.com",
+}
+
 // allowedOrigins lists the origins permitted to open WebSocket connections.
-var allowedOrigins = map[string]bool{
-	"https://idcd.com":     true,
-	"https://app.idcd.com": true,
+// Populated at package init from GATEWAY_WS_ALLOWED_ORIGINS (comma-separated)
+// with defaultAllowedOrigins as fallback. A bare "*" entry is rejected — we
+// remain fail-closed and a wildcard would defeat the purpose of CheckOrigin.
+var allowedOrigins = loadAllowedOrigins(os.Getenv("GATEWAY_WS_ALLOWED_ORIGINS"))
+
+// loadAllowedOrigins parses the comma-separated origin list from env.
+// Whitespace around entries is trimmed and empty entries are skipped.
+// A bare "*" entry is dropped (with the rest still honoured) so operators
+// cannot accidentally disable origin checking via env.
+// Empty/whitespace-only input falls back to defaultAllowedOrigins.
+func loadAllowedOrigins(raw string) map[string]bool {
+	out := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		o := strings.TrimSpace(part)
+		if o == "" || o == "*" {
+			continue
+		}
+		out[o] = true
+	}
+	if len(out) == 0 {
+		for _, o := range defaultAllowedOrigins {
+			out[o] = true
+		}
+	}
+	return out
 }
 
 var upgrader = websocket.Upgrader{
@@ -86,16 +117,25 @@ type WSHandler struct {
 	pool      NodeAuthPool
 	streamCli *stream.Client
 	logger    *slog.Logger
+
+	// allowQueryAPIKey controls whether the deprecated api_key query
+	// parameter is accepted. Default false — query strings leak into
+	// reverse-proxy access logs, monitoring tools, and browser history,
+	// so the secret should travel in the Authorization header only.
+	// Set GATEWAY_ALLOW_QUERY_APIKEY=1 to re-enable during a controlled
+	// migration window.
+	allowQueryAPIKey bool
 }
 
 // NewWSHandler creates a new WebSocket handler.
 func NewWSHandler(h *hub.Hub, q *idcdmain.Queries, pool NodeAuthPool, streamCli *stream.Client, logger *slog.Logger) *WSHandler {
 	return &WSHandler{
-		hub:       h,
-		queries:   q,
-		pool:      pool,
-		streamCli: streamCli,
-		logger:    logger,
+		hub:              h,
+		queries:          q,
+		pool:             pool,
+		streamCli:        streamCli,
+		logger:           logger,
+		allowQueryAPIKey: os.Getenv("GATEWAY_ALLOW_QUERY_APIKEY") == "1",
 	}
 }
 
@@ -109,9 +149,17 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	apiKey := ""
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		apiKey = strings.TrimPrefix(auth, "Bearer ")
-	} else {
-		// Fallback: query param supported for backward compatibility.
+	} else if h.allowQueryAPIKey {
+		// Deprecated path — only enabled when GATEWAY_ALLOW_QUERY_APIKEY=1.
+		// We log a deprecation warning so the operator can identify the
+		// node IDs still using the old client and roll them forward.
 		apiKey = r.URL.Query().Get("api_key")
+		if apiKey != "" {
+			h.logger.Warn("ws auth: legacy api_key query parameter used; upgrade agent to send Authorization: Bearer",
+				"remote_addr", r.RemoteAddr,
+				"user_agent", r.UserAgent(),
+			)
+		}
 	}
 	if apiKey == "" {
 		http.Error(w, "missing api_key", http.StatusUnauthorized)
@@ -180,7 +228,11 @@ func (h *WSHandler) readPump(c *hub.Connection) {
 	defer func() {
 		h.hub.Unregister(nodeID, "connection_closed")
 		if h.pool != nil {
-			ctx := context.Background()
+			// Must outlive the request context (the conn just closed),
+			// but still bounded so a hung DB doesn't pin this goroutine
+			// forever during shutdown.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 			_, _ = h.pool.Exec(ctx,
 				`UPDATE enrolled_nodes SET status = 'offline' WHERE node_id = $1`, nodeID)
 		}
@@ -289,7 +341,11 @@ func (h *WSHandler) handleHeartbeat(c *hub.Connection, payload json.RawMessage) 
 		return nil
 	}
 
-	ctx := context.Background()
+	// Bounded — heartbeat handling shouldn't take more than a couple of
+	// seconds; a stuck DB call here would back up the per-connection
+	// read pump and stall subsequent heartbeats.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	if h.pool != nil {
 		h.processFingerprint(ctx, c.NodeID, hb.Fingerprint)
@@ -443,7 +499,10 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		return nil
 	}
 
-	ctx := context.Background()
+	// Bounded — even a 10-result batch should finish within ~3s; a runaway
+	// publish would block the per-connection reader.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	for _, result := range results {
 		if result.TaskID == "" {
 			continue

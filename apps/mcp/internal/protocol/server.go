@@ -9,11 +9,29 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 type ToolHandler func(ctx context.Context, args map[string]any) (string, error)
+
+// ErrToolFailure is the sentinel that a ToolHandler wraps when it wants the
+// MCP transport to emit an in-band tool error (ToolCallResult.IsError=true)
+// rather than a JSON-RPC protocol-level error. Use this for "expected"
+// failures the caller can act on — missing API key, bad user input, upstream
+// API returned 4xx — anything that is a tool-level outcome, not a server bug.
+//
+// Usage in a tool handler:
+//
+//	if !client.HasAPIKey() {
+//	    return "", fmt.Errorf("%w: IDCD_API_KEY is not set", protocol.ErrToolFailure)
+//	}
+//
+// Bare errors returned from a handler still map to JSON-RPC ErrInternalError —
+// reserved for "the server itself failed" cases (panics, unexpected I/O).
+var ErrToolFailure = errors.New("mcp tool: failure")
 
 type Server struct {
 	tools    []ToolDefinition
@@ -158,6 +176,25 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 
 	text, err := handler(ctx, params.Arguments)
 	if err != nil {
+		// Tool-level failure (wrapped ErrToolFailure) → MCP IsError result.
+		// The call itself succeeded at the protocol layer; the tool reports
+		// a recoverable problem in-band so the client can show it to the
+		// user without retrying the JSON-RPC envelope.
+		if errors.Is(err, ErrToolFailure) {
+			msg := err.Error()
+			// Strip the "mcp tool: failure: " prefix that errors.Wrap
+			// produces — the sentinel is for routing, not display.
+			msg = strings.TrimPrefix(msg, ErrToolFailure.Error()+": ")
+			return &Response{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: ToolCallResult{
+					Content: []ContentItem{{Type: "text", Text: msg}},
+					IsError: true,
+				},
+			}
+		}
+		// Unexpected (panic-class) failure → JSON-RPC protocol error.
 		return &Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -183,6 +220,23 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 // tools/call payload and prevents memory exhaustion from a hostile client.
 const MaxMessageBytes int64 = 1 * 1024 * 1024
 
+// RateLimitDecision is what Limiter.Allow returns. Allowed=false → caller
+// gets 429 with the Retry-After hint derived from ResetAfter.
+type RateLimitDecision struct {
+	Allowed    bool
+	Remaining  int64
+	ResetAfter time.Duration
+}
+
+// Limiter is the minimal surface the MCP HTTP transport needs from a rate
+// limiter. The protocol package defines its own interface (rather than
+// depending on lib/ratelimit) so tests can substitute a fake without
+// pulling in Redis. main.go wires a Redis-backed Limiter; pass nil to
+// disable rate limiting entirely (dev / tests only).
+type Limiter interface {
+	Allow(ctx context.Context, key string) (RateLimitDecision, error)
+}
+
 // HTTPConfig configures the HTTP-transport handlers. Fail-closed defaults:
 // if Validator is nil OR AllowedOrigins is empty, every request is rejected.
 type HTTPConfig struct {
@@ -199,6 +253,15 @@ type HTTPConfig struct {
 	// matched origins. Wildcard "*" + credentials is unsafe and
 	// suppressed automatically.
 	AllowCredentials bool
+
+	// RateLimiter throttles /messages calls per token. nil disables.
+	// Keys are derived as "mcp:tok:<tokenID>"; the limiter implementation
+	// decides the window + max requests.
+	RateLimiter Limiter
+
+	// SSEHeartbeat is the interval between server-sent SSE keepalive
+	// comments. Zero disables; recommended 15s.
+	SSEHeartbeat time.Duration
 }
 
 // httpConfig is the package-level configuration consulted by the legacy
@@ -278,12 +341,38 @@ func sseHandler(s *Server, cfgFn func() HTTPConfig) http.Handler {
 		// Defence-in-depth: forbid iframe / cross-site embedding.
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 
+		flusher, _ := w.(http.Flusher)
 		fmt.Fprintf(w, "event: endpoint\ndata: /messages\n\n")
-		if f, ok := w.(http.Flusher); ok {
-			f.Flush()
+		if flusher != nil {
+			flusher.Flush()
 		}
 
-		<-r.Context().Done()
+		// Heartbeat keeps the connection alive through idle proxies and
+		// lets the client detect a dead socket. SSE comment lines (lines
+		// starting with ":") are ignored by event parsers but still flow
+		// through the TCP stack, surfacing a write error if the peer is
+		// gone — at which point we exit and free the goroutine.
+		interval := cfg.SSEHeartbeat
+		if interval <= 0 {
+			interval = 15 * time.Second
+		}
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+
+		ctx := r.Context()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				if _, err := fmt.Fprintf(w, ": ping %d\n\n", time.Now().Unix()); err != nil {
+					return
+				}
+				if flusher != nil {
+					flusher.Flush()
+				}
+			}
+		}
 	})
 }
 
@@ -311,9 +400,29 @@ func messagesHandler(s *Server, cfgFn func() HTTPConfig) http.Handler {
 			return
 		}
 
-		// TODO(v2-S3): per-token rate limit hook here (token-bucket
-		// keyed on principal.TokenID). Out of scope for this PR — see
-		// REVIEW-FINDINGS-2026-05-16 P0#7.
+		// Per-token rate limit. Keyed on token ID so revoking a token
+		// also flushes its quota window (the next caller getting that
+		// ID is practically impossible — IDs are random — but the
+		// guarantee is conceptually clean).
+		if cfg.RateLimiter != nil && principal != nil && principal.TokenID != "" {
+			dec, err := cfg.RateLimiter.Allow(r.Context(), "mcp:tok:"+principal.TokenID)
+			if err != nil {
+				// fail-open on limiter error so a flaky Redis
+				// doesn't kill the whole tool surface — the auth
+				// layer already gates abuse. Log via header so
+				// the caller can correlate.
+				w.Header().Set("X-RateLimit-Error", "1")
+			} else if !dec.Allowed {
+				if dec.ResetAfter > 0 {
+					w.Header().Set("Retry-After", strconv.Itoa(int(dec.ResetAfter.Seconds())+1))
+				}
+				w.Header().Set("X-RateLimit-Remaining", strconv.FormatInt(dec.Remaining, 10))
+				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			} else {
+				w.Header().Set("X-RateLimit-Remaining", strconv.FormatInt(dec.Remaining, 10))
+			}
+		}
 
 		// Cap body to 1 MiB. http.MaxBytesReader returns an error on
 		// ReadAll once the limit is exceeded, and also writes a 413 to

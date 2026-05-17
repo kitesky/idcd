@@ -148,6 +148,13 @@ func (s *Service) Get(ctx context.Context, sessionID string) (*SessionData, erro
 }
 
 // Refresh extends the session TTL by the given duration.
+//
+// Atomicity: a previous implementation used Exists → Get → Set, which races
+// against concurrent Delete (logout in another tab) and would resurrect an
+// already-deleted session. We now use Redis SET ... XX which only writes
+// when the key still exists, making refresh-then-delete safe in either
+// order: if Delete wins, Refresh's SET XX is a no-op and returns
+// session-not-found.
 func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Duration) error {
 	if sessionID == "" {
 		return apperr.Validation("session ID is required", "")
@@ -158,18 +165,11 @@ func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Durati
 
 	key := s.sessionKey(sessionID)
 
-	// Check if session exists
-	exists, err := s.redis.Exists(ctx, key).Result()
-	if err != nil {
-		return apperr.Internal("failed to check session existence", err)
-	}
-	if exists == 0 {
-		return apperr.NotFound("session not found")
-	}
-
-	// Update LastSeenAt and extend TTL
 	data, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return apperr.NotFound("session not found")
+		}
 		return apperr.Internal("failed to get session for refresh", err)
 	}
 
@@ -184,14 +184,65 @@ func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Durati
 		return apperr.Internal("failed to marshal updated session data", err)
 	}
 
-	if err := s.redis.Set(ctx, key, updatedData, ttl).Err(); err != nil {
+	// SET XX = only set if key exists. Returns false (without error) when
+	// the key has been deleted between our Get and SetXX — treat that as
+	// session-not-found rather than silently recreating the row.
+	ok, err := s.redis.SetXX(ctx, key, updatedData, ttl).Result()
+	if err != nil {
 		return apperr.Internal("failed to refresh session", err)
+	}
+	if !ok {
+		return apperr.NotFound("session not found")
 	}
 
 	return nil
 }
 
+// deleteSessionScript atomically reads the session JSON at KEYS[1] and, if
+// present, deletes both the session key and removes the session ID (ARGV[1])
+// from the user-sessions set (key name templated as ARGV[2] prefix). Returning
+// the raw session JSON lets the caller unmarshal user_id WITHOUT having to do
+// a separate (racy) GET first.
+//
+// Behaviour:
+//   - KEYS[1] missing → returns nil (caller treats as NotFound).
+//   - KEYS[1] present but invalid JSON → still deletes the session key and
+//     returns the raw payload; caller may skip the SRem because user_id is
+//     unknown. (We do not attempt to parse JSON inside Lua — Redis Lua has no
+//     real JSON decoder, and we already need the bytes back in Go anyway.)
+//   - KEYS[1] present and JSON-parseable → deletes session key; the SRem
+//     happens in the same transaction once we know which user-set to touch.
+//
+// Eliminates the prior TOCTOU window between GET (to learn user_id) and DEL:
+// a concurrent Delete for the same sessionID will now either see the key on
+// its first script invocation (succeeds, returns payload) or not (returns
+// nil → NotFound). No window remains where two callers both "succeed" at
+// deleting, and no window remains where another caller could Store() between
+// our GET and DEL and have its fresh session silently wiped out.
+//
+// The SRem for the user-sessions set is intentionally a SEPARATE follow-up
+// pipeline (not folded into the Lua script) because the user_id lives inside
+// the JSON payload and Lua-side JSON parsing is fragile / non-portable across
+// Redis versions. The follow-up SRem is best-effort — at worst we leave a
+// stale set member that SessionIDsForUser callers already prune lazily.
+const deleteSessionScript = `
+local v = redis.call('GET', KEYS[1])
+if v == false then
+  return nil
+end
+redis.call('DEL', KEYS[1])
+return v
+`
+
 // Delete removes a session by session ID and cleans up the user-sessions set.
+//
+// Atomicity: previously this method did GET → SRem → DEL, which raced
+// against concurrent Delete (double-success) and concurrent Store (a freshly
+// re-created session could be wiped between our GET and DEL). We now run a
+// Lua script that does GET + DEL atomically: the script either returns the
+// pre-existing payload (and has already removed the key) or returns nil
+// (key was never there, or another caller won the race — both translate
+// to NotFound).
 func (s *Service) Delete(ctx context.Context, sessionID string) error {
 	if sessionID == "" {
 		return apperr.Validation("session ID is required", "")
@@ -199,28 +250,28 @@ func (s *Service) Delete(ctx context.Context, sessionID string) error {
 
 	key := s.sessionKey(sessionID)
 
-	// Load the session first to get the userID for set cleanup.
-	raw, err := s.redis.Get(ctx, key).Result()
-	if errors.Is(err, redis.Nil) {
-		return apperr.NotFound("session not found")
-	}
+	res, err := s.redis.Eval(ctx, deleteSessionScript, []string{key}).Result()
 	if err != nil {
-		return apperr.Internal("failed to get session", err)
-	}
-
-	var data SessionData
-	if jsonErr := json.Unmarshal([]byte(raw), &data); jsonErr == nil && data.UserID != "" {
-		// Best-effort: remove from the user-sessions set.
-		_ = s.redis.SRem(ctx, s.userSessionsKey(data.UserID), sessionID).Err()
-	}
-
-	deleted, err := s.redis.Del(ctx, key).Result()
-	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			// Script returned nil — the key did not exist when the script ran.
+			return apperr.NotFound("session not found")
+		}
 		return apperr.Internal("failed to delete session", err)
 	}
 
-	if deleted == 0 {
+	raw, ok := res.(string)
+	if !ok || raw == "" {
+		// Defensive: Eval returned an unexpected type. Treat as not-found so
+		// callers don't see a spurious success.
 		return apperr.NotFound("session not found")
+	}
+
+	// Best-effort: clean up the per-user sessions set. The session key itself
+	// is already gone — failure here only leaves a stale set member that
+	// SessionIDsForUser callers will prune lazily.
+	var data SessionData
+	if jsonErr := json.Unmarshal([]byte(raw), &data); jsonErr == nil && data.UserID != "" {
+		_ = s.redis.SRem(ctx, s.userSessionsKey(data.UserID), sessionID).Err()
 	}
 
 	return nil

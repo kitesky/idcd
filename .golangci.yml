@@ -9,10 +9,11 @@ linters:
   enable:
     - errcheck
     - govet
-    - staticcheck
+    - staticcheck       # also covers gosimple rules in v2 (merged upstream)
     - unused
     - misspell
     - ineffassign
+    - bodyclose         # P3: net/http response body close — clear bug catcher
 
   settings:
     errcheck:
@@ -34,6 +35,7 @@ linters:
       - path: _test\.go
         linters:
           - errcheck
+          - bodyclose       # tests may legitimately leak bodies in synthetic flows
           - unused          # test 里的 mock 类型/未来 fixture scaffolding 容忍
       - path: cmd/
         linters:

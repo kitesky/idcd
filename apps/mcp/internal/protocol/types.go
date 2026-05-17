@@ -48,8 +48,15 @@ type ToolCallParams struct {
 	Arguments map[string]any `json:"arguments,omitempty"`
 }
 
+// ToolCallResult is the MCP tools/call response payload. When IsError is true
+// the call ran but the tool reported a recoverable failure (bad input, missing
+// API credential, upstream API rejected the request, etc.) — this is distinct
+// from a JSON-RPC protocol-level Error (which signals a server bug or auth
+// failure at the transport layer). MCP clients are expected to surface IsError
+// results to the user without treating them as transport faults.
 type ToolCallResult struct {
 	Content []ContentItem `json:"content"`
+	IsError bool          `json:"isError,omitempty"`
 }
 
 type ContentItem struct {

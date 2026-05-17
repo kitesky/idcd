@@ -1,15 +1,21 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine3.20 AS builder
 
 WORKDIR /app
 
 # Copy workspace files
 COPY go.work go.work.sum ./
 
-# Copy all packages
-COPY packages/ packages/
+# Pre-fetch dependencies in a cacheable layer.
+# Copying only go.mod / go.sum first means a source-only change in apps/agent
+# (cmd/ internal/ etc.) doesn't bust `go mod download` (~30s saved).
+# Use GOWORK=off so the per-module download doesn't require every workspace
+# `use` directory to be present yet.
+COPY apps/agent/go.mod apps/agent/go.sum apps/agent/
+RUN cd apps/agent && GOWORK=off go mod download
 
-# Copy agent app
+# Copy packages (workspace deps) + remaining agent source
+COPY packages/ packages/
 COPY apps/agent/ apps/agent/
 
 # Build the binary
@@ -17,7 +23,7 @@ WORKDIR /app/apps/agent
 RUN go build -o /bin/agent ./cmd/agent/
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
 # wget for HEALTHCHECK on agent's loopback /health endpoint (port 9101).
 RUN apk add --no-cache ca-certificates tzdata wget \
@@ -27,7 +33,11 @@ COPY --from=builder /bin/agent /bin/agent
 
 USER 10001:10001
 
-EXPOSE 8085
+# EXPOSE is informational only; actual ports are bound at runtime by the agent.
+# The agent has no public listener — /health is bound to 127.0.0.1:9101 (or
+# AGENT_HEALTH_PORT) for local tooling (idcd-agent-ctl) and the in-container
+# HEALTHCHECK below. Nothing should be `docker -p` published.
+# (No EXPOSE directive — declaring 8085 was incorrect; agent does not listen there.)
 
 # Agent exposes /health on 127.0.0.1:9101 (or AGENT_HEALTH_PORT). See startHealthServer().
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

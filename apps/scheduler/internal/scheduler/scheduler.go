@@ -15,7 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"math/rand"
 	"time"
 
@@ -80,6 +80,7 @@ type Scheduler struct {
 	pool         *pgxpool.Pool
 	monitorStore MonitorStore
 	nodeID       string // optional, used to label scheduler_is_leader{node}
+	logger       *slog.Logger
 }
 
 // Config holds Scheduler configuration.
@@ -93,10 +94,18 @@ type Config struct {
 	// when empty the leader gauge falls back to "unknown" so the label cardinality
 	// stays bounded if the wiring isn't fully plumbed yet.
 	NodeID string
+	// Logger is the structured logger used by the scheduler. Optional — when
+	// nil it falls back to slog.Default() so existing callers (and tests) keep
+	// working without forcing them to wire a logger.
+	Logger *slog.Logger
 }
 
 // New creates a Scheduler instance.
 func New(cfg Config) *Scheduler {
+	lg := cfg.Logger
+	if lg == nil {
+		lg = slog.Default().With("component", "scheduler")
+	}
 	return &Scheduler{
 		leader:       cfg.Leader,
 		selector:     cfg.Selector,
@@ -104,7 +113,17 @@ func New(cfg Config) *Scheduler {
 		pool:         cfg.Pool,
 		monitorStore: cfg.MonitorStore,
 		nodeID:       cfg.NodeID,
+		logger:       lg,
 	}
+}
+
+// SetLogger swaps the scheduler's structured logger. Useful for tests or for
+// late-binding a request-scoped logger; safe to call before Run.
+func (s *Scheduler) SetLogger(l *slog.Logger) {
+	if l == nil {
+		return
+	}
+	s.logger = l
 }
 
 // metricNode returns the label value to use for scheduler_is_leader{node}.
@@ -120,7 +139,7 @@ func (s *Scheduler) metricNode() string {
 // Only runs if this instance is the leader.
 // Blocks until ctx is cancelled (or leadership is lost).
 func (s *Scheduler) Run(ctx context.Context) error {
-	log.Println("[scheduler] Starting scheduler loop")
+	s.logger.Info("starting scheduler loop")
 
 	// Try to acquire leadership
 	isLeader, err := s.leader.Acquire(ctx)
@@ -130,12 +149,12 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	}
 	if !isLeader {
 		MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
-		log.Println("[scheduler] Not the leader, exiting")
+		s.logger.Info("not the leader, exiting")
 		return nil
 	}
 
 	MetricsIsLeader.WithLabelValues(s.metricNode()).Set(1)
-	log.Println("[scheduler] Acquired leadership, starting work goroutines")
+	s.logger.Info("acquired leadership, starting work goroutines")
 
 	// workCtx is cancelled either when the parent ctx is cancelled OR when
 	// renewLeadership detects we lost the lock. All work goroutines (today:
@@ -157,9 +176,9 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	// leadership is lost (renewLeadership cancels workCtx).
 	<-workCtx.Done()
 	if ctx.Err() != nil {
-		log.Println("[scheduler] Context cancelled, releasing leadership")
+		s.logger.Info("context cancelled, releasing leadership")
 	} else {
-		log.Println("[scheduler] Leadership lost, stopping")
+		s.logger.Info("leadership lost, stopping")
 	}
 
 	// Release leadership best-effort. Use a fresh background ctx because
@@ -167,7 +186,7 @@ func (s *Scheduler) Run(ctx context.Context) error {
 	releaseCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := s.leader.Release(releaseCtx); err != nil {
-		log.Printf("[scheduler] Failed to release leadership: %v", err)
+		s.logger.Error("failed to release leadership", "err", err)
 	}
 	MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
 
@@ -198,7 +217,7 @@ func (s *Scheduler) renewLeadership(ctx context.Context, cancelWork context.Canc
 			if err := s.leader.Renew(ctx); err != nil {
 				MetricsLeaderRenewals.WithLabelValues("fail").Inc()
 				MetricsIsLeader.WithLabelValues(s.metricNode()).Set(0)
-				log.Printf("[scheduler] Failed to renew leadership: %v — cancelling work", err)
+				s.logger.Error("failed to renew leadership, cancelling work", "err", err)
 				cancelWork()
 				return
 			}
@@ -213,8 +232,8 @@ func (s *Scheduler) renewLeadership(ctx context.Context, cancelWork context.Canc
 //
 // Returns as soon as ctx is cancelled (parent shutdown OR leader loss).
 func (s *Scheduler) monitorPoller(ctx context.Context) {
-	log.Println("[scheduler] monitorPoller started")
-	defer log.Println("[scheduler] monitorPoller stopped")
+	s.logger.Info("monitor poller started")
+	defer s.logger.Info("monitor poller stopped")
 
 	ticker := time.NewTicker(monitorPollInterval)
 	defer ticker.Stop()
@@ -254,7 +273,7 @@ func (s *Scheduler) pollMonitors(ctx context.Context) {
 	monitors, err := s.monitorStore.ListActiveMonitorsDue(ctx)
 	if err != nil {
 		MetricsMonitorPolls.WithLabelValues("error").Inc()
-		log.Printf("[scheduler] monitorPoller: list due monitors error: %v", err)
+		s.logger.Error("monitor poller: list due monitors failed", "err", err)
 		return
 	}
 	MetricsMonitorPolls.WithLabelValues("ok").Inc()
@@ -265,7 +284,7 @@ func (s *Scheduler) pollMonitors(ctx context.Context) {
 			return
 		}
 		if err := s.dispatchMonitorTask(ctx, m); err != nil {
-			log.Printf("[scheduler] monitorPoller: dispatch monitor %s error: %v", m.ID, err)
+			s.logger.Error("monitor poller: dispatch monitor failed", "monitor_id", m.ID, "err", err)
 		}
 	}
 }
@@ -279,16 +298,23 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		count = 1
 	}
 
-	// Build base params from monitor config (best-effort JSON object).
+	// Build base params from monitor config. Parse failure means the row
+	// is corrupt — log it so we can see persistent decoding issues instead
+	// of silently dispatching the monitor with an empty params object.
 	baseParams := map[string]any{}
 	if len(m.Config) > 0 {
-		_ = json.Unmarshal(m.Config, &baseParams)
+		if err := json.Unmarshal(m.Config, &baseParams); err != nil {
+			s.logger.Error("dispatch monitor task: malformed config", "monitor_id", m.ID, "err", err)
+		}
 	}
 
 	// Map monitor type to probe type (some types share probe mechanics).
 	probeType := monitorTypeToProbeType(m.Type)
 
-	paramsJSON, _ := json.Marshal(baseParams)
+	paramsJSON, err := json.Marshal(baseParams)
+	if err != nil {
+		return fmt.Errorf("marshal params: %w", err)
+	}
 
 	for i := 0; i < count; i++ {
 		if err := ctx.Err(); err != nil {
@@ -307,7 +333,7 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		}
 		nodeID, err := s.selector.SelectNode(ctx, task)
 		if err != nil {
-			log.Printf("[scheduler] dispatchMonitorTask: select node for monitor %s: %v", m.ID, err)
+			s.logger.Error("dispatch monitor task: select node failed", "monitor_id", m.ID, "err", err)
 			continue
 		}
 		task.NodeID = nodeID
@@ -322,7 +348,7 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 			"params":     string(paramsJSON),
 		}
 		if _, err := s.stream.Add(ctx, ProbeTasksStream, vals); err != nil {
-			log.Printf("[scheduler] dispatchMonitorTask: push to stream for monitor %s: %v", m.ID, err)
+			s.logger.Error("dispatch monitor task: push to stream failed", "monitor_id", m.ID, "err", err)
 		}
 	}
 	return nil

@@ -7,6 +7,7 @@ import (
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"math/big"
@@ -298,6 +299,7 @@ func newHarness(t *testing.T, order *Order, withRealTSAEndpoint bool) *harness {
 		Orders:             h.orders,
 		Reports:            h.reports,
 		AttestationRecords: h.wal,
+		Observations:       syntheticObservationPool{},
 		Signer:             h.signer,
 		TSA:                h.tsa,
 		SignerCert:         cert,
@@ -621,6 +623,34 @@ func TestEncodeNodesJSON(t *testing.T) {
 	}
 	if got := string(encodeNodesJSON([]string{"a", "b"})); got != `["a","b"]` {
 		t.Fatalf(`["a","b"] → %q`, got)
+	}
+}
+
+// TestEncodeNodesJSON_SpecialChars locks in the contract that node IDs
+// containing JSON-significant or control characters must round-trip
+// through json.Unmarshal cleanly. Before the encoding/json conversion
+// the function wrote raw bytes inside "..." which produced syntactically
+// broken JSON for quotes / backslashes / control bytes.
+func TestEncodeNodesJSON_SpecialChars(t *testing.T) {
+	in := []string{
+		`with"quote`,
+		`back\slash`,
+		"tab\there",
+		"newline\nhere",
+		"unicode-中文",
+	}
+	out := encodeNodesJSON(in)
+	var round []string
+	if err := json.Unmarshal(out, &round); err != nil {
+		t.Fatalf("encoded JSON is not parseable: %v\nbytes=%s", err, string(out))
+	}
+	if len(round) != len(in) {
+		t.Fatalf("round trip len = %d, want %d", len(round), len(in))
+	}
+	for i := range in {
+		if round[i] != in[i] {
+			t.Fatalf("round[%d] = %q, want %q", i, round[i], in[i])
+		}
 	}
 }
 

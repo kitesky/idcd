@@ -115,7 +115,7 @@ func (f *FeishuChannel) post(ctx context.Context, data []byte) error {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := f.client.Do(httpReq)
+	resp, err := f.client.Do(httpReq) //nolint:bodyclose // body closed via drainAndClose helper
 	if err != nil {
 		return fmt.Errorf("feishu: do request: %w", err)
 	}

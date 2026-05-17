@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
@@ -34,17 +33,26 @@ func httpDef() protocol.ToolDefinition {
 
 func handleHTTPFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		targetURL, _ := args["url"].(string)
-		if targetURL == "" {
-			return "", errors.New("url is required")
+		rawURL, _ := args["url"].(string)
+		targetURL, err := validateURL(rawURL)
+		if err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 		method := "GET"
 		if v, ok := args["method"].(string); ok && v != "" {
-			method = v
+			// Whitelist verbs — apiclient appends to a URL but the
+			// downstream service uses the method as-is; an injected
+			// "GET\r\nX-Admin: 1" would smuggle a header.
+			switch v {
+			case "GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS":
+				method = v
+			default:
+				return "", fmt.Errorf("%w: unsupported method %q", protocol.ErrToolFailure, v)
+			}
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		var result struct {
@@ -58,7 +66,7 @@ func handleHTTPFunc(client *apiclient.Client) protocol.ToolHandler {
 
 		body := map[string]any{"url": targetURL, "method": method}
 		if err := client.Post(ctx, "/v1/probe/http", body, &result); err != nil {
-			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		tls := ""

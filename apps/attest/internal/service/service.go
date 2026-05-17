@@ -22,6 +22,17 @@ type Config struct {
 	Reports            ReportRepo
 	AttestationRecords attestrec.Repository
 
+	// Observations is the cross-schema (idcd_main.monitor_check) read
+	// pool used by step 1 of the pipeline. Required when GenerateVerdict
+	// is exercised; tests that stop before step 1 may leave it nil.
+	// Construct via service.NewObservationPoolFromEnv(ctx) or pass a
+	// custom ObservationPool for integration tests.
+	//
+	// Replaces the old package-level singleton (observationPoolOnce /
+	// observationPoolMu) which made parallel testing fragile and made
+	// graceful shutdown hard.
+	Observations ObservationPool
+
 	// External adapters
 	Signer sign.Signer
 	// TSA is a single-provider view. Wrap *tsa.Multi behind a small
@@ -33,10 +44,12 @@ type Config struct {
 	CertChain  []*x509.Certificate
 
 	// TSAEndpoint is the URL pdfsign re-fetches during step 8 to embed
-	// the RFC3161 token into the PDF. For S2 MVP we pre-fetch the token
-	// in step 7 for audit / WAL purposes and let pdfsign issue a second
-	// HTTP call — the duplicate token cost is small. A future iteration
-	// can extend pdfsign to accept the pre-fetched token.
+	// the RFC3161 token into the PDF. Step 7 fetches its OWN token over
+	// the raw PDF digest for D4 WAL audit; step 8's token is over the
+	// inner CMS EncryptedDigest. The two tokens cover different message
+	// imprints by construction, so pdfsign cannot reuse step 7's blob.
+	// The duplicate-fetch cost is exposed via TSADuplicateFetchTotal()
+	// so ops can size TSA quotas correctly.
 	TSAEndpoint string
 
 	Archiver Archiver

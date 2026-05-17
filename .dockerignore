@@ -1,0 +1,73 @@
+# Root .dockerignore — applies to every `docker build` rooted here.
+# Keep the build context small: faster uploads to BuildKit / remote daemons,
+# smaller cache layers, less risk of accidentally COPYing secrets / .git.
+
+# ─── Version control ────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+
+# ─── Node / Next.js ─────────────────────────────────────────────────────────
+**/node_modules/
+**/.next/
+**/.turbo/
+**/.pnpm-store/
+
+# ─── Build / dist artifacts ─────────────────────────────────────────────────
+**/dist/
+**/build/
+**/out/
+**/bin/
+**/tmp/
+coverage/
+**/coverage/
+*.log
+
+# ─── Python (any helper scripts) ────────────────────────────────────────────
+**/__pycache__/
+**/.venv/
+**/.mypy_cache/
+**/.pytest_cache/
+*.pyc
+
+# ─── Secrets / env ──────────────────────────────────────────────────────────
+# Ignore all .env* but keep example templates so onboarding still works in-image.
+.env
+.env.*
+!.env.example
+!**/.env.example
+
+# ─── Docs / markdown ────────────────────────────────────────────────────────
+# Strip prose from the build context. Keep README.md so image metadata / OCI
+# label tooling can reference it.
+*.md
+!README.md
+docs/
+CHANGELOG.md
+TASKS.md
+
+# ─── Frontend tests (web app only — Go _test.go MUST stay) ──────────────────
+apps/web/test/
+apps/web/**/__tests__/
+apps/web/**/*.test.ts
+apps/web/**/*.test.tsx
+apps/web/**/*.spec.ts
+apps/web/**/*.spec.tsx
+
+# ─── IDE / editor ───────────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+
+# ─── CI / repo meta (no value in image) ─────────────────────────────────────
+.github/
+.claude/
+.golangci.yml
+coverage.html
+
+# ─── Dockerfile / compose (we COPY only what we need) ───────────────────────
+**/Dockerfile
+**/.dockerignore
+infra/docker/

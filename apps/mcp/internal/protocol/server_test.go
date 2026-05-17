@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -574,6 +576,68 @@ func TestPrincipalReachesToolHandler(t *testing.T) {
 // ─────────────────────────────────────────────
 // Global config path (back-compat for cmd/mcp/main.go)
 // ─────────────────────────────────────────────
+
+// TestToolsCall_ErrToolFailureBecomesIsError verifies the MCP-spec contract:
+// a tool handler returning a wrapped ErrToolFailure must be surfaced as a
+// successful Response with Result.IsError=true, NOT as a JSON-RPC protocol
+// error. This is what lets the client show "API key missing" to the user
+// without treating the call as a transport-level failure.
+func TestToolsCall_ErrToolFailureBecomesIsError(t *testing.T) {
+	srv := NewServer()
+	srv.Register(ToolDefinition{Name: "boom", Description: "x", InputSchema: map[string]any{}},
+		func(ctx context.Context, _ map[string]any) (string, error) {
+			return "", fmt.Errorf("%w: api key required", ErrToolFailure)
+		})
+
+	resp := runRequest(t, srv,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"boom","arguments":{}}}`)
+	if resp == nil {
+		t.Fatal("nil response")
+	}
+	if resp.Error != nil {
+		t.Fatalf("expected Result, got JSON-RPC error: %+v", resp.Error)
+	}
+	result, ok := resp.Result.(map[string]any)
+	if !ok {
+		t.Fatalf("result not map: %T", resp.Result)
+	}
+	if v, _ := result["isError"].(bool); !v {
+		t.Errorf("isError missing or false; result=%v", result)
+	}
+	content, _ := result["content"].([]any)
+	if len(content) == 0 {
+		t.Fatal("content empty")
+	}
+	item, _ := content[0].(map[string]any)
+	if text, _ := item["text"].(string); !strings.Contains(text, "api key required") {
+		t.Errorf("content text = %q, want to contain 'api key required'", text)
+	}
+	// The sentinel prefix ("mcp tool: failure: ") must be stripped from the
+	// user-visible content — it's a routing marker, not a display string.
+	if text, _ := item["text"].(string); strings.HasPrefix(text, "mcp tool:") {
+		t.Errorf("content text leaks sentinel prefix: %q", text)
+	}
+}
+
+// TestToolsCall_PlainErrorStaysJSONRPCError guarantees that bare (non-tool)
+// errors still surface as JSON-RPC ErrInternalError — we don't want to silently
+// hide server-side bugs as "tool failures".
+func TestToolsCall_PlainErrorStaysJSONRPCError(t *testing.T) {
+	srv := NewServer()
+	srv.Register(ToolDefinition{Name: "crash", Description: "x", InputSchema: map[string]any{}},
+		func(ctx context.Context, _ map[string]any) (string, error) {
+			return "", errors.New("unexpected nil pointer")
+		})
+
+	resp := runRequest(t, srv,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"crash","arguments":{}}}`)
+	if resp == nil || resp.Error == nil {
+		t.Fatalf("expected JSON-RPC error response, got: %+v", resp)
+	}
+	if resp.Error.Code != ErrInternalError {
+		t.Errorf("error code = %d, want %d", resp.Error.Code, ErrInternalError)
+	}
+}
 
 func TestLegacyHandlers_UseGlobalConfig(t *testing.T) {
 	srv := newTestServer()

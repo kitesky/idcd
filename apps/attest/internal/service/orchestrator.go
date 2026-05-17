@@ -7,14 +7,33 @@ import (
 	"crypto/sha256"
 	"encoding/base32"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/kite365/idcd/lib/attest/pdfsign"
 	attestrec "github.com/kite365/idcd/lib/attest/record"
 )
+
+// tsaDuplicateFetchTotal counts pipeline runs in which step 7 fetched a
+// TSA token for WAL audit and step 8 (pdfsign.Sign) fetched a SECOND
+// token for embedding into the PAdES-T signature. See orchestrator step
+// 7 comment for the architectural reason — the two tokens cover
+// different bytes (raw PDF digest vs CMS EncryptedDigest), so they
+// cannot be the same blob; this counter just exposes the operational
+// cost (2× TSA quota per verdict) for ops dashboards / alerts.
+//
+// Exposed as an atomic uint64 (no Prometheus dep in lib/attest today);
+// /healthz handlers or future metrics handlers can read it via the
+// TSADuplicateFetchTotal accessor.
+var tsaDuplicateFetchTotal atomic.Uint64
+
+// TSADuplicateFetchTotal returns the cumulative number of duplicate
+// TSA fetches observed since process start. See tsaDuplicateFetchTotal.
+func TSADuplicateFetchTotal() uint64 { return tsaDuplicateFetchTotal.Load() }
 
 // GenerateVerdict drives the 10-step verdict pipeline for one order. It
 // is safe to call repeatedly on the same orderID — the attestation_record
@@ -31,7 +50,10 @@ import (
 //  6. KMS sign                                    — WAL: ActionSigned
 //  7. RFC3161 TSA stamp                           — WAL: ActionTSAStamped
 //  8. Embed signature + TSA into PDF              — pure compute; not in WAL
-//     (pdfsign re-fetches TSA — see SignRequest TSAEndpoint TODO)
+//     (pdfsign re-fetches TSA — NECESSARY: step 7's token is over the
+//     raw PDF digest, step 8's must be over the inner CMS
+//     EncryptedDigest; same imprint impossible. Cost surfaced via
+//     TSADuplicateFetchTotal counter.)
 //  9. Blockchain anchor                           — skipped in S2 MVP
 // 10. S3 WORM archive                             — WAL: ActionS3Archived
 //
@@ -77,7 +99,7 @@ func (s *Service) GenerateVerdict(ctx context.Context, orderID string) error {
 	replayer := &attestrec.Replayer{Repo: s.cfg.AttestationRecords}
 
 	// ----- Steps 1-4: deterministic reads / renders ------------------
-	obs, err := fetchObservations(ctx, order)
+	obs, err := fetchObservations(ctx, s.cfg.Observations, order)
 	if err != nil {
 		return s.failPipeline(ctx, order, "fetch observations", err)
 	}
@@ -113,9 +135,27 @@ func (s *Service) GenerateVerdict(ctx context.Context, orderID string) error {
 	if err != nil {
 		return s.failPipeline(ctx, order, "tsa stamp", err)
 	}
-	_ = tsaToken // pre-fetched for audit trail; pdfsign re-fetches in step 8 (TODO: extend pdfsign API)
 	rep.TSAProvider = s.cfg.TSA.Name()
 	rep.TSATime = tsaIssuedAt
+
+	// Architectural note (P1#8 follow-up): step 7's TSA token is over the
+	// raw PDF digest (rep.ContentHash); step 8 (pdfsign) needs a token
+	// over the inner CMS EncryptedDigest, which is computed AFTER the
+	// KMS sign inside pdfsign — these are two DIFFERENT message imprints
+	// by construction, so the upstream digitorus/pdfsign cannot be
+	// taught to "reuse" tsaToken even with an API extension. Step 7
+	// remains for D4 WAL audit (tsa_response row, replay safety); step
+	// 8 must re-fetch. We surface the duplicate-fetch cost via a
+	// counter + structured log so ops can size TSA quotas correctly.
+	_ = tsaToken
+	tsaDuplicateFetchTotal.Add(1)
+	if s.cfg.TSAEndpoint != "" {
+		s.cfg.Logger.Debug("attest/service: step-7 TSA token archived; step-8 pdfsign will fetch a second token (different message imprint by design)",
+			slog.String("report_id", rep.ID),
+			slog.String("tsa_provider", rep.TSAProvider),
+			slog.Uint64("dup_fetch_total", tsaDuplicateFetchTotal.Load()),
+		)
+	}
 
 	// ----- Step 8: embed signature + TSA into PDF -------------------
 	signedPDF, err := pdfsign.Sign(ctx, pdfsign.SignRequest{
@@ -366,21 +406,28 @@ func newReportID() string {
 // Lives here (not in stubs) because the orchestrator owns the column
 // shape even after the cross-validation logic is replaced with a real
 // implementation.
+//
+// Node IDs flow in from idcd_main.monitor_check.node_results.node_id —
+// nominally ASCII slugs ("node-cn-bj"), but the source column is text
+// and operator typos or future renaming policies could introduce
+// quotes, backslashes, or control bytes. We delegate to encoding/json
+// so any such input round-trips correctly (JSON-escaped) instead of
+// producing a syntactically broken array that breaks downstream
+// verdict_report.nodes_used consumers.
 func encodeNodesJSON(nodes []string) []byte {
 	if len(nodes) == 0 {
 		return []byte("[]")
 	}
-	var buf strings.Builder
-	buf.WriteByte('[')
-	for i, n := range nodes {
-		if i > 0 {
-			buf.WriteByte(',')
-		}
-		buf.WriteByte('"')
-		// no escaping needed — node IDs are ASCII slugs
-		buf.WriteString(n)
-		buf.WriteByte('"')
+	// json.Marshal on a []string never fails for any UTF-8 input; for
+	// non-UTF-8 bytes it emits U+FFFD which is still valid JSON and
+	// preferable to a malformed array.
+	out, err := json.Marshal(nodes)
+	if err != nil {
+		// Defensive: fall back to an empty array rather than panicking.
+		// This branch is unreachable for json.Marshal([]string), but
+		// keeps the function total in the face of future signature
+		// changes.
+		return []byte("[]")
 	}
-	buf.WriteByte(']')
-	return []byte(buf.String())
+	return out
 }

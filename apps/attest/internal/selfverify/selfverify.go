@@ -102,6 +102,14 @@ const (
 
 // Config bundles the dependencies the Worker needs. All fields except
 // Logger are required; New panics if a required field is nil.
+//
+// D6 isolation contract: this struct deliberately does NOT carry a
+// sign.Verifier, sign.Signer, kms client, or any cryptographic
+// material. The worker MUST exercise the public /verify endpoint
+// (VerifyEndpoint below) and rely on that handler to construct its OWN
+// Verifier from its OWN config. Adding a KMS dependency here would
+// re-couple the Self-Verify Worker to the Generator's keypath and
+// silently regress D6 — keep this surface narrow.
 type Config struct {
 	Lister             PendingReportLister
 	Updater            ReportUpdater

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,13 +29,14 @@ func ipDef() protocol.ToolDefinition {
 
 func handleIPFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		address, _ := args["address"].(string)
-		if address == "" {
-			return "", errors.New("address is required")
+		rawAddress, _ := args["address"].(string)
+		address, err := validateTarget(rawAddress)
+		if err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		var result struct {
@@ -50,7 +50,7 @@ func handleIPFunc(client *apiclient.Client) protocol.ToolHandler {
 		params := url.Values{}
 		params.Set("q", address)
 		if err := client.Get(ctx, "/v1/info/ip", params, &result); err != nil {
-			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		var sb strings.Builder

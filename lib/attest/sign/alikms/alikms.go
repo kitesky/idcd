@@ -20,13 +20,13 @@ import (
 	"fmt"
 	"hash/fnv"
 	"strings"
-	"sync"
 
 	openapiutil "github.com/alibabacloud-go/darabonba-openapi/v2/utils"
 	kmssdk "github.com/alibabacloud-go/kms-20160120/v3/client"
 	teasdk "github.com/alibabacloud-go/tea/tea"
 
 	"github.com/kite365/idcd/lib/attest/sign"
+	"github.com/kite365/idcd/lib/attest/sign/internal/idempcache"
 )
 
 // KMSClient 抽象本包使用的阿里云 KMS 调用面，便于测试注入 mock。
@@ -70,8 +70,10 @@ type signer struct {
 	algorithm string
 
 	// idempCache：同 awskms.signer.idempCache，进程内 (idempotencyKey →
-	// signature) 缓存。
-	idempCache sync.Map
+	// signature) bounded 缓存。FIFO 驱逐 + cap=10000，长跑（90 天 KMS 实例
+	// 生命周期）下内存恒定；驱逐窗口远大于阿里云 KMS 服务端去重窗口，
+	// 不会触发重复签名审计。
+	idempCache *idempcache.Cache
 }
 
 // verifier 是 sign.Verifier 的阿里云 KMS 实现。
@@ -104,7 +106,12 @@ func NewVerifier(cfg Config) (sign.Verifier, error) {
 
 // NewWithClient 用自定义 KMSClient 构造 Signer，专供测试 / DI。
 func NewWithClient(client KMSClient, keyID, algorithm string) sign.Signer {
-	return &signer{client: client, keyID: keyID, algorithm: algorithm}
+	return &signer{
+		client:     client,
+		keyID:      keyID,
+		algorithm:  algorithm,
+		idempCache: idempcache.New(0),
+	}
 }
 
 // NewVerifierWithClient 用自定义 KMSClient 构造 Verifier，专供测试 / DI。
@@ -173,15 +180,15 @@ func (s *signer) Sign(ctx context.Context, digest []byte, idempotencyKey string)
 	}
 
 	if cached, ok := s.idempCache.Load(idempotencyKey); ok {
-		return append([]byte(nil), cached.([]byte)...), nil
+		return cached, nil
 	}
 
 	sig, err := s.client.Sign(ctx, s.keyID, s.algorithm, digest, idempotencyKey)
 	if err != nil {
 		return nil, mapErr(err)
 	}
-	stored, _ := s.idempCache.LoadOrStore(idempotencyKey, append([]byte(nil), sig...))
-	return append([]byte(nil), stored.([]byte)...), nil
+	stored, _ := s.idempCache.LoadOrStore(idempotencyKey, sig)
+	return stored, nil
 }
 
 func (v *verifier) KeyID() string     { return v.keyID }

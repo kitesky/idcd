@@ -318,11 +318,15 @@ func TestService_ErrorCases(t *testing.T) {
 		assert.Contains(t, err.Error(), "unexpected signing method")
 	})
 
-	t.Run("sign with zero expiry", func(t *testing.T) {
-		// Test edge case with zero expiry duration
+	t.Run("sign with zero expiry is rejected", func(t *testing.T) {
+		// Zero / negative expiry almost always means a config bug. Sign
+		// now refuses rather than silently minting an already-expired token.
 		_, err := service.Sign("u_test", "s_test", 0)
-		// Should still work since we don't validate positive expiry in Sign
-		require.NoError(t, err)
+		require.Error(t, err)
+		assert.Contains(t, err.Error(), "expiry must be positive")
+
+		_, err = service.Sign("u_test", "s_test", -1*time.Second)
+		require.Error(t, err)
 	})
 
 	t.Run("verify with malformed token parts", func(t *testing.T) {

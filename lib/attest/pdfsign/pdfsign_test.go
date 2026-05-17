@@ -12,6 +12,7 @@ import (
 	"crypto/x509/pkix"
 	"encoding/asn1"
 	"errors"
+	"fmt"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -263,10 +264,19 @@ func TestIsTSAError(t *testing.T) {
 		want bool
 	}{
 		{"nil", nil, false},
-		{"unrelated", errors.New("xref broken"), false},
+		{"unrelated xref", errors.New("xref broken"), false},
+		// Prior implementation used bytes.Contains and falsely fired on
+		// any substring containing "tsa" / "TSA". Lock in stricter prefix
+		// semantics so a PDF title field reading "Tsa contract.pdf"
+		// surfacing in an error message no longer misclassifies.
+		{"unrelated mentions tsa as substring", errors.New("write xref: 'Tsa Contract.pdf'"), false},
 		{"get timestamp", errors.New("get timestamp: blah"), true},
 		{"non success", errors.New("non success response (503)"), true},
-		{"TSA token parse", errors.New("failed to parse timestamp"), true},
+		{"failed to parse timestamp", errors.New("failed to parse timestamp"), true},
+		{"parse timestamp token", errors.New("parse timestamp token: bad ASN.1"), true},
+		{"failed to create request", errors.New("failed to create request: http"), true},
+		// Wrapped (Unwrap chain) — exercise the multi-level descent.
+		{"wrapped", fmt.Errorf("outer wrapping: %w", errors.New("get timestamp: inner")), true},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

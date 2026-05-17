@@ -19,7 +19,6 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"sync"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
@@ -30,6 +29,7 @@ import (
 	smithyhttp "github.com/aws/smithy-go/transport/http"
 
 	"github.com/kite365/idcd/lib/attest/sign"
+	"github.com/kite365/idcd/lib/attest/sign/internal/idempcache"
 )
 
 // KMSClient 抽象本包使用的 AWS KMS 调用面，便于测试注入 mock。
@@ -67,15 +67,24 @@ type Config struct {
 }
 
 // signer 是 sign.Signer 的 AWS KMS 实现。并发安全：client 自身保证；
-// idempCache 是 sync.Map。
+// idempCache 由 idempcache.Cache 内部锁保证。
 type signer struct {
 	client    KMSClient
 	keyID     string
 	algorithm string
 
 	// idempCache 是 (idempotencyKey → signature) 进程内缓存；重试同
-	// key 时直接返回缓存值，不打 KMS。worker 重启会丢失，外层 WAL 兜底。
-	idempCache sync.Map
+	// key 时直接返回缓存值，不打 KMS。
+	//
+	// 用 bounded idempcache.Cache（FIFO，cap=10000）替代裸 sync.Map：
+	// KMS 实例在 D11 下生命周期 90 天，长跑会无限累积 sync.Map 条目；
+	// FIFO 驱逐保证 worker 内存恒定，且因 KMS 服务端去重窗口（5-15min）
+	// 远小于 10000 条所能保留的时间跨度，驱逐永远发生在 KMS 已经忘记
+	// 该 idempotency key 之后 — 触发驱逐再重签也不会出现 CloudTrail
+	// duplicate（KMS 会按新的 invocation ID 当成新请求处理，但 D4 外
+	// 层 WAL 已 short-circuit，实际不会到这一步）。worker 重启会丢失，
+	// 外层 WAL 兜底。
+	idempCache *idempcache.Cache
 }
 
 // verifier 是 sign.Verifier 的 AWS KMS 实现。
@@ -109,7 +118,12 @@ func NewVerifier(cfg Config) (sign.Verifier, error) {
 
 // NewWithClient 用自定义 KMSClient 构造 Signer，专供测试 / DI。
 func NewWithClient(client KMSClient, keyID, algorithm string) sign.Signer {
-	return &signer{client: client, keyID: keyID, algorithm: algorithm}
+	return &signer{
+		client:     client,
+		keyID:      keyID,
+		algorithm:  algorithm,
+		idempCache: idempcache.New(0),
+	}
 }
 
 // NewVerifierWithClient 用自定义 KMSClient 构造 Verifier，专供测试 / DI。
@@ -180,9 +194,9 @@ func (s *signer) Sign(ctx context.Context, digest []byte, idempotencyKey string)
 		return nil, fmt.Errorf("%w: digest length %d, want %d for %s", sign.ErrInvalidInput, len(digest), want, s.algorithm)
 	}
 
-	// 命中缓存直接返回，不打 KMS。
+	// 命中缓存直接返回，不打 KMS。idempcache.Cache.Load 已做防御性拷贝。
 	if cached, ok := s.idempCache.Load(idempotencyKey); ok {
-		return append([]byte(nil), cached.([]byte)...), nil
+		return cached, nil
 	}
 
 	sig, err := s.client.Sign(ctx, s.keyID, s.algorithm, digest, idempotencyKey)
@@ -192,8 +206,8 @@ func (s *signer) Sign(ctx context.Context, digest []byte, idempotencyKey string)
 	// 用 LoadOrStore 处理同 key 并发 race — 第一个写入者赢，
 	// 后续以缓存值为准（KMS sign 是确定性的，理论上 sig 一致；即使
 	// 不一致以先到为准也不影响正确性，因为外层 WAL 只会用任一返回值）。
-	stored, _ := s.idempCache.LoadOrStore(idempotencyKey, append([]byte(nil), sig...))
-	return append([]byte(nil), stored.([]byte)...), nil
+	stored, _ := s.idempCache.LoadOrStore(idempotencyKey, sig)
+	return stored, nil
 }
 
 func (v *verifier) KeyID() string     { return v.keyID }

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,13 +29,14 @@ func whoisDef() protocol.ToolDefinition {
 
 func handleWhoisFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		query, _ := args["query"].(string)
-		if query == "" {
-			return "", errors.New("query is required")
+		rawQuery, _ := args["query"].(string)
+		query, err := validateTarget(rawQuery)
+		if err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		var result struct {
@@ -50,7 +50,7 @@ func handleWhoisFunc(client *apiclient.Client) protocol.ToolHandler {
 		params := url.Values{}
 		params.Set("q", query)
 		if err := client.Get(ctx, "/v1/info/whois", params, &result); err != nil {
-			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		var sb strings.Builder

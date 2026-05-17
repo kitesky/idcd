@@ -2,7 +2,6 @@ package handler
 
 import (
 	"context"
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -125,19 +124,20 @@ func TestHealthHandler_DeepHealth_NilDB(t *testing.T) {
 	}
 }
 
+type stubPinger struct{ err error }
+
+func (s stubPinger) Ping(_ context.Context) error { return s.err }
+
 func TestCheckPostgreSQL(t *testing.T) {
 	tests := []struct {
-		name        string
-		db          *sql.DB
+		name           string
+		db             PgPinger
 		expectedStatus string
-		expectError bool
+		expectError    bool
 	}{
-		{
-			name:           "nil database",
-			db:             nil,
-			expectedStatus: "error",
-			expectError:    true,
-		},
+		{name: "nil database", db: nil, expectedStatus: "error", expectError: true},
+		{name: "ping ok", db: stubPinger{}, expectedStatus: "ok", expectError: false},
+		{name: "ping fail", db: stubPinger{err: context.DeadlineExceeded}, expectedStatus: "error", expectError: true},
 	}
 
 	for _, tt := range tests {

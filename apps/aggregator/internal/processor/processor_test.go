@@ -1,8 +1,11 @@
 package processor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
+	"strings"
 	"testing"
 
 	"github.com/alicebob/miniredis/v2"
@@ -188,6 +191,45 @@ func TestProcessor_Process_summaryWrittenToResult(t *testing.T) {
 	})
 	if err != nil {
 		t.Errorf("expected nil (dedup skip), got %v", err)
+	}
+}
+
+// captureLogs returns a slog.Logger that writes JSON records into buf so
+// tests can assert the surface of non-fatal Warn-level sub-operation errors.
+func captureLogs(buf *bytes.Buffer) *slog.Logger {
+	return slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
+}
+
+func TestProcessor_parseResult_logsMalformedRaw(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Processor{logger: captureLogs(&buf)}
+
+	// Invalid JSON in "raw" must surface as a Warn log, not be silently dropped.
+	_ = p.parseResult(map[string]any{"raw": "{not-json"})
+
+	out := buf.String()
+	if !strings.Contains(out, "malformed payload") || !strings.Contains(out, `"field":"raw"`) {
+		t.Errorf("expected 'malformed payload' warning for raw, got: %s", out)
+	}
+}
+
+func TestProcessor_parseResult_logsMalformedSummary(t *testing.T) {
+	var buf bytes.Buffer
+	p := &Processor{logger: captureLogs(&buf)}
+
+	_ = p.parseResult(map[string]any{"summary": "}}}"})
+
+	out := buf.String()
+	if !strings.Contains(out, "malformed payload") || !strings.Contains(out, `"field":"summary"`) {
+		t.Errorf("expected 'malformed payload' warning for summary, got: %s", out)
+	}
+}
+
+func TestProcessor_SetLogger_nilFallsBackToDefault(t *testing.T) {
+	p := New(nil, nil)
+	p.SetLogger(nil) // must not panic, must not leave nil logger
+	if p.log() == nil {
+		t.Error("log() returned nil after SetLogger(nil)")
 	}
 }
 

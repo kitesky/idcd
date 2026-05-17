@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,30 @@ import (
 	"github.com/kite365/idcd/apps/mcp/internal/tools"
 	"github.com/kite365/idcd/lib/shared/config"
 )
+
+func envInt64(name string, def int64) int64 {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return def
+	}
+	v, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		return def
+	}
+	return v
+}
+
+func envDuration(name string, def time.Duration) time.Duration {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return def
+	}
+	v, err := time.ParseDuration(raw)
+	if err != nil {
+		return def
+	}
+	return v
+}
 
 func main() {
 	apiKey := flag.String("api-key", "", "API key (overrides IDCD_API_KEY)")
@@ -86,10 +111,21 @@ func runHTTP(port int) error {
 	validator := protocol.NewPGTokenValidator(pool)
 	origins := parseCORSOrigins(os.Getenv("MCP_CORS_ORIGINS"))
 
+	// Per-token rate limit. Defaults: 60 req/min/token. Override via
+	// MCP_RATE_MAX (int per window) + MCP_RATE_WINDOW (Go duration string).
+	rlMax := envInt64("MCP_RATE_MAX", 60)
+	rlWindow := envDuration("MCP_RATE_WINDOW", time.Minute)
+	limiter := protocol.NewMemoryLimiter(rlWindow, rlMax)
+
+	// SSE heartbeat interval. Defaults to 15s; raise via MCP_SSE_HEARTBEAT.
+	heartbeat := envDuration("MCP_SSE_HEARTBEAT", 15*time.Second)
+
 	protocol.SetHTTPConfig(protocol.HTTPConfig{
 		Validator:        validator,
 		AllowedOrigins:   origins,
 		AllowCredentials: true,
+		RateLimiter:      limiter,
+		SSEHeartbeat:     heartbeat,
 	})
 
 	// Rebuild server + tools after config is ready (the apiclient is the

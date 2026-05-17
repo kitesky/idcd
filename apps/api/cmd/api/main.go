@@ -3,7 +3,6 @@ package main
 
 import (
 	"context"
-	"database/sql"
 	"errors"
 	"log"
 	"log/slog"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	_ "github.com/lib/pq" // PostgreSQL driver for sql.DB health check
 	"github.com/redis/go-redis/v9"
 
 	acmemgr "github.com/kite365/idcd/apps/api/internal/acme"
@@ -54,28 +52,36 @@ func main() {
 		_ = shutdownTelemetry(ctx)
 	}()
 
-	// Connect to PostgreSQL
-	db, err := sql.Open("postgres", cfg.Database.Main.DSN)
+	// Connect to PostgreSQL via pgxpool (single pool used by all handlers +
+	// health checks; the legacy database/sql pool was removed to avoid
+	// duplicating connection counts against the DB).
+	poolCfg, err := pgxpool.ParseConfig(cfg.Database.Main.DSN)
 	if err != nil {
-		slogLogger.Error("failed to connect to PostgreSQL", "error", err)
+		slogLogger.Error("failed to parse postgres DSN", "error", err)
 		os.Exit(1)
 	}
-	defer db.Close()
+	if v := cfg.Database.Main.MaxOpenConns; v > 0 {
+		poolCfg.MaxConns = int32(v)
+	}
+	if v := cfg.Database.Main.MaxIdleConns; v > 0 {
+		poolCfg.MinConns = int32(v)
+	}
+	if cfg.Database.Main.ConnMaxLifetime.Duration > 0 {
+		poolCfg.MaxConnLifetime = cfg.Database.Main.ConnMaxLifetime.Duration
+	}
+	pgxPool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
+	if err != nil {
+		slogLogger.Error("failed to create pgx pool", "error", err)
+		os.Exit(1)
+	}
+	defer pgxPool.Close()
 
-	// Configure PostgreSQL connection pool
-	db.SetMaxOpenConns(int(cfg.Database.Main.MaxOpenConns))
-	db.SetMaxIdleConns(int(cfg.Database.Main.MaxIdleConns))
-	db.SetConnMaxLifetime(cfg.Database.Main.ConnMaxLifetime.Duration)
-
-	// Test PostgreSQL connection
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-
-	if err := db.PingContext(ctx); err != nil {
+	if err := pgxPool.Ping(ctx); err != nil {
 		slogLogger.Error("failed to ping PostgreSQL", "error", err)
 		os.Exit(1)
 	}
-
 	slogLogger.Info("connected to PostgreSQL", "dsn", maskDSN(cfg.Database.Main.DSN))
 
 	// Connect to Redis
@@ -97,16 +103,8 @@ func main() {
 
 	slogLogger.Info("connected to Redis", "addr", cfg.Redis.Addr, "response", pong)
 
-	// Create pgxpool for handlers that need pgx (sqlc queries)
-	pgxPool, err := pgxpool.New(context.Background(), cfg.Database.Main.DSN)
-	if err != nil {
-		slogLogger.Error("failed to create pgx pool", "error", err)
-		os.Exit(1)
-	}
-	defer pgxPool.Close()
-
 	// Create and start server
-	srv := server.New(cfg, db, pgxPool, redisClient, slogLogger)
+	srv := server.New(cfg, pgxPool, redisClient, slogLogger)
 
 	// ACME / Let's Encrypt for custom-domain status pages (M11 / K8).
 	// Feature-flagged via env vars; default OFF.  See wireACME for details.
@@ -143,11 +141,6 @@ func main() {
 	if err := srv.Shutdown(shutdownCtx); err != nil {
 		slogLogger.Error("server shutdown failed", "error", err)
 		os.Exit(1)
-	}
-
-	// Close database connections
-	if err := db.Close(); err != nil {
-		slogLogger.Error("failed to close database connection", "error", err)
 	}
 
 	// Close Redis connection

@@ -147,6 +147,13 @@ func (s *Service) SignWithLocale(userID, sessionID, locale string, expiry time.D
 	if sessionID == "" {
 		return "", apperr.Validation("session ID is required", "")
 	}
+	if expiry <= 0 {
+		// Refuse to mint a token that's already expired. Zero / negative
+		// expiry usually means a caller forgot to populate the config —
+		// fail loudly rather than silently issue an unusable token (which
+		// in turn would surface as cryptic 401s downstream).
+		return "", apperr.Validation("expiry must be positive", "")
+	}
 
 	now := time.Now()
 	claims := Claims{

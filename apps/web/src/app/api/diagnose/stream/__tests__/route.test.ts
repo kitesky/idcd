@@ -285,4 +285,48 @@ describe("GET /api/diagnose/stream", () => {
     expect(whoisDone?.summary).toContain("GoDaddy LLC")
     expect(whoisDone?.summary).toContain("2027-03-12")
   })
+
+  describe("SSRF guard rejects private / internal hosts", () => {
+    const cases = [
+      // IPv4 dotted
+      "127.0.0.1",
+      "10.0.0.1",
+      "192.168.1.1",
+      // IPv4 short form (resolves at OS layer)
+      "127.1",
+      // IPv4 decimal integer form
+      "2130706433",
+      // IPv4 hex form
+      "0x7f000001",
+      // IPv6 full + compressed + mapped + bracketed
+      "::1",
+      "fe80::1",
+      "[::1]",
+      "::ffff:127.0.0.1",
+      // Internal / loopback names
+      "localhost",
+      "foo.localhost",
+      "host.local",
+      "service.internal",
+      // Path / port / auth smuggling
+      "example.com/admin",
+      "example.com:8080",
+      "user@example.com",
+      "example.com?x=1",
+      "example.com\rGET /admin",
+      // Single label / empty label
+      "single",
+      "..",
+    ]
+    for (const host of cases) {
+      it(`rejects ${JSON.stringify(host)}`, async () => {
+        const { GET } = await import("../route")
+        const req = new NextRequest(
+          `http://localhost/api/diagnose/stream?domain=${encodeURIComponent(host)}`
+        )
+        const res = await GET(req)
+        expect(res.status).toBe(400)
+      })
+    }
+  })
 })

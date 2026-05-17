@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,9 +29,10 @@ func ipDef() protocol.ToolDefinition {
 
 func handleIPFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		address, _ := args["address"].(string)
-		if address == "" {
-			return "", errors.New("address is required")
+		rawAddress, _ := args["address"].(string)
+		address, err := validateTarget(rawAddress)
+		if err != nil {
+			return "", err
 		}
 
 		if !client.HasAPIKey() {

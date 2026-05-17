@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -36,12 +35,17 @@ func dnsDef() protocol.ToolDefinition {
 
 func handleDNSFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		domain, _ := args["domain"].(string)
-		if domain == "" {
-			return "", errors.New("domain is required")
+		rawDomain, _ := args["domain"].(string)
+		domain, err := validateTarget(rawDomain)
+		if err != nil {
+			return "", err
 		}
 		recordType := "A"
 		if v, ok := args["type"].(string); ok && v != "" {
+			// DNS record type — short token, must be alphanumeric.
+			if len(v) > 16 {
+				return "", fmt.Errorf("type too long")
+			}
 			recordType = v
 		}
 

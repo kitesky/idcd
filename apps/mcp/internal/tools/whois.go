@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,9 +29,10 @@ func whoisDef() protocol.ToolDefinition {
 
 func handleWhoisFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		query, _ := args["query"].(string)
-		if query == "" {
-			return "", errors.New("query is required")
+		rawQuery, _ := args["query"].(string)
+		query, err := validateTarget(rawQuery)
+		if err != nil {
+			return "", err
 		}
 
 		if !client.HasAPIKey() {

@@ -277,16 +277,23 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		count = 1
 	}
 
-	// Build base params from monitor config (best-effort JSON object).
+	// Build base params from monitor config. Parse failure means the row
+	// is corrupt — log it so we can see persistent decoding issues instead
+	// of silently dispatching the monitor with an empty params object.
 	baseParams := map[string]any{}
 	if len(m.Config) > 0 {
-		_ = json.Unmarshal(m.Config, &baseParams)
+		if err := json.Unmarshal(m.Config, &baseParams); err != nil {
+			log.Printf("[scheduler] dispatchMonitorTask: monitor %s has malformed config: %v", m.ID, err)
+		}
 	}
 
 	// Map monitor type to probe type (some types share probe mechanics).
 	probeType := monitorTypeToProbeType(m.Type)
 
-	paramsJSON, _ := json.Marshal(baseParams)
+	paramsJSON, err := json.Marshal(baseParams)
+	if err != nil {
+		return fmt.Errorf("marshal params: %w", err)
+	}
 
 	for i := 0; i < count; i++ {
 		if err := ctx.Err(); err != nil {

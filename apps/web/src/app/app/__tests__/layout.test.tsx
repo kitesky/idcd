@@ -36,10 +36,10 @@ import { AppShell } from "../_components/app-shell"
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function renderShell(pathname = "/app/monitors") {
+function renderShell(pathname = "/app/monitors", displayName: string | null = null) {
   mockPathname = pathname
   return render(
-    <AppShell email="test@idcd.com" displayName="Test User" avatarUrl={null}>
+    <AppShell email="test@idcd.com" displayName={displayName} avatarUrl={null}>
       <div data-testid="page-content">Page Content</div>
     </AppShell>
   )

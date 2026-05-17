@@ -109,6 +109,7 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 	if err != nil {
 		return nil, fmt.Errorf("create buffer: %w", err)
 	}
+	buf.SetLogger(log)
 
 	a := &Agent{
 		cfgPath:  cfgPath,

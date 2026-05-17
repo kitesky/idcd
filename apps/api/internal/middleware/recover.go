@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 	"runtime/debug"
@@ -42,9 +43,19 @@ func Recover(log *slog.Logger) func(http.Handler) http.Handler {
 							}
 						}
 
-						// Write minimal error response
-						errorResponse := `{"error":{"code":"INTERNAL","message":"Internal server error","request_id":"` + requestID + `"},"request_id":"` + requestID + `"}`
-						w.Write([]byte(errorResponse))
+						// Write minimal error response. Use json.Marshal — the
+						// request ID may originate from a client-controlled
+						// X-Request-ID header; string concatenation here would
+						// let a crafted ID inject extra JSON fields.
+						body, _ := json.Marshal(map[string]any{
+							"error": map[string]any{
+								"code":       "INTERNAL",
+								"message":    "Internal server error",
+								"request_id": requestID,
+							},
+							"request_id": requestID,
+						})
+						_, _ = w.Write(body)
 					}
 				}
 			}()

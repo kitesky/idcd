@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
@@ -34,13 +33,22 @@ func httpDef() protocol.ToolDefinition {
 
 func handleHTTPFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		targetURL, _ := args["url"].(string)
-		if targetURL == "" {
-			return "", errors.New("url is required")
+		rawURL, _ := args["url"].(string)
+		targetURL, err := validateURL(rawURL)
+		if err != nil {
+			return "", err
 		}
 		method := "GET"
 		if v, ok := args["method"].(string); ok && v != "" {
-			method = v
+			// Whitelist verbs — apiclient appends to a URL but the
+			// downstream service uses the method as-is; an injected
+			// "GET\r\nX-Admin: 1" would smuggle a header.
+			switch v {
+			case "GET", "HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS":
+				method = v
+			default:
+				return "", fmt.Errorf("unsupported method %q", v)
+			}
 		}
 
 		if !client.HasAPIKey() {

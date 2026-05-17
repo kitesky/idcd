@@ -148,6 +148,13 @@ func (s *Service) Get(ctx context.Context, sessionID string) (*SessionData, erro
 }
 
 // Refresh extends the session TTL by the given duration.
+//
+// Atomicity: a previous implementation used Exists → Get → Set, which races
+// against concurrent Delete (logout in another tab) and would resurrect an
+// already-deleted session. We now use Redis SET ... XX which only writes
+// when the key still exists, making refresh-then-delete safe in either
+// order: if Delete wins, Refresh's SET XX is a no-op and returns
+// session-not-found.
 func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Duration) error {
 	if sessionID == "" {
 		return apperr.Validation("session ID is required", "")
@@ -158,18 +165,11 @@ func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Durati
 
 	key := s.sessionKey(sessionID)
 
-	// Check if session exists
-	exists, err := s.redis.Exists(ctx, key).Result()
-	if err != nil {
-		return apperr.Internal("failed to check session existence", err)
-	}
-	if exists == 0 {
-		return apperr.NotFound("session not found")
-	}
-
-	// Update LastSeenAt and extend TTL
 	data, err := s.redis.Get(ctx, key).Result()
 	if err != nil {
+		if errors.Is(err, redis.Nil) {
+			return apperr.NotFound("session not found")
+		}
 		return apperr.Internal("failed to get session for refresh", err)
 	}
 
@@ -184,8 +184,15 @@ func (s *Service) Refresh(ctx context.Context, sessionID string, ttl time.Durati
 		return apperr.Internal("failed to marshal updated session data", err)
 	}
 
-	if err := s.redis.Set(ctx, key, updatedData, ttl).Err(); err != nil {
+	// SET XX = only set if key exists. Returns false (without error) when
+	// the key has been deleted between our Get and SetXX — treat that as
+	// session-not-found rather than silently recreating the row.
+	ok, err := s.redis.SetXX(ctx, key, updatedData, ttl).Result()
+	if err != nil {
 		return apperr.Internal("failed to refresh session", err)
+	}
+	if !ok {
+		return apperr.NotFound("session not found")
 	}
 
 	return nil

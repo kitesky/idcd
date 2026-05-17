@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,9 +29,10 @@ func sslDef() protocol.ToolDefinition {
 
 func handleSSLFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		host, _ := args["host"].(string)
-		if host == "" {
-			return "", errors.New("host is required")
+		rawHost, _ := args["host"].(string)
+		host, err := validateTarget(rawHost)
+		if err != nil {
+			return "", err
 		}
 
 		if !client.HasAPIKey() {

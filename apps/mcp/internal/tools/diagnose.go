@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"strings"
@@ -30,9 +29,10 @@ func diagnoseDef() protocol.ToolDefinition {
 
 func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		target, _ := args["target"].(string)
-		if target == "" {
-			return "", errors.New("target is required")
+		rawTarget, _ := args["target"].(string)
+		target, err := validateTarget(rawTarget)
+		if err != nil {
+			return "", err
 		}
 
 		if !client.HasAPIKey() {

@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -34,13 +33,14 @@ func tracerouteDef() protocol.ToolDefinition {
 
 func handleTracerouteFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		target, _ := args["target"].(string)
-		if target == "" {
-			return "", errors.New("target is required")
+		rawTarget, _ := args["target"].(string)
+		target, err := validateTarget(rawTarget)
+		if err != nil {
+			return "", err
 		}
 		maxHops := 30
-		if v, ok := args["max_hops"].(float64); ok && v > 0 {
-			maxHops = int(v)
+		if v, ok := args["max_hops"].(float64); ok {
+			maxHops = validateCount(v, 30, 64)
 		}
 
 		if !client.HasAPIKey() {

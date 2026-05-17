@@ -2,7 +2,6 @@ package tools
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -34,13 +33,14 @@ func pingDef() protocol.ToolDefinition {
 
 func handlePingFunc(client *apiclient.Client) protocol.ToolHandler {
 	return func(ctx context.Context, args map[string]any) (string, error) {
-		target, _ := args["target"].(string)
-		if target == "" {
-			return "", errors.New("target is required")
+		rawTarget, _ := args["target"].(string)
+		target, err := validateTarget(rawTarget)
+		if err != nil {
+			return "", err
 		}
 		count := 3
-		if v, ok := args["count"].(float64); ok && v > 0 {
-			count = int(v)
+		if v, ok := args["count"].(float64); ok {
+			count = validateCount(v, 3, 50)
 		}
 
 		if !client.HasAPIKey() {

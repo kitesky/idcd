@@ -197,7 +197,11 @@ func (h *WSHandler) readPump(c *hub.Connection) {
 	defer func() {
 		h.hub.Unregister(nodeID, "connection_closed")
 		if h.pool != nil {
-			ctx := context.Background()
+			// Must outlive the request context (the conn just closed),
+			// but still bounded so a hung DB doesn't pin this goroutine
+			// forever during shutdown.
+			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer cancel()
 			_, _ = h.pool.Exec(ctx,
 				`UPDATE enrolled_nodes SET status = 'offline' WHERE node_id = $1`, nodeID)
 		}
@@ -306,7 +310,11 @@ func (h *WSHandler) handleHeartbeat(c *hub.Connection, payload json.RawMessage) 
 		return nil
 	}
 
-	ctx := context.Background()
+	// Bounded — heartbeat handling shouldn't take more than a couple of
+	// seconds; a stuck DB call here would back up the per-connection
+	// read pump and stall subsequent heartbeats.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	if h.pool != nil {
 		h.processFingerprint(ctx, c.NodeID, hb.Fingerprint)
@@ -460,7 +468,10 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		return nil
 	}
 
-	ctx := context.Background()
+	// Bounded — even a 10-result batch should finish within ~3s; a runaway
+	// publish would block the per-connection reader.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	for _, result := range results {
 		if result.TaskID == "" {
 			continue

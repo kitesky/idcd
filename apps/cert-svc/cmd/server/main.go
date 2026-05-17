@@ -28,7 +28,10 @@ import (
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
 	"github.com/kite365/idcd/lib/auth/jwt"
 	"github.com/kite365/idcd/lib/auth/session"
+	"github.com/kite365/idcd/lib/cert/ca"
+	"github.com/kite365/idcd/lib/cert/ca/buypass"
 	"github.com/kite365/idcd/lib/cert/ca/letsencrypt"
+	"github.com/kite365/idcd/lib/cert/ca/zerossl"
 	"github.com/kite365/idcd/lib/cert/dns"
 	"github.com/kite365/idcd/lib/cert/dns/cloudflare"
 	"github.com/kite365/idcd/lib/cert/dns/manual"
@@ -119,8 +122,22 @@ func main() {
 	// Service is constructed without an AccountKey — the server never
 	// drives the orchestrator (that's worker territory). It only
 	// publishes new orders and proxies manual-ready confirmations.
+	// S2: multi-CA registry. Let's Encrypt is always the default;
+	// ZeroSSL + Buypass register conditionally when their env vars are
+	// set. Order ca-field dispatch happens inside the Router.
 	leCA := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.Env(cfg.LEEnv)})
-	router := service.NewRouter(leCA)
+	var extras []ca.AcmeCA
+	if cfg.ZeroSSLEABKID != "" && cfg.ZeroSSLEABHMACKey != "" {
+		extras = append(extras, zerossl.New(zerossl.Config{
+			EABKID:     cfg.ZeroSSLEABKID,
+			EABHMACKey: cfg.ZeroSSLEABHMACKey,
+		}))
+	}
+	if cfg.BuypassEnv != "" {
+		extras = append(extras, buypass.New(buypass.Config{Env: buypass.Env(cfg.BuypassEnv)}))
+	}
+	router := service.NewRouter(leCA, extras...)
+	slogLogger.Info("ca router wired", "cas", router.Names())
 	abuse := service.NewAbuseDetector(repos,
 		service.WithAbuseLogger(slogLogger))
 

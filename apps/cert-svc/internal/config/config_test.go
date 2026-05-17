@@ -127,6 +127,86 @@ func TestLoad_DownloadSecret_DefaultsEmpty(t *testing.T) {
 	}
 }
 
+func TestLoad_MultiCA_ZeroSSLBothSet(t *testing.T) {
+	t.Setenv(envZeroSSLEABKID, "kid-abc")
+	t.Setenv(envZeroSSLEABHMACKey, "hmac-xyz")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ZeroSSLEABKID != "kid-abc" {
+		t.Errorf("ZeroSSLEABKID = %q, want %q", cfg.ZeroSSLEABKID, "kid-abc")
+	}
+	if cfg.ZeroSSLEABHMACKey != "hmac-xyz" {
+		t.Errorf("ZeroSSLEABHMACKey = %q, want %q", cfg.ZeroSSLEABHMACKey, "hmac-xyz")
+	}
+}
+
+func TestLoad_MultiCA_ZeroSSLOnlyKID(t *testing.T) {
+	// Only kid set — Load preserves the partial state; the wiring in
+	// main.go decides whether to register the adapter.
+	t.Setenv(envZeroSSLEABKID, "kid-only")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ZeroSSLEABKID != "kid-only" {
+		t.Errorf("ZeroSSLEABKID = %q, want %q", cfg.ZeroSSLEABKID, "kid-only")
+	}
+	if cfg.ZeroSSLEABHMACKey != "" {
+		t.Errorf("ZeroSSLEABHMACKey = %q, want empty", cfg.ZeroSSLEABHMACKey)
+	}
+}
+
+func TestLoad_MultiCA_ZeroSSLOnlyHMAC(t *testing.T) {
+	t.Setenv(envZeroSSLEABHMACKey, "hmac-only")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ZeroSSLEABKID != "" {
+		t.Errorf("ZeroSSLEABKID = %q, want empty", cfg.ZeroSSLEABKID)
+	}
+	if cfg.ZeroSSLEABHMACKey != "hmac-only" {
+		t.Errorf("ZeroSSLEABHMACKey = %q, want %q", cfg.ZeroSSLEABHMACKey, "hmac-only")
+	}
+}
+
+func TestLoad_MultiCA_BuypassEnvSet(t *testing.T) {
+	t.Setenv(envBuypassEnv, "staging")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.BuypassEnv != "staging" {
+		t.Errorf("BuypassEnv = %q, want %q", cfg.BuypassEnv, "staging")
+	}
+}
+
+func TestLoad_MultiCA_AllEmpty(t *testing.T) {
+	t.Setenv(envZeroSSLEABKID, "")
+	t.Setenv(envZeroSSLEABHMACKey, "")
+	t.Setenv(envBuypassEnv, "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.ZeroSSLEABKID != "" {
+		t.Errorf("ZeroSSLEABKID = %q, want empty", cfg.ZeroSSLEABKID)
+	}
+	if cfg.ZeroSSLEABHMACKey != "" {
+		t.Errorf("ZeroSSLEABHMACKey = %q, want empty", cfg.ZeroSSLEABHMACKey)
+	}
+	if cfg.BuypassEnv != "" {
+		t.Errorf("BuypassEnv = %q, want empty", cfg.BuypassEnv)
+	}
+}
+
 func TestLoad_WhitespaceTrimmed(t *testing.T) {
 	t.Setenv(envPort, "  8081  ")
 	t.Setenv(envEnv, "  staging  ")

@@ -55,6 +55,15 @@ type driveState struct {
 	CertResult   *ca.CertificateResult
 	CertID       int64
 
+	// CAName captures the ca.Name() that satisfied this order. Set the
+	// moment caPick resolves so the persisted cert row records the
+	// actual issuer rather than a hard-coded "lets-encrypt" string.
+	// Empty until the CA call has been dispatched at least once during
+	// the current invocation; the persist step falls back to
+	// "lets-encrypt" for backwards-compat with WAL replays that
+	// pre-date this field.
+	CAName string
+
 	// Derived flags after replay.
 	NeedsKey       bool
 	NeedsCSR       bool
@@ -198,6 +207,10 @@ func (s *Service) driveIssue(ctx context.Context, order *repo.Order) error {
 		if err != nil {
 			return fmt.Errorf("ca pick: %w", err)
 		}
+		// Record the resolved CA name so the persist step writes the
+		// actual issuer into cert.certs.issuer rather than a
+		// hard-coded value.
+		state.CAName = caImpl.Name()
 
 		result, err := caImpl.RequestCertificate(ctx, ca.CertificateRequest{
 			AccountKey:   s.accountKey(),
@@ -244,11 +257,24 @@ func (s *Service) driveIssue(ctx context.Context, order *repo.Order) error {
 		}
 		fingerprint := sha256Fingerprint(state.CertResult.LeafPEM)
 
+		// Prefer the live ca.Name() captured during this invocation. On
+		// crash-recovery paths where the WAL contained
+		// ACMERequestComplete (so we skipped the CA call this pass)
+		// state.CAName is empty; fall back to order.CA, and finally to
+		// "lets-encrypt" so legacy single-CA WALs still round-trip.
+		issuer := state.CAName
+		if issuer == "" {
+			issuer = order.CA
+		}
+		if issuer == "" {
+			issuer = "lets-encrypt"
+		}
+
 		cert := &repo.Cert{
 			OrderID:           order.ID,
 			AccountID:         order.AccountID,
 			SANs:              order.SANs,
-			Issuer:            "lets-encrypt",
+			Issuer:            issuer,
 			SerialHex:         state.CertResult.Serial,
 			FingerprintSHA256: fingerprint,
 			LeafPEM:           string(state.CertResult.LeafPEM),

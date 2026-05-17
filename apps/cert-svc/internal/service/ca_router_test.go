@@ -10,38 +10,115 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/lib/cert/ca"
 	"github.com/kite365/idcd/lib/cert/ca/letsencrypt"
 	"github.com/kite365/idcd/lib/cert/dns"
 )
 
-func TestNewRouter_PickReturnsLE(t *testing.T) {
+func TestRouter_PickDefault(t *testing.T) {
 	le := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.EnvStaging})
 	r := NewRouter(le)
 
-	got, err := r.Pick()
+	// nil order → default (renewal probe / health path).
+	got, err := r.Pick(nil)
+	require.NoError(t, err)
+	require.NotNil(t, got)
+	assert.Equal(t, "lets-encrypt", got.Name())
+
+	// order.CA empty → default.
+	got, err = r.Pick(&repo.Order{CA: ""})
 	require.NoError(t, err)
 	require.NotNil(t, got)
 	assert.Equal(t, "lets-encrypt", got.Name())
 }
 
-func TestNewRouter_NilReturnsError(t *testing.T) {
-	var r *Router
-	_, err := r.Pick()
+func TestRouter_PickByName(t *testing.T) {
+	le := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.EnvStaging})
+	fake := &fakeCA{name: "fake-le"}
+	r := NewRouter(le, fake)
+
+	got, err := r.Pick(&repo.Order{CA: "fake-le"})
+	require.NoError(t, err)
+	assert.Equal(t, "fake-le", got.Name())
+
+	got, err = r.Pick(&repo.Order{CA: "lets-encrypt"})
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+}
+
+func TestRouter_PickUnknownCA(t *testing.T) {
+	le := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.EnvStaging})
+	r := NewRouter(le)
+
+	_, err := r.Pick(&repo.Order{CA: "zerossl"})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, ErrUnknownCA)
+}
+
+func TestRouter_PickNilDefault(t *testing.T) {
+	r := NewRouter(nil)
+	require.Nil(t, r, "NewRouter(nil) must return nil so Pick short-circuits")
+
+	_, err := r.Pick(nil)
 	assert.ErrorIs(t, err, ErrNoCA)
 
-	r2 := NewRouter(nil)
-	_, err = r2.Pick()
+	_, err = r.Pick(&repo.Order{CA: "lets-encrypt"})
 	assert.ErrorIs(t, err, ErrNoCA)
 }
 
-func TestServiceCAPick_RoutesViaRouter(t *testing.T) {
-	fake := &fakeCA{name: "fake-le"}
-	svc := New(Config{Router: NewRouter(fake)})
+func TestRouter_NilReceiverReturnsErrNoCA(t *testing.T) {
+	var r *Router
+	_, err := r.Pick(nil)
+	assert.ErrorIs(t, err, ErrNoCA)
+}
 
+func TestRouter_Names(t *testing.T) {
+	le := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.EnvStaging})
+	a := &fakeCA{name: "zerossl"}
+	b := &fakeCA{name: "buypass"}
+	r := NewRouter(le, a, b)
+
+	// Alphabetical order regardless of insertion order.
+	assert.Equal(t, []string{"buypass", "lets-encrypt", "zerossl"}, r.Names())
+}
+
+func TestRouter_Names_NilReceiver(t *testing.T) {
+	var r *Router
+	assert.Nil(t, r.Names())
+}
+
+func TestRouter_NewRouterDropsNilExtras(t *testing.T) {
+	le := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.EnvStaging})
+	// Mix nil extras in — should be dropped silently so cmd/server can
+	// pass optional adapters without pre-filtering.
+	r := NewRouter(le, nil, &fakeCA{name: "fake-le"}, nil)
+	assert.Equal(t, []string{"fake-le", "lets-encrypt"}, r.Names())
+}
+
+func TestServiceCAPick_RoutesViaRouter(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	fake := &fakeCA{name: "fake-le"}
+	svc := New(Config{Router: NewRouter(le, fake)})
+
+	// nil order → default.
 	got, err := svc.caPick(context.Background(), nil)
 	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+
+	// order.CA="fake-le" → fake.
+	got, err = svc.caPick(context.Background(), &repo.Order{CA: "fake-le"})
+	require.NoError(t, err)
 	assert.Equal(t, "fake-le", got.Name())
+
+	// order.CA="lets-encrypt" → le.
+	got, err = svc.caPick(context.Background(), &repo.Order{CA: "lets-encrypt"})
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+
+	// Unknown → ErrUnknownCA.
+	_, err = svc.caPick(context.Background(), &repo.Order{CA: "no-such-ca"})
+	assert.ErrorIs(t, err, ErrUnknownCA)
 }
 
 // fakeCA is a minimal ca.AcmeCA used by router / orchestrator tests.

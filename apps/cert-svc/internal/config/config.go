@@ -27,6 +27,14 @@ const (
 	envMasterKey      = "CERT_MASTER_KEY"
 	envDownloadSecret = "CERT_DOWNLOAD_SECRET"
 
+	// S2 multi-CA wiring. Each adapter is optional — empty values mean
+	// the CA is not registered with the Router and cert.orders.ca rows
+	// pointing at it will fail with ErrUnknownCA. cmd/server +
+	// cmd/worker read these and conditionally construct the adapter.
+	envZeroSSLEABKID     = "CERT_ZEROSSL_EAB_KID"
+	envZeroSSLEABHMACKey = "CERT_ZEROSSL_EAB_HMAC_KEY"
+	envBuypassEnv        = "CERT_BUYPASS_ENV" // "production" | "staging" | "" (disabled)
+
 	defaultPort         = 8080
 	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
 	defaultRedis        = "redis://localhost:6379/0"
@@ -67,6 +75,20 @@ type Config struct {
 	// /v1/cert/certs/{id}/download will return 503 rather than mint
 	// tokens we can't verify. cmd/server should fail fast when unset.
 	DownloadSecret []byte
+
+	// ZeroSSLEABKID / ZeroSSLEABHMACKey carry the External Account
+	// Binding credentials issued by ZeroSSL's portal. Both must be set
+	// for the ZeroSSL adapter to register with the Router; either
+	// missing → adapter disabled (no partial registration). The values
+	// are passed through verbatim — validation lives in the adapter.
+	ZeroSSLEABKID     string
+	ZeroSSLEABHMACKey string
+
+	// BuypassEnv selects the Buypass Go SSL endpoint. "production" or
+	// "staging" enable the adapter; empty disables it. The string is
+	// passed through to the adapter, which is responsible for any
+	// further validation.
+	BuypassEnv string
 }
 
 // Load reads CERT_* env vars and returns a populated Config.
@@ -143,6 +165,16 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("config: %s decoded to %d bytes; need >=16", envDownloadSecret, len(raw))
 		}
 		cfg.DownloadSecret = raw
+	}
+
+	if v := strings.TrimSpace(os.Getenv(envZeroSSLEABKID)); v != "" {
+		cfg.ZeroSSLEABKID = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envZeroSSLEABHMACKey)); v != "" {
+		cfg.ZeroSSLEABHMACKey = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envBuypassEnv)); v != "" {
+		cfg.BuypassEnv = v
 	}
 
 	return cfg, nil

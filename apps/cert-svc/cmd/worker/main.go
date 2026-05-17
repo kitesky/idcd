@@ -21,7 +21,10 @@ import (
 	"github.com/kite365/idcd/apps/cert-svc/internal/config"
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
+	"github.com/kite365/idcd/lib/cert/ca"
+	"github.com/kite365/idcd/lib/cert/ca/buypass"
 	"github.com/kite365/idcd/lib/cert/ca/letsencrypt"
+	"github.com/kite365/idcd/lib/cert/ca/zerossl"
 	"github.com/kite365/idcd/lib/cert/dns"
 	"github.com/kite365/idcd/lib/cert/dns/cloudflare"
 	"github.com/kite365/idcd/lib/cert/dns/manual"
@@ -66,8 +69,22 @@ func main() {
 		os.Exit(1)
 	}
 
+	// S2: multi-CA registry. Let's Encrypt is the always-on default;
+	// ZeroSSL + Buypass register only when their env vars are set so
+	// dev / staging deploys without those secrets keep working.
 	leCA := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.Env(cfg.LEEnv)})
-	router := service.NewRouter(leCA)
+	var extras []ca.AcmeCA
+	if cfg.ZeroSSLEABKID != "" && cfg.ZeroSSLEABHMACKey != "" {
+		extras = append(extras, zerossl.New(zerossl.Config{
+			EABKID:     cfg.ZeroSSLEABKID,
+			EABHMACKey: cfg.ZeroSSLEABHMACKey,
+		}))
+	}
+	if cfg.BuypassEnv != "" {
+		extras = append(extras, buypass.New(buypass.Config{Env: buypass.Env(cfg.BuypassEnv)}))
+	}
+	router := service.NewRouter(leCA, extras...)
+	log.Info("ca router wired", "cas", router.Names())
 
 	repos := repo.New(pool)
 

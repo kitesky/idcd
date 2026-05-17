@@ -193,8 +193,10 @@ func (s *Service) dnsReg() *dns.Registry     { return s.cfg.DNSReg }
 // caRequestTimeout returns the timeout to pass into RequestCertificate.
 func (s *Service) caRequestTimeout() time.Duration { return s.cfg.CARequestTimeout }
 
-// caPick returns the AcmeCA for a given order. S1 always picks the router
-// default; S3 will branch on order.Tier / order.CA.
-func (s *Service) caPick(_ context.Context, _ *repo.Order) (ca.AcmeCA, error) {
-	return s.router().Pick()
+// caPick returns the AcmeCA for a given order. S2 introduces multi-CA
+// dispatch: the Router selects by order.CA, falling back to the registered
+// default when the field is empty. S3 will additionally branch on
+// order.Tier / reseller_channel.
+func (s *Service) caPick(_ context.Context, order *repo.Order) (ca.AcmeCA, error) {
+	return s.router().Pick(order)
 }

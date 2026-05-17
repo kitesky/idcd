@@ -1444,6 +1444,146 @@ CREATE TABLE leaderboard_optout_request (
 
 ---
 
+### 4.X.15 cert.* schema(v2 免费证书模块, S2 上线)
+
+> 完整 DDL 见 `lib/db/migrations/idcd_main/00042_cert_init.sql`。详 [`20-free-cert.md §5`](./20-free-cert.md#5-领域模型与数据表)。
+>
+> **D1 跨 schema 不写 FK 说明**:`cert.orders.account_id` / `cert.dns_credentials.account_id` / `cert.certs.account_id` 等列指向 `account.users.id` 但**不**声明 FK,走 Repository 应用层 join(`apps/cert-svc/internal/repo/*.go`)。`cert.orders.cert_id` / `cert.renewal_jobs.cert_id` / `cert.renewal_jobs.new_order_id` 这类同 schema 引用也保持无 FK 风格,与全库迁移耦合策略一致。
+>
+> **付费档兼容**:`cert.orders` 的 `tier` / `sans_unicode` / `common_name` / `validity_days` / `reseller_channel` / `reseller_order_ref` / `organization_id` / `billing_invoice_id` 字段从 S1 day-1 就建好,S3 付费 CA 接入零 schema 改动(详 20-free-cert §20)。
+
+```sql
+CREATE SCHEMA IF NOT EXISTS cert;
+
+-- 4.X.15.1 cert.domains — 域名注册表 + CAA 缓存,按账号 dedup
+CREATE TABLE cert.domains (
+  id             BIGSERIAL    PRIMARY KEY,
+  account_id     BIGINT       NOT NULL,   -- → account.users.id (无 FK)
+  fqdn           TEXT         NOT NULL,
+  caa_status     TEXT,
+  caa_checked_at TIMESTAMPTZ,
+  created_at     TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (account_id, fqdn)
+);
+
+-- 4.X.15.2 cert.dns_credentials — DNS Provider API 凭据,KMS 信封加密
+CREATE TABLE cert.dns_credentials (
+  id                BIGSERIAL    PRIMARY KEY,
+  account_id        BIGINT       NOT NULL,   -- → account.users.id (无 FK)
+  provider          TEXT         NOT NULL,   -- cloudflare|aliyun|dnspod|route53|gcloud|manual
+  display_name      TEXT         NOT NULL,
+  encrypted_blob    BYTEA        NOT NULL,
+  dek_wrapped       BYTEA        NOT NULL,
+  kek_key_id        TEXT         NOT NULL,
+  health_status     TEXT         NOT NULL DEFAULT 'unknown',
+  health_checked_at TIMESTAMPTZ,
+  created_at        TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  revoked_at        TIMESTAMPTZ
+);
+
+-- 4.X.15.3 cert.acme_accounts — 平台级 ACME 账号(每 CA × env 一条)
+CREATE TABLE cert.acme_accounts (
+  id                  BIGSERIAL    PRIMARY KEY,
+  ca                  TEXT         NOT NULL,   -- lets-encrypt|zerossl|buypass
+  env                 TEXT         NOT NULL,   -- production|staging
+  account_url         TEXT         NOT NULL,
+  key_kms_handle      TEXT         NOT NULL,
+  eab_kid             TEXT,
+  eab_hmac_kms_handle TEXT,
+  created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (ca, env)
+);
+
+-- 4.X.15.4 cert.orders — 签发订单。付费档字段(tier/sans_unicode/common_name/...) day-1 就建好
+CREATE TABLE cert.orders (
+  id                  BIGSERIAL    PRIMARY KEY,
+  account_id          BIGINT       NOT NULL,
+  sans                TEXT[]       NOT NULL,
+  sans_unicode        TEXT[],
+  common_name         TEXT,
+  tier                TEXT         NOT NULL DEFAULT 'free-dv',
+  ca                  TEXT         NOT NULL,
+  reseller_channel    TEXT,
+  reseller_order_ref  TEXT,
+  organization_id     BIGINT,
+  validity_days       INT          NOT NULL DEFAULT 90,
+  challenge_type      TEXT         NOT NULL,
+  dns_credential_id   BIGINT,
+  status              TEXT         NOT NULL,
+  csr_pem             TEXT,
+  cert_id             BIGINT,
+  billing_invoice_id  TEXT,
+  retry_count         INT          NOT NULL DEFAULT 0,
+  last_error          TEXT,
+  idempotency_key     TEXT,
+  created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  finalized_at        TIMESTAMPTZ,
+  UNIQUE (account_id, idempotency_key),
+  UNIQUE (billing_invoice_id)
+);
+CREATE INDEX ON cert.orders (account_id, status);
+CREATE INDEX ON cert.orders (status) WHERE status IN ('validating','issuing');
+
+-- 4.X.15.5 cert.order_events — 状态机 WAL(每 order action_seq 单调递增)
+CREATE TABLE cert.order_events (
+  id            BIGSERIAL    PRIMARY KEY,
+  order_id      BIGINT       NOT NULL,
+  action_seq    INT          NOT NULL,
+  action        TEXT         NOT NULL,
+  payload_jsonb JSONB,
+  occurred_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  UNIQUE (order_id, action_seq)
+);
+
+-- 4.X.15.6 cert.certs — 已签发证书
+CREATE TABLE cert.certs (
+  id                 BIGSERIAL    PRIMARY KEY,
+  order_id           BIGINT       NOT NULL,
+  account_id         BIGINT       NOT NULL,
+  sans               TEXT[]       NOT NULL,
+  issuer             TEXT         NOT NULL,
+  serial_hex         TEXT         NOT NULL,
+  fingerprint_sha256 TEXT         NOT NULL,
+  leaf_pem           TEXT         NOT NULL,
+  chain_pem          TEXT         NOT NULL,
+  key_kms_handle     TEXT         NOT NULL,
+  not_before         TIMESTAMPTZ  NOT NULL,
+  not_after          TIMESTAMPTZ  NOT NULL,
+  status             TEXT         NOT NULL,   -- issued|revoked|expired
+  revoked_at         TIMESTAMPTZ,
+  revoke_reason      TEXT,
+  created_at         TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+CREATE INDEX ON cert.certs (account_id, status);
+CREATE INDEX ON cert.certs (not_after) WHERE status='issued';
+
+-- 4.X.15.7 cert.renewal_jobs — 续期任务(到期前 30 天调度)
+CREATE TABLE cert.renewal_jobs (
+  id            BIGSERIAL    PRIMARY KEY,
+  cert_id       BIGINT       NOT NULL,
+  scheduled_at  TIMESTAMPTZ  NOT NULL,
+  attempt_count INT          NOT NULL DEFAULT 0,
+  last_error    TEXT,
+  status        TEXT         NOT NULL,   -- scheduled|running|succeeded|failed|aborted
+  new_order_id  BIGINT,
+  created_at    TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+
+-- 4.X.15.8 cert.audit_logs — append-only 审计
+CREATE TABLE cert.audit_logs (
+  id            BIGSERIAL    PRIMARY KEY,
+  account_id    BIGINT,
+  actor         TEXT         NOT NULL,
+  action        TEXT         NOT NULL,
+  target_kind   TEXT,
+  target_id     BIGINT,
+  payload_jsonb JSONB,
+  occurred_at   TIMESTAMPTZ  NOT NULL DEFAULT NOW()
+);
+```
+
+---
+
 ## 5. 关键策略
 
 ### 5.1 分区与归档

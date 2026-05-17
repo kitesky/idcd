@@ -20,6 +20,7 @@
 | 工程审查 14 项 D 决策 | `docs/prd/ENG-REVIEW-REPORT.md` |
 | 实施 TODO | `docs/prd/ENG-REVIEW-TODOS.md` |
 | 路线图 | `docs/prd/17-roadmap.md` |
+| 免费证书模块 PRD | `docs/prd/20-free-cert.md` |
 
 ---
 

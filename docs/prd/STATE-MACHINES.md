@@ -20,6 +20,8 @@
 8. [Postmortem LLM 起草状态机(K4 + D8 + D9)](#8-postmortem-llm-起草状态机)
 9. [Verdict 工单 SLA 三档分流(D12)](#9-verdict-工单-sla-三档分流状态机)
 10. [状态机交叉引用与字段映射](#10-状态机交叉引用与字段映射)
+11. [CertOrder 状态机(20-free-cert §6)](#11-certorder-状态机免费证书)
+12. [RenewalJob 状态机(20-free-cert §6)](#12-renewaljob-状态机免费证书)
 
 ---
 
@@ -592,6 +594,85 @@ stateDiagram-v2
 | §7 Incident `resolved` | T+5min 触发 §8 Postmortem LLM 起草 |
 | §3 KMS `emergency_revoke` | §1 Verdict Order 在 `paid` 状态停止消费(系统切只读),超 SLA 后转 `failed`(§5)|
 | §4 MCP Token `suspicious_readonly` | 30min 内用户未响应 → 转 `revoked` + 涉及 budget 触发退款评估 |
+
+---
+
+## 11. CertOrder 状态机(免费证书)
+
+**来源**:[`20-free-cert.md §6`](./20-free-cert.md#6-状态机) / [`15-data-model.md §4.X.15.4`](./15-data-model.md#4x154-certorders--签发订单付费档字段tiersans_unicodecommon_name-day-1-就建好)
+**决策**:D-FC-01(S1 仅 LE)/ D-FC-04(KMS 信封)/ §O DECISIONS
+**字段**:`cert.orders.status ∈ {draft, validating, awaiting_org_validation, issuing, issued, failed, revoking, revoked}`
+
+### 11.1 状态机图
+
+```mermaid
+stateDiagram-v2
+    [*] --> draft: HTTP 创建订单
+    draft --> validating: worker 拾起 + 构建 CSR / 解算 solver
+    validating --> awaiting_org_validation: 付费 OV/EV (S3+)
+    awaiting_org_validation --> issuing: 人工审核通过
+    validating --> issuing: 自动 DV 直通
+    issuing --> issued: CA RequestCertificate 成功 + 落库
+    issuing --> failed: ACME 失败 / 超时
+    failed --> validating: RetryOrder (HTTP 触发,显式)
+    issued --> revoking: 用户请求撤销
+    revoking --> revoked: CA Revoke 成功
+    issued --> [*]
+    revoked --> [*]
+    failed --> [*]: 放弃(不显式 retry)
+```
+
+### 11.2 transition 表
+
+| 从 → 到 | 触发 | WAL action | 备注 |
+|---|---|---|---|
+| `draft → validating` | worker XREADGROUP 拾起 | `order_picked` + `key_generated` | 同一 driveIssue 内连续推进 |
+| `validating → issuing` | CSR + solver 就绪,即将发起 ACME | `csr_built` + `dns_solver_built` + `acme_request_started` | 状态写在 ACME 调用前 |
+| `issuing → issued` | CA RequestCertificate 返回 leaf+chain | `acme_request_completed` + `cert_persisted` + `renewal_job_enqueued` | 三步在同一事务的概念上推进(WAL 独立写) |
+| `issuing → failed` | ACME 错误 / DNS 失败 / 配额超 | `acme_request_failed`(payload=err string) | IncrementRetryCount + 写 last_error |
+| `failed → validating` | HTTP RetryOrder | (复用既有 WAL,新 acme_request_started 接力) | 显式 path,worker 不自动 retry |
+| `issued → revoking` | HTTP revoke 请求 | `revoke_started` | order.status 转 revoking;cert.status 保持 issued |
+| `revoking → revoked` | CA Revoke 返回成功 | `revoke_completed` | cert.status 转 revoked + revoked_at |
+| `validating → awaiting_org_validation` | tier=paid-ov/ev (S3+) | (新增 action,待 S3) | S2 不命中此分支 |
+
+> **崩溃恢复**:replayEvents 扫 cert.order_events 计算 state.NeedsXxx 标志位,每步是 idempotent — 已写过的 WAL action 不会重做(UNIQUE order_id+action_seq 保护)。
+
+---
+
+## 12. RenewalJob 状态机(免费证书)
+
+**来源**:[`20-free-cert.md §6`](./20-free-cert.md#6-状态机) / [`15-data-model.md §4.X.15.7`](./15-data-model.md#4x157-certrenewal_jobs--续期任务到期前-30-天调度)
+**决策**:D-FC-06(3 次后停 + 强告警)
+**字段**:`cert.renewal_jobs.status ∈ {scheduled, queued, running, succeeded, failed, aborted}`
+
+### 12.1 状态机图
+
+```mermaid
+stateDiagram-v2
+    [*] --> scheduled: 签发完成时一次性插入 (scheduled_at = not_after - 30d)
+    scheduled --> queued: 调度器扫描发现到期(scheduled_at <= now)
+    queued --> running: worker 拾起新建 order
+    running --> succeeded: 新 cert 签发成功
+    running --> failed: 新订单签发失败
+    failed --> queued: 调度器下一 tick 重新 enqueue (attempt_count < 3)
+    failed --> aborted: attempt_count >= 3 → 停 + 强告警邮件
+    succeeded --> [*]
+    aborted --> [*]
+```
+
+### 12.2 transition 表
+
+| 从 → 到 | 触发 | 影响 | 备注 |
+|---|---|---|---|
+| `(none) → scheduled` | 签发完成时 orchestrator 写一行 | scheduled_at = not_after - 30d | renewal_job_enqueued WAL action |
+| `scheduled → queued` | RenewalScheduler tick(默认 1h)发现 scheduled_at ≤ now | 新建 draft order + 将 status 设为 queued | enqueueOne |
+| `queued → running` | worker 拾起新 order_id | UpdateStatus(queued → running) | 与 CertOrder.validating 并行推进 |
+| `running → succeeded` | 新 cert 签发成功(CertOrder → issued) | UpdateStatus + 链接 new_order_id | metrics.cert_renewal_jobs_total{status="succeeded"} |
+| `running → failed` | 新 CertOrder → failed | UpdateStatus + last_error | attempt_count++ |
+| `failed → queued` | 下一 tick 选中(attempt_count < 3) | 新 enqueue | 指数 backoff 隐含在 tick 节奏 |
+| `failed → aborted` | attempt_count ≥ 3(D-FC-06) | 强告警邮件 + 不再 retry | notifier 推 cert.renewal.aborted 事件 |
+
+> **D-FC-06 上限**:`attempt_count=3` 后强制停止,避免雪崩。`aborted` 是终态;运维需手动新建 order 才能继续。
 
 ---
 

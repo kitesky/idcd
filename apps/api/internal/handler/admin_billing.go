@@ -12,6 +12,7 @@ import (
 
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/asynqtask"
 )
 
 // BillingPool is the subset of pgxpool.Pool used by AdminBillingHandler.
@@ -21,34 +22,14 @@ type BillingPool interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// Task type constants for billing-related asynq tasks.
-// Must match the notifier worker's task registry.
+// 以下 D5 refund retry / asynq wire 常量的真值集中在 lib/shared/asynqtask；
+// 这里仅 re-export 给本服务内的旧引用，新代码请直接 import asynqtask 包。
 const (
-	// TaskRefundRetry is the asynq task type for retrying a failed refund.
-	// Payload: RefundRetryPayload (JSON).
-	TaskRefundRetry = "payment:refund_retry"
-
-	// QueueBilling is the asynq queue name for billing tasks.
-	QueueBilling = "billing"
-
-	// RefundRetryFirstDelay is the delay for the first automatic retry after
-	// a PaymentHub refund.failed webhook (D5: 5 minutes).
-	RefundRetryFirstDelay = 5 * time.Minute
-
-	// RefundRetrySecondDelay is the delay for the second automatic retry after
-	// the first retry attempt fails (D5: 30 minutes from t0, so 25 minutes after
-	// the first retry).  We use 30 minutes as a conservative upper bound — the
-	// total elapsed time (first delay + second delay) stays at ~30 minutes from
-	// the original refund.failed webhook.
-	RefundRetrySecondDelay = 25 * time.Minute
-
-	// RefundRetryMaxAttempts is the number of automated retries before we
-	// give up, send an apology email, and surface the payment in the admin
-	// dashboard (D5).  attempt_count starts at 0 (first webhook-triggered try)
-	// and increments to 1 (after the 5min retry fails), 2 (after the 30min
-	// retry fails).  At attempt_count >= 2, we stop retrying and trigger the
-	// apology email.
-	RefundRetryMaxAttempts = 2
+	TaskRefundRetry        = asynqtask.TaskRefundRetry
+	QueueBilling           = asynqtask.QueueBilling
+	RefundRetryFirstDelay  = asynqtask.RefundRetryFirstDelay
+	RefundRetrySecondDelay = asynqtask.RefundRetrySecondDelay
+	RefundRetryMaxAttempts = asynqtask.RefundRetryMaxAttempts
 )
 
 // RefundRetryPayload is the asynq payload for a refund retry task.

@@ -14,6 +14,7 @@ require (
 	github.com/hibiken/asynq v0.25.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kite365/idcd/lib/attest v0.0.0
+	github.com/kite365/idcd/lib/shared v0.0.0
 	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
@@ -83,5 +84,7 @@ require (
 )
 
 replace github.com/kite365/idcd/lib/attest => ../../lib/attest
+
+replace github.com/kite365/idcd/lib/shared => ../../lib/shared
 
 replace github.com/wangzheng/payment-go-sdk => ../../packages/payment-go-sdk

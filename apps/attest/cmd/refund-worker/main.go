@@ -49,14 +49,12 @@ import (
 	"github.com/kite365/idcd/apps/attest/internal/refund"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/apps/attest/internal/streamconsumer"
+	"github.com/kite365/idcd/lib/shared/asynqtask"
 )
 
-// apologyTaskType is the notifier asynq task type the refund worker
-// emits for terminal refund_failed apology emails. The notifier-side
-// consumer (handler for this task type) is tracked separately — until
-// it lands the task simply waits in the queue, which is the correct
-// fail-open posture for early S2 deploys.
-const apologyTaskType = "payment:refund_apology"
+// apologyTaskType — 真值集中在 lib/shared/asynqtask.TaskRefundApology，
+// 由 apps/notifier 端 worker 消费。两端必须一致。
+const apologyTaskType = asynqtask.TaskRefundApology
 
 // shutdownTimeout caps how long graceful shutdown may take. Beyond
 // this we abandon any in-flight PaymentHub call (which is fine: PaymentHub is

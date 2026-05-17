@@ -452,7 +452,7 @@ func (s *Server) setupRouter() {
 			} else {
 				billingProvider = billing.NewStubProvider()
 			}
-			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).WithEnqueuer(asynqBillingEnq)
+			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).WithEnqueuer(asynqBillingEnq).WithVerdictPublisher(repository.NewVerdictPublisher(s.redis))
 			r.Route("/billing", func(r chi.Router) {
 				// Authenticated routes
 				r.With(authnMW).Post("/subscribe", billingH.Subscribe)
@@ -462,6 +462,17 @@ func (s *Server) setupRouter() {
 				// Unauthenticated routes
 				r.Post("/webhook", billingH.Webhook)
 				r.Get("/stub-confirm", billingH.StubConfirm)
+			})
+
+			// Verdict endpoints (create paid verdict order, fetch order status,
+			// fetch generated report metadata). All require authn.
+			verdictOrderH := handler.NewVerdictOrderHandler(s.pgxPool, billingProvider)
+			verdictReportH := handler.NewVerdictReportHandler(s.pgxPool)
+			r.Route("/verdict", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Post("/orders", verdictOrderH.Create)
+				r.Get("/orders/{id}", verdictOrderH.Get)
+				r.Get("/reports/{id}", verdictReportH.Get)
 			})
 
 			// Quota status endpoint

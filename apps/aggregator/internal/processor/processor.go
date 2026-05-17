@@ -21,6 +21,7 @@ type Processor struct {
 	trigger  *AlertTrigger
 	baseline *BaselineUpdater
 	anchor   *AnchorChecker
+	logger   *slog.Logger
 }
 
 // New creates a Processor. dedupr may be nil to disable dedup (for testing).
@@ -30,6 +31,7 @@ func New(pool *pgxpool.Pool, dedupr *dedup.Deduper) *Processor {
 		dedupr:   dedupr,
 		baseline: newBaselineUpdater(pool),
 		anchor:   newAnchorChecker(pool),
+		logger:   slog.Default(),
 	}
 }
 
@@ -41,7 +43,26 @@ func NewWithTrigger(pool *pgxpool.Pool, dedupr *dedup.Deduper, trigger *AlertTri
 		trigger:  trigger,
 		baseline: newBaselineUpdater(pool),
 		anchor:   newAnchorChecker(pool),
+		logger:   slog.Default(),
 	}
+}
+
+// SetLogger overrides the default logger used for non-fatal sub-operation
+// warnings (baseline / anchor / payload parsing failures).
+func (p *Processor) SetLogger(l *slog.Logger) {
+	if l == nil {
+		l = slog.Default()
+	}
+	p.logger = l
+}
+
+// log returns the processor's logger, falling back to slog.Default() if unset
+// (defensive: parseResult may be called on a zero-value Processor in tests).
+func (p *Processor) log() *slog.Logger {
+	if p == nil || p.logger == nil {
+		return slog.Default()
+	}
+	return p.logger
 }
 
 // MonitorCheckStatus maps a probe result to a monitor check status.
@@ -82,7 +103,7 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 		}
 	}
 
-	result := parseResult(values)
+	result := p.parseResult(values)
 
 	if err := p.insertProbeResult(ctx, taskID, nodeID, result); err != nil {
 		return fmt.Errorf("processor: insert probe_result: %w", err)
@@ -117,10 +138,14 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 			p.trigger.CheckAndTrigger(ctx, monitorID, checkStatus)
 		}
 		if p.baseline != nil {
-			_ = p.baseline.UpdateBaseline(ctx, monitorID)
+			if err := p.baseline.UpdateBaseline(ctx, monitorID); err != nil {
+				p.log().Warn("baseline update failed", "monitor_id", monitorID, "err", err)
+			}
 		}
 		if p.anchor != nil {
-			_ = p.anchor.CheckDeviation(ctx, monitorID, float64(result.durationMs), result.success)
+			if err := p.anchor.CheckDeviation(ctx, monitorID, float64(result.durationMs), result.success); err != nil {
+				p.log().Warn("anchor deviation check failed", "monitor_id", monitorID, "err", err)
+			}
 		}
 	}
 
@@ -175,13 +200,22 @@ type probeResultData struct {
 	signature  string
 }
 
+// parseResult is the free-function variant used by tests; it does not log.
+// Production code paths should use Processor.parseResult so that malformed
+// payloads surface as Warn-level structured logs rather than being swallowed.
 func parseResult(values map[string]any) probeResultData {
+	return (*Processor)(nil).parseResult(values)
+}
+
+func (p *Processor) parseResult(values map[string]any) probeResultData {
 	r := probeResultData{}
 
 	if raw, ok := values["raw"]; ok {
 		switch v := raw.(type) {
 		case string:
-			_ = json.Unmarshal([]byte(v), &r.raw)
+			if err := json.Unmarshal([]byte(v), &r.raw); err != nil {
+				p.log().Warn("processor: malformed payload", "field", "raw", "err", err)
+			}
 		case map[string]any:
 			r.raw = v
 		}
@@ -193,7 +227,9 @@ func parseResult(values map[string]any) probeResultData {
 	if summary, ok := values["summary"]; ok {
 		switch v := summary.(type) {
 		case string:
-			_ = json.Unmarshal([]byte(v), &r.summary)
+			if err := json.Unmarshal([]byte(v), &r.summary); err != nil {
+				p.log().Warn("processor: malformed payload", "field", "summary", "err", err)
+			}
 		case map[string]any:
 			r.summary = v
 		}

@@ -73,6 +73,7 @@ func main() {
 
 	dedupr := dedup.New(rdb)
 	proc := processor.New(pool, dedupr)
+	proc.SetLogger(logger)
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

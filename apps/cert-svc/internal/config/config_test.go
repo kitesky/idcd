@@ -274,3 +274,90 @@ func TestLoad_VaultBackendUnknown(t *testing.T) {
 		t.Fatal("Load() returned nil error; want unknown-backend rejection")
 	}
 }
+
+func TestLoad_VaultBackendAWSKMS_AllSet(t *testing.T) {
+	t.Setenv(envVaultBackend, "awskms")
+	t.Setenv(envAWSKMSRegion, "us-east-1")
+	t.Setenv(envAWSKMSAccessKeyID, "AKIDfake")
+	t.Setenv(envAWSKMSSecretAccessKey, "secret-fake")
+	t.Setenv(envAWSKMSKeyID, "alias/cert-master")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.VaultBackend != VaultBackendAWSKMS {
+		t.Errorf("VaultBackend = %q", cfg.VaultBackend)
+	}
+	if cfg.AWSKMSRegion != "us-east-1" {
+		t.Errorf("AWSKMSRegion = %q", cfg.AWSKMSRegion)
+	}
+	if cfg.AWSKMSKeyID != "alias/cert-master" {
+		t.Errorf("AWSKMSKeyID = %q", cfg.AWSKMSKeyID)
+	}
+}
+
+func TestLoad_VaultBackendAWSKMS_DefaultCredChain(t *testing.T) {
+	t.Setenv(envVaultBackend, "awskms")
+	t.Setenv(envAWSKMSRegion, "us-east-1")
+	t.Setenv(envAWSKMSKeyID, "alias/cert-master")
+	// no AccessKeyID / SecretAccessKey → default credential chain
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+}
+
+func TestLoad_VaultBackendAWSKMS_HalfCredRejected(t *testing.T) {
+	t.Setenv(envVaultBackend, "awskms")
+	t.Setenv(envAWSKMSRegion, "us-east-1")
+	t.Setenv(envAWSKMSKeyID, "alias/cert-master")
+	t.Setenv(envAWSKMSAccessKeyID, "AKIDfake")
+	// SecretAccessKey intentionally unset
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() returned nil; want half-credential rejection")
+	}
+}
+
+func TestLoad_VaultBackendAWSKMS_MissingRegion(t *testing.T) {
+	t.Setenv(envVaultBackend, "awskms")
+	t.Setenv(envAWSKMSKeyID, "alias/cert-master")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() returned nil; want missing region rejection")
+	}
+}
+
+func TestLoad_VaultBackendHashiVault_AllSet(t *testing.T) {
+	t.Setenv(envVaultBackend, "hashivault")
+	t.Setenv(envHashiVaultAddress, "https://vault.example:8200")
+	t.Setenv(envHashiVaultToken, "hvs.fake")
+	t.Setenv(envHashiVaultKeyName, "cert-master")
+	t.Setenv(envHashiVaultNamespace, "cert-svc/")
+	t.Setenv(envHashiVaultMountPath, "transit-v2")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.VaultBackend != VaultBackendHashiVault {
+		t.Errorf("VaultBackend = %q", cfg.VaultBackend)
+	}
+	if cfg.HashiVaultAddress != "https://vault.example:8200" {
+		t.Errorf("HashiVaultAddress = %q", cfg.HashiVaultAddress)
+	}
+	if cfg.HashiVaultMountPath != "transit-v2" {
+		t.Errorf("HashiVaultMountPath = %q", cfg.HashiVaultMountPath)
+	}
+}
+
+func TestLoad_VaultBackendHashiVault_MissingToken(t *testing.T) {
+	t.Setenv(envVaultBackend, "hashivault")
+	t.Setenv(envHashiVaultAddress, "https://vault.example:8200")
+	t.Setenv(envHashiVaultKeyName, "cert-master")
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() returned nil; want missing-token rejection")
+	}
+}

@@ -14,6 +14,7 @@ require (
 	github.com/aws/smithy-go v1.25.1
 	github.com/go-acme/alidns-20150109/v4 v4.7.0
 	github.com/go-acme/lego/v4 v4.35.2
+	github.com/hashicorp/vault/api v1.23.0
 	github.com/miekg/dns v1.1.72
 	golang.org/x/oauth2 v0.36.0
 	google.golang.org/api v0.279.0
@@ -66,7 +67,6 @@ require (
 	github.com/hashicorp/go-secure-stdlib/strutil v0.1.2 // indirect
 	github.com/hashicorp/go-sockaddr v1.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.1-vault-7 // indirect
-	github.com/hashicorp/vault/api v1.23.0 // indirect
 	github.com/json-iterator/go v1.1.13-0.20220915233716-71ac16282d12 // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect

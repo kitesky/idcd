@@ -45,8 +45,21 @@ const (
 	envAliKMSAccessKeySecret = "CERT_ALIKMS_ACCESS_KEY_SECRET"
 	envAliKMSKeyID       = "CERT_ALIKMS_KEY_ID"
 
-	VaultBackendEnvMaster = "envmaster"
-	VaultBackendAliKMS    = "alikms"
+	envAWSKMSRegion          = "CERT_AWSKMS_REGION"
+	envAWSKMSAccessKeyID     = "CERT_AWSKMS_ACCESS_KEY_ID"
+	envAWSKMSSecretAccessKey = "CERT_AWSKMS_SECRET_ACCESS_KEY"
+	envAWSKMSKeyID           = "CERT_AWSKMS_KEY_ID"
+
+	envHashiVaultAddress   = "CERT_HASHIVAULT_ADDRESS"
+	envHashiVaultToken     = "CERT_HASHIVAULT_TOKEN"
+	envHashiVaultNamespace = "CERT_HASHIVAULT_NAMESPACE"
+	envHashiVaultKeyName   = "CERT_HASHIVAULT_KEY_NAME"
+	envHashiVaultMountPath = "CERT_HASHIVAULT_MOUNT_PATH"
+
+	VaultBackendEnvMaster  = "envmaster"
+	VaultBackendAliKMS     = "alikms"
+	VaultBackendAWSKMS     = "awskms"
+	VaultBackendHashiVault = "hashivault"
 
 	defaultPort         = 8080
 	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
@@ -117,6 +130,25 @@ type Config struct {
 	AliKMSAccessKeyID     string
 	AliKMSAccessKeySecret string
 	AliKMSKeyID           string
+
+	// AWSKMS* — only consulted when VaultBackend == "awskms". Region
+	// and KeyID are required; static IAM keys are optional (empty pair
+	// falls back to the SDK's default credential chain — IRSA /
+	// instance profile / shared config). Setting only one of the two
+	// IAM fields is a hard error.
+	AWSKMSRegion          string
+	AWSKMSAccessKeyID     string
+	AWSKMSSecretAccessKey string
+	AWSKMSKeyID           string
+
+	// HashiVault* — only consulted when VaultBackend == "hashivault".
+	// Address / Token / KeyName are required; Namespace + MountPath
+	// are optional (MountPath defaults to "transit" in the adapter).
+	HashiVaultAddress   string
+	HashiVaultToken     string
+	HashiVaultNamespace string
+	HashiVaultKeyName   string
+	HashiVaultMountPath string
 }
 
 // Load reads CERT_* env vars and returns a populated Config.
@@ -221,6 +253,33 @@ func Load() (*Config, error) {
 	if v := strings.TrimSpace(os.Getenv(envAliKMSKeyID)); v != "" {
 		cfg.AliKMSKeyID = v
 	}
+	if v := strings.TrimSpace(os.Getenv(envAWSKMSRegion)); v != "" {
+		cfg.AWSKMSRegion = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAWSKMSAccessKeyID)); v != "" {
+		cfg.AWSKMSAccessKeyID = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAWSKMSSecretAccessKey)); v != "" {
+		cfg.AWSKMSSecretAccessKey = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAWSKMSKeyID)); v != "" {
+		cfg.AWSKMSKeyID = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envHashiVaultAddress)); v != "" {
+		cfg.HashiVaultAddress = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envHashiVaultToken)); v != "" {
+		cfg.HashiVaultToken = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envHashiVaultNamespace)); v != "" {
+		cfg.HashiVaultNamespace = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envHashiVaultKeyName)); v != "" {
+		cfg.HashiVaultKeyName = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envHashiVaultMountPath)); v != "" {
+		cfg.HashiVaultMountPath = v
+	}
 
 	switch cfg.VaultBackend {
 	case VaultBackendEnvMaster:
@@ -232,9 +291,27 @@ func Load() (*Config, error) {
 				envVaultBackend, VaultBackendAliKMS,
 				envAliKMSRegionID, envAliKMSAccessKeyID, envAliKMSAccessKeySecret, envAliKMSKeyID)
 		}
+	case VaultBackendAWSKMS:
+		if cfg.AWSKMSRegion == "" || cfg.AWSKMSKeyID == "" {
+			return nil, fmt.Errorf("config: %s=%s requires %s + %s",
+				envVaultBackend, VaultBackendAWSKMS, envAWSKMSRegion, envAWSKMSKeyID)
+		}
+		akidSet := cfg.AWSKMSAccessKeyID != ""
+		secretSet := cfg.AWSKMSSecretAccessKey != ""
+		if akidSet != secretSet {
+			return nil, fmt.Errorf("config: %s=%s requires both %s and %s or neither (default credential chain)",
+				envVaultBackend, VaultBackendAWSKMS, envAWSKMSAccessKeyID, envAWSKMSSecretAccessKey)
+		}
+	case VaultBackendHashiVault:
+		if cfg.HashiVaultAddress == "" || cfg.HashiVaultToken == "" || cfg.HashiVaultKeyName == "" {
+			return nil, fmt.Errorf("config: %s=%s requires %s + %s + %s",
+				envVaultBackend, VaultBackendHashiVault,
+				envHashiVaultAddress, envHashiVaultToken, envHashiVaultKeyName)
+		}
 	default:
-		return nil, fmt.Errorf("config: %s=%q must be %q or %q",
-			envVaultBackend, cfg.VaultBackend, VaultBackendEnvMaster, VaultBackendAliKMS)
+		return nil, fmt.Errorf("config: %s=%q must be one of %q / %q / %q / %q",
+			envVaultBackend, cfg.VaultBackend,
+			VaultBackendEnvMaster, VaultBackendAliKMS, VaultBackendAWSKMS, VaultBackendHashiVault)
 	}
 
 	return cfg, nil

@@ -41,7 +41,9 @@ import (
 	"github.com/kite365/idcd/lib/cert/dns/route53"
 	"github.com/kite365/idcd/lib/cert/vault"
 	"github.com/kite365/idcd/lib/cert/vault/alikms"
+	"github.com/kite365/idcd/lib/cert/vault/awskms"
 	"github.com/kite365/idcd/lib/cert/vault/envmaster"
+	"github.com/kite365/idcd/lib/cert/vault/hashivault"
 	"github.com/kite365/idcd/lib/shared/logger"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
@@ -228,7 +230,8 @@ func main() {
 }
 
 // buildVault picks the vault.Vault implementation per Config.VaultBackend.
-// envmaster is the S1 default; alikms is the D-FC-04 production path.
+// envmaster is the S1 default; alikms / awskms / hashivault are the
+// D-FC-04 production paths (国内 / 海外 / 自托管).
 func buildVault(cfg *config.Config) (vault.Vault, error) {
 	switch cfg.VaultBackend {
 	case config.VaultBackendAliKMS:
@@ -237,6 +240,21 @@ func buildVault(cfg *config.Config) (vault.Vault, error) {
 			AccessKeyID:     cfg.AliKMSAccessKeyID,
 			AccessKeySecret: cfg.AliKMSAccessKeySecret,
 			KeyID:           cfg.AliKMSKeyID,
+		})
+	case config.VaultBackendAWSKMS:
+		return awskms.New(awskms.Config{
+			Region:          cfg.AWSKMSRegion,
+			AccessKeyID:     cfg.AWSKMSAccessKeyID,
+			SecretAccessKey: cfg.AWSKMSSecretAccessKey,
+			KeyID:           cfg.AWSKMSKeyID,
+		})
+	case config.VaultBackendHashiVault:
+		return hashivault.New(hashivault.Config{
+			Address:   cfg.HashiVaultAddress,
+			Token:     cfg.HashiVaultToken,
+			Namespace: cfg.HashiVaultNamespace,
+			KeyName:   cfg.HashiVaultKeyName,
+			MountPath: cfg.HashiVaultMountPath,
 		})
 	default:
 		return envmaster.NewFromEnv("CERT_MASTER_KEY")

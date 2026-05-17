@@ -189,14 +189,29 @@ type fakeMailer struct {
 }
 
 type mailCall struct {
-	OrderID string
-	Reason  string
+	OrderID       string
+	UserEmail     string
+	PaddleOrderID string
+	AmountCents   int64
+	Currency      string
+	Reason        string
 }
 
-func (f *fakeMailer) SendApology(_ context.Context, orderID, reason string) error {
+func (f *fakeMailer) SendApology(_ context.Context, order *Order, reason string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, mailCall{OrderID: orderID, Reason: reason})
+	if order == nil {
+		f.calls = append(f.calls, mailCall{Reason: reason})
+		return f.err
+	}
+	f.calls = append(f.calls, mailCall{
+		OrderID:       order.ID,
+		UserEmail:     order.UserEmail,
+		PaddleOrderID: order.PaddleOrderID,
+		AmountCents:   order.PriceCents(),
+		Currency:      order.Currency,
+		Reason:        reason,
+	})
 	return f.err
 }
 
@@ -251,8 +266,11 @@ func sampleOrder(id string) *Order {
 	return &Order{
 		ID:            id,
 		Status:        "failed",
+		OwnerID:       "u_" + id,
+		UserEmail:     id + "@example.com",
 		PaddleOrderID: "pdle_" + id,
 		PriceCNYYuan:  199.0,
+		Currency:      "CNY",
 	}
 }
 
@@ -643,7 +661,16 @@ func TestTickDelayZone_SecondRetryFails_FlipsRefundFailedAndApologizes(t *testin
 
 	assert.Equal(t, StatusRefundFailed, orders.get("v_1").Status)
 	require.Len(t, mailer.calls, 1)
-	assert.Equal(t, "v_1", mailer.calls[0].OrderID)
+	// Enriched payload reaches the mailer: order_id + email + paddle id
+	// + cents + currency + reason all populated so the notifier can
+	// render the email without a follow-up DB read.
+	got := mailer.calls[0]
+	assert.Equal(t, "v_1", got.OrderID)
+	assert.Equal(t, "v_1@example.com", got.UserEmail)
+	assert.Equal(t, "pdle_v_1", got.PaddleOrderID)
+	assert.Equal(t, int64(19900), got.AmountCents)
+	assert.Equal(t, "CNY", got.Currency)
+	assert.Contains(t, got.Reason, "paddle still down")
 	assert.NotNil(t, orders.get("v_1").ApologySentAt)
 }
 

@@ -25,8 +25,20 @@ func newStore(t *testing.T) (*repoOrderStore, pgxmock.PgxPoolIface) {
 	return &repoOrderStore{
 		orders:  repos.Orders,
 		reports: repos.Reports,
+		pool:    pool,
 		now:     time.Now,
 	}, pool
+}
+
+// expectUserEmailQuery wires the cross-schema "owner_id → user.email"
+// lookup that loadOrder now performs after fetching the verdict_order.
+// Tests that don't care about the email can call this with the
+// canonical owner_id ("u_1") + email ("u_1@example.com") shipped by
+// sampleOrderRow.
+func expectUserEmailQuery(pool pgxmock.PgxPoolIface, ownerID, email string) {
+	pool.ExpectQuery(`SELECT email::text FROM idcd_main\."user"\s+WHERE id`).
+		WithArgs(ownerID).
+		WillReturnRows(pgxmock.NewRows([]string{"email"}).AddRow(email))
 }
 
 func orderCols() []string {
@@ -88,11 +100,15 @@ func TestRepoOrderStore_GetByReportID_Success(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM idcd_attest\.verdict_order\s+WHERE id`).
 		WithArgs("v_1").
 		WillReturnRows(pgxmock.NewRows(orderCols()).AddRow(sampleOrderRow("v_1")...))
+	expectUserEmailQuery(pool, "u_1", "u_1@example.com")
 
 	o, err := s.GetByReportID(context.Background(), "vr_1")
 	require.NoError(t, err)
 	assert.Equal(t, "v_1", o.ID)
+	assert.Equal(t, "u_1", o.OwnerID)
+	assert.Equal(t, "u_1@example.com", o.UserEmail)
 	assert.Equal(t, "pdle_v_1", o.PaddleOrderID)
+	assert.Equal(t, "CNY", o.Currency)
 	assert.InDelta(t, 199.0, o.PriceCNYYuan, 0.001)
 }
 
@@ -116,6 +132,64 @@ func TestRepoOrderStore_GetByReportID_ReportDBError(t *testing.T) {
 	_, err := s.GetByReportID(context.Background(), "vr_x")
 	require.Error(t, err)
 	assert.NotErrorIs(t, err, refund.ErrOrderNotFound)
+}
+
+func TestRepoOrderStore_GetByID_Success_PopulatesEnrichment(t *testing.T) {
+	s, pool := newStore(t)
+	pool.ExpectQuery(`SELECT .+ FROM idcd_attest\.verdict_order\s+WHERE id`).
+		WithArgs("v_1").
+		WillReturnRows(pgxmock.NewRows(orderCols()).AddRow(sampleOrderRow("v_1")...))
+	expectUserEmailQuery(pool, "u_1", "u_1@example.com")
+
+	o, err := s.GetByID(context.Background(), "v_1")
+	require.NoError(t, err)
+	assert.Equal(t, "v_1", o.ID)
+	assert.Equal(t, "u_1", o.OwnerID)
+	assert.Equal(t, "u_1@example.com", o.UserEmail)
+	assert.Equal(t, "CNY", o.Currency)
+}
+
+func TestRepoOrderStore_GetByID_UserMissing_LeavesEmailEmpty(t *testing.T) {
+	s, pool := newStore(t)
+	pool.ExpectQuery(`SELECT .+ FROM idcd_attest\.verdict_order\s+WHERE id`).
+		WithArgs("v_1").
+		WillReturnRows(pgxmock.NewRows(orderCols()).AddRow(sampleOrderRow("v_1")...))
+	pool.ExpectQuery(`SELECT email::text FROM idcd_main\."user"\s+WHERE id`).
+		WithArgs("u_1").
+		WillReturnError(pgx.ErrNoRows)
+
+	o, err := s.GetByID(context.Background(), "v_1")
+	require.NoError(t, err, "user-missing is fail-open per D5")
+	assert.Equal(t, "v_1", o.ID)
+	assert.Empty(t, o.UserEmail)
+}
+
+func TestRepoOrderStore_GetByID_UserLookupDBError_Propagates(t *testing.T) {
+	s, pool := newStore(t)
+	pool.ExpectQuery(`SELECT .+ FROM idcd_attest\.verdict_order\s+WHERE id`).
+		WithArgs("v_1").
+		WillReturnRows(pgxmock.NewRows(orderCols()).AddRow(sampleOrderRow("v_1")...))
+	pool.ExpectQuery(`SELECT email::text FROM idcd_main\."user"\s+WHERE id`).
+		WithArgs("u_1").
+		WillReturnError(errors.New("db down"))
+
+	_, err := s.GetByID(context.Background(), "v_1")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "user email lookup")
+}
+
+func TestRepoOrderStore_LookupUserEmail_EmptyOwnerID(t *testing.T) {
+	s, _ := newStore(t)
+	got, err := s.lookupUserEmail(context.Background(), "")
+	require.NoError(t, err)
+	assert.Equal(t, "", got)
+}
+
+func TestRepoOrderStore_LookupUserEmail_NilPoolReturnsEmpty(t *testing.T) {
+	s := &repoOrderStore{}
+	got, err := s.lookupUserEmail(context.Background(), "u_1")
+	require.NoError(t, err)
+	assert.Equal(t, "", got)
 }
 
 func TestRepoOrderStore_GetByID_NotFound(t *testing.T) {

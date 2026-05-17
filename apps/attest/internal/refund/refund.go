@@ -87,14 +87,26 @@ const (
 // Order is the projection refund worker needs. Kept narrow so the
 // in-process fake the tests use does not have to reconstruct the full
 // repo.Order struct.
+//
+// OwnerID, UserEmail, Currency and LastError are populated by the
+// repoOrderStore adapter so the apology mailer receives a fully
+// enriched payload — the notifier no longer needs to perform any
+// cross-schema lookup of its own (D1: app-level join lives here).
+// Currency is currently hard-coded "CNY" by the adapter; kept on the
+// struct so a future multi-currency rollout doesn't require another
+// signature change.
 type Order struct {
-	ID              string
-	Status          string
-	PaddleOrderID   string
-	PriceCNYYuan    float64
-	RefundAttempts  int
-	RefundedAt      *time.Time
-	ApologySentAt   *time.Time
+	ID             string
+	Status         string
+	OwnerID        string
+	UserEmail      string
+	PaddleOrderID  string
+	PriceCNYYuan   float64
+	Currency       string
+	RefundAttempts int
+	LastError      string
+	RefundedAt     *time.Time
+	ApologySentAt  *time.Time
 }
 
 // PriceCents converts the order's PriceCNYYuan into integer cents for
@@ -173,13 +185,20 @@ type RefundProvider interface {
 // asynq queue (handler.QueueBilling, task type "payment:refund_apology"
 // — see cmd/refund-worker/main.go).
 //
+// SendApology receives the fully-populated *Order (with UserEmail /
+// PaddleOrderID / PriceCents / Currency already resolved by the
+// adapter) plus the final failure reason; the notifier can render the
+// email without any further DB lookup. Passing the order pointer lets
+// us add fields later (e.g. locale) without changing the signature
+// again.
+//
 // We deliberately separate the apology enqueue from MarkApologySent: a
 // failure to enqueue the email must leave refund_apology_sent_at NULL
 // so the next operator sweep can re-send. The Mailer is therefore
 // expected to be idempotent on its own side (task de-duplication keyed
 // on order_id).
 type ApologyMailer interface {
-	SendApology(ctx context.Context, orderID, reason string) error
+	SendApology(ctx context.Context, order *Order, reason string) error
 }
 
 // ZSetClient is the minimum of *redis.Client the handler needs. Keeping
@@ -557,7 +576,7 @@ func (h *Handler) processRetry(ctx context.Context, orderID string, attempt int)
 		"order_id", orderID, "attempt", attempt, "err", refundErr,
 		"alert", "refund_failed")
 	if h.cfg.Mailer != nil {
-		if err := h.cfg.Mailer.SendApology(ctx, orderID, refundErr.Error()); err != nil {
+		if err := h.cfg.Mailer.SendApology(ctx, order, refundErr.Error()); err != nil {
 			// Apology enqueue failed — log loud but do NOT flip
 			// refund_apology_sent_at. The next operator sweep can
 			// re-send; the order is already in refund_failed which

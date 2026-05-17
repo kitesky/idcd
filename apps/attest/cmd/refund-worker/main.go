@@ -41,6 +41,7 @@ import (
 	"time"
 
 	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
 
@@ -137,6 +138,7 @@ func main() {
 	orderStore := &repoOrderStore{
 		orders:  repos.Orders,
 		reports: repos.Reports,
+		pool:    pool,
 		now:     time.Now,
 	}
 
@@ -245,8 +247,23 @@ func newLogger(level string) *slog.Logger {
 type repoOrderStore struct {
 	orders  *repo.VerdictOrdersRepo
 	reports *repo.VerdictReportsRepo
-	now     func() time.Time
+	// pool is held directly (rather than going through a repo) so the
+	// refund worker can run the one cross-schema read it needs — the
+	// owner_id → idcd_main."user".email lookup driving the apology
+	// email. D1: no FK, application-level join only.
+	pool repo.Pool
+	now  func() time.Time
 }
+
+// userEmailLookupSQL fetches the recipient email for the apology
+// email. Schema-qualified so the query is correct regardless of which
+// schema the connection's search_path defaults to. citext column ↔
+// Go string maps via pgx's default codec.
+//
+// D1: NOT a foreign key. This is an application-level join executed at
+// refund-failure time only (≤ projected ~50 refunds/day), so the cost
+// is negligible and the cross-schema dependency stays read-only.
+const userEmailLookupSQL = `SELECT email::text FROM idcd_main."user" WHERE id = $1`
 
 func (s *repoOrderStore) GetByReportID(ctx context.Context, reportID string) (*refund.Order, error) {
 	rep, err := s.reports.GetByID(ctx, reportID)
@@ -275,15 +292,56 @@ func (s *repoOrderStore) loadOrder(ctx context.Context, id string) (*refund.Orde
 	if o.PaddleOrderID != nil {
 		paddle = *o.PaddleOrderID
 	}
+	lastErr := ""
+	if o.RefundLastError != nil {
+		lastErr = *o.RefundLastError
+	}
+	// D1 application-level join: chase owner_id into idcd_main."user"
+	// to pull the email. We swallow "not found" so the refund flow
+	// still flips the order to refund_failed even if the user row was
+	// hard-deleted; D5 fail-open posture (no email beats no refund).
+	email, lookupErr := s.lookupUserEmail(ctx, o.OwnerID)
+	if lookupErr != nil {
+		// Transient DB errors: surface so the caller can decide whether
+		// to retry (initiate/tick wraps this into a non-fatal log).
+		return nil, fmt.Errorf("user email lookup: %w", lookupErr)
+	}
 	return &refund.Order{
 		ID:             o.ID,
 		Status:         o.Status,
+		OwnerID:        o.OwnerID,
+		UserEmail:      email,
 		PaddleOrderID:  paddle,
 		PriceCNYYuan:   o.PriceCNY,
+		Currency:       "CNY",
 		RefundAttempts: o.RefundAttemptCount,
+		LastError:      lastErr,
 		RefundedAt:     o.RefundedAt,
 		ApologySentAt:  o.RefundApologySentAt,
 	}, nil
+}
+
+// lookupUserEmail runs the cross-schema "owner_id → user.email" join.
+// Returns ("", nil) when the user row is gone (D5 fail-open: the
+// refund pipeline must still close out the order even without a
+// recipient). Any other DB error bubbles up so the caller can retry.
+func (s *repoOrderStore) lookupUserEmail(ctx context.Context, ownerID string) (string, error) {
+	if strings.TrimSpace(ownerID) == "" {
+		return "", nil
+	}
+	if s.pool == nil {
+		// Test wiring may omit the pool (no email needed); treat as
+		// "no recipient" rather than a hard error.
+		return "", nil
+	}
+	var email string
+	if err := s.pool.QueryRow(ctx, userEmailLookupSQL, ownerID).Scan(&email); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", nil
+		}
+		return "", err
+	}
+	return email, nil
 }
 
 func (s *repoOrderStore) MarkRefunded(ctx context.Context, orderID, fromStatus string, at time.Time) error {
@@ -324,17 +382,42 @@ type asynqApologyMailer struct {
 	now    func() time.Time
 }
 
+// apologyPayload is the wire format of payment:refund_apology asynq
+// tasks. The notifier-side RefundApologyPayload mirrors this struct;
+// JSON field names form the contract — DO NOT rename without
+// coordinating with apps/notifier/internal/worker/handlers.go.
+//
+// The producer (refund worker) embeds enough state for the notifier
+// to render and send the apology email without any further DB read.
+// This avoids a notifier-side cross-schema lookup (which would have
+// re-implemented the same D1 join we already do here) and keeps the
+// notifier deployable without the idcd_attest DSN.
 type apologyPayload struct {
-	OrderID    string `json:"order_id"`
-	Reason     string `json:"reason"`
-	EnqueuedAt string `json:"enqueued_at"`
+	OrderID           string `json:"order_id"`
+	UserEmail         string `json:"user_email"`
+	PaddleOrderID     string `json:"paddle_order_id"`
+	RefundAmountCents int64  `json:"refund_amount_cents"`
+	Currency          string `json:"currency"`
+	FailureReason     string `json:"failure_reason"`
+	EnqueuedAt        string `json:"enqueued_at"`
 }
 
-func (m *asynqApologyMailer) SendApology(ctx context.Context, orderID, reason string) error {
+func (m *asynqApologyMailer) SendApology(ctx context.Context, order *refund.Order, reason string) error {
+	if order == nil {
+		return fmt.Errorf("apology mailer: nil order")
+	}
+	currency := order.Currency
+	if strings.TrimSpace(currency) == "" {
+		currency = "CNY"
+	}
 	body, err := jsonMarshal(apologyPayload{
-		OrderID:    orderID,
-		Reason:     reason,
-		EnqueuedAt: m.now().UTC().Format(time.RFC3339Nano),
+		OrderID:           order.ID,
+		UserEmail:         order.UserEmail,
+		PaddleOrderID:     order.PaddleOrderID,
+		RefundAmountCents: order.PriceCents(),
+		Currency:          currency,
+		FailureReason:     reason,
+		EnqueuedAt:        m.now().UTC().Format(time.RFC3339Nano),
 	})
 	if err != nil {
 		return fmt.Errorf("marshal apology payload: %w", err)

@@ -558,6 +558,98 @@ func TestBuildMultipart_RoundTrip(t *testing.T) {
 	}
 }
 
+// fakeRefundEnqueuer records EnqueueRefund calls so tests can assert
+// whether refund hand-off fires on the recordFailure path. The errOnce
+// field lets one call return an error so the "best-effort" guarantee is
+// covered (a failing enqueue must NOT regress the recordFailure return).
+type fakeRefundEnqueuer struct {
+	calls   []refundCall
+	errOnce error
+}
+
+type refundCall struct {
+	ReportID string
+	Reason   string
+}
+
+func (f *fakeRefundEnqueuer) EnqueueRefund(_ context.Context, reportID, reason string) error {
+	f.calls = append(f.calls, refundCall{ReportID: reportID, Reason: reason})
+	if f.errOnce != nil {
+		err := f.errOnce
+		f.errOnce = nil
+		return err
+	}
+	return nil
+}
+
+func TestRecordFailure_EnqueuesRefundWhenWired(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: false, Reason: "bad sig"})
+
+	enq := &fakeRefundEnqueuer{}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            &fakeUpdater{},
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+		RefundEnqueuer:     enq,
+	})
+
+	_ = w.VerifyOne(context.Background(), &PendingReport{ID: "vr_99", PDFURL: "f"})
+
+	if len(enq.calls) != 1 {
+		t.Fatalf("enqueue calls=%d want 1", len(enq.calls))
+	}
+	if enq.calls[0].ReportID != "vr_99" {
+		t.Fatalf("report_id=%q want vr_99", enq.calls[0].ReportID)
+	}
+	if !strings.Contains(enq.calls[0].Reason, "bad sig") {
+		t.Fatalf("reason=%q want to contain 'bad sig'", enq.calls[0].Reason)
+	}
+}
+
+func TestRecordFailure_NilEnqueuerIsNoOp(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: false, Reason: "bad sig"})
+
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            &fakeUpdater{},
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+		// RefundEnqueuer intentionally nil
+	})
+
+	if err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_x", PDFURL: "f"}); err == nil {
+		t.Fatalf("expected error from invalid signature")
+	}
+}
+
+func TestRecordFailure_EnqueueErrorDoesNotMask(t *testing.T) {
+	pdf := []byte("%PDF-fake")
+	srv, _ := newVerifyServer(t, 200, &verifyResponse{Valid: false, Reason: "bad sig"})
+
+	enq := &fakeRefundEnqueuer{errOnce: fmt.Errorf("redis down")}
+	w := newWorker(t, Config{
+		Lister:             &fakeLister{},
+		Updater:            &fakeUpdater{},
+		AttestationRecords: &fakeRecords{},
+		Fetcher:            &fakeFetcher{bytesByURL: map[string][]byte{"f": pdf}},
+		VerifyEndpoint:     srv.URL,
+		RefundEnqueuer:     enq,
+	})
+
+	err := w.VerifyOne(context.Background(), &PendingReport{ID: "vr_y", PDFURL: "f"})
+	if err == nil || !strings.Contains(err.Error(), "bad sig") {
+		t.Fatalf("expected original 'bad sig' error to survive enqueue failure, got %v", err)
+	}
+	if len(enq.calls) != 1 {
+		t.Fatalf("enqueue attempted=%d want 1", len(enq.calls))
+	}
+}
+
 // mimeBoundary parses a Content-Type header without importing mime in
 // the production file; mirrors mime.ParseMediaType.
 func mimeBoundary(ct string) (string, map[string]string, error) {

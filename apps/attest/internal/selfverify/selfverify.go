@@ -19,10 +19,12 @@
 //     (attestation_record, action=self_verified) per D4 so retries are
 //     observable.
 //
-// Failure handling is intentionally minimal at this layer: a failure
-// flips self_verify_status to fail and records the reason; the Refund
-// Worker (D5, S2 W7+, separate binary) picks up failed reports out of
-// band. See the TODO in recordFailure.
+// Failure handling: a failure flips self_verify_status to fail and
+// records the reason. If a RefundEnqueuer is wired (Config.RefundEnqueuer
+// non-nil), the worker also enqueues a refund-initiate job for the
+// separate Refund Worker binary to consume (D5). The Refund Worker calls
+// Paddle's refund API; if that call itself fails, the Paddle webhook
+// flow's refund_retry_queue takes over the retry cadence.
 package selfverify
 
 import (
@@ -74,6 +76,16 @@ type PDFFetcher interface {
 	Fetch(ctx context.Context, pdfURL string) ([]byte, error)
 }
 
+// RefundEnqueuer is the optional hand-off to the Refund Worker (D5).
+// recordFailure calls EnqueueRefund after self_verify_status flips to
+// "fail" so the user gets refunded. Implementations should be best-effort
+// — an enqueue error must not regress the recordFailure return value
+// (the report is still marked failed; an operator alert is the recovery
+// path).
+type RefundEnqueuer interface {
+	EnqueueRefund(ctx context.Context, reportID, reason string) error
+}
+
 // Self-verify result strings persisted on verdict_report. Kept in this
 // package so wiring code shares the same constants.
 const (
@@ -95,6 +107,10 @@ type Config struct {
 	Updater            ReportUpdater
 	AttestationRecords attestrec.Repository
 	Fetcher            PDFFetcher
+
+	// RefundEnqueuer is optional. nil disables refund-on-failure
+	// (pre-prod / smoke environments don't need to charge real users).
+	RefundEnqueuer RefundEnqueuer
 
 	// VerifyEndpoint is the FULL public URL of /verify, e.g.
 	//   https://attest.idcd.com/verify
@@ -329,7 +345,12 @@ func (w *Worker) recordFailure(ctx context.Context, reportID, reason string) err
 		w.cfg.Logger.Error("selfverify: update self_verify_status=fail failed",
 			"report_id", reportID, "err", err)
 	}
-	// TODO(S2 W7+): enqueue Refund Worker job here (DECISIONS.md D5).
+	if w.cfg.RefundEnqueuer != nil {
+		if err := w.cfg.RefundEnqueuer.EnqueueRefund(ctx, reportID, reason); err != nil {
+			w.cfg.Logger.Error("selfverify: enqueue refund job failed",
+				"report_id", reportID, "err", err)
+		}
+	}
 	return fmt.Errorf("self-verify failed: %s", reason)
 }
 

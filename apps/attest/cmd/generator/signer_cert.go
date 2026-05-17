@@ -132,24 +132,16 @@ func bindCertToKMS(cert *x509.Certificate, signer signerPubKeySource) error {
 	return nil
 }
 
-// loadProdSignerCert is the production-cert loader. The first return
-// value is nil + source="" when no production cert is configured (env
-// vars unset), signalling wireSignerCert to fall back to the dev
-// fixture. The S2-W7 task will replace this stub with a real PEM-file
-// loader; until then it always returns (nil, nil, "", nil).
+// loadProdSignerCert reads the production signer cert + optional chain
+// from the ATTEST_SIGNER_CERT_PEM / ATTEST_SIGNER_CHAIN_PEM file paths.
+// Returns (nil, nil, "", nil) when ATTEST_SIGNER_CERT_PEM is unset so
+// wireSignerCert can fall back to the dev fixture.
 //
-// Contract for the real impl:
-//
-//	ATTEST_SIGNER_CERT_PEM   path to the leaf signer cert (PEM)
-//	ATTEST_SIGNER_CHAIN_PEM  path to the intermediates (PEM concat)
-//	                         optional; empty → empty chain
-//	                         (pdfsign will only emit leaf)
-//
-// Validation the real impl must perform:
+// Validation performed:
 //   - leaf cert parses as a valid x509
-//   - leaf.NotAfter is in the future (warn if < 30d remaining)
+//   - leaf.NotAfter is in the future
 //   - leaf KeyUsage includes DigitalSignature
-//   - if chain provided, leaf chains up to the last chain cert
+//   - if chain provided, leaf is signed by chain[0]
 func loadProdSignerCert() (*x509.Certificate, []*x509.Certificate, string, error) {
 	certPath := os.Getenv(envSignerCertPEM)
 	if certPath == "" {

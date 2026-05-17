@@ -35,6 +35,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
@@ -98,11 +99,30 @@ func main() {
 		s3Once: &sync.Once{},
 	}
 
+	// Refund-on-failure hand-off (D5). When the Redis addr is unset the
+	// worker still runs — recordFailure just skips the enqueue. Same
+	// fail-open posture as the Paddle webhook on cmd/server.
+	var refundEnq selfverify.RefundEnqueuer
+	if addr := strings.TrimSpace(cfg.RedisAddr); addr != "" {
+		rdb := redis.NewClient(&redis.Options{
+			Addr:         addr,
+			DialTimeout:  5 * time.Second,
+			ReadTimeout:  3 * time.Second,
+			WriteTimeout: 3 * time.Second,
+		})
+		defer func() { _ = rdb.Close() }()
+		refundEnq = &redisRefundEnqueuer{rdb: rdb, stream: refundInitiateStream}
+		log.Info("attest-verifier: refund enqueue wired", "stream", refundInitiateStream)
+	} else {
+		log.Warn("attest-verifier: ATTEST_REDIS_ADDR unset; refund-on-fail disabled")
+	}
+
 	w := selfverify.New(selfverify.Config{
 		Lister:             &pendingReportsLister{pool: pool, log: log},
 		Updater:            repos.Reports,
 		AttestationRecords: repos.AttestationRecords,
 		Fetcher:            fetcher,
+		RefundEnqueuer:     refundEnq,
 		VerifyEndpoint:     cfg.VerifyEndpoint,
 		HTTPClient:         httpClient,
 		PollInterval:       30 * time.Second,

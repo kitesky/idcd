@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"net/http"
 	"testing"
 	"time"
 
@@ -229,5 +230,73 @@ func TestHandleCmdAck_InvalidPayload(t *testing.T) {
 	err := handler.handleCmdAck(c, []byte(`{bad json`))
 	if err == nil {
 		t.Error("expected error for invalid payload")
+	}
+}
+
+// ── allowedOrigins (CheckOrigin) ──────────────────────────────────────────────
+
+func TestLoadAllowedOrigins_DefaultsWhenEnvUnset(t *testing.T) {
+	got := loadAllowedOrigins("")
+	if !got["https://idcd.com"] || !got["https://app.idcd.com"] {
+		t.Errorf("expected default production origins, got %v", got)
+	}
+	if len(got) != len(defaultAllowedOrigins) {
+		t.Errorf("expected %d default origins, got %d (%v)", len(defaultAllowedOrigins), len(got), got)
+	}
+}
+
+func TestLoadAllowedOrigins_CustomEnv(t *testing.T) {
+	got := loadAllowedOrigins(" https://staging.idcd.com , https://dev.idcd.local ,")
+	if !got["https://staging.idcd.com"] {
+		t.Errorf("expected staging origin to be allowed, got %v", got)
+	}
+	if !got["https://dev.idcd.local"] {
+		t.Errorf("expected dev origin to be allowed, got %v", got)
+	}
+	// Production defaults must NOT bleed through when env explicitly set.
+	if got["https://idcd.com"] {
+		t.Errorf("custom env should not include default production origin, got %v", got)
+	}
+	if len(got) != 2 {
+		t.Errorf("expected exactly 2 origins, got %d (%v)", len(got), got)
+	}
+}
+
+func TestLoadAllowedOrigins_RejectsWildcard(t *testing.T) {
+	got := loadAllowedOrigins("*, https://idcd.com")
+	if got["*"] {
+		t.Error("bare wildcard must never be a valid origin (fail-closed)")
+	}
+	if !got["https://idcd.com"] {
+		t.Error("non-wildcard entries should still be honoured alongside dropped *")
+	}
+	// All-wildcard input should fall back to defaults, not produce an empty map.
+	fallback := loadAllowedOrigins("*, , ")
+	if !fallback["https://idcd.com"] || !fallback["https://app.idcd.com"] {
+		t.Errorf("all-wildcard input should fall back to defaults, got %v", fallback)
+	}
+}
+
+func TestCheckOrigin_AcceptsAllowed(t *testing.T) {
+	saved := allowedOrigins
+	defer func() { allowedOrigins = saved }()
+	allowedOrigins = loadAllowedOrigins("https://test.idcd.local")
+
+	r, _ := http.NewRequest(http.MethodGet, "/ws", nil)
+	r.Header.Set("Origin", "https://test.idcd.local")
+	if !upgrader.CheckOrigin(r) {
+		t.Error("expected configured origin to be accepted")
+	}
+}
+
+func TestCheckOrigin_RejectsUnknown(t *testing.T) {
+	saved := allowedOrigins
+	defer func() { allowedOrigins = saved }()
+	allowedOrigins = loadAllowedOrigins("https://test.idcd.local")
+
+	r, _ := http.NewRequest(http.MethodGet, "/ws", nil)
+	r.Header.Set("Origin", "https://evil.example.com")
+	if upgrader.CheckOrigin(r) {
+		t.Error("expected unknown origin to be rejected")
 	}
 }

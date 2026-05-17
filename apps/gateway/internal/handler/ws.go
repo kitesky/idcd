@@ -23,10 +23,40 @@ import (
 	"github.com/kite365/idcd/lib/shared/stream"
 )
 
+// defaultAllowedOrigins are the production origins permitted when
+// GATEWAY_WS_ALLOWED_ORIGINS is unset. Kept as a fallback so a misconfigured
+// deployment fails closed to production rather than opening up dev hosts.
+var defaultAllowedOrigins = []string{
+	"https://idcd.com",
+	"https://app.idcd.com",
+}
+
 // allowedOrigins lists the origins permitted to open WebSocket connections.
-var allowedOrigins = map[string]bool{
-	"https://idcd.com":     true,
-	"https://app.idcd.com": true,
+// Populated at package init from GATEWAY_WS_ALLOWED_ORIGINS (comma-separated)
+// with defaultAllowedOrigins as fallback. A bare "*" entry is rejected — we
+// remain fail-closed and a wildcard would defeat the purpose of CheckOrigin.
+var allowedOrigins = loadAllowedOrigins(os.Getenv("GATEWAY_WS_ALLOWED_ORIGINS"))
+
+// loadAllowedOrigins parses the comma-separated origin list from env.
+// Whitespace around entries is trimmed and empty entries are skipped.
+// A bare "*" entry is dropped (with the rest still honoured) so operators
+// cannot accidentally disable origin checking via env.
+// Empty/whitespace-only input falls back to defaultAllowedOrigins.
+func loadAllowedOrigins(raw string) map[string]bool {
+	out := map[string]bool{}
+	for _, part := range strings.Split(raw, ",") {
+		o := strings.TrimSpace(part)
+		if o == "" || o == "*" {
+			continue
+		}
+		out[o] = true
+	}
+	if len(out) == 0 {
+		for _, o := range defaultAllowedOrigins {
+			out[o] = true
+		}
+	}
+	return out
 }
 
 var upgrader = websocket.Upgrader{

@@ -78,7 +78,7 @@ func (w *WebhookChannel) doPost(ctx context.Context, data []byte) error {
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := w.client.Do(req)
+	resp, err := w.client.Do(req) //nolint:bodyclose // body closed via drainAndClose helper
 	if err != nil {
 		return fmt.Errorf("do request: %w", err)
 	}

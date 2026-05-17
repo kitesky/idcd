@@ -74,7 +74,7 @@ func (w *WecomChannel) post(ctx context.Context, data []byte) error {
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := w.client.Do(httpReq)
+	resp, err := w.client.Do(httpReq) //nolint:bodyclose // body closed via drainAndClose helper
 	if err != nil {
 		return fmt.Errorf("wecom: do request: %w", err)
 	}

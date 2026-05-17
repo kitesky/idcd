@@ -158,7 +158,13 @@ func (c *Client) connect(ctx context.Context) error {
 	handshakeHeaders.Set("X-Node-ID", c.nodeID)
 
 	dialer := websocket.Dialer{HandshakeTimeout: 10 * time.Second}
-	conn, _, err := dialer.DialContext(ctx, c.gatewayURL, handshakeHeaders)
+	conn, resp, err := dialer.DialContext(ctx, c.gatewayURL, handshakeHeaders)
+	if resp != nil {
+		// 101 Switching Protocols body is empty, but explicitly closing keeps
+		// linters and the http transport bookkeeping happy on both success and
+		// handshake failure paths.
+		_ = resp.Body.Close()
+	}
 	if err != nil {
 		return fmt.Errorf("dial: %w", err)
 	}

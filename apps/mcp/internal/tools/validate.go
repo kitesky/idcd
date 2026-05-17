@@ -16,7 +16,6 @@ import (
 const (
 	maxTargetLen = 253 // RFC 1035 hostname max
 	maxURLLen    = 2048
-	maxTextLen   = 4096
 	maxCount     = 100
 )
 
@@ -75,12 +74,4 @@ func validateCount(raw float64, def, max int) int {
 		return max
 	}
 	return n
-}
-
-// validateText caps a free-form text argument (e.g. an HTTP body).
-func validateText(raw string) (string, error) {
-	if len(raw) > maxTextLen {
-		return "", fmt.Errorf("text too long (max %d chars)", maxTextLen)
-	}
-	return raw, nil
 }

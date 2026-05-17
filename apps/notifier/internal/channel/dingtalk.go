@@ -106,7 +106,7 @@ func (d *DingtalkChannel) post(ctx context.Context, targetURL string, data []byt
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 
-	resp, err := d.client.Do(httpReq)
+	resp, err := d.client.Do(httpReq) //nolint:bodyclose // body closed via drainAndClose helper
 	if err != nil {
 		return fmt.Errorf("dingtalk: do request: %w", err)
 	}

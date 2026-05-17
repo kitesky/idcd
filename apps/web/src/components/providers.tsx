@@ -12,7 +12,7 @@ export function ThemeProvider({ children, nonce, ...props }: CustomThemeProvider
   return (
     <NextThemesProvider
       attribute="class"
-      defaultTheme="system"
+      defaultTheme="light"
       enableSystem
       nonce={nonce}
       {...props}

@@ -5,25 +5,10 @@ import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, Extern
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { Alert, AlertDescription } from "@/components/ui/alert"
 import { cn } from "@/lib/utils"
 import type { StatusPageData, ServiceStatus, MonitorHistory } from "./types"
-
-// ── Status badge (needs "success"/"warning" variants not in base shadcn) ──────
-
-function StatusBadge({ variant, className, children }: {
-  variant: "success" | "warning" | "destructive" | "secondary" | "outline"
-  className?: string; children: React.ReactNode
-}) {
-  const base = "inline-flex items-center rounded-md border px-2.5 py-0.5 text-xs font-semibold"
-  const variants: Record<string, string> = {
-    success:     "border-transparent bg-green-600/20 text-green-400",
-    warning:     "border-transparent bg-yellow-600/20 text-yellow-400",
-    destructive: "border-transparent bg-red-600/20 text-red-400",
-    secondary:   "border-transparent bg-secondary text-secondary-foreground",
-    outline:     "text-foreground border-border",
-  }
-  return <span className={cn(base, variants[variant], className)}>{children}</span>
-}
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -31,25 +16,27 @@ const STATUS_LABEL_ZH: Record<ServiceStatus, string> = {
   operational: "正常", degraded: "降级", outage: "中断", maintenance: "维护中",
 }
 
-function overallStatusConfig(status: ServiceStatus) {
+type OverallVariant = "success" | "warning" | "destructive" | "secondary"
+
+function overallStatusConfig(status: ServiceStatus): { label: string; variant: OverallVariant; icon: React.ReactNode; bg: string } {
   switch (status) {
-    case "operational": return { label: "全部服务正常",  variant: "success"     as const, icon: <CheckCircle2 className="h-6 w-6 text-green-400" />,  bg: "bg-green-900/20 border-green-800" }
-    case "degraded":    return { label: "部分服务降级",  variant: "warning"     as const, icon: <AlertTriangle className="h-6 w-6 text-yellow-400" />, bg: "bg-yellow-900/20 border-yellow-800" }
-    case "outage":      return { label: "严重服务中断",  variant: "destructive" as const, icon: <XCircle className="h-6 w-6 text-red-400" />,         bg: "bg-red-900/20 border-red-800" }
-    case "maintenance": return { label: "计划维护中",    variant: "secondary"   as const, icon: <AlertTriangle className="h-6 w-6 text-blue-400" />,   bg: "bg-blue-900/20 border-blue-800" }
+    case "operational": return { label: "全部服务正常",  variant: "success",     icon: <CheckCircle2 className="h-6 w-6 text-success" />,    bg: "bg-success/15 border-success/30" }
+    case "degraded":    return { label: "部分服务降级",  variant: "warning",     icon: <AlertTriangle className="h-6 w-6 text-warning" />,   bg: "bg-warning/15 border-warning/30" }
+    case "outage":      return { label: "严重服务中断",  variant: "destructive", icon: <XCircle className="h-6 w-6 text-destructive" />,    bg: "bg-destructive/15 border-destructive/30" }
+    case "maintenance": return { label: "计划维护中",    variant: "secondary",   icon: <AlertTriangle className="h-6 w-6 text-info" />,     bg: "bg-info/15 border-info/30" }
   }
 }
 
 function monitorDot(status: ServiceStatus) {
   const colors: Record<ServiceStatus, string> = {
-    operational: "bg-green-500", degraded: "bg-yellow-500", outage: "bg-red-500", maintenance: "bg-blue-500",
+    operational: "bg-success", degraded: "bg-warning", outage: "bg-destructive", maintenance: "bg-info",
   }
   return <span aria-label={STATUS_LABEL_ZH[status]} role="img" className={cn("inline-block h-2.5 w-2.5 rounded-full", colors[status])} />
 }
 
 function uptimeDayColor(status: ServiceStatus) {
   const colors: Record<ServiceStatus, string> = {
-    operational: "bg-green-600", degraded: "bg-yellow-500", outage: "bg-red-600", maintenance: "bg-blue-600",
+    operational: "bg-success", degraded: "bg-warning", outage: "bg-destructive", maintenance: "bg-info",
   }
   return colors[status]
 }
@@ -115,7 +102,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
           <h1 className="mb-4 text-3xl font-bold tracking-tight" data-testid="status-title">{data.title}</h1>
           <div className={cn("inline-flex items-center gap-3 rounded-xl border px-6 py-3", statusCfg.bg)} data-testid="overall-status">
             {statusCfg.icon}
-            <StatusBadge variant={statusCfg.variant} className="px-3 py-1 text-sm">{statusCfg.label}</StatusBadge>
+            <Badge variant={statusCfg.variant} className="px-3 py-1 text-sm">{statusCfg.label}</Badge>
           </div>
         </div>
 
@@ -162,7 +149,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
               <span>30 天前</span>
               <div className="flex items-center gap-3">
-                {[{ cls: "bg-green-600", label: "正常" }, { cls: "bg-yellow-500", label: "降级" }, { cls: "bg-red-600", label: "中断" }].map(({ cls, label }) => (
+                {[{ cls: "bg-success", label: "正常" }, { cls: "bg-warning", label: "降级" }, { cls: "bg-destructive", label: "中断" }].map(({ cls, label }) => (
                   <span key={label} className="flex items-center gap-1">
                     <span className={cn("inline-block h-2.5 w-2.5 rounded-sm", cls)} />{label}
                   </span>
@@ -184,9 +171,9 @@ export function StatusClient({ data }: { data: StatusPageData }) {
           <h2 className="mb-4 text-lg font-semibold">订阅状态更新</h2>
           <Card className="px-5 py-5">
             {subStatus === "success" ? (
-              <div className="rounded-md border border-green-600/30 bg-green-600/10 px-4 py-3 text-sm text-green-400" role="alert">
-                验证邮件已发送，请查收并点击链接完成订阅。
-              </div>
+              <Alert className="border-success/30 bg-success/10 text-success">
+                <AlertDescription>验证邮件已发送，请查收并点击链接完成订阅。</AlertDescription>
+              </Alert>
             ) : (
               <form onSubmit={handleSubscribe} className="flex gap-2">
                 <Input

@@ -66,7 +66,7 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
       // credentials: "include" sends the HttpOnly access_token cookie automatically.
       credentials: "include",
       headers: { ...defaultHeaders, ...localeHeaders, ...csrfHeaders, ...options?.headers },
-      signal: options?.signal ?? ownController!.signal,
+      signal: options?.signal ?? ownController?.signal,
     })
 
     if (!res.ok) {

@@ -51,7 +51,7 @@ export default function HomePage() {
             {FEATURE_KEYS.map(({ icon: Icon, key }) => (
               <Card key={key} className="p-6">
                 <div className="flex flex-col items-center text-center">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
                     <Icon className="h-6 w-6 text-primary" />
                   </div>
                   <h3 className="text-sm font-semibold text-foreground">

@@ -71,7 +71,7 @@ export default function ForgotPasswordPage() {
     >
       {success ? (
         <div className="space-y-5">
-          <div className="bg-green-500/15 text-green-600 dark:text-green-400 text-sm p-3 rounded-md">
+          <div className="bg-success/15 text-success text-sm p-3 rounded-md">
             {t("forgotPassword.successMessage")}
           </div>
           <Button asChild className="w-full" variant="outline">

@@ -102,7 +102,7 @@ export function UpgradesClient({ initialRollouts }: { initialRollouts: UpgradeRo
   return (
     <div className="space-y-4">
       {toast && (
-        <div className={`fixed bottom-4 right-4 z-50 rounded-md px-4 py-2 text-sm text-white shadow-lg ${toast.ok ? "bg-green-600" : "bg-destructive"}`}>
+        <div className={`fixed bottom-4 right-4 z-50 rounded-md px-4 py-2 text-sm shadow-lg ${toast.ok ? "bg-success text-success-foreground" : "bg-destructive text-destructive-foreground"}`}>
           {toast.message}
         </div>
       )}

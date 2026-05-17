@@ -24,7 +24,10 @@ const geistMono = Geist_Mono({
 })
 
 export const viewport: Viewport = {
-  themeColor: "#2563EB",
+  // Matches the light Zinc background defined in styles/theme.css (--background
+  // on :root = oklch(1 0 0) = white). Default theme is light, so mobile
+  // browser chrome should blend with the page rather than the old blue accent.
+  themeColor: "#ffffff",
   width: "device-width",
   initialScale: 1,
 }

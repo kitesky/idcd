@@ -77,7 +77,7 @@ function UptimeBlocks({ uptime }: UptimeBlocksProps) {
       {Array.from({ length: total }).map((_, i) => (
         <div
           key={i}
-          className={`h-4 w-4 rounded-sm ${i >= total - failed ? "bg-muted" : "bg-green-500"}`}
+          className={`h-4 w-4 rounded-sm ${i >= total - failed ? "bg-muted" : "bg-success"}`}
         />
       ))}
     </div>
@@ -86,14 +86,14 @@ function UptimeBlocks({ uptime }: UptimeBlocksProps) {
 
 function statusBadge(status: string) {
   if (status === "operational") {
-    return <Badge className="bg-green-500/20 text-green-400 border-green-500/30">● 运行正常</Badge>
+    return <Badge className="bg-success/20 text-success border-success/30">● 运行正常</Badge>
   }
   return <Badge variant="destructive">● {status}</Badge>
 }
 
 function severityBadge(severity: string) {
   if (severity === "low") return <Badge variant="secondary">低</Badge>
-  if (severity === "medium") return <Badge className="bg-yellow-500/20 text-yellow-400 border-yellow-500/30">中</Badge>
+  if (severity === "medium") return <Badge className="bg-warning/20 text-warning border-warning/30">中</Badge>
   return <Badge variant="destructive">高</Badge>
 }
 
@@ -141,7 +141,7 @@ export default async function TransparencyPage() {
               className="flex items-center gap-3 text-xl font-semibold"
             >
               {d.overall_status === "operational" ? (
-                <Badge className="text-base px-4 py-1.5 bg-green-500/20 text-green-400 border-green-500/30">
+                <Badge className="text-base px-4 py-1.5 bg-success/20 text-success border-success/30">
                   ● 所有系统运行正常
                 </Badge>
               ) : (
@@ -166,7 +166,7 @@ export default async function TransparencyPage() {
                 <CardTitle className="text-sm font-medium text-muted-foreground">{label}</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-2xl font-bold text-green-400">{value}%</p>
+                <p className="text-2xl font-bold text-success">{value}%</p>
                 <UptimeBlocks uptime={value} />
               </CardContent>
             </Card>
@@ -184,7 +184,7 @@ export default async function TransparencyPage() {
                 <p className="text-sm text-muted-foreground mt-1">总节点</p>
               </div>
               <div>
-                <p className="text-3xl font-bold text-green-400">{activeNodes}</p>
+                <p className="text-3xl font-bold text-success">{activeNodes}</p>
                 <p className="text-sm text-muted-foreground mt-1">活跃节点</p>
               </div>
               <div>
@@ -304,7 +304,7 @@ export default async function TransparencyPage() {
                 <p className="text-sm text-muted-foreground mt-1">总申诉数</p>
               </div>
               <div>
-                <p className="text-2xl font-bold text-green-400">{d.appeal_stats.resolved}</p>
+                <p className="text-2xl font-bold text-success">{d.appeal_stats.resolved}</p>
                 <p className="text-sm text-muted-foreground mt-1">已解决</p>
               </div>
               <div>

@@ -554,7 +554,7 @@ function ActiveOverridesList({ scheduleId, refreshToken }: ActiveOverridesListPr
               className="flex items-center gap-3 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50"
               data-testid={`override-row-${o.id}`}
             >
-              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-amber-500/10 text-xs text-amber-600 dark:text-amber-400 shrink-0">
+              <div className="flex h-6 w-6 items-center justify-center rounded-full bg-warning/10 text-xs text-warning shrink-0">
                 {o.user_id.charAt(0).toUpperCase()}
               </div>
               <span className="flex-1 font-medium truncate">{o.user_id}</span>
@@ -706,12 +706,7 @@ function AlertEventsTab() {
               {event.status === "firing" ? (
                 <Badge variant="destructive">FIRING</Badge>
               ) : (
-                <Badge
-                  variant="outline"
-                  className="border-green-500 text-green-600 dark:text-green-400"
-                >
-                  RESOLVED
-                </Badge>
+                <Badge variant="success">RESOLVED</Badge>
               )}
             </TableCell>
             <TableCell className="text-muted-foreground">

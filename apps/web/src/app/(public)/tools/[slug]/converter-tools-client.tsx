@@ -52,13 +52,15 @@ export function UrlEncodeClient() {
               <CardTitle>输入</CardTitle>
               <div className="flex border rounded-lg p-1">
                 {(['encode', 'decode'] as const).map(m => (
-                  <button
+                  <Button
                     key={m}
-                    className={`px-3 py-1 text-sm rounded transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : ''}`}
+                    size="sm"
+                    variant={mode === m ? 'default' : 'ghost'}
+                    className="h-7 px-3"
                     onClick={() => setMode(m)}
                   >
                     {m === 'encode' ? '编码' : '解码'}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>
@@ -304,13 +306,14 @@ export function NumberConvertClient() {
         <CardContent className="space-y-4">
           <div className="flex gap-3 flex-wrap">
             {bases.map(b => (
-              <button
+              <Button
                 key={b.value}
+                size="sm"
+                variant={fromBase === b.value ? 'default' : 'outline'}
                 onClick={() => setFromBase(b.value)}
-                className={`px-3 py-1.5 text-sm rounded border transition-colors ${fromBase === b.value ? 'bg-primary text-primary-foreground border-primary' : 'border-border hover:bg-muted'}`}
               >
                 {b.label}
-              </button>
+              </Button>
             ))}
           </div>
           <div className="flex gap-2">
@@ -378,12 +381,12 @@ export function JsonToYamlClient() {
         <p className="text-muted-foreground mt-2">JSON 与 YAML 格式互相转换</p>
       </div>
       <div className="flex border rounded-lg p-1 w-fit">
-        <button className={`px-4 py-2 text-sm rounded transition-colors ${mode === 'j2y' ? 'bg-primary text-primary-foreground' : ''}`} onClick={() => setMode('j2y')}>
+        <Button size="sm" variant={mode === 'j2y' ? 'default' : 'ghost'} onClick={() => setMode('j2y')}>
           JSON → YAML
-        </button>
-        <button className={`px-4 py-2 text-sm rounded transition-colors ${mode === 'y2j' ? 'bg-primary text-primary-foreground' : ''}`} onClick={() => setMode('y2j')}>
+        </Button>
+        <Button size="sm" variant={mode === 'y2j' ? 'default' : 'ghost'} onClick={() => setMode('y2j')}>
           YAML → JSON
-        </button>
+        </Button>
       </div>
       <div className="grid gap-6 lg:grid-cols-2">
         <Card>
@@ -487,13 +490,15 @@ export function XmlFormatterClient() {
               <CardTitle>XML 输入</CardTitle>
               <div className="flex border rounded-lg p-1">
                 {(['format', 'minify'] as const).map(m => (
-                  <button
+                  <Button
                     key={m}
-                    className={`px-3 py-1 text-sm rounded transition-colors ${mode === m ? 'bg-primary text-primary-foreground' : ''}`}
+                    size="sm"
+                    variant={mode === m ? 'default' : 'ghost'}
+                    className="h-7 px-3"
                     onClick={() => setMode(m)}
                   >
                     {m === 'format' ? '美化' : '压缩'}
-                  </button>
+                  </Button>
                 ))}
               </div>
             </div>

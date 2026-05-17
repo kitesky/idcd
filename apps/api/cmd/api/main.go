@@ -6,6 +6,7 @@ import (
 	"errors"
 	"log"
 	"log/slog"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -151,14 +152,31 @@ func main() {
 	slogLogger.Info("server shutdown complete")
 }
 
-// maskDSN replaces password in DSN string with asterisks for logging.
+// maskDSN returns a safe-to-log representation of a Postgres DSN by stripping
+// any embedded credentials. Both URL-style (postgres://user:pass@host/db) and
+// keyword-style (host=... password=... dbname=...) DSNs are accepted.
 func maskDSN(dsn string) string {
-	// Simple implementation - just return a safe version
-	// In production, you might want to use a more sophisticated approach
-	if len(dsn) > 20 {
-		return dsn[:20] + "***"
+	if dsn == "" {
+		return ""
 	}
-	return "***"
+	if u, err := url.Parse(dsn); err == nil && u.Scheme != "" && u.Host != "" {
+		u.User = nil
+		// Drop query parameters that commonly carry secrets (sslcert, sslkey,
+		// passfile, etc.). Keep only the scheme/host/dbname path.
+		u.RawQuery = ""
+		return u.Redacted()
+	}
+	// keyword-style: drop password=... segments
+	parts := strings.Fields(dsn)
+	out := parts[:0]
+	for _, p := range parts {
+		if strings.HasPrefix(strings.ToLower(p), "password=") {
+			out = append(out, "password=***")
+			continue
+		}
+		out = append(out, p)
+	}
+	return strings.Join(out, " ")
 }
 
 // =====================================================================

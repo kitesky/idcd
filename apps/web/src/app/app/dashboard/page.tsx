@@ -35,6 +35,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { apiRequest } from "@/lib/api"
 
 interface MonitorSummary {
   total: number
@@ -130,13 +131,10 @@ function formatRelative(iso?: string): string {
   return `${Math.floor(diff / 86400)}天前`
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
-
+// Dashboard endpoints all wrap responses in `{ data: ... }`; unwrap once here.
 async function apiFetch<T>(path: string): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, { credentials: "include" })
-  if (!res.ok) throw new Error(`fetch ${path} failed: ${res.status}`)
-  const json = await res.json()
-  return json.data as T
+  const json = await apiRequest<{ data: T }>(path)
+  return json.data
 }
 
 export default function DashboardPage() {
@@ -197,15 +195,11 @@ export default function DashboardPage() {
   async function savePins() {
     const ids = Array.from(selected)
     try {
-      const res = await fetch(`${API_BASE}/v1/dashboard/pins`, {
+      await apiRequest("/v1/dashboard/pins", {
         method: "PUT",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ monitor_ids: ids }),
       })
-      if (res.ok) {
-        setPinnedIDs(ids)
-      }
+      setPinnedIDs(ids)
     } catch {}
     setSheetOpen(false)
   }

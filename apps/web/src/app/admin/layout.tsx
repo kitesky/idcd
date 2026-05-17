@@ -4,6 +4,7 @@ import { redirect } from "next/navigation"
 import { getT } from "@/i18n/getT"
 import { isValidLocale, defaultLocale, type Locale } from "@/i18n/routing"
 import { ADMIN_SESSION_COOKIE, timingSafeEqual } from "@/lib/admin-auth"
+import { Button } from "@/components/ui/button"
 import { LanguageSwitcher } from "./lang-switcher"
 import { logoutAction } from "./login/actions"
 
@@ -73,9 +74,9 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           <div className="flex items-center gap-3">
             <LanguageSwitcher currentLocale={locale} label={t("lang.switchTo")} />
             <form action={logoutAction}>
-              <button type="submit" className="text-sm text-muted-foreground hover:text-foreground">
+              <Button type="submit" variant="ghost" size="sm">
                 Sign out
-              </button>
+              </Button>
             </form>
           </div>
         </div>

@@ -151,11 +151,11 @@ export function NodesClient({ nodes }: NodesClientProps) {
             <CardTitle className="text-base">{t("map.title")}</CardTitle>
             <div className="flex items-center gap-4 text-xs text-muted-foreground">
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-green-500" />
+                <span className="inline-block h-2 w-2 rounded-full bg-success" />
                 {t("map.onlineNodes")}
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="inline-block h-2 w-2 rounded-full bg-slate-500" />
+                <span className="inline-block h-2 w-2 rounded-full bg-muted-foreground" />
                 {t("map.offlineNodes")}
               </span>
             </div>

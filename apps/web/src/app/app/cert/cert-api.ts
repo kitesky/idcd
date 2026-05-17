@@ -85,7 +85,9 @@ interface ApiError {
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${API_PREFIX}${path}`
   const method = (init.method ?? "GET").toUpperCase()
-  const csrf = MUTATING.has(method) ? { "X-CSRF-Token": getCsrfToken() } : {}
+  const csrf: HeadersInit = MUTATING.has(method)
+    ? { "X-CSRF-Token": getCsrfToken() }
+    : {}
   const ownController = init.signal ? null : new AbortController()
   const timeoutId = ownController
     ? setTimeout(() => ownController.abort(), DEFAULT_TIMEOUT_MS)

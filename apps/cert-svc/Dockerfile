@@ -31,7 +31,10 @@ COPY --from=builder /bin/cert-renewer /bin/cert-renewer
 
 USER 10001:10001
 
-# 8080 = /v1/cert HTTP API ; 9090 = Prometheus /metrics (separate listener)
+# EXPOSE is informational only; actual ports are set via runtime config
+# (CERT_SVC_PORT default 8080, CERT_SVC_METRICS_PORT default 9090 — see
+# apps/cert-svc/internal/config/config.go).
+# 8080 = /v1/cert HTTP API ; 9090 = Prometheus /metrics (separate listener).
 EXPOSE 8080 9090
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

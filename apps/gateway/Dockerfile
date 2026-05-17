@@ -28,9 +28,13 @@ COPY --from=builder /bin/gateway /bin/gateway
 
 USER 10001:10001
 
-EXPOSE 8443
+# EXPOSE is informational only; actual ports are set via runtime config
+# (listen_addr default ":8081" — see apps/gateway/internal/config/config.go;
+#  Observability.PrometheusPort default 9094). Production typically front-ends
+# this on :8443 via the reverse proxy, but the in-container listener is :8081.
+EXPOSE 8081 9094
 
-# Gateway terminates TLS on 8443 with client-cert mTLS — wget-based health probe is
+# Gateway terminates TLS with client-cert mTLS — wget-based health probe is
 # unreliable (would need cert + SNI). Fall back to a process liveness check (BusyBox pidof).
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD pidof gateway >/dev/null 2>&1 || exit 1

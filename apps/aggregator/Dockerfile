@@ -28,7 +28,10 @@ COPY --from=builder /bin/aggregator /bin/aggregator
 
 USER 10001:10001
 
-EXPOSE 8081
+# EXPOSE is informational only; actual port is set via runtime config
+# (Observability.PrometheusPort, default 9091). Aggregator only exposes a
+# Prometheus /metrics listener — no business HTTP API.
+EXPOSE 9091
 
 # Aggregator is a pure worker (no HTTP listener) — fall back to a process liveness check.
 # pidof is provided by BusyBox in alpine and matches by binary basename.

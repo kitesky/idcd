@@ -33,7 +33,11 @@ COPY --from=builder /bin/agent /bin/agent
 
 USER 10001:10001
 
-EXPOSE 8085
+# EXPOSE is informational only; actual ports are bound at runtime by the agent.
+# The agent has no public listener — /health is bound to 127.0.0.1:9101 (or
+# AGENT_HEALTH_PORT) for local tooling (idcd-agent-ctl) and the in-container
+# HEALTHCHECK below. Nothing should be `docker -p` published.
+# (No EXPOSE directive — declaring 8085 was incorrect; agent does not listen there.)
 
 # Agent exposes /health on 127.0.0.1:9101 (or AGENT_HEALTH_PORT). See startHealthServer().
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

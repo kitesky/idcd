@@ -28,7 +28,10 @@ COPY --from=builder /bin/scheduler /bin/scheduler
 
 USER 10001:10001
 
-EXPOSE 8084
+# EXPOSE is informational only; actual port is set via runtime config
+# (Observability.PrometheusPort, default 9093). Scheduler is leader-elected
+# with no business HTTP API — only the Prometheus /metrics listener.
+EXPOSE 9093
 
 # Scheduler is a leader-elected worker (no HTTP listener) — fall back to process liveness check.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

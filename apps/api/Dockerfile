@@ -30,7 +30,10 @@ COPY --from=builder /bin/api /bin/api
 # Drop root: container escape no longer escalates to host root.
 USER 10001:10001
 
-EXPOSE 8080
+# EXPOSE is informational only; actual ports are set via runtime config.
+# 8080 = HTTP API (Server.Port default; see apps/api/internal/server/server.go).
+# 9091 = Prometheus /metrics on an internal-only listener (VPC / loopback ACL).
+EXPOSE 8080 9091
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD wget -q -O- http://localhost:8080/health || exit 1

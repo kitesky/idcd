@@ -28,7 +28,10 @@ COPY --from=builder /bin/notifier /bin/notifier
 
 USER 10001:10001
 
-EXPOSE 8082
+# EXPOSE is informational only; actual port is set via runtime config
+# (Observability.PrometheusPort, default 9092). Notifier has no business HTTP
+# API — only the Prometheus /metrics listener.
+EXPOSE 9092
 
 # Notifier is an Asynq worker (no HTTP listener) — fall back to process liveness check.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

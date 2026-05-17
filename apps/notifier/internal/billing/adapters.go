@@ -33,12 +33,13 @@ import (
 	payment "github.com/wangzheng/payment-go-sdk"
 
 	"github.com/kite365/idcd/apps/notifier/internal/worker"
+	"github.com/kite365/idcd/lib/shared/asynqtask"
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
-// BillingQueue is the asynq queue that carries payment:refund_retry tasks.
-// The notifier's asynq.Server must declare this queue in its Queues map.
-const BillingQueue = "billing"
+// BillingQueue 真值集中在 lib/shared/asynqtask.QueueBilling；
+// 这里保留 alias 给同包旧引用。
+const BillingQueue = asynqtask.QueueBilling
 
 // ---------------------------------------------------------------------------
 // PaymentRefunder adapter — wraps packages/payment-go-sdk.

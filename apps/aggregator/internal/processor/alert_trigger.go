@@ -11,13 +11,18 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/kite365/idcd/lib/shared/asynqtask"
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
 
+const defaultConsecutiveFailures = 3
+
+// Asynq wire names — 真值集中在 lib/shared/asynqtask；这里 alias 给本文件内
+// 旧调用点使用，新增 task / queue 时请直接 import asynqtask。
 const (
-	defaultConsecutiveFailures = 3
-	typeAlertNotification      = "alert:notification"
-	alertQueue                 = "notifier:default"
+	typeAlertNotification = asynqtask.TaskAlertNotification
+	alertQueue            = asynqtask.QueueNotifierDefault
 )
 
 type pgxQuerier interface {

@@ -47,7 +47,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
-	golang.org/x/net v0.26.0 // indirect
+	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 )

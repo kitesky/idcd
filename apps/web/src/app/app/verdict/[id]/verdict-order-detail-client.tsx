@@ -15,6 +15,12 @@ import {
   AlertDescription,
   AlertTitle,
   Badge,
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
   Button,
   Card,
   CardContent,
@@ -132,6 +138,19 @@ export function VerdictOrderDetailClient({ orderId }: Props) {
 
   return (
     <div className="max-w-3xl space-y-6" data-testid="verdict-order-detail">
+      <Breadcrumb>
+        <BreadcrumbList>
+          <BreadcrumbItem>
+            <BreadcrumbLink asChild>
+              <Link href="/app/verdict/new">证据报告</Link>
+            </BreadcrumbLink>
+          </BreadcrumbItem>
+          <BreadcrumbSeparator />
+          <BreadcrumbItem>
+            <BreadcrumbPage>订单详情</BreadcrumbPage>
+          </BreadcrumbItem>
+        </BreadcrumbList>
+      </Breadcrumb>
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">证据报告订单</h1>
@@ -188,7 +207,7 @@ export function VerdictOrderDetailClient({ orderId }: Props) {
           </MetaRow>
           <MetaRow label="时间窗">
             <span className="text-xs">
-              {formatLocal(order.time_window.start)} → {formatLocal(order.time_window.end)}
+              {formatLocal(order.time_window_start)} → {formatLocal(order.time_window_end)}
             </span>
           </MetaRow>
           <MetaRow label="价格">

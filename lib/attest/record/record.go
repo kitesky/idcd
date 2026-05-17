@@ -61,14 +61,23 @@ const (
 )
 
 // Record corresponds to one row of idcd_attest.attestation_record.
+//
+// D4 note on idempotency: today the Replayer.Record() helper does not
+// populate IdempotencyKey or PayloadHash — they are kept on the row for
+// forensic auditing and reserved for direct Repository.Insert callers
+// that want richer rows. Replay safety is already guaranteed by the
+// UNIQUE(report_id, action) constraint plus the in-process idempotency
+// caches in lib/attest/sign/* adapters, so the columns are currently
+// NULL in practice. Do not remove them: future workers will populate
+// them once we wire deterministic-key derivation into the WAL helper.
 type Record struct {
 	ID             string    // att_*
 	ReportID       string    // vr_*
 	Action         Action
 	Status         Status
 	ExternalID     string    // TSA serial / KMS req id / S3 ETag / chain tx hash; may be empty
-	IdempotencyKey string    // Token sent to external APIs (KMS) for safe retry; may be empty
-	PayloadHash    string    // Content SHA-256 hex; may be empty
+	IdempotencyKey string    // Reserved (see D4 note above); Replayer leaves empty.
+	PayloadHash    string    // Reserved (see D4 note above); Replayer leaves empty.
 	Result         Result
 	ErrorDetail    string    // Filled when Status == failure
 	RetryCount     int       // <= MaxRetries

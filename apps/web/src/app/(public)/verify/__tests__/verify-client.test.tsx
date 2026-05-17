@@ -31,6 +31,12 @@ describe("VerifyClient", () => {
     expect(screen.getByTestId("verify-submit-btn")).toBeDisabled()
   })
 
+  it("associates the visible label with the file input (a11y)", () => {
+    render(<VerifyClient />)
+    const labelled = screen.getByLabelText("证据报告 PDF") as HTMLInputElement
+    expect(labelled.type).toBe("file")
+  })
+
   it("shows file name after selection and enables submit", async () => {
     render(<VerifyClient />)
     const input = screen.getByTestId("verify-file-input") as HTMLInputElement

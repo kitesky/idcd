@@ -49,8 +49,8 @@ describe("NewVerdictOrderClient", () => {
   it("calls createVerdictOrder with normalized payload on submit", async () => {
     mockCreate.mockResolvedValueOnce({
       order_id: "ord_123",
-      checkout_url: "https://pay.example/x",
-      status: "pending",
+      pay_url: "https://pay.example/x",
+      price_cny: 299,
     })
 
     // jsdom's window.location.assign blows up by default; stub it.
@@ -73,9 +73,8 @@ describe("NewVerdictOrderClient", () => {
     expect(arg.target).toBe("example.com")
     expect(arg.channel).toBeTruthy()
     expect(arg.return_url).toContain("/app/verdict/{order_id}")
-    // ISO time strings:
-    expect(arg.time_window.start).toMatch(/Z$/)
-    expect(arg.time_window.end).toMatch(/Z$/)
+    expect(arg.time_window_start).toMatch(/Z$/)
+    expect(arg.time_window_end).toMatch(/Z$/)
 
     Object.defineProperty(window, "location", {
       configurable: true,

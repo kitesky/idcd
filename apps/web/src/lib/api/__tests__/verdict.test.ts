@@ -68,16 +68,18 @@ describe("verdict api helpers", () => {
   describe("createVerdictOrder", () => {
     it("posts to /v1/verdict/orders and unwraps {data}", async () => {
       mockApiRequest.mockResolvedValueOnce({
-        data: { order_id: "ord_1", checkout_url: "https://pay/x", status: "pending" },
+        data: { order_id: "ord_1", pay_url: "https://pay/x", price_cny: 299 },
       })
       const out = await createVerdictOrder({
         template: "sla",
         target: "example.com",
-        time_window: { start: "2026-01-01T00:00:00Z", end: "2026-01-02T00:00:00Z" },
+        time_window_start: "2026-01-01T00:00:00Z",
+        time_window_end: "2026-01-02T00:00:00Z",
         channel: "paddle",
         return_url: "https://idcd.com/app/verdict/{order_id}",
       })
       expect(out.order_id).toBe("ord_1")
+      expect(out.pay_url).toBe("https://pay/x")
       expect(mockApiRequest).toHaveBeenCalledWith(
         "/v1/verdict/orders",
         expect.objectContaining({ method: "POST" }),
@@ -87,15 +89,15 @@ describe("verdict api helpers", () => {
     it("accepts a bare (un-wrapped) response", async () => {
       mockApiRequest.mockResolvedValueOnce({
         order_id: "ord_2",
-        checkout_url: "https://pay/y",
-        status: "pending",
+        pay_url: "https://pay/y",
+        price_cny: 299,
       })
       const out = await createVerdictOrder({
         template: "incident",
         target: "example.com",
-        time_window: { start: "2026-01-01T00:00:00Z", end: "2026-01-02T00:00:00Z" },
+        time_window_start: "2026-01-01T00:00:00Z",
+        time_window_end: "2026-01-02T00:00:00Z",
         channel: "alipay",
-        return_url: "x",
       })
       expect(out.order_id).toBe("ord_2")
     })
@@ -109,12 +111,14 @@ describe("verdict api helpers", () => {
           status: "delivered",
           template: "sla",
           target: "example.com",
-          time_window: { start: "a", end: "b" },
+          time_window_start: "2026-01-01T00:00:00Z",
+          time_window_end: "2026-01-02T00:00:00Z",
           price_cny: 99,
         },
       })
       const o = await getVerdictOrder("abc/with slash")
       expect(o.id).toBe("abc")
+      expect(o.time_window_start).toBe("2026-01-01T00:00:00Z")
       expect(mockApiRequest).toHaveBeenCalledWith("/v1/verdict/orders/abc%2Fwith%20slash")
     })
   })

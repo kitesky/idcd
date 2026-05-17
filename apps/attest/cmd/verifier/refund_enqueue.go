@@ -12,6 +12,11 @@ import (
 // when Self-Verify catches a bad PDF. Distinct from refund_retry_queue
 // (Paddle webhook side, used when an outbound refund call fails); this
 // one INITIATES the refund flow.
+//
+// TODO(S2.1): No consumer ships in this PR. Entries persist in the
+// stream until a refund-initiate-worker drains them and calls the Paddle
+// refund API. Until then, operators triage failed verifications from the
+// admin dashboard and trigger refunds manually.
 const refundInitiateStream = "refund_initiate_queue"
 
 // redisRefundEnqueuer satisfies selfverify.RefundEnqueuer. Each call

@@ -22,22 +22,21 @@ export type VerdictOrderStatus =
   | "failed"
   | "refunded"
 
-export interface VerdictTimeWindow {
-  start: string // ISO-8601
-  end: string // ISO-8601
-}
-
 export interface VerdictOrder {
   id: string
+  owner_id?: string
   status: VerdictOrderStatus
   template: VerdictTemplate
   target: string
-  time_window: VerdictTimeWindow
+  time_window_start: string // ISO-8601
+  time_window_end: string // ISO-8601
   price_cny: number
+  price_paid_cny?: number
+  paddle_order_id?: string
   report_id?: string
+  created_at?: string
   paid_at?: string
   delivered_at?: string
-  checkout_url?: string
 }
 
 export interface VerdictReport {
@@ -54,15 +53,16 @@ export interface VerdictReport {
 export interface CreateVerdictOrderInput {
   template: VerdictTemplate
   target: string
-  time_window: VerdictTimeWindow
+  time_window_start: string // ISO-8601
+  time_window_end: string // ISO-8601
   channel: string
-  return_url: string
+  return_url?: string
 }
 
 export interface CreateVerdictOrderResponse {
   order_id: string
-  checkout_url: string
-  status: VerdictOrderStatus
+  pay_url: string
+  price_cny: number
 }
 
 // ── Attestation verify types (v2 D-Concern1) ────────────────────────────────

@@ -136,24 +136,17 @@ export function NewVerdictOrderClient() {
       const result = await createVerdictOrder({
         template: values.template,
         target: values.target.trim(),
-        time_window: {
-          start: new Date(values.start).toISOString(),
-          end: new Date(values.end).toISOString(),
-        },
+        time_window_start: new Date(values.start).toISOString(),
+        time_window_end: new Date(values.end).toISOString(),
         channel: values.channel,
-        // We do not yet know the order_id, so the backend interpolates it
-        // server-side when it has more context. We send a template the
-        // backend can substitute `{order_id}` into.
         return_url: `${origin}/app/verdict/{order_id}`,
       })
 
       toast.success("订单已创建，正在跳转支付页…")
 
-      // Try to redirect, but keep a manual fallback link if popup-blockers
-      // or sandboxed iframes prevent navigation.
-      if (typeof window !== "undefined" && result.checkout_url) {
-        setPendingCheckout({ url: result.checkout_url, orderId: result.order_id })
-        window.location.assign(result.checkout_url)
+      if (typeof window !== "undefined" && result.pay_url) {
+        setPendingCheckout({ url: result.pay_url, orderId: result.order_id })
+        window.location.assign(result.pay_url)
       } else {
         router.push(`/app/verdict/${result.order_id}` as never)
       }

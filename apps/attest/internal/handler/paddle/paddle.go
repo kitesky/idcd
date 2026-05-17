@@ -38,6 +38,12 @@ const (
 
 // RefundRetryStream is the Redis Stream key the retry scheduler reads.
 // Fields per entry: order_id, paddle_event_id, attempt, scheduled_at.
+//
+// TODO(S2.1): No consumer ships in this PR. Entries persist in the
+// stream until a refund-retry-scheduler worker drains them per D5
+// (5min / 30min retry + apology email + flip to refund_failed). Until
+// then operators monitor stream depth via the standard Redis dashboard
+// and trigger refunds manually from the admin console.
 const RefundRetryStream = "refund_retry_queue"
 
 // retryFirstDelay is the 5-minute delay applied to the first retry,

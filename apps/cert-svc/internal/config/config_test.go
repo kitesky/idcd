@@ -222,3 +222,55 @@ func TestLoad_WhitespaceTrimmed(t *testing.T) {
 		t.Errorf("Env = %q, want %q", cfg.Env, "staging")
 	}
 }
+
+func TestLoad_VaultBackendDefault(t *testing.T) {
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.VaultBackend != VaultBackendEnvMaster {
+		t.Errorf("VaultBackend = %q, want %q", cfg.VaultBackend, VaultBackendEnvMaster)
+	}
+}
+
+func TestLoad_VaultBackendAliKMS_AllSet(t *testing.T) {
+	t.Setenv(envVaultBackend, "alikms")
+	t.Setenv(envAliKMSRegionID, "cn-hangzhou")
+	t.Setenv(envAliKMSAccessKeyID, "ak-id")
+	t.Setenv(envAliKMSAccessKeySecret, "ak-secret")
+	t.Setenv(envAliKMSKeyID, "alias/cert-master")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.VaultBackend != VaultBackendAliKMS {
+		t.Errorf("VaultBackend = %q, want %q", cfg.VaultBackend, VaultBackendAliKMS)
+	}
+	if cfg.AliKMSRegionID != "cn-hangzhou" {
+		t.Errorf("AliKMSRegionID = %q", cfg.AliKMSRegionID)
+	}
+	if cfg.AliKMSKeyID != "alias/cert-master" {
+		t.Errorf("AliKMSKeyID = %q", cfg.AliKMSKeyID)
+	}
+}
+
+func TestLoad_VaultBackendAliKMS_MissingField(t *testing.T) {
+	t.Setenv(envVaultBackend, "alikms")
+	t.Setenv(envAliKMSRegionID, "cn-hangzhou")
+	// AccessKeyID intentionally unset
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() returned nil error; want missing-field rejection")
+	}
+}
+
+func TestLoad_VaultBackendUnknown(t *testing.T) {
+	t.Setenv(envVaultBackend, "vault-hashicorp")
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("Load() returned nil error; want unknown-backend rejection")
+	}
+}

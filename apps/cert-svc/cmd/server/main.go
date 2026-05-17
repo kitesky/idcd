@@ -40,6 +40,7 @@ import (
 	"github.com/kite365/idcd/lib/cert/dns/manual"
 	"github.com/kite365/idcd/lib/cert/dns/route53"
 	"github.com/kite365/idcd/lib/cert/vault"
+	"github.com/kite365/idcd/lib/cert/vault/alikms"
 	"github.com/kite365/idcd/lib/cert/vault/envmaster"
 	"github.com/kite365/idcd/lib/shared/logger"
 	"github.com/kite365/idcd/lib/shared/telemetry"
@@ -92,20 +93,12 @@ func main() {
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	defer func() { _ = rdb.Close() }()
 
-	// Vault. envmaster is the S1 implementation; S2 swaps in real KMS
-	// behind the same vault.Vault interface.
-	var vlt vault.Vault
-	if cfg.MasterKey != "" {
-		// Honour the explicit config field if set, otherwise fall
-		// back to envmaster's own env lookup.
-		vlt, err = envmaster.NewFromEnv("CERT_MASTER_KEY")
-	} else {
-		vlt, err = envmaster.NewFromEnv("CERT_MASTER_KEY")
-	}
+	vlt, err := buildVault(cfg)
 	if err != nil {
-		slogLogger.Error("vault init failed", "error", err)
+		slogLogger.Error("vault init failed", "backend", cfg.VaultBackend, "error", err)
 		os.Exit(1)
 	}
+	slogLogger.Info("vault wired", "backend", cfg.VaultBackend, "key_id", vlt.KeyID())
 
 	// DNS provider registry. Same providers as the worker; the server
 	// only uses ValidateCredential + HealthCheck (BuildSolver is
@@ -232,6 +225,22 @@ func main() {
 		os.Exit(1)
 	}
 	slogLogger.Info("cert-svc shutdown complete")
+}
+
+// buildVault picks the vault.Vault implementation per Config.VaultBackend.
+// envmaster is the S1 default; alikms is the D-FC-04 production path.
+func buildVault(cfg *config.Config) (vault.Vault, error) {
+	switch cfg.VaultBackend {
+	case config.VaultBackendAliKMS:
+		return alikms.New(alikms.Config{
+			RegionID:        cfg.AliKMSRegionID,
+			AccessKeyID:     cfg.AliKMSAccessKeyID,
+			AccessKeySecret: cfg.AliKMSAccessKeySecret,
+			KeyID:           cfg.AliKMSKeyID,
+		})
+	default:
+		return envmaster.NewFromEnv("CERT_MASTER_KEY")
+	}
 }
 
 // pgxPinger / redisPinger adapt the pgx and redis client to the

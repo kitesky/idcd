@@ -32,6 +32,8 @@ import (
 	"github.com/kite365/idcd/lib/cert/dns/gcloud"
 	"github.com/kite365/idcd/lib/cert/dns/manual"
 	"github.com/kite365/idcd/lib/cert/dns/route53"
+	"github.com/kite365/idcd/lib/cert/vault"
+	"github.com/kite365/idcd/lib/cert/vault/alikms"
 	"github.com/kite365/idcd/lib/cert/vault/envmaster"
 	"github.com/kite365/idcd/lib/shared/logger"
 )
@@ -57,11 +59,12 @@ func main() {
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	defer func() { _ = rdb.Close() }()
 
-	vlt, err := envmaster.NewFromEnv("CERT_MASTER_KEY")
+	vlt, err := buildVault(cfg)
 	if err != nil {
-		log.Error("cert-worker: vault init", "err", err)
+		log.Error("cert-worker: vault init", "backend", cfg.VaultBackend, "err", err)
 		os.Exit(1)
 	}
+	log.Info("vault wired", "backend", cfg.VaultBackend, "key_id", vlt.KeyID())
 
 	reg := dns.NewRegistry()
 	for _, p := range []dns.Provider{
@@ -149,4 +152,19 @@ func main() {
 		os.Exit(1)
 	}
 	log.Info("cert-worker stopped")
+}
+
+// buildVault picks the vault.Vault implementation per Config.VaultBackend.
+func buildVault(cfg *config.Config) (vault.Vault, error) {
+	switch cfg.VaultBackend {
+	case config.VaultBackendAliKMS:
+		return alikms.New(alikms.Config{
+			RegionID:        cfg.AliKMSRegionID,
+			AccessKeyID:     cfg.AliKMSAccessKeyID,
+			AccessKeySecret: cfg.AliKMSAccessKeySecret,
+			KeyID:           cfg.AliKMSKeyID,
+		})
+	default:
+		return envmaster.NewFromEnv("CERT_MASTER_KEY")
+	}
 }

@@ -35,6 +35,19 @@ const (
 	envZeroSSLEABHMACKey = "CERT_ZEROSSL_EAB_HMAC_KEY"
 	envBuypassEnv        = "CERT_BUYPASS_ENV" // "production" | "staging" | "" (disabled)
 
+	// S2 vault backend selection. "envmaster" (default) keeps the S1
+	// process-local AES master key; "alikms" switches to Aliyun KMS
+	// envelope encryption (D-FC-04 国内主路径). The four CERT_ALIKMS_*
+	// vars are required when VaultBackend=="alikms".
+	envVaultBackend      = "CERT_VAULT_BACKEND"
+	envAliKMSRegionID    = "CERT_ALIKMS_REGION_ID"
+	envAliKMSAccessKeyID = "CERT_ALIKMS_ACCESS_KEY_ID"
+	envAliKMSAccessKeySecret = "CERT_ALIKMS_ACCESS_KEY_SECRET"
+	envAliKMSKeyID       = "CERT_ALIKMS_KEY_ID"
+
+	VaultBackendEnvMaster = "envmaster"
+	VaultBackendAliKMS    = "alikms"
+
 	defaultPort         = 8080
 	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
 	defaultRedis        = "redis://localhost:6379/0"
@@ -89,6 +102,21 @@ type Config struct {
 	// passed through to the adapter, which is responsible for any
 	// further validation.
 	BuypassEnv string
+
+	// VaultBackend picks the vault.Vault implementation. "envmaster"
+	// (default) reads CERT_MASTER_KEY as the S1 single-process master
+	// key; "alikms" uses Aliyun KMS envelope encryption — production
+	// deploys MUST switch to alikms per D-FC-04.
+	VaultBackend string
+
+	// AliKMS* — only consulted when VaultBackend == "alikms". All four
+	// are required; Load returns an error if backend=alikms and any
+	// is empty so misconfigured production starts fail fast rather
+	// than silently falling through to envmaster.
+	AliKMSRegionID        string
+	AliKMSAccessKeyID     string
+	AliKMSAccessKeySecret string
+	AliKMSKeyID           string
 }
 
 // Load reads CERT_* env vars and returns a populated Config.
@@ -175,6 +203,38 @@ func Load() (*Config, error) {
 	}
 	if v := strings.TrimSpace(os.Getenv(envBuypassEnv)); v != "" {
 		cfg.BuypassEnv = v
+	}
+
+	cfg.VaultBackend = VaultBackendEnvMaster
+	if v := strings.TrimSpace(os.Getenv(envVaultBackend)); v != "" {
+		cfg.VaultBackend = strings.ToLower(v)
+	}
+	if v := strings.TrimSpace(os.Getenv(envAliKMSRegionID)); v != "" {
+		cfg.AliKMSRegionID = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAliKMSAccessKeyID)); v != "" {
+		cfg.AliKMSAccessKeyID = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAliKMSAccessKeySecret)); v != "" {
+		cfg.AliKMSAccessKeySecret = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAliKMSKeyID)); v != "" {
+		cfg.AliKMSKeyID = v
+	}
+
+	switch cfg.VaultBackend {
+	case VaultBackendEnvMaster:
+		// ok; CERT_MASTER_KEY validated lazily by envmaster.
+	case VaultBackendAliKMS:
+		if cfg.AliKMSRegionID == "" || cfg.AliKMSAccessKeyID == "" ||
+			cfg.AliKMSAccessKeySecret == "" || cfg.AliKMSKeyID == "" {
+			return nil, fmt.Errorf("config: %s=%s requires %s / %s / %s / %s",
+				envVaultBackend, VaultBackendAliKMS,
+				envAliKMSRegionID, envAliKMSAccessKeyID, envAliKMSAccessKeySecret, envAliKMSKeyID)
+		}
+	default:
+		return nil, fmt.Errorf("config: %s=%q must be %q or %q",
+			envVaultBackend, cfg.VaultBackend, VaultBackendEnvMaster, VaultBackendAliKMS)
 	}
 
 	return cfg, nil

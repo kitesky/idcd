@@ -41,8 +41,13 @@ const (
 // Config configures a Let's Encrypt adapter instance.
 type Config struct {
 	// Env selects production or staging. Defaults to production
-	// when zero-valued.
+	// when zero-valued. Ignored when DirectoryURL is non-empty.
 	Env Env
+
+	// DirectoryURL overrides the directory endpoint. Used by Pebble
+	// integration tests to point at a local ACME server; production
+	// callers leave this empty and use Env instead.
+	DirectoryURL string
 }
 
 // New returns an adapter implementing ca.AcmeCA backed by Let's Encrypt.
@@ -51,11 +56,12 @@ func New(cfg Config) ca.AcmeCA {
 	if env == "" {
 		env = EnvProduction
 	}
-	return &leCA{env: env}
+	return &leCA{env: env, directoryOverride: cfg.DirectoryURL}
 }
 
 type leCA struct {
-	env Env
+	env               Env
+	directoryOverride string
 }
 
 func (c *leCA) Name() string  { return "lets-encrypt" }
@@ -75,6 +81,9 @@ func (c *leCA) SupportedChallenges() []ca.ChallengeType {
 }
 
 func (c *leCA) directoryURL() string {
+	if c.directoryOverride != "" {
+		return c.directoryOverride
+	}
 	if c.env == EnvStaging {
 		return lego.LEDirectoryStaging
 	}

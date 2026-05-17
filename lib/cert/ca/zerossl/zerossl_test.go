@@ -390,18 +390,24 @@ func TestZsUser(t *testing.T) {
 	}
 }
 
-// TestZeroSSL_Integration_Pebble is the placeholder hookup for a real
-// Pebble-backed integration test. It is skipped when -short is set and
-// when the PEBBLE_DIRECTORY_URL env var is not present; the actual
-// docker / Pebble harness wiring is owned by the cert-svc agent and
-// will be filled in once the dns provider adapter exists. ZeroSSL has
-// no public staging, so Pebble (an RFC-compliant ACME test server) is
-// the only way to exercise the EAB registration path in CI.
+// TestZeroSSL_Integration_Pebble is deliberately skipped.
+//
+// Pebble emulates Let's Encrypt's ACME flavour, including LE's specific
+// problem-document URN namespace and its NO-EAB registration path.
+// ZeroSSL requires External Account Binding for every newAccount, and
+// the only way to obtain real EAB credentials is the ZeroSSL portal —
+// there is no public ZeroSSL staging directory and Pebble cannot
+// accept ZeroSSL-issued EAB material. End-to-end coverage of ZeroSSL
+// therefore needs a manual smoke test against the production directory
+// with throwaway EAB credentials (run out-of-band, not on CI).
+//
+// The local LE-against-Pebble test (see ../letsencrypt/le_test.go)
+// already exercises the shared ACME plumbing: newOrder + DNS-01 +
+// finalize + revoke. The ZeroSSL adapter's only material differences
+// are (a) the EAB envelope, covered by validateRequest unit tests, and
+// (b) the directory URL, covered by TestDirectoryURL above.
 func TestZeroSSL_Integration_Pebble(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping pebble integration test in -short mode")
-	}
-	t.Skip("pebble harness not wired yet; will be enabled with lib/cert/dns + a docker fixture")
+	t.Skip("ZeroSSL integration needs real EAB credentials and has no public staging; local LE-on-Pebble validates the shared ACME path")
 }
 
 // stubSigner is a non-functional crypto.Signer used purely for input-validation

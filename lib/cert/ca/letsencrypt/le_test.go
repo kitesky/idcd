@@ -3,8 +3,13 @@ package letsencrypt
 import (
 	"context"
 	"crypto"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/sha256"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
 	"errors"
 	"io"
 	"testing"
@@ -13,6 +18,7 @@ import (
 	legoacme "github.com/go-acme/lego/v4/acme"
 
 	"github.com/kite365/idcd/lib/cert/ca"
+	"github.com/kite365/idcd/lib/cert/ca/internal/pebble"
 )
 
 func TestNewReturnsImplementation(t *testing.T) {
@@ -296,16 +302,100 @@ func TestProblemKind(t *testing.T) {
 	}
 }
 
-// TestLetsEncrypt_Integration_Pebble is the placeholder hookup for a real
-// Pebble-backed integration test. It is skipped when -short is set and
-// when the PEBBLE_DIRECTORY_URL env var is not present; the actual
-// docker / Pebble harness wiring is owned by the cert-svc agent and will
-// be filled in once the dns provider adapter exists.
+// TestLetsEncrypt_Integration_Pebble runs the full ACME flow against a
+// local Pebble (https://github.com/letsencrypt/pebble) server. Pebble
+// is the official Let's Encrypt RFC 8555 test server, so this exercises
+// the production code path end-to-end — newOrder + DNS-01 authorization
+// + finalize + cert download + revoke — without touching the real LE
+// quota.
+//
+// The test is skipped (not failed) when the host lacks docker / the
+// daemon is down / PEBBLE_DIRECTORY_URL points at a non-running server.
+// See docs/dev/pebble.md for how to bring up the fixture locally.
 func TestLetsEncrypt_Integration_Pebble(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping pebble integration test in -short mode")
 	}
-	t.Skip("pebble harness not wired yet; will be enabled with lib/cert/dns + a docker fixture")
+
+	h, err := pebble.Start(t)
+	if errors.Is(err, pebble.ErrSkip) {
+		t.Skip(err.Error())
+	}
+	if err != nil {
+		t.Fatalf("pebble.Start: %v", err)
+	}
+	defer h.Close()
+
+	// Fresh ECDSA P-256 account key per run; Pebble has no persistent
+	// state so we never collide with prior runs.
+	accountKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate account key: %v", err)
+	}
+
+	// And a fresh leaf key. We let the adapter generate the CSR
+	// internally via the Domains+PrivateKey path.
+	leafKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate leaf key: %v", err)
+	}
+
+	c := New(Config{DirectoryURL: h.DirectoryURL})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+
+	const domain = "pebble-integration.idcd.test"
+	req := ca.CertificateRequest{
+		AccountKey:   accountKey,
+		AccountEmail: "ops@idcd.test",
+		Domains:      []string{domain},
+		PrivateKey:   leafKey,
+		DNS:          h.Solver(60 * time.Second),
+		Timeout:      90 * time.Second,
+	}
+
+	res, err := c.RequestCertificate(ctx, req)
+	if err != nil {
+		t.Fatalf("RequestCertificate: %v", err)
+	}
+	if len(res.LeafPEM) == 0 {
+		t.Fatal("LeafPEM empty")
+	}
+	if res.Serial == "" {
+		t.Error("Serial empty")
+	}
+	if res.NotAfter.Before(time.Now()) {
+		t.Errorf("NotAfter %v is in the past", res.NotAfter)
+	}
+
+	// Sanity-parse the leaf so we know the SAN list is what we asked
+	// for. Pebble issues CAB-Forum-compliant DV certs.
+	block, _ := pem.Decode(res.LeafPEM)
+	if block == nil {
+		t.Fatal("LeafPEM is not PEM")
+	}
+	leaf, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		t.Fatalf("parse leaf: %v", err)
+	}
+	foundSAN := false
+	for _, name := range leaf.DNSNames {
+		if name == domain {
+			foundSAN = true
+			break
+		}
+	}
+	if !foundSAN {
+		t.Errorf("leaf SANs = %v, missing %s", leaf.DNSNames, domain)
+	}
+
+	// Revoke against the same account key. Pebble accepts revocation
+	// without retaining the certificate; we just verify the adapter
+	// round-trip works end-to-end.
+	if err := c.Revoke(ctx, res.LeafPEM, ca.RevokeUnspecified, accountKey); err != nil {
+		t.Fatalf("Revoke: %v", err)
+	}
 }
 
 // stubSigner is a non-functional crypto.Signer used purely for input-validation

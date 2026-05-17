@@ -303,16 +303,21 @@ func TestProblemKind(t *testing.T) {
 	}
 }
 
-// TestBuypass_Integration_Pebble is the placeholder hookup for a real
-// Pebble-backed integration test. It is skipped when -short is set and
-// when the PEBBLE_DIRECTORY_URL env var is not present; the actual
-// docker / Pebble harness wiring is owned by the cert-svc agent and will
-// be filled in once the dns provider adapter exists.
+// TestBuypass_Integration_Pebble is deliberately skipped.
+//
+// Buypass operates an ACME test endpoint at api.test4.buypass.no, but
+// it is throttled and not a stable enough target for CI integration
+// runs. Pebble, meanwhile, models Let's Encrypt's ACME quirks (LE
+// problem URNs, LE-style nonce rotation) and not Buypass's. The two
+// material differences in the Buypass adapter — the 180-day validity
+// constant and the Buypass directory URL — are already covered by
+// TestMetadata / TestDirectoryURL above; the shared ACME flow is
+// validated end-to-end by the LE-on-Pebble integration test.
+//
+// End-to-end coverage of the real Buypass test endpoint is therefore
+// run manually with rate-limited credentials and not on CI.
 func TestBuypass_Integration_Pebble(t *testing.T) {
-	if testing.Short() {
-		t.Skip("skipping pebble integration test in -short mode")
-	}
-	t.Skip("pebble harness not wired yet; will be enabled with lib/cert/dns + a docker fixture")
+	t.Skip("Buypass has no shared ACME test endpoint suitable for CI; local LE-on-Pebble validates the shared ACME path")
 }
 
 // stubSigner is a non-functional crypto.Signer used purely for input-validation

@@ -21,6 +21,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	pdfreader "github.com/digitorus/pdf"
 	pdfsignlib "github.com/digitorus/pdfsign/sign"
@@ -199,29 +200,45 @@ func Sign(ctx context.Context, req SignRequest) ([]byte, error) {
 	return out.Bytes(), nil
 }
 
-// isTSAError heuristically classifies an error returned from
-// digitorus/pdfsign as originating in the RFC3161 TSA call. The
-// upstream library wraps TSA failures with phrases like
-// "get timestamp:" / "failed to create request" / "non success response"
-// / "failed to parse timestamp" — we match those patterns so the outer
-// retry layer (D4 attestation_record WAL) can distinguish transient
-// TSA errors from KMS / PDF-layout errors.
+// tsaErrorPrefixes lists the exact wrapper phrases the upstream
+// digitorus/pdfsign attaches around TSA failures (verified against
+// vendor/github.com/digitorus/pdfsign/sign/pdfsignature.go in the
+// version pinned by lib/attest/go.mod). Matching these as
+// well-anchored prefixes — instead of free-form substring contains —
+// avoids accidentally classifying unrelated errors (e.g. a PDF
+// "Tsa" filename in /Title metadata) as TSA failures.
+//
+// Update this list when the upstream version is bumped: run
+//
+//	grep -rn 'fmt.Errorf' \
+//	  $(go env GOMODCACHE)/github.com/digitorus/pdfsign@*/sign/pdfsignature.go
+//
+// and add any new wrappers around TSA HTTP / parsing.
+//
+// Long term we would prefer the upstream to expose typed errors we
+// could errors.Is / errors.As against; until then string matching is
+// the only signal.
+var tsaErrorPrefixes = []string{
+	"get timestamp:",            // pdfsignature.go line 357
+	"failed to create request:", // pdfsignature.go GetTSA error path
+	"non success response (",    // pdfsignature.go line 419/422
+	"failed to parse timestamp", // pdfsignature.go ParseResponse wrap
+	"parse timestamp:",          // alt wrapper variant
+	"parse timestamp token:",    // pdfsignature.go line 367
+}
+
+// isTSAError classifies err as originating in the RFC3161 TSA call.
+// Returns true if err — or any error in its Unwrap chain — has a
+// message that starts with one of tsaErrorPrefixes. The outer retry
+// layer (D4 attestation_record WAL) uses this to distinguish transient
+// TSA failures from KMS / PDF-layout failures.
 func isTSAError(err error) bool {
-	if err == nil {
-		return false
-	}
-	msg := err.Error()
-	needles := []string{
-		"get timestamp",
-		"timestamp:",
-		"non success response",
-		"failed to parse timestamp",
-		"tsa",
-		"TSA",
-	}
-	for _, n := range needles {
-		if bytes.Contains([]byte(msg), []byte(n)) {
-			return true
+	for cur := err; cur != nil; cur = errors.Unwrap(cur) {
+		msg := cur.Error()
+		for _, prefix := range tsaErrorPrefixes {
+			if strings.HasPrefix(msg, prefix) {
+				return true
+			}
 		}
 	}
 	return false

@@ -35,6 +35,12 @@ psql "$PROD_DB_DSN" -c "\dt cert.*"
 
 ## 2. 配置文件 `/opt/idcd/config/cert-svc.env`
 
+> ⚠️ **不需要起新的 PG / Redis 实例**。cert-svc 与 apps/api、apps/aggregator、apps/notifier 共用同一套 Postgres + Redis：
+> - **DB**：同一个 `idcd` 库；cert 表都在独立 `cert.*` schema 下（`00042_cert_init.sql`），不会跟 public schema 现存表冲突；跨 schema 不写 FK（D1 决策），走应用层 join
+> - **Redis**：同一个实例；cert 用 `cert:order_events` / `cert:notifications` 两个 stream，跟 `monitor:*` / `alert:*` 互不影响
+>
+> 所以下面 `CERT_DB_DSN / CERT_REDIS_ADDR` 的**值**就是 apps/api 在 `prod.env.yaml` 里 `database.dsn` / `redis.addr` 的值，原样复制即可。`CERT_JWT_SECRET / CERT_ADMIN_TOKEN` 同理——**复用 apps/api 同名密钥**才能让用户 session / admin Bearer token 在两个服务之间透传。
+
 新建文件，**仅 root + idcd 可读 (chmod 600)**：
 
 ```bash
@@ -44,14 +50,15 @@ CERT_LOG_LEVEL=info
 CERT_SVC_PORT=8080
 CERT_SVC_METRICS_PORT=9090
 
-# === 数据存储 ===
+# === 数据存储（与 apps/api 同一个实例，schema 隔离）===
+# 直接 copy /opt/idcd/config/prod.env.yaml 里的 database.dsn 和 redis.addr
 CERT_DB_DSN=postgres://idcd:<pw>@<pg-host>:5432/idcd?sslmode=require
 CERT_REDIS_ADDR=<redis-host>:6379
 CERT_REDIS_URL=redis://<redis-host>:6379/0
 
-# === 鉴权（与 apps/api 共享同一对密钥）===
-CERT_JWT_SECRET=<和 apps/api auth.jwt.secret 一致；用户 session 才能透传>
-CERT_ADMIN_TOKEN=<32+ 字符随机；admin 后台 Bearer 凭据；建议与 apps/api admin_token 复用>
+# === 鉴权（必须与 apps/api 同值，否则 session / admin 调用穿不过来）===
+CERT_JWT_SECRET=<copy apps/api 的 auth.jwt.secret>
+CERT_ADMIN_TOKEN=<copy apps/api 的 server.admin_token>
 
 # === 私钥加密 ===
 # S2 上线首发可走 envmaster（已知短板，但允许 MVP）：

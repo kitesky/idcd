@@ -2,7 +2,11 @@ package gcloud
 
 import (
 	"context"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"net/http"
@@ -16,27 +20,24 @@ import (
 	"github.com/kite365/idcd/lib/cert/dns"
 )
 
-// testPrivateKey 是一个 1024-bit RSA 私钥（PKCS#8 / PEM），只为让
-// google.JWTConfigFromJSON 解析通过；不与任何真实 GCP 账号绑定，oauth2
-// 拿它去换 token 会失败，但本测试套件用 httptest 在调用 API 之前/之中
-// 截断流量，永远不会真去 oauth2.googleapis.com 取 token。
-const testPrivateKey = `-----BEGIN PRIVATE KEY-----
-MIICdwIBADANBgkqhkiG9w0BAQEFAASCAmEwggJdAgEAAoGBAM+QYY5SkKZ5HoGB
-YdsVs0QJv0odaQqVskK8rTQg0QpJVb3jT4M1dy+sbTP1Cz2vFg44kg622+TyECts
-hY5hsFuqAgT9k+0gvWyifJZcLJfzcd4RIjOSYfVMi2BNVaQ8hMFYLDetmOXYaoUV
-tVJf0gQEDqyUZ2SzULF+mioCwdpRAgMBAAECgYBxGE1fm/M/Ec2iaNnl4twLnXgC
-LSY34zr/DAkf1yWvgifa0ElZx78KVdwmrEUUthrBYueKZu5Hv/E5h+b5npbVT9Nz
-02jp8YQxRdOwHPmLrwiStUXnm4gcvuoWfMRmfEPx89TJko8RGkGHcZ1/Q7amlAuW
-AXPCP3Rd8FhJ2+P/MQJBAPAFbciavJ94lSxTrvn261uhJR4clmNlpIIS7N5xLBmZ
-hEv6ZRq7hBUtkv76wnQHGYlPDHEv62/OjcwPWkMg0u0CQQDdYcx9Bjo69CtybMuX
-cxY5mQGhXn1dNrZ4MUCIrFdExnlVeLFoOcz5QJ5NjQ3JaRIMNvudUI2fT5oW4PfD
-1MR1AkEArBK4SgDlCU7hYw37e6jRwrccbSIBjvDnp3j5598qxo+QkQfKRAf7AVPS
-9om/rn8Ih6/sM5kvKNDkR08aXtXBYQJAbbaNIBzY+OSPL5sJXtozVoIkk7N/T5XQ
-4koOYG2Apl3yPdCdoziaA6DpkydngLyorBMHqZQFS8GobNQ7Ffs5DQJBAL/pl4oN
-or+xc9eC0DtqNhulWFkHPpaXsShRTzj2yAwT/ruan3rGnvowUK1hNdmR3wVsbkyx
-4IVD6JNNBJs2GHE=
------END PRIVATE KEY-----
-`
+// testPrivateKey is generated once per test process — google.JWTConfigFromJSON
+// only validates PEM/PKCS#8 structure, and httptest intercepts the token
+// exchange before any real signature is verified. Generating at runtime
+// keeps a PEM-shaped string out of source control where secret scanners
+// flag it.
+var testPrivateKey = mustGenerateTestPrivateKey()
+
+func mustGenerateTestPrivateKey() string {
+	k, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		panic(fmt.Sprintf("gen test key: %v", err))
+	}
+	der, err := x509.MarshalPKCS8PrivateKey(k)
+	if err != nil {
+		panic(fmt.Sprintf("marshal test key: %v", err))
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: der}))
+}
 
 // buildSA 返回一个合法 service account JSON。
 // tokenURI 决定 oauth2 找谁取 token —— 测试 httptest 既要 serve Cloud DNS

@@ -11,11 +11,13 @@ require (
 	github.com/digitorus/pkcs7 v0.0.0-20230818184609-3a137a874352
 	github.com/digitorus/timestamp v0.0.0-20250524132541-c45532741eea
 	github.com/go-pdf/fpdf v0.9.0
+	github.com/hibiken/asynq v0.25.0
 	github.com/jackc/pgx/v5 v5.9.2
 	github.com/kite365/idcd/lib/attest v0.0.0
 	github.com/pashagolub/pgxmock/v4 v4.9.0
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/stretchr/testify v1.11.1
+	github.com/wangzheng/payment-go-sdk v0.0.0
 )
 
 require (
@@ -54,6 +56,7 @@ require (
 	github.com/clbanning/mxj/v2 v2.7.0 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/digitorus/pdfsign v0.0.0-20260407063256-85ede6424a74 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/jackc/pgpassfile v1.0.0 // indirect
 	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
@@ -62,15 +65,22 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
+	github.com/spf13/cast v1.7.0 // indirect
 	github.com/tjfoc/gmsm v1.4.1 // indirect
 	github.com/yuin/gopher-lua v1.1.1 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/crypto v0.49.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.42.0 // indirect
 	golang.org/x/text v0.35.0 // indirect
+	golang.org/x/time v0.7.0 // indirect
+	google.golang.org/protobuf v1.35.1 // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
 
 replace github.com/kite365/idcd/lib/attest => ../../lib/attest
+
+replace github.com/wangzheng/payment-go-sdk => ../../packages/payment-go-sdk

@@ -217,6 +217,43 @@ func TestVerdictOrdersRepo_IncrementRefundAttempt_NotFound(t *testing.T) {
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
+func TestVerdictOrdersRepo_StampRefundedAt_Success(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	now := time.Now().UTC()
+
+	mock.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET refunded_at`).
+		WithArgs(now, "v_1").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	err := r.StampRefundedAt(context.Background(), "v_1", now)
+	require.NoError(t, err)
+}
+
+func TestVerdictOrdersRepo_StampRefundedAt_NotFound(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	now := time.Now().UTC()
+
+	mock.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET refunded_at`).
+		WithArgs(now, "missing").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	err := r.StampRefundedAt(context.Background(), "missing", now)
+	assert.ErrorIs(t, err, ErrNotFound)
+}
+
+func TestVerdictOrdersRepo_StampRefundedAt_DBError(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+	now := time.Now().UTC()
+	sentinel := errors.New("disk full")
+
+	mock.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET refunded_at`).
+		WithArgs(now, "v_1").
+		WillReturnError(sentinel)
+
+	err := r.StampRefundedAt(context.Background(), "v_1", now)
+	assert.ErrorIs(t, err, sentinel)
+}
+
 func TestVerdictOrdersRepo_SetRefundApologySent_Success(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 	now := time.Now().UTC()

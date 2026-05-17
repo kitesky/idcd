@@ -45,6 +45,18 @@ const (
 
 	envPaddleWebhookSecret = "ATTEST_PADDLE_WEBHOOK_SECRET" // HMAC secret for /webhooks/paddle
 
+	// D5 refund worker — Redis Stream wiring. Defaults match the producer
+	// constants in apps/attest/cmd/verifier/refund_enqueue.go and
+	// apps/attest/internal/handler/paddle/paddle.go so the consumer and
+	// the two producers share keys without any further configuration.
+	envRefundInitiateStream = "ATTEST_REFUND_INITIATE_STREAM"
+	envRefundRetryStream    = "ATTEST_REFUND_RETRY_STREAM"
+	envRefundDelayZoneKey   = "ATTEST_REFUND_DELAY_ZONE"
+	envRefundGroup          = "ATTEST_REFUND_GROUP"
+	envRefundConsumer       = "ATTEST_REFUND_CONSUMER"
+	envRefundNotifierAddr   = "ATTEST_REFUND_NOTIFIER_REDIS_ADDR" // asynq broker for apology emails (empty = mailer disabled)
+	envRefundNotifierQueue  = "ATTEST_REFUND_NOTIFIER_QUEUE"      // asynq queue name; default "billing"
+
 	SignBackendAWS    = "aws"
 	SignBackendAliyun = "aliyun"
 
@@ -53,6 +65,13 @@ const (
 	defaultLogLevel  = "info"
 	defaultAlgorithm = "ECDSA_SHA_256"
 	defaultTSAList   = "digicert,globalsign"
+
+	defaultRefundInitiateStream = "refund_initiate_queue"
+	defaultRefundRetryStream    = "refund_retry_queue"
+	defaultRefundDelayZoneKey   = "refund_delay_zone"
+	defaultRefundGroup          = "attest-refund-worker"
+	defaultRefundConsumer       = "attest-refund-worker-1"
+	defaultRefundNotifierQueue  = "billing"
 )
 
 // Config is the attest-svc runtime configuration.
@@ -84,17 +103,37 @@ type Config struct {
 	VerifyEndpoint string // Self-Verify Worker only
 
 	PaddleWebhookSecret string // empty disables /webhooks/paddle (D5)
+
+	// D5 refund worker (cmd/refund-worker only — verify-only / generator
+	// processes ignore these). DelayZoneKey is the Redis ZSET key
+	// holding scheduled retries; Group / Consumer are XREADGROUP
+	// identifiers; NotifierRedisAddr is the asynq broker URL used for
+	// apology-email enqueue (empty disables the mailer for early S2
+	// deploys where notifier is not yet co-located).
+	RefundInitiateStream string
+	RefundRetryStream    string
+	RefundDelayZoneKey   string
+	RefundGroup          string
+	RefundConsumer       string
+	RefundNotifierAddr   string
+	RefundNotifierQueue  string
 }
 
 // Load reads ATTEST_* env vars and returns a populated Config.
 func Load() (*Config, error) {
 	cfg := &Config{
-		Port:            defaultPort,
-		Env:             defaultEnv,
-		LogLevel:        defaultLogLevel,
-		AWSKMSAlgorithm: defaultAlgorithm,
-		AliKMSAlgorithm: defaultAlgorithm,
-		TSAProviders:    []string{"digicert", "globalsign"},
+		Port:                 defaultPort,
+		Env:                  defaultEnv,
+		LogLevel:             defaultLogLevel,
+		AWSKMSAlgorithm:      defaultAlgorithm,
+		AliKMSAlgorithm:      defaultAlgorithm,
+		TSAProviders:         []string{"digicert", "globalsign"},
+		RefundInitiateStream: defaultRefundInitiateStream,
+		RefundRetryStream:    defaultRefundRetryStream,
+		RefundDelayZoneKey:   defaultRefundDelayZoneKey,
+		RefundGroup:          defaultRefundGroup,
+		RefundConsumer:       defaultRefundConsumer,
+		RefundNotifierQueue:  defaultRefundNotifierQueue,
 	}
 
 	if v := strings.TrimSpace(os.Getenv(envPort)); v != "" {
@@ -175,6 +214,28 @@ func Load() (*Config, error) {
 
 	if v := strings.TrimSpace(os.Getenv(envPaddleWebhookSecret)); v != "" {
 		cfg.PaddleWebhookSecret = v
+	}
+
+	if v := strings.TrimSpace(os.Getenv(envRefundInitiateStream)); v != "" {
+		cfg.RefundInitiateStream = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRefundRetryStream)); v != "" {
+		cfg.RefundRetryStream = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRefundDelayZoneKey)); v != "" {
+		cfg.RefundDelayZoneKey = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRefundGroup)); v != "" {
+		cfg.RefundGroup = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRefundConsumer)); v != "" {
+		cfg.RefundConsumer = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRefundNotifierAddr)); v != "" {
+		cfg.RefundNotifierAddr = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRefundNotifierQueue)); v != "" {
+		cfg.RefundNotifierQueue = v
 	}
 
 	switch cfg.SignBackend {

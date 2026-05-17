@@ -13,10 +13,9 @@ import (
 // (Paddle webhook side, used when an outbound refund call fails); this
 // one INITIATES the refund flow.
 //
-// TODO(S2.1): No consumer ships in this PR. Entries persist in the
-// stream until a refund-initiate-worker drains them and calls the Paddle
-// refund API. Until then, operators triage failed verifications from the
-// admin dashboard and trigger refunds manually.
+// The consumer is apps/attest/cmd/refund-worker. It calls the Paddle
+// refund API, persists outcomes on verdict_order, and drives the D5
+// 5min / 30min retry ladder via a shared delay-zone ZSET.
 const refundInitiateStream = "refund_initiate_queue"
 
 // redisRefundEnqueuer satisfies selfverify.RefundEnqueuer. Each call

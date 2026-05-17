@@ -189,6 +189,27 @@ func (r *VerdictOrdersRepo) IncrementRefundAttempt(ctx context.Context, id, last
 	return nil
 }
 
+const verdictOrderStampRefundedAtSQL = `
+	UPDATE idcd_attest.verdict_order
+	SET refunded_at = $1
+	WHERE id = $2
+`
+
+// StampRefundedAt sets refunded_at on the given order. Called by the
+// D5 refund worker immediately after the optimistic-locked UpdateStatus
+// that flips status='refunded'. Kept separate so the UpdateStatus
+// surface stays focused on the state-machine column.
+func (r *VerdictOrdersRepo) StampRefundedAt(ctx context.Context, id string, t time.Time) error {
+	tag, err := r.pool.Exec(ctx, verdictOrderStampRefundedAtSQL, t, id)
+	if err != nil {
+		return fmt.Errorf("verdict_order stamp refunded_at: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}
+
 const verdictOrderSetRefundApologySentSQL = `
 	UPDATE idcd_attest.verdict_order
 	SET refund_apology_sent_at = $1

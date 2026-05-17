@@ -27,8 +27,11 @@ jobs:
           cache: true
 
       - name: golangci-lint
+        # install-mode: goinstall 用上一步 setup-go 装好的 1.26 工具链现编 lint
+        # 二进制，否则官方预编译包是 go1.25 builds、拒绝跑 go1.26 项目
         uses: golangci/golangci-lint-action@v6
         with:
+          install-mode: goinstall
           version: latest
           args: --timeout=5m
 

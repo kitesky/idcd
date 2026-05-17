@@ -1,4 +1,4 @@
-import registryData from '../../../../config/locales.json'
+import registryData from '@config/locales.json'
 
 export interface LocaleEntry {
   code: string

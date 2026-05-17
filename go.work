@@ -10,6 +10,7 @@ use (
 	./apps/notifier
 	./apps/scheduler
 	./lib/auth
+	./lib/attest
 	./lib/db
 	./lib/ratelimit
 	./lib/shared

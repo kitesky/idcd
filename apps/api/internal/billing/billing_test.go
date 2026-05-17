@@ -109,6 +109,100 @@ func TestStubProvider_Cancel_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "not found")
 }
 
+// ---- Charge ----
+
+func TestStubProvider_Charge_Success(t *testing.T) {
+	p := newStub()
+	res, err := p.Charge(ctx, billing.ChargeRequest{
+		UserID:      "u_abc",
+		AmountCents: 19900,
+		Currency:    "CNY",
+		Channel:     billing.ChannelAlipay,
+		ItemRef:     "v_order_001",
+		Description: "Verdict sla 报告",
+		Metadata:    map[string]string{"verdict_order_id": "v_order_001"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, res.ChargeID, "chg_")
+	assert.Contains(t, res.ExtTxnID, "stub_ext_")
+	assert.Contains(t, res.PayURL, "/billing/stub-charge-confirm?charge_id=")
+	assert.Contains(t, res.PayURL, "item_ref=v_order_001")
+	assert.False(t, res.ExpiresAt.IsZero())
+
+	c, ok := p.GetCharge(res.ChargeID)
+	require.True(t, ok)
+	assert.Equal(t, "pending", c.Status)
+	assert.Equal(t, int64(19900), c.AmountCents)
+	assert.Equal(t, "v_order_001", c.Metadata["verdict_order_id"])
+}
+
+func TestStubProvider_Charge_MissingUserID(t *testing.T) {
+	p := newStub()
+	_, err := p.Charge(ctx, billing.ChargeRequest{AmountCents: 19900})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "user_id is required")
+}
+
+func TestStubProvider_Charge_ZeroAmount(t *testing.T) {
+	p := newStub()
+	_, err := p.Charge(ctx, billing.ChargeRequest{UserID: "u_abc", AmountCents: 0})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "amount_cents must be positive")
+}
+
+func TestStubProvider_Charge_NegativeAmount(t *testing.T) {
+	p := newStub()
+	_, err := p.Charge(ctx, billing.ChargeRequest{UserID: "u_abc", AmountCents: -100})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "amount_cents must be positive")
+}
+
+func TestStubProvider_Charge_InvalidChannel(t *testing.T) {
+	p := newStub()
+	_, err := p.Charge(ctx, billing.ChargeRequest{
+		UserID:      "u_abc",
+		AmountCents: 19900,
+		Channel:     "bitcoin",
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid channel")
+}
+
+// TestStubProvider_Charge_WebhookRoundTrip ensures Metadata travels
+// Charge → (out-of-band webhook) → ParseWebhook end-to-end so the billing
+// handler can correlate the payment back to the verdict_order.
+func TestStubProvider_Charge_WebhookRoundTrip(t *testing.T) {
+	p := newStub()
+	res, err := p.Charge(ctx, billing.ChargeRequest{
+		UserID:      "u_abc",
+		AmountCents: 19900,
+		Currency:    "CNY",
+		Channel:     billing.ChannelAlipay,
+		ItemRef:     "v_order_777",
+		Metadata:    map[string]string{"verdict_order_id": "v_order_777"},
+	})
+	require.NoError(t, err)
+
+	// Mock webhook delivery: the gateway sends the same metadata back.
+	payload := billing.StubWebhookPayload{
+		EventType:   billing.EventPaymentSucceeded,
+		ExtTxnID:    res.ExtTxnID,
+		AmountCents: 19900,
+		Currency:    "CNY",
+		UserID:      "u_abc",
+		Metadata:    map[string]string{"verdict_order_id": "v_order_777"},
+	}
+	body, err := json.Marshal(payload)
+	require.NoError(t, err)
+
+	evt, err := p.ParseWebhook(ctx, body, nil)
+	require.NoError(t, err)
+	assert.Equal(t, billing.EventPaymentSucceeded, evt.EventType)
+	assert.Equal(t, "v_order_777", evt.Metadata["verdict_order_id"])
+	assert.Equal(t, "u_abc", evt.UserID)
+	assert.Equal(t, res.ExtTxnID, evt.ExtTxnID)
+}
+
 // ---- ParseWebhook ----
 
 func TestStubProvider_ParseWebhook_PaymentSucceeded(t *testing.T) {

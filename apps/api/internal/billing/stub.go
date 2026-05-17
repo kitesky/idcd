@@ -18,11 +18,28 @@ import (
 // Behaviour:
 //   - Subscribe: generates IDs immediately, returns a /billing/stub-confirm URL.
 //   - Cancel:    marks the in-memory record as cancelled.
+//   - Charge:    generates a chg_xxx + ext_xxx ID and returns a stub PayURL.
 //   - ParseWebhook: expects a simple JSON body (StubWebhookPayload).
 //   - RefundPayment: always succeeds instantly.
 type StubProvider struct {
-	mu   sync.RWMutex
-	subs map[string]*StubSubscription // keyed by SubscriptionID
+	mu      sync.RWMutex
+	subs    map[string]*StubSubscription // keyed by SubscriptionID
+	charges map[string]*StubCharge       // keyed by ChargeID
+}
+
+// StubCharge is the in-memory representation of a one-shot charge in the stub provider.
+type StubCharge struct {
+	ChargeID    string
+	ExtTxnID    string
+	UserID      string
+	AmountCents int64
+	Currency    string
+	Channel     string
+	ItemRef     string
+	Description string
+	Metadata    map[string]string
+	Status      string // "pending" | "succeeded" | "failed"
+	ExpiresAt   time.Time
 }
 
 // StubSubscription is the in-memory representation of a subscription in the stub provider.
@@ -51,7 +68,8 @@ type StubWebhookPayload struct {
 // NewStubProvider creates a new StubProvider with empty in-memory state.
 func NewStubProvider() *StubProvider {
 	return &StubProvider{
-		subs: make(map[string]*StubSubscription),
+		subs:    make(map[string]*StubSubscription),
+		charges: make(map[string]*StubCharge),
 	}
 }
 
@@ -112,6 +130,70 @@ func (p *StubProvider) Cancel(_ context.Context, req CancelRequest) error {
 	}
 	sub.Status = "cancelled"
 	return nil
+}
+
+// Charge implements Provider.
+// It generates an internal charge ID and a stub confirm URL. The charge
+// starts in status "pending" until a webhook event flips it. Metadata is
+// stored verbatim so ParseWebhook can round-trip it back to callers.
+func (p *StubProvider) Charge(_ context.Context, req ChargeRequest) (*ChargeResult, error) {
+	if req.UserID == "" {
+		return nil, errors.New("billing/stub: Charge: user_id is required")
+	}
+	if req.AmountCents <= 0 {
+		return nil, fmt.Errorf("billing/stub: Charge: amount_cents must be positive, got %d", req.AmountCents)
+	}
+	if req.Channel != "" && !ValidUserChannel(req.Channel) {
+		return nil, fmt.Errorf("billing/stub: Charge: invalid channel %q", req.Channel)
+	}
+
+	chargeID := idgen.New("chg_")
+	extTxnID := "stub_ext_" + chargeID
+	expiresAt := time.Now().UTC().Add(2 * time.Hour)
+
+	// Copy metadata defensively so caller mutations do not bleed into our store.
+	metaCopy := make(map[string]string, len(req.Metadata))
+	for k, v := range req.Metadata {
+		metaCopy[k] = v
+	}
+
+	record := &StubCharge{
+		ChargeID:    chargeID,
+		ExtTxnID:    extTxnID,
+		UserID:      req.UserID,
+		AmountCents: req.AmountCents,
+		Currency:    req.Currency,
+		Channel:     req.Channel,
+		ItemRef:     req.ItemRef,
+		Description: req.Description,
+		Metadata:    metaCopy,
+		Status:      "pending",
+		ExpiresAt:   expiresAt,
+	}
+
+	p.mu.Lock()
+	p.charges[chargeID] = record
+	p.mu.Unlock()
+
+	payURL := fmt.Sprintf("/billing/stub-charge-confirm?charge_id=%s", chargeID)
+	if req.ItemRef != "" {
+		payURL += "&item_ref=" + req.ItemRef
+	}
+
+	return &ChargeResult{
+		ChargeID:  chargeID,
+		ExtTxnID:  extTxnID,
+		PayURL:    payURL,
+		ExpiresAt: expiresAt,
+	}, nil
+}
+
+// GetCharge returns an in-memory charge record (for testing / confirm flow).
+func (p *StubProvider) GetCharge(chargeID string) (*StubCharge, bool) {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	c, ok := p.charges[chargeID]
+	return c, ok
 }
 
 // ParseWebhook implements Provider.

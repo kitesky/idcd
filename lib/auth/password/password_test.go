@@ -4,9 +4,11 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"strconv"
 	"strings"
 	"testing"
 
+	"github.com/kite365/idcd/lib/shared/apperr"
 	"golang.org/x/crypto/argon2"
 )
 
@@ -16,7 +18,8 @@ func TestValidatePassword(t *testing.T) {
 		password   string
 		email      string
 		wantErr    bool
-		errMessage string
+		wantCode   string // expected apperr.Error.Message (stable ASCII code)
+		wantDetail string // expected apperr.Error.Detail, empty means don't check
 	}{
 		{
 			name:     "valid password",
@@ -29,14 +32,16 @@ func TestValidatePassword(t *testing.T) {
 			password:   "pass1",
 			email:      "user@example.com",
 			wantErr:    true,
-			errMessage: "密码长度必须至少8字符",
+			wantCode:   CodeTooShort,
+			wantDetail: strconv.Itoa(minLength),
 		},
 		{
 			name:       "too long (over 1024 bytes)",
 			password:   strings.Repeat("a", 1024) + "1",
 			email:      "user@example.com",
 			wantErr:    true,
-			errMessage: fmt.Sprintf("密码长度不能超过%d字符", maxLength),
+			wantCode:   CodeTooLong,
+			wantDetail: strconv.Itoa(maxLength),
 		},
 		{
 			name:     "long but within limit (200 chars) is allowed (bcrypt 72 no longer applies)",
@@ -45,32 +50,32 @@ func TestValidatePassword(t *testing.T) {
 			wantErr:  false,
 		},
 		{
-			name:       "no digits",
-			password:   "onlyletters",
-			email:      "user@example.com",
-			wantErr:    true,
-			errMessage: "密码必须包含字母和数字",
+			name:     "no digits",
+			password: "onlyletters",
+			email:    "user@example.com",
+			wantErr:  true,
+			wantCode: CodeMissingClasses,
 		},
 		{
-			name:       "no letters",
-			password:   "12345678",
-			email:      "user@example.com",
-			wantErr:    true,
-			errMessage: "密码必须包含字母和数字",
+			name:     "no letters",
+			password: "12345678",
+			email:    "user@example.com",
+			wantErr:  true,
+			wantCode: CodeMissingClasses,
 		},
 		{
-			name:       "same as email prefix",
-			password:   "username123",
-			email:      "username123@example.com",
-			wantErr:    true,
-			errMessage: "密码不能与邮箱前缀相同",
+			name:     "same as email prefix",
+			password: "username123",
+			email:    "username123@example.com",
+			wantErr:  true,
+			wantCode: CodeSameAsEmail,
 		},
 		{
-			name:       "case insensitive email prefix check",
-			password:   "USERNAME123",
-			email:      "username123@example.com",
-			wantErr:    true,
-			errMessage: "密码不能与邮箱前缀相同",
+			name:     "case insensitive email prefix check",
+			password: "USERNAME123",
+			email:    "username123@example.com",
+			wantErr:  true,
+			wantCode: CodeSameAsEmail,
 		},
 		{
 			name:     "empty email is ok",
@@ -87,14 +92,58 @@ func TestValidatePassword(t *testing.T) {
 				t.Errorf("ValidatePassword() error = %v, wantErr %v", err, tt.wantErr)
 				return
 			}
-			if err != nil && tt.errMessage != "" {
-				if !strings.Contains(err.Error(), tt.errMessage) {
-					t.Errorf("ValidatePassword() error = %v, want error containing %v", err, tt.errMessage)
+			if err == nil {
+				return
+			}
+			// All validation errors must be apperr.CodeValidation typed errors.
+			if !apperr.Is(err, apperr.CodeValidation) {
+				t.Errorf("ValidatePassword() error should be apperr.CodeValidation, got %v", err)
+			}
+			ae := apperr.AsError(err)
+			if ae == nil {
+				t.Fatalf("ValidatePassword() returned non-apperr error: %v", err)
+			}
+			if tt.wantCode != "" && ae.Message != tt.wantCode {
+				t.Errorf("ValidatePassword() code = %q, want %q", ae.Message, tt.wantCode)
+			}
+			if tt.wantDetail != "" && ae.Detail != tt.wantDetail {
+				t.Errorf("ValidatePassword() detail = %q, want %q", ae.Detail, tt.wantDetail)
+			}
+			// Crucial i18n guarantee: the returned error string must NOT contain
+			// localized (CJK) characters — those are produced only at the
+			// API/render layer.
+			for _, r := range err.Error() {
+				if r > 0x7F {
+					t.Errorf("ValidatePassword() error string contains non-ASCII character %q: %q", r, err.Error())
+					break
 				}
 			}
 		})
 	}
 }
+
+// TestHashWithParams_ErrorCodes verifies the i18n contract for Hash failures —
+// error Message field is the stable ASCII code, not localized text.
+func TestHashWithParams_ErrorCodes(t *testing.T) {
+	if _, err := Hash(""); err == nil {
+		t.Fatalf("Hash(\"\") should error")
+	} else {
+		ae := apperr.AsError(err)
+		if ae == nil || ae.Message != CodeRequired {
+			t.Errorf("Hash(\"\") code = %v, want %q", ae, CodeRequired)
+		}
+	}
+
+	if _, err := HashWithParams("pw", Params{}); err == nil {
+		t.Fatalf("HashWithParams with zero params should error")
+	} else {
+		ae := apperr.AsError(err)
+		if ae == nil || ae.Message != CodeInvalidParams {
+			t.Errorf("HashWithParams zero-params code = %v, want %q", ae, CodeInvalidParams)
+		}
+	}
+}
+
 
 func TestHash_PHCFormat(t *testing.T) {
 	hash, err := Hash("password123")

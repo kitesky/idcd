@@ -538,6 +538,98 @@ func TestService_GetRedisWriteFailure(t *testing.T) {
 	}
 }
 
+// TestService_DeleteConcurrent verifies that two goroutines deleting the same
+// session ID never both succeed: exactly one must observe NotFound. Before
+// the Lua-script fix, GET + SRem + DEL had a TOCTOU window where two
+// concurrent Delete calls could each find the key, each issue DEL, and each
+// return success (or — worse — one delete a freshly Store()-ed session that
+// landed in the window). Now Delete uses an atomic Lua GET+DEL, so only the
+// winner can return nil; the loser sees redis.Nil → NotFound.
+func TestService_DeleteConcurrent(t *testing.T) {
+	redisClient := setupTestRedis(t)
+	service := NewService(redisClient)
+	ctx := context.Background()
+
+	const concurrency = 16
+	const trials = 25
+	for trial := 0; trial < trials; trial++ {
+		sessionID := fmt.Sprintf("s_concurrent_del_%d", trial)
+		userID := "u_concurrent_del"
+		require.NoError(t, service.Store(ctx, sessionID, userID, 15*time.Minute))
+
+		var (
+			wg          sync.WaitGroup
+			successes   int64
+			notFounds   int64
+			otherErrors []error
+			mu          sync.Mutex
+		)
+		wg.Add(concurrency)
+		start := make(chan struct{})
+		for i := 0; i < concurrency; i++ {
+			go func() {
+				defer wg.Done()
+				<-start // align goroutines so they all race
+				err := service.Delete(ctx, sessionID)
+				mu.Lock()
+				defer mu.Unlock()
+				switch {
+				case err == nil:
+					successes++
+				case apperr.Is(err, apperr.CodeNotFound):
+					notFounds++
+				default:
+					otherErrors = append(otherErrors, err)
+				}
+			}()
+		}
+		close(start)
+		wg.Wait()
+
+		assert.Empty(t, otherErrors, "no unexpected errors expected")
+		assert.Equal(t, int64(1), successes,
+			"exactly one Delete must succeed (trial %d, got %d)", trial, successes)
+		assert.Equal(t, int64(concurrency-1), notFounds,
+			"all other Deletes must return NotFound (trial %d)", trial)
+
+		// And the session is in fact gone after the race.
+		_, err := service.Get(ctx, sessionID)
+		assert.Error(t, err)
+		assert.True(t, apperr.Is(err, apperr.CodeNotFound),
+			"session must be deleted after concurrent Delete race")
+	}
+}
+
+// TestService_DeleteCleansUserSet verifies normal Delete still removes the
+// session ID from the per-user sessions set (regression guard for the
+// pre-Lua-script behavior).
+func TestService_DeleteCleansUserSet(t *testing.T) {
+	redisClient := setupTestRedis(t)
+	service := NewService(redisClient)
+	ctx := context.Background()
+
+	sessionID := "s_set_cleanup"
+	userID := "u_set_cleanup"
+	require.NoError(t, service.Store(ctx, sessionID, userID, 15*time.Minute))
+
+	// Pre-condition: ID is in the user set.
+	ids, err := service.SessionIDsForUser(ctx, userID)
+	require.NoError(t, err)
+	assert.Contains(t, ids, sessionID)
+
+	require.NoError(t, service.Delete(ctx, sessionID))
+
+	// Post-condition: ID has been pruned from the user set.
+	ids, err = service.SessionIDsForUser(ctx, userID)
+	require.NoError(t, err)
+	assert.NotContains(t, ids, sessionID, "user-sessions set should no longer reference deleted session")
+
+	// And a second Delete on the same ID is NotFound, not double-success.
+	err = service.Delete(ctx, sessionID)
+	assert.Error(t, err)
+	assert.True(t, apperr.Is(err, apperr.CodeNotFound))
+}
+
 // TestService_GetRedisDown verifies that when Redis is completely
 // unreachable, Get() returns nil + error rather than masquerading as success.
 func TestService_GetRedisDown(t *testing.T) {

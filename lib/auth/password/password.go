@@ -80,30 +80,37 @@ const (
 // ErrInvalidHash is returned when a stored hash cannot be parsed.
 var ErrInvalidHash = errors.New("password: invalid hash format")
 
-// ValidationError represents password validation errors
-type ValidationError struct {
-	Field   string
-	Message string
-}
-
-func (e ValidationError) Error() string {
-	return fmt.Sprintf("%s: %s", e.Field, e.Message)
-}
+// Stable ASCII error codes used as the Message of *apperr.Error values
+// returned by ValidatePassword. These are NOT user-facing strings — the API
+// layer maps them to localized text via the i18n catalog. Keep them stable;
+// changing a code is a breaking change for any consumer that maps it.
+const (
+	CodeTooShort        = "password.too_short"
+	CodeTooLong         = "password.too_long"
+	CodeMissingClasses  = "password.missing_letter_or_digit"
+	CodeSameAsEmail     = "password.same_as_email_prefix"
+	CodeRequired        = "password.required"
+	CodeInvalidParams   = "password.invalid_argon2_params"
+	CodeSaltGenFailed   = "password.salt_generation_failed"
+)
 
 // ValidatePassword checks if a password meets security requirements.
+//
+// Error contract: returns an *apperr.Error with Code=CodeValidation and
+// Message set to a stable ASCII identifier (one of the Code* constants in
+// this package). The Detail field carries any structured parameters needed
+// for rendering — e.g. the minimum length for CodeTooShort — so the API
+// layer's i18n template can substitute them.
+//
+// Callers MUST NOT pattern-match on the error's Error() string; use
+// apperr.AsError(err).Message to read the code.
 func ValidatePassword(password, email string) error {
 	if len(password) < minLength {
-		return &ValidationError{
-			Field:   "password",
-			Message: fmt.Sprintf("密码长度必须至少%d字符", minLength),
-		}
+		return apperr.Validation(CodeTooShort, strconv.Itoa(minLength))
 	}
 
 	if len(password) > maxLength {
-		return &ValidationError{
-			Field:   "password",
-			Message: fmt.Sprintf("密码长度不能超过%d字符", maxLength),
-		}
+		return apperr.Validation(CodeTooLong, strconv.Itoa(maxLength))
 	}
 
 	// Check for letter + number requirement
@@ -120,20 +127,14 @@ func ValidatePassword(password, email string) error {
 	}
 
 	if !hasLetter || !hasDigit {
-		return &ValidationError{
-			Field:   "password",
-			Message: "密码必须包含字母和数字",
-		}
+		return apperr.Validation(CodeMissingClasses, "")
 	}
 
 	// Check if password is same as email prefix (before @)
 	if email != "" {
 		emailPrefix := strings.Split(email, "@")[0]
 		if strings.EqualFold(password, emailPrefix) {
-			return &ValidationError{
-				Field:   "password",
-				Message: "密码不能与邮箱前缀相同",
-			}
+			return apperr.Validation(CodeSameAsEmail, "")
 		}
 	}
 
@@ -151,15 +152,15 @@ func Hash(password string) (string, error) {
 // existing hashes to a stronger parameter set.
 func HashWithParams(password string, p Params) (string, error) {
 	if password == "" {
-		return "", apperr.Validation("password is required", "")
+		return "", apperr.Validation(CodeRequired, "")
 	}
 	if p.SaltLen == 0 || p.KeyLen == 0 || p.Time == 0 || p.Memory == 0 || p.Parallelism == 0 {
-		return "", apperr.Internal("invalid argon2id parameters", nil)
+		return "", apperr.Internal(CodeInvalidParams, nil)
 	}
 
 	salt := make([]byte, p.SaltLen)
 	if _, err := rand.Read(salt); err != nil {
-		return "", apperr.Internal("failed to generate salt", err)
+		return "", apperr.Internal(CodeSaltGenFailed, err)
 	}
 
 	key := argon2.IDKey([]byte(password), salt, p.Time, p.Memory, p.Parallelism, p.KeyLen)

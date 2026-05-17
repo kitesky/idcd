@@ -151,6 +151,7 @@ func (c *Collector) scrape(ctx context.Context) {
 			n, err := c.queues.XLen(ctx, stream).Result()
 			if err != nil {
 				c.logger.Warn("xlen failed", "stream", stream, "err", err)
+				CollectorScrapeFailures.WithLabelValues("queue_depth").Inc()
 				continue
 			}
 			SetQueueDepth(stream, n)
@@ -162,6 +163,7 @@ func (c *Collector) scrape(ctx context.Context) {
 			u, err := c.sampler.Usage(ctx, ca)
 			if err != nil {
 				c.logger.Warn("quota sample failed", "ca", ca, "err", err)
+				CollectorScrapeFailures.WithLabelValues("ca_quota").Inc()
 				continue
 			}
 			SetCAQuotaUsed(ca, u.Max())

@@ -67,6 +67,16 @@ var ACMEErrorsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "ACME error count, partitioned by CA + classification.",
 }, []string{"ca", "error_type"})
 
+// CollectorScrapeFailures counts collector-side errors per scrape kind,
+// so an operator can spot stale gauges via the rate of this counter even
+// while QueueDepth / CAQuotaUsed retain their last good value.
+//
+//	kind — "queue_depth" | "ca_quota"
+var CollectorScrapeFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+	Name: "cert_collector_scrape_failures_total",
+	Help: "Collector scrape failures by source kind.",
+}, []string{"kind"})
+
 // RenewalJobsTotal counts renewal-job state transitions emitted by the
 // renewal scheduler / worker.
 //

@@ -586,7 +586,7 @@ func TestAdminUnban_BadID_404(t *testing.T) {
 }
 
 func TestAdminUnban_NotBanned_404(t *testing.T) {
-	gate := &fakeAbuseGate{unbanErr: errors.New("repo: account is not currently banned")}
+	gate := &fakeAbuseGate{unbanErr: repo.ErrNotBanned}
 	r := chiAdminRouter(Deps{AdminAbuse: gate})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,

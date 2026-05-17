@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -91,10 +92,10 @@ func TestCreateOrder_HappyPath(t *testing.T) {
 	repos := repo.NewWithPool(pool)
 	svc := newTestService(t, pool, rdb)
 
-	// Daily quota: ListByAccount returns 0 rows.
-	pool.ExpectQuery(`SELECT .* FROM cert\.orders`).
-		WithArgs(int64(42), 100, 0).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()))
+	// Daily quota: COUNT returns 0.
+	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
+		WithArgs(int64(42), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	// Insert returns id=101.
 	insertArgs := make([]any, 16)
@@ -152,7 +153,7 @@ func TestCreateOrder_RejectsTooManySANs(t *testing.T) {
 	deps := Deps{Repos: repo.NewWithPool(pool), Service: newTestService(t, pool, rdb)}
 	sans := make([]string, 11)
 	for i := range sans {
-		sans[i] = "a" + itoa(i) + ".example.com"
+		sans[i] = "a" + strconv.Itoa(i) + ".example.com"
 	}
 	req := authedRequest(t, http.MethodPost, "/v1/cert/orders", createOrderRequest{SANs: sans}, "42")
 	rec := httptest.NewRecorder()
@@ -192,9 +193,9 @@ func TestCreateOrder_AcceptsWildcardAndIDN(t *testing.T) {
 	repos := repo.NewWithPool(pool)
 	deps := Deps{Repos: repos, Service: newTestService(t, pool, rdb)}
 
-	pool.ExpectQuery(`SELECT .* FROM cert\.orders`).
-		WithArgs(int64(42), 100, 0).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()))
+	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
+		WithArgs(int64(42), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	insertArgs := make([]any, 16)
 	for i := range insertArgs {
 		insertArgs[i] = pgxmock.AnyArg()
@@ -368,7 +369,7 @@ func TestCreateOrder_CAAForbid_422(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &er))
 	require.Equal(t, "CERT_CAA_FORBID", er.Code)
 	require.Equal(t, "letsencrypt.org", er.Fields["required_value"])
-	require.Equal(t, "letsencrypt", er.Fields["ca"])
+	require.Equal(t, "lets-encrypt", er.Fields["ca"])
 }
 
 func TestCreateOrder_CAALookupFail_Continues(t *testing.T) {
@@ -383,9 +384,9 @@ func TestCreateOrder_CAALookupFail_Continues(t *testing.T) {
 
 	// Quota query + insert must still happen — transient CAA failures
 	// don't block order creation.
-	pool.ExpectQuery(`SELECT .* FROM cert\.orders`).
-		WithArgs(int64(42), 100, 0).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()))
+	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
+		WithArgs(int64(42), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	insertArgs := make([]any, 16)
 	for i := range insertArgs {
 		insertArgs[i] = pgxmock.AnyArg()

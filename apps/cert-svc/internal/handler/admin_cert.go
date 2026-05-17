@@ -35,6 +35,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -333,25 +334,30 @@ func adminCAQuota(deps Deps) http.HandlerFunc {
 				"admin quota source not configured", nil)
 			return
 		}
-		out := adminCAQuotaResponse{
+		rows := make([]adminCAQuotaRow, len(caaCAList))
+		var wg sync.WaitGroup
+		for i, ca := range caaCAList {
+			wg.Add(1)
+			go func(i int, ca string) {
+				defer wg.Done()
+				row := adminCAQuotaRow{CA: ca}
+				u, err := deps.AdminQuota.Usage(r.Context(), ca)
+				if err != nil {
+					row.Err = err.Error()
+				} else {
+					row.PerAccount3h = u.PerAccount3h
+					row.PerRegisteredDomain = u.PerRegisteredDomain
+					row.Switched = u.PerAccount3h >= service.SwitchThreshold ||
+						u.PerRegisteredDomain >= service.SwitchThreshold
+				}
+				rows[i] = row
+			}(i, ca)
+		}
+		wg.Wait()
+		writeJSON(w, http.StatusOK, adminCAQuotaResponse{
 			Threshold: service.SwitchThreshold,
-			Rows:      make([]adminCAQuotaRow, 0, len(caaCAList)),
-		}
-		for _, ca := range caaCAList {
-			row := adminCAQuotaRow{CA: ca}
-			u, err := deps.AdminQuota.Usage(r.Context(), ca)
-			if err != nil {
-				row.Err = err.Error()
-				out.Rows = append(out.Rows, row)
-				continue
-			}
-			row.PerAccount3h = u.PerAccount3h
-			row.PerRegisteredDomain = u.PerRegisteredDomain
-			row.Switched = u.PerAccount3h >= service.SwitchThreshold ||
-				u.PerRegisteredDomain >= service.SwitchThreshold
-			out.Rows = append(out.Rows, row)
-		}
-		writeJSON(w, http.StatusOK, out)
+			Rows:      rows,
+		})
 	}
 }
 
@@ -465,7 +471,7 @@ func adminBanAccount(deps Deps) http.HandlerFunc {
 		}
 		if err := deps.AdminAbuse.Ban(r.Context(), id, req.Reason); err != nil {
 			writeErr(w, http.StatusInternalServerError, codeInternal,
-				"ban failed: "+err.Error(), nil)
+				"ban failed", nil)
 			return
 		}
 		// Best-effort audit row. Failure to write does not roll the ban
@@ -513,17 +519,13 @@ func adminUnbanAccount(deps Deps) http.HandlerFunc {
 			req.Reason = "admin unban"
 		}
 		if err := deps.AdminAbuse.Unban(r.Context(), id, req.Reason); err != nil {
-			// The gate surfaces ErrNotBanned (via repo) when no active ban
-			// exists. We cannot import repo here cleanly; fall back to a
-			// substring match on the wrapped sentinel. Misclassification
-			// is bounded to "404 vs 500" — acceptable for an admin path.
-			if strings.Contains(err.Error(), "not currently banned") {
+			if errors.Is(err, repo.ErrNotBanned) {
 				writeErr(w, http.StatusNotFound, codeNotFound,
 					"no active ban for account", nil)
 				return
 			}
 			writeErr(w, http.StatusInternalServerError, codeInternal,
-				"unban failed: "+err.Error(), nil)
+				"unban failed", nil)
 			return
 		}
 		if deps.Repos != nil && deps.Repos.AuditLogs != nil {

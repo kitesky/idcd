@@ -382,12 +382,7 @@ func (s *Service) driveRevoke(ctx context.Context, order *repo.Order) error {
 		if err != nil {
 			return err
 		}
-		reason := ca.RevokeUnspecified
-		if cert.RevokeReason != nil {
-			// pass-through; we don't parse it back to enum in S1
-			_ = *cert.RevokeReason
-		}
-		if err := caImpl.Revoke(ctx, []byte(cert.LeafPEM), reason, s.accountKey()); err != nil {
+		if err := caImpl.Revoke(ctx, []byte(cert.LeafPEM), ca.RevokeUnspecified, s.accountKey()); err != nil {
 			return fmt.Errorf("revoke ca: %w", err)
 		}
 		if err := s.appendEvent(ctx, order.ID, &state, actionRevokeCompleted, nil); err != nil {

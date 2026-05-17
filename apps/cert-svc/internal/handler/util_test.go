@@ -59,17 +59,3 @@ func TestDedupePreserveOrder(t *testing.T) {
 	}
 }
 
-func TestItoa(t *testing.T) {
-	cases := map[int]string{
-		0:   "0",
-		1:   "1",
-		42:  "42",
-		-7:  "-7",
-		999: "999",
-	}
-	for in, want := range cases {
-		if got := itoa(in); got != want {
-			t.Errorf("itoa(%d) = %q, want %q", in, got, want)
-		}
-	}
-}

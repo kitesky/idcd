@@ -60,18 +60,12 @@ func (s *Service) RunConsumer(ctx context.Context) error {
 		consumer = host
 	}
 
-	maint := time.NewTicker(reclaimInterval)
-	defer maint.Stop()
+	go s.runReclaimer(ctx, consumer)
 
 	for {
-		select {
-		case <-ctx.Done():
+		if ctx.Err() != nil {
 			return nil
-		case <-maint.C:
-			s.reclaimAbandoned(ctx, consumer)
-		default:
 		}
-
 		msgs, err := s.readGroup(ctx, consumer)
 		if err != nil {
 			if ctx.Err() != nil {
@@ -144,6 +138,23 @@ func (s *Service) handleMessage(ctx context.Context, m redis.XMessage) {
 func (s *Service) ack(ctx context.Context, msgID string) {
 	if err := s.cfg.Redis.XAck(ctx, s.cfg.Stream, s.cfg.Group, msgID).Err(); err != nil {
 		s.cfg.Logger.Warn("xack failed", "msg_id", msgID, "err", err)
+	}
+}
+
+// runReclaimer ticks every reclaimInterval until ctx cancels, taking
+// over messages whose previous owner has been idle past reclaimMinIdle.
+// Runs in its own goroutine so a blocking XReadGroup in the main loop
+// never starves reclamation.
+func (s *Service) runReclaimer(ctx context.Context, consumer string) {
+	t := time.NewTicker(reclaimInterval)
+	defer t.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			s.reclaimAbandoned(ctx, consumer)
+		}
 	}
 }
 

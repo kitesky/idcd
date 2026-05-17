@@ -36,6 +36,25 @@ const API_BASE =
   ""
 const API_PREFIX = "/api/v1/cert"
 
+const DEFAULT_TIMEOUT_MS = 30_000
+const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"])
+
+function getCsrfToken(): string {
+  if (typeof document === "undefined") return ""
+  const m = document.cookie.match(/(?:^|;\s*)csrf_token=([^;]+)/)
+  return m ? decodeURIComponent(m[1]!) : ""
+}
+
+function getCurrentLocale(): string {
+  if (typeof document === "undefined") return "en"
+  const cookies = document.cookie
+  const fresh = cookies.match(/(?:^|;\s*)idcd_locale=([^;]+)/)
+  if (fresh) return decodeURIComponent(fresh[1]!)
+  const legacy = cookies.match(/(?:^|;\s*)locale=([^;]+)/)
+  if (legacy) return decodeURIComponent(legacy[1]!)
+  return "en"
+}
+
 // ── Error type ──────────────────────────────────────────────────────────────
 
 export class CertAPIError extends Error {
@@ -65,6 +84,12 @@ interface ApiError {
 
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   const url = `${API_BASE}${API_PREFIX}${path}`
+  const method = (init.method ?? "GET").toUpperCase()
+  const csrf = MUTATING.has(method) ? { "X-CSRF-Token": getCsrfToken() } : {}
+  const ownController = init.signal ? null : new AbortController()
+  const timeoutId = ownController
+    ? setTimeout(() => ownController.abort(), DEFAULT_TIMEOUT_MS)
+    : null
   let res: Response
   try {
     res = await fetch(url, {
@@ -73,17 +98,21 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",
+        "X-Locale": getCurrentLocale(),
+        ...csrf,
         ...(init.headers || {}),
       },
+      signal: init.signal ?? ownController!.signal,
     })
   } catch (err) {
-    // Network failure (DNS, connection refused, CORS pre-flight, …)
+    if (timeoutId !== null) clearTimeout(timeoutId)
     throw new CertAPIError(
       "CERT_NETWORK_ERROR",
       0,
       err instanceof Error ? err.message : "网络错误",
     )
   }
+  if (timeoutId !== null) clearTimeout(timeoutId)
 
   if (res.status === 204) {
     return undefined as T

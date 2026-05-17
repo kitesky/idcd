@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -87,7 +88,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 		for i, raw := range req.SANs {
 			norm, err := normaliseSAN(raw)
 			if err != nil {
-				fields["sans["+itoa(i)+"]"] = err.Error()
+				fields["sans["+strconv.Itoa(i)+"]"] = err.Error()
 				continue
 			}
 			ascii = append(ascii, norm)
@@ -144,7 +145,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 
 		ca := req.CA
 		if ca == "" {
-			ca = "letsencrypt"
+			ca = "lets-encrypt"
 		}
 
 		// Abuse → CAA precheck → insert → enqueue. Abuse must run first
@@ -228,22 +229,10 @@ func createOrder(deps Deps) http.HandlerFunc {
 }
 
 // dailyOrderCount returns the number of orders an account has created in
-// the last 24h. Bounded by 100 rows (so a runaway account can still be
-// quota-checked) — anything beyond the cap is treated as "quota busted"
-// at the caller.
+// the last 24h.
 func dailyOrderCount(ctx context.Context, orders *repo.OrdersRepo, accountID int64) (int, error) {
 	cutoff := time.Now().UTC().Add(-24 * time.Hour)
-	rows, err := orders.ListByAccount(ctx, accountID, nil, 100, 0)
-	if err != nil {
-		return 0, err
-	}
-	count := 0
-	for _, o := range rows {
-		if o.CreatedAt.After(cutoff) {
-			count++
-		}
-	}
-	return count, nil
+	return orders.CountByAccountSince(ctx, accountID, cutoff)
 }
 
 type orderResponse struct {
@@ -519,27 +508,3 @@ func caaExpectedFor(caID string) string {
 	return ""
 }
 
-// itoa avoids importing strconv just for the tiny int→string conversion
-// used when annotating per-index validation failures.
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	neg := false
-	if i < 0 {
-		neg = true
-		i = -i
-	}
-	var buf [12]byte
-	n := len(buf)
-	for i > 0 {
-		n--
-		buf[n] = byte('0' + i%10)
-		i /= 10
-	}
-	if neg {
-		n--
-		buf[n] = '-'
-	}
-	return string(buf[n:])
-}

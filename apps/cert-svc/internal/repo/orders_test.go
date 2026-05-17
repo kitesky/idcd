@@ -161,6 +161,31 @@ func TestOrdersRepo_GetByID_DBError(t *testing.T) {
 	assert.ErrorIs(t, err, sentinel)
 }
 
+func TestOrdersRepo_CountByAccountSince(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+
+	since := time.Now().UTC().Add(-24 * time.Hour)
+	mock.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders\s+WHERE account_id = \$1 AND created_at >= \$2`).
+		WithArgs(int64(42), since).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(7))
+
+	got, err := r.CountByAccountSince(context.Background(), 42, since)
+	require.NoError(t, err)
+	assert.Equal(t, 7, got)
+}
+
+func TestOrdersRepo_CountByAccountSince_DBError(t *testing.T) {
+	r, mock := newOrdersRepo(t)
+
+	since := time.Now().UTC().Add(-24 * time.Hour)
+	mock.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
+		WithArgs(int64(42), since).
+		WillReturnError(errors.New("boom"))
+
+	_, err := r.CountByAccountSince(context.Background(), 42, since)
+	require.Error(t, err)
+}
+
 func TestOrdersRepo_ListByAccount_NoStatus(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 

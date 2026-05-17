@@ -82,14 +82,10 @@ func TestCreateOrder_QuotaExceeded(t *testing.T) {
 	rdb, _ := newMiniRedis(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Service: newTestService(t, pool, rdb)}
 
-	// Fill 20 rows all created within the last 24h to trip the quota.
-	rows := pgxmock.NewRows(orderRowColumns())
-	for i := int64(0); i < dailyOrderQuota; i++ {
-		rows.AddRow(sampleOrderRow(i+1, 42, "issued")...)
-	}
-	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 100, 0).
-		WillReturnRows(rows)
+	// COUNT returns dailyOrderQuota to trip the quota.
+	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
+		WithArgs(int64(42), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(dailyOrderQuota))
 
 	body := createOrderRequest{SANs: []string{"example.com"}}
 	req := authedRequest(t, http.MethodPost, "/v1/cert/orders", body, "42")

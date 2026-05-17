@@ -120,6 +120,22 @@ func (r *OrdersRepo) GetByID(ctx context.Context, id int64) (*Order, error) {
 	return o, nil
 }
 
+const ordersCountByAccountSinceSQL = `
+	SELECT COUNT(*)::int
+	FROM cert.orders
+	WHERE account_id = $1 AND created_at >= $2
+`
+
+// CountByAccountSince returns the number of orders an account has created
+// since the supplied cutoff, scoped to a single COUNT(*) query.
+func (r *OrdersRepo) CountByAccountSince(ctx context.Context, accountID int64, since time.Time) (int, error) {
+	var n int
+	if err := r.pool.QueryRow(ctx, ordersCountByAccountSinceSQL, accountID, since).Scan(&n); err != nil {
+		return 0, fmt.Errorf("orders count by account since: %w", err)
+	}
+	return n, nil
+}
+
 const ordersListByAccountSQL = `
 	SELECT ` + ordersColumns + `
 	FROM cert.orders

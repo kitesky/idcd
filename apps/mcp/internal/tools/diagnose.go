@@ -32,11 +32,11 @@ func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 		rawTarget, _ := args["target"].(string)
 		target, err := validateTarget(rawTarget)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		host := target

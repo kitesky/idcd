@@ -36,7 +36,7 @@ func handlePingFunc(client *apiclient.Client) protocol.ToolHandler {
 		rawTarget, _ := args["target"].(string)
 		target, err := validateTarget(rawTarget)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 		count := 3
 		if v, ok := args["count"].(float64); ok {
@@ -44,7 +44,7 @@ func handlePingFunc(client *apiclient.Client) protocol.ToolHandler {
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		var result struct {
@@ -62,7 +62,7 @@ func handlePingFunc(client *apiclient.Client) protocol.ToolHandler {
 
 		body := map[string]any{"target": target, "count": count}
 		if err := client.Post(ctx, "/v1/probe/ping", body, &result); err != nil {
-			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		var sb strings.Builder

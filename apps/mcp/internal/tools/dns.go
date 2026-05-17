@@ -38,19 +38,19 @@ func handleDNSFunc(client *apiclient.Client) protocol.ToolHandler {
 		rawDomain, _ := args["domain"].(string)
 		domain, err := validateTarget(rawDomain)
 		if err != nil {
-			return "", err
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 		recordType := "A"
 		if v, ok := args["type"].(string); ok && v != "" {
 			// DNS record type — short token, must be alphanumeric.
 			if len(v) > 16 {
-				return "", fmt.Errorf("type too long")
+				return "", fmt.Errorf("%w: type too long", protocol.ErrToolFailure)
 			}
 			recordType = v
 		}
 
 		if !client.HasAPIKey() {
-			return "⚠ 需要 API key，请设置 IDCD_API_KEY 环境变量", nil
+			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
 		}
 
 		var result struct {
@@ -66,7 +66,7 @@ func handleDNSFunc(client *apiclient.Client) protocol.ToolHandler {
 		params.Set("q", domain)
 		params.Set("type", recordType)
 		if err := client.Get(ctx, "/v1/info/dns", params, &result); err != nil {
-			return fmt.Sprintf("✗ 调用失败: %s", err.Error()), nil
+			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		var sb strings.Builder

@@ -28,6 +28,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -55,7 +56,14 @@ type pgxQuerier interface {
 //     conflate "expired" with "not found", which is what we want for the
 //     401 response — but we still want to LOG the distinction internally.
 type PGTokenValidator struct {
-	q       pgxQuerier
+	q pgxQuerier
+
+	// mu guards nowFunc. SetNow may be called concurrently with Validate
+	// in tests (e.g. parallel table-driven cases sharing a validator), so
+	// the read in Validate needs to be synchronised — otherwise the race
+	// detector trips even though the field is only ever assigned to a
+	// pure function pointer.
+	mu      sync.RWMutex
 	nowFunc func() time.Time
 }
 
@@ -78,7 +86,17 @@ func newPGValidatorWithQuerier(q pgxQuerier) *PGTokenValidator {
 
 // SetNow lets tests inject a deterministic clock.
 func (v *PGTokenValidator) SetNow(f func() time.Time) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
 	v.nowFunc = f
+}
+
+// now returns the current time via the configured clock, taking the read
+// lock so concurrent SetNow calls don't race.
+func (v *PGTokenValidator) now() time.Time {
+	v.mu.RLock()
+	defer v.mu.RUnlock()
+	return v.nowFunc()
 }
 
 // Validate implements TokenValidator. The raw token is SHA-256 hashed and
@@ -112,7 +130,7 @@ func (v *PGTokenValidator) Validate(ctx context.Context, rawToken string) (*Prin
 	if expiresAt == nil {
 		return nil, ErrTokenExpired
 	}
-	if !v.nowFunc().Before(*expiresAt) {
+	if !v.now().Before(*expiresAt) {
 		return nil, ErrTokenExpired
 	}
 

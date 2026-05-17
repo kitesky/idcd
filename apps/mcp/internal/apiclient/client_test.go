@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestNew_HasAPIKey(t *testing.T) {
@@ -118,6 +119,47 @@ func TestDo_RespectsContextCancellation(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected cancellation error")
 	}
+}
+
+func TestNew_TransportTunablesApplied(t *testing.T) {
+	c := New("https://api.example", "")
+	tr := c.Transport()
+	if tr == nil {
+		t.Fatal("Transport() returned nil — expected a configured *http.Transport")
+	}
+	if tr.MaxIdleConns != 100 {
+		t.Errorf("MaxIdleConns = %d, want 100", tr.MaxIdleConns)
+	}
+	if tr.MaxIdleConnsPerHost != 20 {
+		t.Errorf("MaxIdleConnsPerHost = %d, want 20 (default 2 starves long-lived MCP workloads)", tr.MaxIdleConnsPerHost)
+	}
+	if tr.IdleConnTimeout != 90*time.Second {
+		t.Errorf("IdleConnTimeout = %v, want 90s", tr.IdleConnTimeout)
+	}
+	if tr.TLSHandshakeTimeout != 10*time.Second {
+		t.Errorf("TLSHandshakeTimeout = %v, want 10s", tr.TLSHandshakeTimeout)
+	}
+	if tr.ExpectContinueTimeout != 1*time.Second {
+		t.Errorf("ExpectContinueTimeout = %v, want 1s", tr.ExpectContinueTimeout)
+	}
+	if !tr.ForceAttemptHTTP2 {
+		t.Error("ForceAttemptHTTP2 should be true")
+	}
+	// Sanity: the http.Client's Transport is the same one Transport() exposes.
+	if c.httpClient.Transport != tr {
+		t.Error("httpClient.Transport != Transport() — they must share state")
+	}
+	if c.httpClient.Timeout != 15*time.Second {
+		t.Errorf("httpClient.Timeout = %v, want 15s", c.httpClient.Timeout)
+	}
+}
+
+func TestClose_IsSafeToCallAndIdempotent(t *testing.T) {
+	c := New("https://api.example", "")
+	// Two consecutive Close() calls must not panic; CloseIdleConnections
+	// on an unused transport is a no-op but still has to be safe.
+	c.Close()
+	c.Close()
 }
 
 func TestDo_NoOutPointerSkipsUnmarshal(t *testing.T) {

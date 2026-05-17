@@ -17,6 +17,22 @@ import (
 
 type ToolHandler func(ctx context.Context, args map[string]any) (string, error)
 
+// ErrToolFailure is the sentinel that a ToolHandler wraps when it wants the
+// MCP transport to emit an in-band tool error (ToolCallResult.IsError=true)
+// rather than a JSON-RPC protocol-level error. Use this for "expected"
+// failures the caller can act on — missing API key, bad user input, upstream
+// API returned 4xx — anything that is a tool-level outcome, not a server bug.
+//
+// Usage in a tool handler:
+//
+//	if !client.HasAPIKey() {
+//	    return "", fmt.Errorf("%w: IDCD_API_KEY is not set", protocol.ErrToolFailure)
+//	}
+//
+// Bare errors returned from a handler still map to JSON-RPC ErrInternalError —
+// reserved for "the server itself failed" cases (panics, unexpected I/O).
+var ErrToolFailure = errors.New("mcp tool: failure")
+
 type Server struct {
 	tools    []ToolDefinition
 	handlers map[string]ToolHandler
@@ -160,6 +176,25 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 
 	text, err := handler(ctx, params.Arguments)
 	if err != nil {
+		// Tool-level failure (wrapped ErrToolFailure) → MCP IsError result.
+		// The call itself succeeded at the protocol layer; the tool reports
+		// a recoverable problem in-band so the client can show it to the
+		// user without retrying the JSON-RPC envelope.
+		if errors.Is(err, ErrToolFailure) {
+			msg := err.Error()
+			// Strip the "mcp tool: failure: " prefix that errors.Wrap
+			// produces — the sentinel is for routing, not display.
+			msg = strings.TrimPrefix(msg, ErrToolFailure.Error()+": ")
+			return &Response{
+				JSONRPC: "2.0",
+				ID:      req.ID,
+				Result: ToolCallResult{
+					Content: []ContentItem{{Type: "text", Text: msg}},
+					IsError: true,
+				},
+			}
+		}
+		// Unexpected (panic-class) failure → JSON-RPC protocol error.
 		return &Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,

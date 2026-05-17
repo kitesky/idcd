@@ -18,6 +18,13 @@ linters:
     errcheck:
       check-blank: false
       check-type-assertions: false
+      # 这些方法的错误返回值按 Go 社区惯例忽略:
+      # - io.Closer.Close: defer 链路里追究无意义,真有问题上层 fs.Stat 等会暴露
+      # - net.Conn.SetRead/WriteDeadline: 仅在 Conn 已关闭时报错,与显式 Close() 路径重复
+      exclude-functions:
+        - (io.Closer).Close
+        - (net.Conn).SetReadDeadline
+        - (net.Conn).SetWriteDeadline
 
   exclusions:
     rules:

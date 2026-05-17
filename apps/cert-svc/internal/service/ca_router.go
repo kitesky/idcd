@@ -1,8 +1,10 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sort"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
@@ -17,6 +19,11 @@ import (
 type Router struct {
 	cas         map[string]ca.AcmeCA // keyed by ca.Name()
 	defaultName string               // ca.Name() of the fallback
+	// secondaryName is the CA to fall through to when default's
+	// usage exceeds SwitchThreshold. Empty = no fallback.
+	secondaryName string
+	quota         QuotaChecker
+	logger        *slog.Logger // optional, nil safe
 }
 
 // ErrNoCA is returned when Router has nothing wired (nil router, nil
@@ -51,11 +58,56 @@ func NewRouter(defaultCA ca.AcmeCA, extras ...ca.AcmeCA) *Router {
 	return &Router{cas: cas, defaultName: defaultCA.Name()}
 }
 
+// WithSecondary configures the fall-over CA used when default usage
+// exceeds SwitchThreshold. name must match a registered ca.Name();
+// otherwise the secondary is recorded but the fall-over short-circuits
+// at Pick time and the default is returned (so an operator typo never
+// blocks issuance). Returns r for fluent chaining; nil-safe.
+func (r *Router) WithSecondary(name string) *Router {
+	if r == nil {
+		return nil
+	}
+	r.secondaryName = name
+	return r
+}
+
+// WithQuota wires a QuotaChecker. Passing nil resets to the no-op
+// checker so the default CA is always picked. Returns r for fluent
+// chaining; nil-safe.
+func (r *Router) WithQuota(qc QuotaChecker) *Router {
+	if r == nil {
+		return nil
+	}
+	r.quota = qc
+	return r
+}
+
+// WithLogger wires an optional slog.Logger for fall-over events. nil
+// disables logging. Returns r for fluent chaining; nil-safe.
+func (r *Router) WithLogger(l *slog.Logger) *Router {
+	if r == nil {
+		return nil
+	}
+	r.logger = l
+	return r
+}
+
 // Pick selects the CA for an order. Returns the CA registered under
 // order.CA when that field is non-empty and registered; otherwise the
-// default. order may be nil (renewal probe / health path) — in that
-// case the default is returned.
+// default (possibly redirected to the secondary by quota policy).
+// order may be nil (renewal probe / health path) — the default is
+// returned in that case. This is the legacy entrypoint kept for
+// callers that don't carry a context; it forwards to PickCtx with
+// context.Background().
 func (r *Router) Pick(order *repo.Order) (ca.AcmeCA, error) {
+	return r.PickCtx(context.Background(), order)
+}
+
+// PickCtx is the context-aware variant of Pick. The ctx is forwarded
+// to QuotaChecker.Usage so the hot issuance path can honor caller
+// deadlines / cancellation when consulting Redis / Postgres for recent
+// volume.
+func (r *Router) PickCtx(ctx context.Context, order *repo.Order) (ca.AcmeCA, error) {
 	if r == nil || len(r.cas) == 0 {
 		return nil, ErrNoCA
 	}
@@ -68,7 +120,50 @@ func (r *Router) Pick(order *repo.Order) (ca.AcmeCA, error) {
 		// wrong CA and trip CAA / billing reconciliation).
 		return nil, fmt.Errorf("%w: %q", ErrUnknownCA, order.CA)
 	}
-	return r.cas[r.defaultName], nil
+
+	def := r.cas[r.defaultName]
+
+	// Fall-over short-circuits: no quota wired, no secondary
+	// configured, or secondary not registered → just return default.
+	if r.quota == nil || r.secondaryName == "" {
+		return def, nil
+	}
+	sec, ok := r.cas[r.secondaryName]
+	if !ok {
+		return def, nil
+	}
+
+	usage, err := r.quota.Usage(ctx, r.defaultName)
+	if err != nil {
+		// Quota lookup failed — degrade open: keep issuing from
+		// default and let the operator notice via logs. The hot
+		// path must not block on monitoring infra.
+		if r.logger != nil {
+			r.logger.Warn("ca_quota_lookup_failed",
+				slog.String("default", r.defaultName),
+				slog.String("error", err.Error()),
+			)
+		}
+		return def, nil
+	}
+
+	peak := usage.PerRegisteredDomain
+	if usage.PerAccount3h > peak {
+		peak = usage.PerAccount3h
+	}
+	if peak > SwitchThreshold {
+		if r.logger != nil {
+			r.logger.Info("ca_quota_fallover",
+				slog.String("default", r.defaultName),
+				slog.String("secondary", r.secondaryName),
+				slog.Float64("per_registered_domain", usage.PerRegisteredDomain),
+				slog.Float64("per_account_3h", usage.PerAccount3h),
+				slog.Float64("threshold", SwitchThreshold),
+			)
+		}
+		return sec, nil
+	}
+	return def, nil
 }
 
 // Names returns the registered CA identifiers in alphabetical order.

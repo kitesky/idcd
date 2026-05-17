@@ -96,6 +96,110 @@ func TestRouter_NewRouterDropsNilExtras(t *testing.T) {
 	assert.Equal(t, []string{"fake-le", "lets-encrypt"}, r.Names())
 }
 
+func TestRouter_WithSecondary_NoQuota_StillPicksDefault(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	r := NewRouter(le, zs).WithSecondary("zerossl")
+
+	got, err := r.Pick(nil)
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+
+	got, err = r.Pick(&repo.Order{CA: ""})
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+}
+
+func TestRouter_WithQuota_UnderThreshold_PicksDefault(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	q := &fakeQuota{usage: QuotaUsage{PerRegisteredDomain: 0.5, PerAccount3h: 0.6}}
+	r := NewRouter(le, zs).WithSecondary("zerossl").WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), &repo.Order{CA: ""})
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+	assert.Equal(t, 1, q.calls)
+	assert.Equal(t, "lets-encrypt", q.last, "Usage must be queried against the default CA name")
+}
+
+func TestRouter_WithQuota_OverThreshold_PicksSecondary(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	q := &fakeQuota{usage: QuotaUsage{PerRegisteredDomain: 0.8, PerAccount3h: 0.2}}
+	r := NewRouter(le, zs).WithSecondary("zerossl").WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "zerossl", got.Name())
+}
+
+func TestRouter_WithQuota_OverThreshold_NoSecondary_PicksDefault(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	q := &fakeQuota{usage: QuotaUsage{PerRegisteredDomain: 0.95, PerAccount3h: 0.9}}
+	// secondary not configured — even with quota wired we must stay
+	// on default.
+	r := NewRouter(le, zs).WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+	assert.Equal(t, 0, q.calls, "quota must not be consulted when no secondary is wired")
+}
+
+func TestRouter_WithQuota_OverThreshold_SecondaryNotRegistered_PicksDefault(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	q := &fakeQuota{usage: QuotaUsage{PerRegisteredDomain: 0.99, PerAccount3h: 0.99}}
+	// "buypass" wasn't registered with NewRouter — operator typo /
+	// stale config. Must degrade to default.
+	r := NewRouter(le).WithSecondary("buypass").WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+	assert.Equal(t, 0, q.calls, "unregistered secondary short-circuits before quota lookup")
+}
+
+func TestRouter_WithQuota_ErrorFromChecker_PicksDefault(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	q := &fakeQuota{err: errors.New("redis down")}
+	r := NewRouter(le, zs).WithSecondary("zerossl").WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+	assert.Equal(t, 1, q.calls)
+}
+
+func TestRouter_WithQuota_PerAccount3hCrossesThreshold(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	// PerRegisteredDomain stays cool but newOrder/3h is hot —
+	// max() must dominate and trigger fall-over.
+	q := &fakeQuota{usage: QuotaUsage{PerRegisteredDomain: 0.1, PerAccount3h: 0.85}}
+	r := NewRouter(le, zs).WithSecondary("zerossl").WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), nil)
+	require.NoError(t, err)
+	assert.Equal(t, "zerossl", got.Name())
+}
+
+func TestRouter_OrderCANonEmpty_IgnoresQuota(t *testing.T) {
+	le := &fakeCA{name: "lets-encrypt"}
+	zs := &fakeCA{name: "zerossl"}
+	// Quota is screaming red but order.CA pins lets-encrypt — must
+	// honor the explicit selection regardless of usage.
+	q := &fakeQuota{usage: QuotaUsage{PerRegisteredDomain: 0.95, PerAccount3h: 0.99}}
+	r := NewRouter(le, zs).WithSecondary("zerossl").WithQuota(q)
+
+	got, err := r.PickCtx(context.Background(), &repo.Order{CA: "lets-encrypt"})
+	require.NoError(t, err)
+	assert.Equal(t, "lets-encrypt", got.Name())
+	assert.Equal(t, 0, q.calls, "explicit order.CA must not consult quota")
+}
+
 func TestServiceCAPick_RoutesViaRouter(t *testing.T) {
 	le := &fakeCA{name: "lets-encrypt"}
 	fake := &fakeCA{name: "fake-le"}

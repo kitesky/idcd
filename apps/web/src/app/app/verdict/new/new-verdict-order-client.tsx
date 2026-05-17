@@ -103,13 +103,13 @@ function toLocalInputValue(d: Date): string {
 
 export function NewVerdictOrderClient() {
   const router = useRouter()
-  const channels = useMemo(getChannels, [])
+  const channels = useMemo(() => getChannels(), [])
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [pendingCheckout, setPendingCheckout] = useState<{ url: string; orderId: string } | null>(
     null,
   )
 
-  const defaults = useMemo(defaultWindow, [])
+  const defaults = useMemo(() => defaultWindow(), [])
 
   const form = useForm<FormValues>({
     resolver: zodResolver(schema),

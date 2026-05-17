@@ -102,6 +102,21 @@ func main() {
 		}
 	}()
 
+	// S1 W4: Notification watcher. Polls cert.order_events /
+	// cert.certs / cert.renewal_jobs and emits structured events on the
+	// `cert:notifications` Redis Stream so the (S2) notifier service can
+	// dispatch per-channel. Runs in the worker process — the renewer cmd
+	// is purely a scheduler and does not need a duplicate goroutine.
+	notifyWatcher := service.NewNotificationWatcher(repos, rdb,
+		service.WithNotificationPool(pool),
+		service.WithNotificationLogger(log),
+	)
+	go func() {
+		if err := notifyWatcher.Run(ctx); err != nil && !errors.Is(err, context.Canceled) {
+			log.Error("cert-worker: notification watcher stopped", "err", err)
+		}
+	}()
+
 	log.Info("cert-worker consuming", "stream", service.DefaultStream, "group", service.DefaultGroup)
 	if err := svc.RunConsumer(ctx); err != nil {
 		log.Error("cert-worker: consumer", "err", err)

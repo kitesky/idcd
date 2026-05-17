@@ -11,8 +11,10 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
+	"github.com/kite365/idcd/apps/cert-svc/internal/metrics"
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/lib/cert/ca"
 	"github.com/kite365/idcd/lib/cert/dns"
@@ -226,6 +228,8 @@ func (s *Service) driveIssue(ctx context.Context, order *repo.Order) error {
 			_ = s.appendEvent(ctx, order.ID, &state, actionACMERequestFailed, []byte(errStr))
 			_ = s.repos().Orders.UpdateStatus(ctx, order.ID, repo.OrderStatusIssuing, repo.OrderStatusFailed, &errStr)
 			_ = s.repos().Orders.IncrementRetryCount(ctx, order.ID)
+			metrics.RecordOrderResult("failed", state.CAName, order.Tier, time.Since(order.CreatedAt))
+			metrics.RecordACMEError(state.CAName, classifyOrchestratorErr(err))
 			logger.Error("acme request failed", "error", err)
 			return fmt.Errorf("acme request: %w", err)
 		}
@@ -305,6 +309,7 @@ func (s *Service) driveIssue(ctx context.Context, order *repo.Order) error {
 		if err := s.repos().Orders.SetFinalizedAt(ctx, order.ID, now); err != nil && !errors.Is(err, repo.ErrNotFound) {
 			return fmt.Errorf("set finalized_at: %w", err)
 		}
+		metrics.RecordOrderResult("issued", issuer, order.Tier, time.Since(order.CreatedAt))
 		state.NeedsPersist = false
 		state.NeedsRenewal = true
 	}
@@ -394,7 +399,44 @@ func (s *Service) driveRevoke(ctx context.Context, order *repo.Order) error {
 	_ = s.repos().Certs.UpdateStatus(ctx, cert.ID, repo.CertStatusIssued, repo.CertStatusRevoked, &now, cert.RevokeReason)
 	_ = s.repos().Orders.UpdateStatus(ctx, order.ID, repo.OrderStatusRevoking, repo.OrderStatusRevoked, nil)
 	_ = s.repos().Orders.SetFinalizedAt(ctx, order.ID, now)
+	metrics.RecordOrderResult("revoked", order.CA, order.Tier, 0)
 	return nil
+}
+
+// classifyOrchestratorErr collapses heterogeneous CA error strings into
+// the small fixed bucket set the metrics package understands. We avoid
+// over-engineering — any non-matching error lands in "other".
+func classifyOrchestratorErr(err error) string {
+	if err == nil {
+		return "other"
+	}
+	msg := err.Error()
+	switch {
+	case containsAny(msg, "rate limit", "rateLimited", "too many"):
+		return "rate_limited"
+	case containsAny(msg, "challenge", "challengeFailed", "invalid_challenge"):
+		return "challenge_failed"
+	case containsAny(msg, "dns propagation", "DNS propagation", "NXDOMAIN"):
+		return "dns_propagation"
+	case containsAny(msg, "CSR", "csr", "malformed"):
+		return "invalid_csr"
+	case containsAny(msg, "timeout", "deadline exceeded"):
+		return "timeout"
+	case containsAny(msg, "connection refused", "no such host", "i/o timeout"):
+		return "ca_unreachable"
+	default:
+		return "other"
+	}
+}
+
+// containsAny reports whether s contains any of the substrings.
+func containsAny(s string, needles ...string) bool {
+	for _, n := range needles {
+		if n != "" && strings.Contains(s, n) {
+			return true
+		}
+	}
+	return false
 }
 
 // RetryOrder is the explicit retry entry-point: it moves a failed order

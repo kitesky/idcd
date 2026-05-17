@@ -19,10 +19,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/config"
 	"github.com/kite365/idcd/apps/cert-svc/internal/handler"
+	"github.com/kite365/idcd/apps/cert-svc/internal/metrics"
 	certmw "github.com/kite365/idcd/apps/cert-svc/internal/middleware"
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
@@ -201,6 +203,40 @@ func main() {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
+	// Prometheus /metrics on a dedicated port. Kept on a separate
+	// listener so the scraper ACL (VPN-only) does not need to overlap
+	// with the public /v1/cert/* HTTP API.
+	metricsMux := http.NewServeMux()
+	metricsMux.Handle("/metrics", promhttp.Handler())
+	metricsSrv := &http.Server{
+		Addr:              cfg.MetricsAddr(),
+		Handler:           metricsMux,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		slogLogger.Info("cert-svc metrics listening", "addr", metricsSrv.Addr)
+		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slogLogger.Error("metrics listener failed", "addr", metricsSrv.Addr, "error", err)
+		}
+	}()
+
+	// Periodic gauge collector — refreshes queue_depth + ca_quota_used
+	// every 30s from Redis + DB. The orchestrator records counters /
+	// histograms in-line; this goroutine owns gauges only.
+	quotaSampler := samplerAdapter{
+		inner: service.NewRepoQuotaChecker(repos.Orders, repos.Certs, nil),
+	}
+	collector := metrics.NewCollector(rdb, quotaSampler,
+		metrics.WithLogger(slogLogger),
+		metrics.WithStreams(service.DefaultStream, "cert:notifications"),
+		metrics.WithCAs(router.Names()...),
+	)
+	go func() {
+		if err := collector.Run(ctx); err != nil {
+			slogLogger.Error("metrics collector failed", "error", err)
+		}
+	}()
+
 	serverErr := make(chan error, 1)
 	go func() {
 		slogLogger.Info("cert-svc listening", "addr", srv.Addr)
@@ -226,7 +262,28 @@ func main() {
 		slogLogger.Error("cert-svc graceful shutdown failed", "error", err)
 		os.Exit(1)
 	}
+	_ = metricsSrv.Shutdown(shutdownCtx)
 	slogLogger.Info("cert-svc shutdown complete")
+}
+
+// samplerAdapter bridges service.RepoQuotaChecker (which returns
+// service.QuotaUsage) onto metrics.QuotaSampler (which expects
+// metrics.UsageRatio). The metrics package deliberately does not import
+// the service package to avoid an import cycle once the collector
+// graduates to lib/.
+type samplerAdapter struct {
+	inner *service.RepoQuotaChecker
+}
+
+func (a samplerAdapter) Usage(ctx context.Context, caName string) (metrics.UsageRatio, error) {
+	u, err := a.inner.Usage(ctx, caName)
+	if err != nil {
+		return metrics.UsageRatio{}, err
+	}
+	return metrics.UsageRatio{
+		PerRegisteredDomain: u.PerRegisteredDomain,
+		PerAccount3h:        u.PerAccount3h,
+	}, nil
 }
 
 // buildVault picks the vault.Vault implementation per Config.VaultBackend.

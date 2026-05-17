@@ -16,6 +16,7 @@ import (
 
 const (
 	envPort         = "CERT_SVC_PORT"
+	envMetricsPort  = "CERT_SVC_METRICS_PORT"
 	envDB           = "CERT_DB_DSN"
 	envRedis        = "CERT_REDIS_URL"
 	envRedisAddr    = "CERT_REDIS_ADDR"
@@ -62,6 +63,7 @@ const (
 	VaultBackendHashiVault = "hashivault"
 
 	defaultPort         = 8080
+	defaultMetricsPort  = 9090
 	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
 	defaultRedis        = "redis://localhost:6379/0"
 	defaultRedisAddr    = "localhost:6379"
@@ -74,6 +76,11 @@ const (
 // Config is the cert-svc runtime configuration.
 type Config struct {
 	Port         int
+	// MetricsPort is the bind port for the dedicated Prometheus /metrics
+	// listener. Kept on a separate port from the main HTTP API so the
+	// metrics scraper can be ACL-restricted (VPN-only) without affecting
+	// the user-facing API surface. Defaults to 9090.
+	MetricsPort  int
 	DatabaseDSN  string
 	RedisURL     string
 	RedisAddr    string
@@ -157,6 +164,7 @@ type Config struct {
 func Load() (*Config, error) {
 	cfg := &Config{
 		Port:         defaultPort,
+		MetricsPort:  defaultMetricsPort,
 		DatabaseDSN:  defaultDB,
 		RedisURL:     defaultRedis,
 		RedisAddr:    defaultRedisAddr,
@@ -175,6 +183,17 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("config: %s out of range: %d", envPort, port)
 		}
 		cfg.Port = port
+	}
+
+	if v := strings.TrimSpace(os.Getenv(envMetricsPort)); v != "" {
+		port, err := strconv.Atoi(v)
+		if err != nil {
+			return nil, fmt.Errorf("config: invalid %s=%q: %w", envMetricsPort, v, err)
+		}
+		if port <= 0 || port > 65535 {
+			return nil, fmt.Errorf("config: %s out of range: %d", envMetricsPort, port)
+		}
+		cfg.MetricsPort = port
 	}
 
 	if v := strings.TrimSpace(os.Getenv(envDB)); v != "" {
@@ -320,4 +339,10 @@ func Load() (*Config, error) {
 // Addr returns the host:port the HTTP server should bind.
 func (c *Config) Addr() string {
 	return fmt.Sprintf(":%d", c.Port)
+}
+
+// MetricsAddr returns the host:port the Prometheus /metrics listener
+// should bind.
+func (c *Config) MetricsAddr() string {
+	return fmt.Sprintf(":%d", c.MetricsPort)
 }

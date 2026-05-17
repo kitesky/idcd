@@ -361,3 +361,50 @@ func TestLoad_VaultBackendHashiVault_MissingToken(t *testing.T) {
 		t.Fatal("Load() returned nil; want missing-token rejection")
 	}
 }
+
+func TestLoad_MetricsPort_Default(t *testing.T) {
+	t.Setenv(envMetricsPort, "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MetricsPort != defaultMetricsPort {
+		t.Errorf("MetricsPort = %d, want %d", cfg.MetricsPort, defaultMetricsPort)
+	}
+	if got, want := cfg.MetricsAddr(), ":9090"; got != want {
+		t.Errorf("MetricsAddr() = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_MetricsPort_Override(t *testing.T) {
+	t.Setenv(envMetricsPort, "19090")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.MetricsPort != 19090 {
+		t.Errorf("MetricsPort = %d, want 19090", cfg.MetricsPort)
+	}
+	if got, want := cfg.MetricsAddr(), ":19090"; got != want {
+		t.Errorf("MetricsAddr() = %q, want %q", got, want)
+	}
+}
+
+func TestLoad_MetricsPort_Invalid(t *testing.T) {
+	cases := []struct {
+		name string
+		val  string
+	}{
+		{"non-numeric", "abc"},
+		{"zero", "0"},
+		{"too-large", "70000"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv(envMetricsPort, tc.val)
+			if _, err := Load(); err == nil {
+				t.Errorf("Load() with %s=%q expected error, got nil", envMetricsPort, tc.val)
+			}
+		})
+	}
+}

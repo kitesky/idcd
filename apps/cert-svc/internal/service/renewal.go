@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/kite365/idcd/apps/cert-svc/internal/metrics"
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 )
 
@@ -246,6 +247,7 @@ func (r *RenewalScheduler) enqueueOne(ctx context.Context, cert *repo.Cert) erro
 		return fmt.Errorf("enqueue order %d: %w", newOrderID, err)
 	}
 
+	metrics.RecordRenewalJob("scheduled")
 	r.logger.Info("renewal enqueued",
 		"cert_id", cert.ID,
 		"new_order_id", newOrderID,

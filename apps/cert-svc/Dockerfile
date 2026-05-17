@@ -5,9 +5,13 @@ WORKDIR /app
 
 COPY go.work go.work.sum ./
 
+# Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
+COPY apps/cert-svc/go.mod apps/cert-svc/go.sum apps/cert-svc/
+RUN cd apps/cert-svc && GOWORK=off go mod download
+
+# Copy workspace deps + remaining cert-svc source
 COPY packages/ packages/
 COPY lib/ lib/
-
 COPY apps/cert-svc/ apps/cert-svc/
 
 WORKDIR /app/apps/cert-svc

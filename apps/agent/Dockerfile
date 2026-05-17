@@ -6,10 +6,16 @@ WORKDIR /app
 # Copy workspace files
 COPY go.work go.work.sum ./
 
-# Copy all packages
-COPY packages/ packages/
+# Pre-fetch dependencies in a cacheable layer.
+# Copying only go.mod / go.sum first means a source-only change in apps/agent
+# (cmd/ internal/ etc.) doesn't bust `go mod download` (~30s saved).
+# Use GOWORK=off so the per-module download doesn't require every workspace
+# `use` directory to be present yet.
+COPY apps/agent/go.mod apps/agent/go.sum apps/agent/
+RUN cd apps/agent && GOWORK=off go mod download
 
-# Copy agent app
+# Copy packages (workspace deps) + remaining agent source
+COPY packages/ packages/
 COPY apps/agent/ apps/agent/
 
 # Build the binary

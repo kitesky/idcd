@@ -6,10 +6,12 @@ WORKDIR /app
 # Copy workspace files
 COPY go.work go.work.sum ./
 
-# Copy all packages
-COPY packages/ packages/
+# Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
+COPY apps/aggregator/go.mod apps/aggregator/go.sum apps/aggregator/
+RUN cd apps/aggregator && GOWORK=off go mod download
 
-# Copy aggregator app
+# Copy packages (workspace deps) + remaining aggregator source
+COPY packages/ packages/
 COPY apps/aggregator/ apps/aggregator/
 
 # Build the binary

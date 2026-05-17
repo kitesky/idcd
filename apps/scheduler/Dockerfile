@@ -6,10 +6,12 @@ WORKDIR /app
 # Copy workspace files
 COPY go.work go.work.sum ./
 
-# Copy all packages
-COPY packages/ packages/
+# Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
+COPY apps/scheduler/go.mod apps/scheduler/go.sum apps/scheduler/
+RUN cd apps/scheduler && GOWORK=off go mod download
 
-# Copy scheduler app
+# Copy packages (workspace deps) + remaining scheduler source
+COPY packages/ packages/
 COPY apps/scheduler/ apps/scheduler/
 
 # Build the binary

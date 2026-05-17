@@ -6,10 +6,12 @@ WORKDIR /app
 # Copy workspace files
 COPY go.work go.work.sum ./
 
-# Copy all packages
-COPY packages/ packages/
+# Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
+COPY apps/gateway/go.mod apps/gateway/go.sum apps/gateway/
+RUN cd apps/gateway && GOWORK=off go mod download
 
-# Copy gateway app
+# Copy packages (workspace deps) + remaining gateway source
+COPY packages/ packages/
 COPY apps/gateway/ apps/gateway/
 
 # Build the binary

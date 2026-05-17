@@ -6,10 +6,12 @@ WORKDIR /app
 # Copy workspace files
 COPY go.work go.work.sum ./
 
-# Copy all packages
-COPY packages/ packages/
+# Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
+COPY apps/notifier/go.mod apps/notifier/go.sum apps/notifier/
+RUN cd apps/notifier && GOWORK=off go mod download
 
-# Copy notifier app
+# Copy packages (workspace deps) + remaining notifier source
+COPY packages/ packages/
 COPY apps/notifier/ apps/notifier/
 
 # Build the binary

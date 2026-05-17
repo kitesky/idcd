@@ -12,9 +12,10 @@
 // separate binaries (cmd/generator, cmd/verifier) so a misbehaving
 // KMS / DB on the verdict pipeline cannot DoS the public verify path.
 //
-// Paddle / internal webhooks are intentionally NOT wired here yet —
-// the webhook handler is a follow-up. The TODO below tracks the
-// hand-off point.
+// POST /webhooks/paddle is mounted when ATTEST_PADDLE_WEBHOOK_SECRET
+// is set, driving D5 refund processing (refund_retry_queue enqueue on
+// transient DB failure). When the secret is unset the route is omitted
+// and verify still comes up — Paddle integration is optional in dev.
 package main
 
 import (
@@ -29,9 +30,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
+	"github.com/kite365/idcd/apps/attest/internal/handler/paddle"
 	"github.com/kite365/idcd/apps/attest/internal/handler/verify"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/lib/attest/sign"
@@ -105,9 +109,27 @@ func main() {
 	mux.Handle("/verify", vh)
 	mux.Handle("/verify/", vh)
 
-	// TODO(webhook follow-up): mount POST /webhooks/paddle (refund /
-	// payment) and POST /webhooks/internal (admin tools) here once
-	// those handlers land.
+	if cfg.PaddleWebhookSecret == "" {
+		log.Warn("attest-server: ATTEST_PADDLE_WEBHOOK_SECRET unset; /webhooks/paddle disabled")
+	} else {
+		rdb := redis.NewClient(&redis.Options{
+			Addr:         cfg.RedisAddr,
+			DialTimeout:  5 * time.Second,
+			ReadTimeout:  3 * time.Second,
+			WriteTimeout: 3 * time.Second,
+		})
+		defer func() { _ = rdb.Close() }()
+
+		ph := &paddle.Handler{
+			Secret: []byte(cfg.PaddleWebhookSecret),
+			Lookup: &paddleOrderLookupAdapter{pool: pool},
+			Orders: repos.Orders,
+			Redis:  rdb,
+			Logger: log,
+		}
+		mux.Handle("/webhooks/paddle", ph)
+		log.Info("attest-server: paddle webhook mounted")
+	}
 
 	srv := &http.Server{
 		Addr:              cfg.Addr(),
@@ -195,6 +217,26 @@ func (a *reportLookupAdapter) LookupByID(ctx context.Context, reportID string) (
 		TSATime:        r.TSATime,
 		ReportType:     r.ReportType,
 	}, nil
+}
+
+// paddleOrderLookupAdapter satisfies paddle.OrderLookup by querying
+// idcd_attest.verdict_order directly on the pool. We bypass the repo
+// layer because Lookup-by-paddle_order_id is webhook-handler-specific
+// and adding it to the shared repo would broaden that package's API.
+type paddleOrderLookupAdapter struct {
+	pool *pgxpool.Pool
+}
+
+func (a *paddleOrderLookupAdapter) LookupByPaddleOrderID(ctx context.Context, paddleOrderID string) (string, string, error) {
+	const q = `SELECT id, status FROM idcd_attest.verdict_order WHERE paddle_order_id = $1`
+	var id, status string
+	if err := a.pool.QueryRow(ctx, q, paddleOrderID).Scan(&id, &status); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", "", paddle.ErrOrderNotFound
+		}
+		return "", "", err
+	}
+	return id, status, nil
 }
 
 // newLogger mirrors cmd/verifier so log-level env handling is uniform.

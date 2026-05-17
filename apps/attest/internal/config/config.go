@@ -43,6 +43,8 @@ const (
 
 	envVerifyEndpoint = "ATTEST_VERIFY_ENDPOINT" // Self-Verify Worker target (D6)
 
+	envPaddleWebhookSecret = "ATTEST_PADDLE_WEBHOOK_SECRET" // HMAC secret for /webhooks/paddle
+
 	SignBackendAWS    = "aws"
 	SignBackendAliyun = "aliyun"
 
@@ -80,6 +82,8 @@ type Config struct {
 	TSAProviders []string // ordered: primary first
 
 	VerifyEndpoint string // Self-Verify Worker only
+
+	PaddleWebhookSecret string // empty disables /webhooks/paddle (D5)
 }
 
 // Load reads ATTEST_* env vars and returns a populated Config.
@@ -167,6 +171,10 @@ func Load() (*Config, error) {
 
 	if v := strings.TrimSpace(os.Getenv(envVerifyEndpoint)); v != "" {
 		cfg.VerifyEndpoint = v
+	}
+
+	if v := strings.TrimSpace(os.Getenv(envPaddleWebhookSecret)); v != "" {
+		cfg.PaddleWebhookSecret = v
 	}
 
 	switch cfg.SignBackend {

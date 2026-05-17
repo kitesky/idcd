@@ -7,16 +7,22 @@
 // that the path third-party auditors hit is exercised continuously by
 // our own infrastructure.
 //
-// Wiring note: the v2 verdict_report Repository + WORM archive fetcher
-// land in apps/attest/internal/repo via a separate agent. To keep this
-// binary independently buildable today, main wires stub implementations
-// that produce no work. The wiring agent will replace the stubs in a
-// follow-up commit.
+// Wiring:
+//
+//   - Postgres pool        → repo.New(pool); a thin pendingReportsLister
+//     adapter wraps a SELECT over idcd_attest.verdict_report to materialise
+//     the selfverify.PendingReport shape (the repo package intentionally
+//     doesn't expose ListPendingSelfVerify yet).
+//   - VerdictReportsRepo   → selfverify.ReportUpdater directly.
+//   - AttestationRecordsRepo → satisfies attestrec.Repository directly.
+//   - PDF fetcher          → urlFetcher dispatches file:// + http(s):// to
+//     httpFetcher, and s3:// to an aws-sdk-go-v2 backed s3Fetcher built
+//     lazily on first use (so boot doesn't require S3 env vars when no
+//     archive URL is in flight).
 package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,12 +30,15 @@ import (
 	"os"
 	"os/signal"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"github.com/kite365/idcd/apps/attest/internal/config"
+	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/apps/attest/internal/selfverify"
-	attestrec "github.com/kite365/idcd/lib/attest/record"
 )
 
 // defaultVerifyEndpoint is the production /verify URL. D6 requires the
@@ -47,12 +56,29 @@ func main() {
 	if strings.TrimSpace(cfg.VerifyEndpoint) == "" {
 		cfg.VerifyEndpoint = defaultVerifyEndpoint
 	}
+	if strings.TrimSpace(cfg.DatabaseDSN) == "" {
+		fmt.Fprintln(os.Stderr, "attest-verifier: ATTEST_DB_DSN is required")
+		os.Exit(1)
+	}
 
 	log := newLogger(cfg.LogLevel)
 	log.Info("attest-verifier starting",
 		"endpoint", cfg.VerifyEndpoint,
 		"env", cfg.Env,
 	)
+
+	ctx, cancel := signal.NotifyContext(context.Background(),
+		os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+
+	// --- Postgres -----------------------------------------------------
+	pool, err := pgxpool.New(ctx, cfg.DatabaseDSN)
+	if err != nil {
+		log.Error("attest-verifier: pgxpool init failed", "err", err)
+		os.Exit(1)
+	}
+	defer pool.Close()
+	repos := repo.New(pool)
 
 	// D6: brand-new http.Client. Do NOT share Transport with the
 	// generator — the whole point of running a separate worker is to
@@ -66,21 +92,23 @@ func main() {
 		},
 	}
 
+	fetcher := &urlFetcher{
+		log:    log,
+		http:   &httpFetcher{client: httpClient},
+		s3Once: &sync.Once{},
+	}
+
 	w := selfverify.New(selfverify.Config{
-		Lister:             &stubLister{log: log},
-		Updater:            &stubUpdater{log: log},
-		AttestationRecords: &stubRecords{log: log},
-		Fetcher:            &httpFetcher{client: httpClient},
+		Lister:             &pendingReportsLister{pool: pool, log: log},
+		Updater:            repos.Reports,
+		AttestationRecords: repos.AttestationRecords,
+		Fetcher:            fetcher,
 		VerifyEndpoint:     cfg.VerifyEndpoint,
 		HTTPClient:         httpClient,
 		PollInterval:       30 * time.Second,
 		BatchSize:          50,
 		Logger:             log,
 	})
-
-	ctx, cancel := signal.NotifyContext(context.Background(),
-		os.Interrupt, syscall.SIGTERM)
-	defer cancel()
 
 	if err := w.Run(ctx); err != nil {
 		log.Error("attest-verifier stopped with error", "err", err)
@@ -105,12 +133,81 @@ func newLogger(level string) *slog.Logger {
 }
 
 // ---------------------------------------------------------------------
-// httpFetcher: supports file://, http://, https://.
-// s3:// is intentionally unimplemented — the WORM archiver is also a
-// stub in S2 MVP; once it lands, swap this for an s3.Client-backed
-// fetcher in the wiring commit.
+// pendingReportsLister: adapter that materialises selfverify.PendingReport
+// rows from idcd_attest.verdict_report. Lives at the cmd boundary because
+// the repo package intentionally exposes only narrow CRUD + state-machine
+// helpers; the projection shape belongs to the consumer.
 // ---------------------------------------------------------------------
 
+type pendingReportsLister struct {
+	pool *pgxpool.Pool
+	log  *slog.Logger
+}
+
+const listPendingSelfVerifySQL = `
+	SELECT id, pdf_url, content_hash
+	FROM idcd_attest.verdict_report
+	WHERE self_verify_status = 'pending'
+	ORDER BY created_at ASC
+	LIMIT $1
+`
+
+func (l *pendingReportsLister) ListPendingSelfVerify(ctx context.Context, limit int) ([]*selfverify.PendingReport, error) {
+	rows, err := l.pool.Query(ctx, listPendingSelfVerifySQL, limit)
+	if err != nil {
+		return nil, fmt.Errorf("list pending self_verify: %w", err)
+	}
+	defer rows.Close()
+
+	out := make([]*selfverify.PendingReport, 0, limit)
+	for rows.Next() {
+		var r selfverify.PendingReport
+		if err := rows.Scan(&r.ID, &r.PDFURL, &r.ContentHash); err != nil {
+			return nil, fmt.Errorf("scan pending self_verify: %w", err)
+		}
+		out = append(out, &r)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate pending self_verify: %w", err)
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------------
+// urlFetcher: dispatches by scheme. s3Fetcher is lazily built on first
+// use so boot succeeds without S3 env vars when no archive URL is in
+// flight (per task constraint).
+// ---------------------------------------------------------------------
+
+type urlFetcher struct {
+	log    *slog.Logger
+	http   *httpFetcher
+	s3Once *sync.Once
+	s3     *s3Fetcher
+	s3Err  error
+}
+
+func (f *urlFetcher) Fetch(ctx context.Context, pdfURL string) ([]byte, error) {
+	switch {
+	case strings.HasPrefix(pdfURL, "s3://"):
+		f.s3Once.Do(func() {
+			s, err := newS3FetcherFromEnv(ctx)
+			if err != nil {
+				f.s3Err = err
+				return
+			}
+			f.s3 = s
+		})
+		if f.s3Err != nil {
+			return nil, f.s3Err
+		}
+		return f.s3.Fetch(ctx, pdfURL)
+	default:
+		return f.http.Fetch(ctx, pdfURL)
+	}
+}
+
+// httpFetcher handles file://, http://, https://.
 type httpFetcher struct {
 	client *http.Client
 }
@@ -135,45 +232,7 @@ func (f *httpFetcher) Fetch(ctx context.Context, pdfURL string) ([]byte, error) 
 		}
 		// Cap at 64 MiB; v2 verdict PDFs are typically <10 MiB.
 		return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
-	case strings.HasPrefix(pdfURL, "s3://"):
-		return nil, errors.New("s3:// fetch not implemented (S2 MVP); wiring agent replaces this")
 	default:
 		return nil, fmt.Errorf("unsupported URL scheme: %s", pdfURL)
 	}
-}
-
-// ---------------------------------------------------------------------
-// Stub repos. Replaced by the wiring agent once
-// apps/attest/internal/repo exposes verdict_report + attestation_record
-// implementations.
-// ---------------------------------------------------------------------
-
-type stubLister struct{ log *slog.Logger }
-
-func (s *stubLister) ListPendingSelfVerify(_ context.Context, _ int) ([]*selfverify.PendingReport, error) {
-	s.log.Debug("stubLister: no work (repo wiring pending)")
-	return nil, nil
-}
-
-type stubUpdater struct{ log *slog.Logger }
-
-func (s *stubUpdater) UpdateSelfVerify(_ context.Context, reportID, status string, _ time.Time) error {
-	s.log.Warn("stubUpdater: dropping update (repo wiring pending)",
-		"report_id", reportID, "status", status)
-	return nil
-}
-
-type stubRecords struct{ log *slog.Logger }
-
-func (s *stubRecords) Insert(_ context.Context, r *attestrec.Record) error {
-	s.log.Warn("stubRecords: dropping WAL row (repo wiring pending)",
-		"report_id", r.ReportID, "action", r.Action, "status", r.Status)
-	return nil
-}
-func (s *stubRecords) Get(context.Context, string, attestrec.Action) (*attestrec.Record, error) {
-	return nil, attestrec.ErrNotFound
-}
-func (s *stubRecords) Update(context.Context, *attestrec.Record) error { return nil }
-func (s *stubRecords) ListByReport(context.Context, string) ([]*attestrec.Record, error) {
-	return nil, nil
 }

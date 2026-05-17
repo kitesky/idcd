@@ -20,7 +20,13 @@ export type OrderStatus =
 
 export type CertStatus = "active" | "expired" | "revoked"
 
-export type DnsProvider = "cloudflare" | "manual"
+export type DnsProvider =
+  | "cloudflare"
+  | "manual"
+  | "aliyun"
+  | "dnspod"
+  | "route53"
+  | "gcloud"
 
 export type DnsCredentialHealth = "healthy" | "degraded" | "revoked" | "unknown"
 
@@ -92,6 +98,10 @@ export interface CreateDnsCredentialRequest {
   provider: DnsProvider
   displayName: string
   apiToken?: string
+  // Generic credential map for non-cloudflare providers. Keys MUST match the
+  // backend credential field names (e.g. access_key_id, secret_access_key,
+  // service_account_json). cert-api.ts forwards the map as `secrets`.
+  credential?: Record<string, string>
 }
 
 export interface CertQuota {
@@ -167,6 +177,10 @@ export const CERT_STATUS_LABELS: Record<CertStatus, string> = {
 export const DNS_PROVIDER_LABELS: Record<DnsProvider, string> = {
   cloudflare: "Cloudflare",
   manual: "手动 DNS",
+  aliyun: "阿里云 DNS",
+  dnspod: "DNSPod / 腾讯云 DNS",
+  route53: "AWS Route 53",
+  gcloud: "Google Cloud DNS",
 }
 
 export const DNS_HEALTH_LABELS: Record<DnsCredentialHealth, string> = {

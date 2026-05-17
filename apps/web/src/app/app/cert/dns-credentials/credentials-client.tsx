@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
 import {
   Select,
   SelectContent,
@@ -70,6 +71,21 @@ export function CredentialsClient() {
   const [provider, setProvider] = useState<DnsProvider>("cloudflare")
   const [displayName, setDisplayName] = useState("")
   const [apiToken, setApiToken] = useState("")
+  // Aliyun DNS
+  const [aliyunAKID, setAliyunAKID] = useState("")
+  const [aliyunSecret, setAliyunSecret] = useState("")
+  const [aliyunRegion, setAliyunRegion] = useState("")
+  // DNSPod / 腾讯云
+  const [dnspodSecretID, setDnspodSecretID] = useState("")
+  const [dnspodSecretKey, setDnspodSecretKey] = useState("")
+  // AWS Route 53
+  const [r53AKID, setR53AKID] = useState("")
+  const [r53Secret, setR53Secret] = useState("")
+  const [r53Region, setR53Region] = useState("")
+  const [r53HostedZoneID, setR53HostedZoneID] = useState("")
+  // Google Cloud DNS
+  const [gcloudJSON, setGcloudJSON] = useState("")
+  const [gcloudProjectID, setGcloudProjectID] = useState("")
   const [busy, setBusy] = useState(false)
   const [busyRow, setBusyRow] = useState<string | null>(null)
 
@@ -108,6 +124,67 @@ export function CredentialsClient() {
     setProvider("cloudflare")
     setDisplayName("")
     setApiToken("")
+    setAliyunAKID("")
+    setAliyunSecret("")
+    setAliyunRegion("")
+    setDnspodSecretID("")
+    setDnspodSecretKey("")
+    setR53AKID("")
+    setR53Secret("")
+    setR53Region("")
+    setR53HostedZoneID("")
+    setGcloudJSON("")
+    setGcloudProjectID("")
+  }
+
+  function buildCredential(): {
+    credential?: Record<string, string>
+    error?: string
+  } {
+    switch (provider) {
+      case "cloudflare":
+      case "manual":
+        return {}
+      case "aliyun": {
+        if (!aliyunAKID.trim()) return { error: "请填写 Access Key ID" }
+        if (!aliyunSecret.trim()) return { error: "请填写 Access Key Secret" }
+        const cred: Record<string, string> = {
+          access_key_id: aliyunAKID.trim(),
+          access_key_secret: aliyunSecret.trim(),
+        }
+        if (aliyunRegion.trim()) cred.region_id = aliyunRegion.trim()
+        return { credential: cred }
+      }
+      case "dnspod": {
+        if (!dnspodSecretID.trim()) return { error: "请填写 Secret ID" }
+        if (!dnspodSecretKey.trim()) return { error: "请填写 Secret Key" }
+        return {
+          credential: {
+            secret_id: dnspodSecretID.trim(),
+            secret_key: dnspodSecretKey.trim(),
+          },
+        }
+      }
+      case "route53": {
+        if (!r53AKID.trim()) return { error: "请填写 Access Key ID" }
+        if (!r53Secret.trim()) return { error: "请填写 Secret Access Key" }
+        const cred: Record<string, string> = {
+          access_key_id: r53AKID.trim(),
+          secret_access_key: r53Secret.trim(),
+        }
+        if (r53Region.trim()) cred.region = r53Region.trim()
+        if (r53HostedZoneID.trim()) cred.hosted_zone_id = r53HostedZoneID.trim()
+        return { credential: cred }
+      }
+      case "gcloud": {
+        if (!gcloudJSON.trim()) return { error: "请粘贴 Service Account JSON" }
+        const cred: Record<string, string> = {
+          service_account_json: gcloudJSON.trim(),
+        }
+        if (gcloudProjectID.trim()) cred.project_id = gcloudProjectID.trim()
+        return { credential: cred }
+      }
+    }
   }
 
   async function handleSave() {
@@ -119,12 +196,19 @@ export function CredentialsClient() {
       toast.error("Cloudflare 凭据需要 API Token")
       return
     }
+    const built = buildCredential()
+    if (built.error) {
+      toast.error(built.error)
+      return
+    }
     setBusy(true)
     try {
       const created = await createDnsCredential({
         provider,
         displayName: displayName.trim(),
-        apiToken: apiToken.trim() || undefined,
+        apiToken:
+          provider === "cloudflare" ? apiToken.trim() || undefined : undefined,
+        credential: built.credential,
       })
       setCreds((prev) => [created, ...prev])
       toast.success("已新增凭据")
@@ -142,6 +226,13 @@ export function CredentialsClient() {
     if (provider === "cloudflare" && !apiToken.trim()) {
       toast.error("请填写 API Token")
       return
+    }
+    if (provider !== "cloudflare" && provider !== "manual") {
+      const built = buildCredential()
+      if (built.error) {
+        toast.error(built.error)
+        return
+      }
     }
     toast.message("测试连接", { description: "正在与 DNS 服务商握手…" })
     // For an unsaved credential we just optimistically display a hint.
@@ -336,6 +427,144 @@ export function CredentialsClient() {
               <p className="text-sm text-muted-foreground">
                 手动凭据无需 token，仅作为标记用，订单将走 DNS-01 手动模式。
               </p>
+            )}
+            {provider === "aliyun" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="aliyun-akid">Access Key ID</Label>
+                  <Input
+                    id="aliyun-akid"
+                    placeholder="LTAI5txxxxxxxxxxxxxxxxxx"
+                    value={aliyunAKID}
+                    onChange={(e) => setAliyunAKID(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="aliyun-secret">Access Key Secret</Label>
+                  <Input
+                    id="aliyun-secret"
+                    type="password"
+                    placeholder="••••••••••••••••"
+                    value={aliyunSecret}
+                    onChange={(e) => setAliyunSecret(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="aliyun-region">Region ID（可选）</Label>
+                  <Input
+                    id="aliyun-region"
+                    placeholder="cn-hangzhou"
+                    value={aliyunRegion}
+                    onChange={(e) => setAliyunRegion(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    留空则默认使用 cn-hangzhou。
+                  </p>
+                </div>
+              </>
+            )}
+            {provider === "dnspod" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="dnspod-secret-id">Secret ID</Label>
+                  <Input
+                    id="dnspod-secret-id"
+                    placeholder="AKIDxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                    value={dnspodSecretID}
+                    onChange={(e) => setDnspodSecretID(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dnspod-secret-key">Secret Key</Label>
+                  <Input
+                    id="dnspod-secret-key"
+                    type="password"
+                    placeholder="••••••••••••••••"
+                    value={dnspodSecretKey}
+                    onChange={(e) => setDnspodSecretKey(e.target.value)}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  在腾讯云访问管理（CAM）创建子账号 API 密钥，授予 DNSPod 解析权限。
+                </p>
+              </>
+            )}
+            {provider === "route53" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="r53-akid">Access Key ID</Label>
+                  <Input
+                    id="r53-akid"
+                    placeholder="AKIAIOSFODNN7EXAMPLE"
+                    value={r53AKID}
+                    onChange={(e) => setR53AKID(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="r53-secret">Secret Access Key</Label>
+                  <Input
+                    id="r53-secret"
+                    type="password"
+                    placeholder="••••••••••••••••"
+                    value={r53Secret}
+                    onChange={(e) => setR53Secret(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="r53-region">Region（可选）</Label>
+                  <Input
+                    id="r53-region"
+                    placeholder="us-east-1"
+                    value={r53Region}
+                    onChange={(e) => setR53Region(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    Route 53 API 默认走 us-east-1，留空即可。
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="r53-zone">Hosted Zone ID（可选）</Label>
+                  <Input
+                    id="r53-zone"
+                    placeholder="Z2FDTNDATAQYW2"
+                    value={r53HostedZoneID}
+                    onChange={(e) => setR53HostedZoneID(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    指定后将只允许操作该 Hosted Zone，建议绑定以收紧权限。
+                  </p>
+                </div>
+              </>
+            )}
+            {provider === "gcloud" && (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="gcloud-json">Service Account JSON</Label>
+                  <Textarea
+                    id="gcloud-json"
+                    rows={8}
+                    className="font-mono text-xs"
+                    placeholder='{ "type": "service_account", "project_id": "...", ... }'
+                    value={gcloudJSON}
+                    onChange={(e) => setGcloudJSON(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    粘贴 GCP IAM 控制台导出的完整 JSON 密钥文件内容，需具备 DNS Administrator 角色。
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="gcloud-project">Project ID（可选）</Label>
+                  <Input
+                    id="gcloud-project"
+                    placeholder="my-gcp-project"
+                    value={gcloudProjectID}
+                    onChange={(e) => setGcloudProjectID(e.target.value)}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    留空时使用 JSON 内的 project_id 字段。
+                  </p>
+                </div>
+              </>
             )}
           </div>
           <SheetFooter className="border-t px-4 py-3">

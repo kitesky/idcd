@@ -10,6 +10,7 @@ import {
   LayoutDashboard,
   Server,
   Settings,
+  ShieldCheck,
   UserCheck,
 } from "lucide-react"
 import type { NavGroup } from "./types"
@@ -51,6 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
     title: "报告",
     items: [
       { title: "月度报告", url: "/app/reports", icon: FileText },
+      { title: "证据报告", url: "/app/verdict/new", icon: ShieldCheck },
     ],
   },
   {

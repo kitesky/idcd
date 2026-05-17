@@ -403,7 +403,7 @@ func (s *stubVerdictPublisher) EnqueueVerdict(_ context.Context, orderID, ownerI
 // TestBillingHandler_Webhook_PaymentSucceeded_VerdictOrderEnqueues asserts the
 // S2 Evidence flow: when a payment.succeeded webhook carries
 // metadata.verdict_order_id, the handler MUST
-//   1. flip the verdict_order row pending→paid (with paid_at + paddle_order_id + price_paid_cny),
+//   1. flip the verdict_order row pending→paid (with paid_at + ext_order_id + price_paid_cny),
 //   2. push the order onto the Redis Stream `verdict_generation_queue` via
 //      the VerdictStreamPublisher.
 func TestBillingHandler_Webhook_PaymentSucceeded_VerdictOrderEnqueues(t *testing.T) {
@@ -432,7 +432,7 @@ func TestBillingHandler_Webhook_PaymentSucceeded_VerdictOrderEnqueues(t *testing
 		WithArgs(
 			"v_test_001",      // id
 			pgxmock.AnyArg(),  // paid_at
-			"stub_ext_txn_v1", // paddle_order_id (= ExtTxnID)
+			"stub_ext_txn_v1", // ext_order_id (= ExtTxnID)
 			float64(199),      // price_paid_cny (yuan)
 		).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))

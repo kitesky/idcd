@@ -37,11 +37,11 @@ import {
 
 /**
  * Payment channels. Read from env so ops can flip channels without a rebuild;
- * fall back to the v2 default trio (Paddle / Alipay / WeChat).
+ * fall back to the v2 default trio (PaymentHub / Alipay / WeChat).
  */
 function getChannels(): string[] {
   const raw = process.env.NEXT_PUBLIC_PAYMENT_CHANNELS
-  if (!raw) return ["paddle", "alipay", "wechat"]
+  if (!raw) return ["paymenthub", "alipay", "wechat"]
   return raw
     .split(",")
     .map((s) => s.trim())
@@ -49,7 +49,7 @@ function getChannels(): string[] {
 }
 
 const CHANNEL_LABELS: Record<string, string> = {
-  paddle: "Paddle（信用卡 / PayPal）",
+  paymenthub: "PaymentHub（信用卡 / PayPal）",
   alipay: "支付宝",
   wechat: "微信支付",
 }
@@ -118,7 +118,7 @@ export function NewVerdictOrderClient() {
       target: "",
       start: defaults.start,
       end: defaults.end,
-      channel: channels[0] ?? "paddle",
+      channel: channels[0] ?? "paymenthub",
     },
   })
 
@@ -127,7 +127,7 @@ export function NewVerdictOrderClient() {
   async function onSubmit(values: FormValues) {
     setSubmitError(null)
 
-    // Build the return URL so Paddle (or any channel) can redirect back
+    // Build the return URL so PaymentHub (or any channel) can redirect back
     // to the order detail page once payment completes. The backend uses
     // it as the `success_url` of the hosted checkout.
     const origin = typeof window !== "undefined" ? window.location.origin : ""

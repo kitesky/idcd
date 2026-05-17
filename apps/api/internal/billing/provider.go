@@ -35,11 +35,11 @@ func ValidPlan(p Plan) bool {
 }
 
 // User-selectable payment channels for web payments.
-// Paddle is intentionally excluded — it is config-only (international cards, admin-initiated).
+// PaymentHub is intentionally excluded — it is config-only (international cards, admin-initiated).
 const (
 	ChannelAlipay    = "alipay"
 	ChannelWeChatPay = "wechat_pay"
-	ChannelPaddle    = "paddle"
+	ChannelPaymentHub    = "paymenthub"
 )
 
 // UserChannels are the channels users can select on the web checkout page.

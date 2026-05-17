@@ -36,7 +36,7 @@ var MetricsWebhookCalls = promauto.NewCounterVec(prometheus.CounterOpts{
 
 // MetricsRefundRetries counts D5 refund retry handler outcomes.
 //
-//	outcome — "ok"      Paddle accepted refund
+//	outcome — "ok"      PaymentHub accepted refund
 //	          "retry"   scheduled another attempt
 //	          "failed"  max attempts reached, apology email sent
 var MetricsRefundRetries = promauto.NewCounterVec(prometheus.CounterOpts{

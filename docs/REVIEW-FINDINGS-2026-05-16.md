@@ -158,9 +158,9 @@ Typecheck: 0 error
 - 状态页绑定 `xxx.example.com` 自定义域名 → 永远拿不到证书。
 - **影响范围**：M11 自定义域名状态页（K8 ✅ 标完成但实际 broken）。
 
-#### 3. D5 退款重试链路（Paddle webhook → 5min/30min retry）
+#### 3. D5 退款重试链路（聚合支付 webhook → 5min/30min retry）
 - `billing.go:442` webhook 收到 `refund_failed` 只把状态写库，**没入 asynq queue 重试**。
-- `admin_billing.go RetryRefund` 直接置 `refunded` 但不调 Paddle —— 对账撕裂。
+- `admin_billing.go RetryRefund` 直接置 `refunded` 但不调聚合支付 —— 对账撕裂。
 - DECISIONS §D5 锁定决策完全未实施。
 
 #### 4. CSRF 双提交 token 跨域不工作

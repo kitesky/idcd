@@ -233,10 +233,10 @@ func wireRefundDeps(cfg *config.Config, handlers *worker.Handlers, log *slog.Log
 	)
 
 	// --- PaymentRefunder (payment SDK) ---
-	var refunder *billing.PaddleRefunder
+	var refunder *billing.PaymentHubRefunder
 	pc := cfg.Payment
 	if pc.Enabled && pc.APIKey != "" && pc.APISecret != "" {
-		refunder = billing.NewPaddleRefunder(pc.BaseURL, pc.APIKey, pc.APISecret)
+		refunder = billing.NewPaymentHubRefunder(pc.BaseURL, pc.APIKey, pc.APISecret)
 		log.Info("D5 refund retry: PaymentRefunder wired (PaymentHub)",
 			"base_url", pc.BaseURL,
 		)

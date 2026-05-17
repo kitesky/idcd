@@ -16,14 +16,14 @@
 
 **Pros**:
 - 把 PRD 09 §13.5 WAL 状态机从纸上变成可验证产品
-- 找出实际间歇性问题(Paddle refund 风控、KMS 限流、S3 写入延迟)
+- 找出实际间歇性问题(聚合支付 refund 风控、KMS 限流、S3 写入延迟)
 - 演示给企业 due diligence 客户 = 信任凭证
 
 **Cons**:
 - 需 staging 环境完整搭建 + 故障注入工具(toxiproxy / chaos engineering)
 - 1-2 周工作量
 
-**Context**:对应 ENG-REVIEW-REPORT D4 + D5。staging 注入 50% KMS / TSA 失败率 + Paddle refund 间歇失败,验证 30min 内用户收到道歉邮箱 + DLQ 监控告警触发。
+**Context**:对应 ENG-REVIEW-REPORT D4 + D5。staging 注入 50% KMS / TSA 失败率 + 聚合支付 refund 间歇失败,验证 30min 内用户收到道歉邮箱 + DLQ 监控告警触发。
 
 **Depends on**:D4 (attestation_record 充 WAL 实施) + D5 (refund retry queue 实施)
 
@@ -246,7 +246,7 @@
 | Verdict step-level latency | 排查 P95 90s 哪一 step 慢 | HIGH |
 | KMS 应急时间线 | 演练 + 实际应急时记录每步耗时 | HIGH |
 | 数据污染恢复 | Anchor 偏差告警后恢复进度 | MEDIUM |
-| refund_failed 累积 | Paddle refund 自动退款失败趋势 | MEDIUM |
+| refund_failed 累积 | 聚合支付 refund 自动退款失败趋势 | MEDIUM |
 | LLM eval 趋势 | prompt 版本 → eval 分数历史 | MEDIUM |
 
 ---

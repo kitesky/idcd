@@ -45,7 +45,7 @@ func orderCols() []string {
 	return []string{
 		"id", "owner_id", "template", "target",
 		"time_window_start", "time_window_end", "status",
-		"price_cny", "price_paid_cny", "paddle_order_id",
+		"price_cny", "price_paid_cny", "ext_order_id",
 		"refund_reason", "refund_attempt_count", "refund_last_error",
 		"refund_apology_sent_at",
 		"created_at", "paid_at", "delivered_at", "failed_at", "refunded_at",
@@ -54,11 +54,11 @@ func orderCols() []string {
 
 func sampleOrderRow(id string) []any {
 	now := time.Now().UTC()
-	paddle := "pdle_" + id
+	paymenthub := "pdle_" + id
 	return []any{
 		id, "u_1", "sla", "example.com",
 		now, now.Add(24 * time.Hour), "failed",
-		float64(199), (*float64)(nil), &paddle,
+		float64(199), (*float64)(nil), &paymenthub,
 		(*string)(nil), 1, (*string)(nil),
 		(*time.Time)(nil),
 		now, (*time.Time)(nil), (*time.Time)(nil), (*time.Time)(nil), (*time.Time)(nil),
@@ -107,7 +107,7 @@ func TestRepoOrderStore_GetByReportID_Success(t *testing.T) {
 	assert.Equal(t, "v_1", o.ID)
 	assert.Equal(t, "u_1", o.OwnerID)
 	assert.Equal(t, "u_1@example.com", o.UserEmail)
-	assert.Equal(t, "pdle_v_1", o.PaddleOrderID)
+	assert.Equal(t, "pdle_v_1", o.ExtOrderID)
 	assert.Equal(t, "CNY", o.Currency)
 	assert.InDelta(t, 199.0, o.PriceCNYYuan, 0.001)
 }
@@ -253,7 +253,7 @@ func TestRepoOrderStore_MarkRefunded_StampFails(t *testing.T) {
 
 func TestRepoOrderStore_MarkRefundFailed(t *testing.T) {
 	s, pool := newStore(t)
-	reason := "paddle 5xx"
+	reason := "paymenthub 5xx"
 	pool.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET status`).
 		WithArgs("refund_failed", &reason, "v_1", "failed").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
@@ -265,10 +265,10 @@ func TestRepoOrderStore_MarkRefundFailed(t *testing.T) {
 func TestRepoOrderStore_BumpRefundAttempt(t *testing.T) {
 	s, pool := newStore(t)
 	pool.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET refund_attempt_count`).
-		WithArgs("paddle err", "v_1").
+		WithArgs("paymenthub err", "v_1").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	err := s.BumpRefundAttempt(context.Background(), "v_1", "paddle err", 1)
+	err := s.BumpRefundAttempt(context.Background(), "v_1", "paymenthub err", 1)
 	require.NoError(t, err)
 }
 

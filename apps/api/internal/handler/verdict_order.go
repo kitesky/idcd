@@ -92,7 +92,7 @@ type GetVerdictOrderResponse struct {
 	Status          string     `json:"status"`
 	PriceCNY        float64    `json:"price_cny"`
 	PricePaidCNY    *float64   `json:"price_paid_cny,omitempty"`
-	PaddleOrderID   *string    `json:"paddle_order_id,omitempty"`
+	ExtOrderID   *string    `json:"ext_order_id,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	PaidAt          *time.Time `json:"paid_at,omitempty"`
 	DeliveredAt     *time.Time `json:"delivered_at,omitempty"`
@@ -211,7 +211,7 @@ func (h *VerdictOrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	rows, err := h.pool.Query(ctx, `
 		SELECT id, owner_id, template, target,
 		       time_window_start, time_window_end,
-		       status, price_cny, price_paid_cny, paddle_order_id,
+		       status, price_cny, price_paid_cny, ext_order_id,
 		       created_at, paid_at, delivered_at
 		FROM idcd_attest.verdict_order
 		WHERE id = $1
@@ -231,7 +231,7 @@ func (h *VerdictOrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err := rows.Scan(
 		&resp.ID, &resp.OwnerID, &resp.Template, &resp.Target,
 		&resp.TimeWindowStart, &resp.TimeWindowEnd,
-		&resp.Status, &resp.PriceCNY, &resp.PricePaidCNY, &resp.PaddleOrderID,
+		&resp.Status, &resp.PriceCNY, &resp.PricePaidCNY, &resp.ExtOrderID,
 		&resp.CreatedAt, &resp.PaidAt, &resp.DeliveredAt,
 	); err != nil {
 		response.Error(w, r, apperr.Internal("failed to scan verdict_order", err))

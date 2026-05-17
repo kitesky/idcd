@@ -63,7 +63,7 @@ func samplePayload() handler.RefundRetryPayload {
 		UserEmail:    "a@b.com",
 		AmountCents:  1999,
 		Currency:     "USD",
-		Provider:     "paddle",
+		Provider:     "paymenthub",
 		Reason:       "user_request",
 		AttemptCount: 0,
 	}

@@ -593,8 +593,8 @@ Marketing Admin → 创建批量任务
 
 | 工单类别 | 触发条件 | SLA | 处理方 |
 |---|---|---|---|
-| **A:纯自动**(Verdict 生成失败) | Generator 3 次重试失败 / Self-Verify failure | **30min 内自动**:Paddle refund + 道歉邮箱(无需人工) | Refund Worker(无人工)|
-| **B:Refund 失败**(D5) | Paddle refund retry 3 次仍失败 → `refund_failed` 状态 | **道歉邮箱已发** + admin dashboard 入队 + P0 告警创始人 | 创始人手动联系 Paddle / 银行 |
+| **A:纯自动**(Verdict 生成失败) | Generator 3 次重试失败 / Self-Verify failure | **30min 内自动**:聚合支付 refund + 道歉邮箱(无需人工) | Refund Worker(无人工)|
+| **B:Refund 失败**(D5) | 聚合支付 refund retry 3 次仍失败 → `refund_failed` 状态 | **道歉邮箱已发** + admin dashboard 入队 + P0 告警创始人 | 创始人手动联系聚合服务商客服 / 银行 |
 | **C:1h P0 本人响应** | KMS 怀疑泄露 / 节点失窃 / 系统性失败(≥5 失败/小时) | **1h 内创始人响应**(手机告警 7×24) | 创始人本人 |
 | **D:24h 常规客服** | 用户自助退款被拒 / 用户报障 / 申诉 / 一般咨询 | **24h 内**(出差/假期都可) | Operator / 创始人邮件批处理 |
 
@@ -607,7 +607,7 @@ T+5min Generator 3 次自动重试都失败 / Self-Verify failure → DLQ
          - Refund Worker 启动(详 09 §13.5)
          - 不创建人工工单(纯自动)
 
-T+10min Refund retry 1:Paddle refund API
+T+10min Refund retry 1:聚合支付 refund API
         ├─ success → status=refunded → 邮件通知用户
         └─ failure → refund_attempt_count=1
 
@@ -615,7 +615,7 @@ T+15min **强制道歉邮箱**(无论 refund 是否成功):
        "由于 [失败类别] 无法生成报告,已发起全额退款 ¥XXX。
         若 1-3 工作日内未到账,请回复此邮件,我们手动处理。"
 
-T+45min Refund retry 2:Paddle refund API
+T+45min Refund retry 2:聚合支付 refund API
         ├─ success → status=refunded
         └─ failure → refund_attempt_count=3 → 转类别 B
 
@@ -631,7 +631,7 @@ T+45min refund_attempt_count=3 → verdict_order(status=refund_failed)
         → 用户已收到 T+15min 道歉邮箱(知情)
 
 T+1-24h 创始人 review:
-        - 联系 Paddle 支持(明确退款失败原因)
+        - 联系支付通道客服(明确退款失败原因)
         - 必要时手动银行转账 + 留档
         - 退款到账后 → status=refunded → 二次通知用户
         - 入 audit_log + 月度 Verdict 健康月报

@@ -453,7 +453,7 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				UPDATE idcd_attest.verdict_order
 				SET status = 'paid',
 				    paid_at = $2,
-				    paddle_order_id = $3,
+				    ext_order_id = $3,
 				    price_paid_cny = $4
 				WHERE id = $1 AND status = 'pending'
 			`, vid, now, event.ExtTxnID, float64(event.AmountCents)/100)

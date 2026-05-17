@@ -56,7 +56,7 @@
 | **合规自证(等保/审计)** | 等保测评准备 | ¥499/份 | 持续 30/90/180 天的连续观测 + 多节点 + 关键事件清单 |
 | **争议取证(法务)** | 法律纠纷 | ¥999/份 | 高保真:每节点 raw + 路由 + DNS 解析 + TLS 链 + 签名 + TSA |
 
-> 价格不含税,Paddle 5% + $0.5 后实收 ¥185-940。**毛利高于订阅档**(因为单次生成成本固定 + 信任溢价)。
+> 聚合支付费率 ~1%, 实收约 ¥197-989。**毛利高于订阅档**(因为单次生成成本固定 + 信任溢价)。
 
 ### 2.2 Compliance 企业年订
 
@@ -94,7 +94,7 @@
 > 任何 step 失败重试上限 3 次(retry_count 字段),超出转 DLQ。
 
 ```
-[用户付款 Paddle Webhook]
+[用户付款 聚合支付 Webhook]
    │ verdict_order(status=PAID)
    ▼
 [Order Service] 入 verdict_generation_queue (Redis Stream, idempotency by order_id)
@@ -137,7 +137,7 @@ verdict_order(status=DELIVERED)
 失败路径(任一 step DLQ 或 self-verify failure):
 ────────────────────────────────────────────────────────────
 [Refund Worker]
-   1. 调用 Paddle refund API
+   1. 调用 聚合支付 refund API
       ⇩ 失败 → 5min retry → 仍失败 → 30min retry
       ⇩ 30min 后仍失败 → verdict_order(status=refund_failed) + P0 告警(创始人本人)
    2. **无论 refund API 是否成功,30min 内必发用户道歉邮箱**:
@@ -249,7 +249,7 @@ verdict_order
   id (v_xxx), owner_id, template (sla|incident|compliance|legal),
   target (domain|url|ip), time_window_start, time_window_end,
   status (pending|paid|generating|delivered|failed|refunded),
-  price_cny, paddle_order_id,
+  price_cny, ext_order_id,
   created_at, paid_at, delivered_at
 
 verdict_report
@@ -287,7 +287,7 @@ key_ceremony_log
 
 ```
 POST   /v1/verdict/quote          预估价格 + 数据可用性预检
-POST   /v1/verdict/orders         创建订单(返回 Paddle checkout url)
+POST   /v1/verdict/orders         创建订单(返回 聚合支付 checkout url)
 GET    /v1/verdict/orders/:id     订单状态
 GET    /v1/verdict/reports/:id    报告详情 + PDF 下载链接
 POST   /v1/verdict/reports/:id/share  生成分享 token(可设过期)

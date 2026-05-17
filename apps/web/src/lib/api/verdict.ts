@@ -32,7 +32,7 @@ export interface VerdictOrder {
   time_window_end: string // ISO-8601
   price_cny: number
   price_paid_cny?: number
-  paddle_order_id?: string
+  ext_order_id?: string
   report_id?: string
   created_at?: string
   paid_at?: string

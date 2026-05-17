@@ -12,10 +12,10 @@
 // separate binaries (cmd/generator, cmd/verifier) so a misbehaving
 // KMS / DB on the verdict pipeline cannot DoS the public verify path.
 //
-// POST /webhooks/paddle is mounted when ATTEST_PADDLE_WEBHOOK_SECRET
+// POST /webhooks/paymenthub is mounted when ATTEST_PAYMENT_HUB_WEBHOOK_SECRET
 // is set, driving D5 refund processing (refund_retry_queue enqueue on
 // transient DB failure). When the secret is unset the route is omitted
-// and verify still comes up — Paddle integration is optional in dev.
+// and verify still comes up — PaymentHub integration is optional in dev.
 package main
 
 import (
@@ -35,7 +35,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
-	"github.com/kite365/idcd/apps/attest/internal/handler/paddle"
+	"github.com/kite365/idcd/apps/attest/internal/handler/paymenthub"
 	"github.com/kite365/idcd/apps/attest/internal/handler/verify"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/lib/attest/sign"
@@ -109,8 +109,8 @@ func main() {
 	mux.Handle("/verify", vh)
 	mux.Handle("/verify/", vh)
 
-	if cfg.PaddleWebhookSecret == "" {
-		log.Warn("attest-server: ATTEST_PADDLE_WEBHOOK_SECRET unset; /webhooks/paddle disabled")
+	if cfg.PaymentHubWebhookSecret == "" {
+		log.Warn("attest-server: ATTEST_PAYMENT_HUB_WEBHOOK_SECRET unset; /webhooks/paymenthub disabled")
 	} else {
 		rdb := redis.NewClient(&redis.Options{
 			Addr:         cfg.RedisAddr,
@@ -120,15 +120,15 @@ func main() {
 		})
 		defer func() { _ = rdb.Close() }()
 
-		ph := &paddle.Handler{
-			Secret: []byte(cfg.PaddleWebhookSecret),
-			Lookup: &paddleOrderLookupAdapter{pool: pool},
+		ph := &paymenthub.Handler{
+			Secret: []byte(cfg.PaymentHubWebhookSecret),
+			Lookup: &extOrderLookupAdapter{pool: pool},
 			Orders: repos.Orders,
 			Redis:  rdb,
 			Logger: log,
 		}
-		mux.Handle("/webhooks/paddle", ph)
-		log.Info("attest-server: paddle webhook mounted")
+		mux.Handle("/webhooks/paymenthub", ph)
+		log.Info("attest-server: paymenthub webhook mounted")
 	}
 
 	srv := &http.Server{
@@ -219,20 +219,20 @@ func (a *reportLookupAdapter) LookupByID(ctx context.Context, reportID string) (
 	}, nil
 }
 
-// paddleOrderLookupAdapter satisfies paddle.OrderLookup by querying
+// extOrderLookupAdapter satisfies paymenthub.OrderLookup by querying
 // idcd_attest.verdict_order directly on the pool. We bypass the repo
-// layer because Lookup-by-paddle_order_id is webhook-handler-specific
+// layer because Lookup-by-ext_order_id is webhook-handler-specific
 // and adding it to the shared repo would broaden that package's API.
-type paddleOrderLookupAdapter struct {
+type extOrderLookupAdapter struct {
 	pool *pgxpool.Pool
 }
 
-func (a *paddleOrderLookupAdapter) LookupByPaddleOrderID(ctx context.Context, paddleOrderID string) (string, string, error) {
-	const q = `SELECT id, status FROM idcd_attest.verdict_order WHERE paddle_order_id = $1`
+func (a *extOrderLookupAdapter) LookupByExtOrderID(ctx context.Context, extOrderID string) (string, string, error) {
+	const q = `SELECT id, status FROM idcd_attest.verdict_order WHERE ext_order_id = $1`
 	var id, status string
-	if err := a.pool.QueryRow(ctx, q, paddleOrderID).Scan(&id, &status); err != nil {
+	if err := a.pool.QueryRow(ctx, q, extOrderID).Scan(&id, &status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
-			return "", "", paddle.ErrOrderNotFound
+			return "", "", paymenthub.ErrOrderNotFound
 		}
 		return "", "", err
 	}

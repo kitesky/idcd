@@ -159,15 +159,15 @@ type fakeRefunder struct {
 }
 
 type refundCall struct {
-	PaddleOrderID string
+	ExtOrderID string
 	AmountCents   int64
 	Reason        string
 }
 
-func (f *fakeRefunder) Refund(_ context.Context, paddleID string, cents int64, reason string) error {
+func (f *fakeRefunder) Refund(_ context.Context, extID string, cents int64, reason string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.calls = append(f.calls, refundCall{PaddleOrderID: paddleID, AmountCents: cents, Reason: reason})
+	f.calls = append(f.calls, refundCall{ExtOrderID: extID, AmountCents: cents, Reason: reason})
 	if len(f.errors) == 0 {
 		return nil
 	}
@@ -191,7 +191,7 @@ type fakeMailer struct {
 type mailCall struct {
 	OrderID       string
 	UserEmail     string
-	PaddleOrderID string
+	ExtOrderID string
 	AmountCents   int64
 	Currency      string
 	Reason        string
@@ -207,7 +207,7 @@ func (f *fakeMailer) SendApology(_ context.Context, order *Order, reason string)
 	f.calls = append(f.calls, mailCall{
 		OrderID:       order.ID,
 		UserEmail:     order.UserEmail,
-		PaddleOrderID: order.PaddleOrderID,
+		ExtOrderID: order.ExtOrderID,
 		AmountCents:   order.PriceCents(),
 		Currency:      order.Currency,
 		Reason:        reason,
@@ -268,7 +268,7 @@ func sampleOrder(id string) *Order {
 		Status:        "failed",
 		OwnerID:       "u_" + id,
 		UserEmail:     id + "@example.com",
-		PaddleOrderID: "pdle_" + id,
+		ExtOrderID: "pdle_" + id,
 		PriceCNYYuan:  199.0,
 		Currency:      "CNY",
 	}
@@ -417,7 +417,7 @@ func TestHandleInitiate_Success_FirstTry(t *testing.T) {
 	assert.Equal(t, StatusRefunded, o.Status)
 	assert.NotNil(t, o.RefundedAt)
 	assert.Equal(t, 1, ref.callCount())
-	assert.Equal(t, "pdle_v_1", ref.calls[0].PaddleOrderID)
+	assert.Equal(t, "pdle_v_1", ref.calls[0].ExtOrderID)
 	assert.Equal(t, int64(19900), ref.calls[0].AmountCents)
 	assert.Equal(t, "bad-pdf", ref.calls[0].Reason)
 }
@@ -425,7 +425,7 @@ func TestHandleInitiate_Success_FirstTry(t *testing.T) {
 func TestHandleInitiate_FirstTryFails_SchedulesRetry(t *testing.T) {
 	orders := newFakeOrders()
 	orders.put("vr_1", sampleOrder("v_1"))
-	ref := &fakeRefunder{errors: []error{errors.New("paddle 503")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub 503")}}
 	mr, rdb := newRedis(t)
 	clk := newClock(time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
 	h := newHandler(t, orders, ref, &fakeMailer{}, rdb, clk)
@@ -440,7 +440,7 @@ func TestHandleInitiate_FirstTryFails_SchedulesRetry(t *testing.T) {
 	assert.Equal(t, "failed", o.Status, "status unchanged on transient failure")
 	assert.Equal(t, 1, o.RefundAttempts)
 	require.Len(t, orders.bumps, 1)
-	assert.Contains(t, orders.bumps[0].Reason, "paddle 503")
+	assert.Contains(t, orders.bumps[0].Reason, "paymenthub 503")
 
 	// Delay zone has exactly one member scheduled at now+5min.
 	members, err := rdb.ZRangeWithScores(context.Background(), DefaultDelayZoneKey, 0, -1).Result()
@@ -521,7 +521,7 @@ func TestHandleInitiate_BumpFailure_Propagates(t *testing.T) {
 	orders := newFakeOrders()
 	orders.put("vr_1", sampleOrder("v_1"))
 	orders.bumpErr = errors.New("bump boom")
-	ref := &fakeRefunder{errors: []error{errors.New("paddle 503")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub 503")}}
 	_, rdb := newRedis(t)
 	h := newHandler(t, orders, ref, &fakeMailer{}, rdb, newClock(time.Now()))
 
@@ -610,7 +610,7 @@ func TestTickDelayZone_FirstRetrySucceeds(t *testing.T) {
 	assert.Equal(t, 1, n)
 	assert.Equal(t, StatusRefunded, orders.get("v_1").Status)
 	assert.Equal(t, 1, ref.callCount())
-	assert.Equal(t, failureReasonPaddleAPI, ref.calls[0].Reason)
+	assert.Equal(t, failureReasonPaymentHubAPI, ref.calls[0].Reason)
 	assert.Empty(t, mailer.calls)
 }
 
@@ -619,7 +619,7 @@ func TestTickDelayZone_FirstRetryFails_SchedulesSecond(t *testing.T) {
 	o := sampleOrder("v_1")
 	o.RefundAttempts = 1
 	orders.put("vr_1", o)
-	ref := &fakeRefunder{errors: []error{errors.New("paddle nope")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub nope")}}
 	mailer := &fakeMailer{}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
@@ -647,7 +647,7 @@ func TestTickDelayZone_SecondRetryFails_FlipsRefundFailedAndApologizes(t *testin
 	o := sampleOrder("v_1")
 	o.RefundAttempts = 2
 	orders.put("vr_1", o)
-	ref := &fakeRefunder{errors: []error{errors.New("paddle still down")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub still down")}}
 	mailer := &fakeMailer{}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Date(2026, 5, 17, 10, 30, 0, 0, time.UTC))
@@ -661,16 +661,16 @@ func TestTickDelayZone_SecondRetryFails_FlipsRefundFailedAndApologizes(t *testin
 
 	assert.Equal(t, StatusRefundFailed, orders.get("v_1").Status)
 	require.Len(t, mailer.calls, 1)
-	// Enriched payload reaches the mailer: order_id + email + paddle id
+	// Enriched payload reaches the mailer: order_id + email + paymenthub id
 	// + cents + currency + reason all populated so the notifier can
 	// render the email without a follow-up DB read.
 	got := mailer.calls[0]
 	assert.Equal(t, "v_1", got.OrderID)
 	assert.Equal(t, "v_1@example.com", got.UserEmail)
-	assert.Equal(t, "pdle_v_1", got.PaddleOrderID)
+	assert.Equal(t, "pdle_v_1", got.ExtOrderID)
 	assert.Equal(t, int64(19900), got.AmountCents)
 	assert.Equal(t, "CNY", got.Currency)
-	assert.Contains(t, got.Reason, "paddle still down")
+	assert.Contains(t, got.Reason, "paymenthub still down")
 	assert.NotNil(t, orders.get("v_1").ApologySentAt)
 }
 
@@ -679,7 +679,7 @@ func TestTickDelayZone_SecondRetry_ApologyEnqueueFails_LeavesUnstamped(t *testin
 	o := sampleOrder("v_1")
 	o.RefundAttempts = 2
 	orders.put("vr_1", o)
-	ref := &fakeRefunder{errors: []error{errors.New("paddle down")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub down")}}
 	mailer := &fakeMailer{err: errors.New("notifier offline")}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Date(2026, 5, 17, 11, 0, 0, 0, time.UTC))
@@ -700,7 +700,7 @@ func TestTickDelayZone_SecondRetry_NoMailer_LogsWarning(t *testing.T) {
 	o := sampleOrder("v_1")
 	o.RefundAttempts = 2
 	orders.put("vr_1", o)
-	ref := &fakeRefunder{errors: []error{errors.New("paddle down")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub down")}}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Now())
 	h := New(Config{
@@ -968,7 +968,7 @@ func TestScheduleRetry_ZAddError(t *testing.T) {
 func TestHandleInitiate_ScheduleZAddFails(t *testing.T) {
 	orders := newFakeOrders()
 	orders.put("vr_1", sampleOrder("v_1"))
-	ref := &fakeRefunder{errors: []error{errors.New("paddle down")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub down")}}
 	_, rdb := newRedis(t)
 	z := &failingZAdd{inner: rdb}
 	clk := newClock(time.Now())
@@ -1011,7 +1011,7 @@ func TestTickDelayZone_BumpError(t *testing.T) {
 	orders := newFakeOrders()
 	orders.put("vr_1", sampleOrder("v_1"))
 	orders.bumpErr = errors.New("bump db boom")
-	ref := &fakeRefunder{errors: []error{errors.New("paddle")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub")}}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Date(2026, 5, 17, 10, 0, 0, 0, time.UTC))
 	h := newHandler(t, orders, ref, &fakeMailer{}, rdb, clk)
@@ -1054,7 +1054,7 @@ func TestTickDelayZone_MarkRefundFailedError(t *testing.T) {
 	o.RefundAttempts = 2
 	orders.put("vr_1", o)
 	orders.markFailErr = errors.New("update boom")
-	ref := &fakeRefunder{errors: []error{errors.New("paddle")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub")}}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Now())
 	h := newHandler(t, orders, ref, &fakeMailer{}, rdb, clk)
@@ -1072,7 +1072,7 @@ func TestTickDelayZone_ApologyStampError(t *testing.T) {
 	o.RefundAttempts = 2
 	orders.put("vr_1", o)
 	orders.apologyErr = errors.New("stamp boom")
-	ref := &fakeRefunder{errors: []error{errors.New("paddle")}}
+	ref := &fakeRefunder{errors: []error{errors.New("paymenthub")}}
 	_, rdb := newRedis(t)
 	clk := newClock(time.Now())
 	h := newHandler(t, orders, ref, &fakeMailer{}, rdb, clk)

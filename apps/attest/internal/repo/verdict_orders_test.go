@@ -37,7 +37,7 @@ func verdictOrderRowColumns() []string {
 	return []string{
 		"id", "owner_id", "template", "target",
 		"time_window_start", "time_window_end", "status",
-		"price_cny", "price_paid_cny", "paddle_order_id",
+		"price_cny", "price_paid_cny", "ext_order_id",
 		"refund_reason", "refund_attempt_count", "refund_last_error",
 		"refund_apology_sent_at",
 		"created_at", "paid_at", "delivered_at", "failed_at", "refunded_at",
@@ -174,7 +174,7 @@ func TestVerdictOrdersRepo_ListByOwner_QueryError(t *testing.T) {
 
 func TestVerdictOrdersRepo_UpdateStatus_Success(t *testing.T) {
 	r, mock := newOrdersRepo(t)
-	reason := "paddle webhook"
+	reason := "paymenthub webhook"
 
 	mock.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET status`).
 		WithArgs(OrderStatusPaid, &reason, "v_1", OrderStatusPending).
@@ -199,10 +199,10 @@ func TestVerdictOrdersRepo_IncrementRefundAttempt_Success(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 
 	mock.ExpectExec(`UPDATE idcd_attest\.verdict_order\s+SET refund_attempt_count`).
-		WithArgs("paddle 5xx", "v_1").
+		WithArgs("paymenthub 5xx", "v_1").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 
-	err := r.IncrementRefundAttempt(context.Background(), "v_1", "paddle 5xx")
+	err := r.IncrementRefundAttempt(context.Background(), "v_1", "paymenthub 5xx")
 	require.NoError(t, err)
 }
 

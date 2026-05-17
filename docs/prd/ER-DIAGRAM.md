@@ -201,7 +201,7 @@ erDiagram
         text status "pending|paid|generating|delivered|failed|refunded|refund_failed"
         numeric price_cny
         numeric price_paid_cny
-        text paddle_order_id "cross-schema → idcd_main.order"
+        text ext_order_id "cross-schema → idcd_main.order"
         text refund_reason
         int refund_attempt_count "v2 D5: retry queue 计数"
         text refund_last_error "v2 D5"
@@ -872,7 +872,7 @@ erDiagram
     payment_method {
         text id PK "pm_*"
         text owner_id
-        text type "wechat|alipay|paddle|stripe|bank"
+        text type "wechat|alipay|bank"
         text external_id
         text display
         bool is_default
@@ -1022,7 +1022,7 @@ erDiagram
         int free_verdict_count "Pro=5 / Enterprise=不限"
         int free_verdict_used
         numeric price_cny
-        text paddle_subscription_id
+        
         timestamptz canceled_at
     }
     leaderboard_report {
@@ -1413,7 +1413,7 @@ erDiagram
 | 跨 schema 引用 | 来源表(schema) | 目标表(schema) | join 方式 |
 |---|---|---|---|
 | `verdict_order.owner_id` | idcd_attest | idcd_main.user | Repository.GetUser(id) |
-| `verdict_order.paddle_order_id` | idcd_attest | idcd_main.order | Repository.GetOrder(id) |
+| `verdict_order.ext_order_id` | idcd_attest | idcd_main.order | Repository.GetOrder(id) |
 | `mcp_token.owner_id` | idcd_mcp | idcd_main.user/team | Repository |
 | `mcp_session.owner_id` | idcd_mcp | idcd_main.user | Repository |
 | `mcp_tool_call.owner_id` | idcd_mcp | idcd_main.user | Repository |

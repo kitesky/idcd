@@ -26,7 +26,7 @@ const (
 	TaskSendResetPassword = "task:send_reset_password"
 	TypeAlertNotification = "alert:notification"
 
-	// TaskRefundRetry is the asynq task type for retrying a failed Paddle
+	// TaskRefundRetry is the asynq task type for retrying a failed PaymentHub
 	// refund (D5).  Payload: RefundRetryPayload (JSON).  The task is
 	// scheduled with explicit asynq.ProcessIn delays (5min / 30min) and MUST
 	// NOT rely on the generic exponential backoff configured in worker.go.
@@ -37,7 +37,7 @@ const (
 	// is exhausted and the verdict_order row has flipped to refund_failed.
 	//
 	// Payload: RefundApologyPayload (JSON) — self-contained: the producer
-	// has already resolved user_email / paddle_order_id / refund amount
+	// has already resolved user_email / ext_order_id / refund amount
 	// (via an application-level idcd_attest → idcd_main."user" join, D1)
 	// so the notifier renders and sends the email without any extra DB
 	// hop. This keeps notifier deployable without the idcd_attest DSN.
@@ -45,7 +45,7 @@ const (
 	// Contract (DO NOT change without coordinating with refund-worker):
 	//   queue        = "billing"
 	//   task type    = "payment:refund_apology"
-	//   payload keys = order_id, user_email, paddle_order_id,
+	//   payload keys = order_id, user_email, ext_order_id,
 	//                  refund_amount_cents, currency, failure_reason,
 	//                  enqueued_at, locale (optional)
 	TaskRefundApology = "payment:refund_apology"
@@ -119,7 +119,7 @@ type PaymentRefunder interface {
 }
 
 // PaymentStore is the persistence interface used by the refund retry handler
-// to update the payment row after a Paddle call.
+// to update the payment row after a PaymentHub call.
 type PaymentStore interface {
 	// MarkRefunded transitions the payment to status='refunded'.
 	MarkRefunded(ctx context.Context, paymentID string) error
@@ -147,7 +147,7 @@ type RefundRetryEnqueuer interface {
 type RefundApologyPayload struct {
 	OrderID           string `json:"order_id"`              // verdict_order id (v_*)
 	UserEmail         string `json:"user_email"`            // recipient (may be empty → ACK + P0 warn)
-	PaddleOrderID     string `json:"paddle_order_id"`       // upstream gateway reference for support
+	ExtOrderID     string `json:"ext_order_id"`       // upstream gateway reference for support
 	RefundAmountCents int64  `json:"refund_amount_cents"`   // paid amount that failed to refund
 	Currency          string `json:"currency"`              // ISO 4217-ish; producer hard-codes "CNY" today
 	FailureReason     string `json:"failure_reason"`        // final failure reason from last retry
@@ -452,7 +452,7 @@ func (h *Handlers) buildChannel(channelType string, cfgJSON []byte) (channel.Cha
 // HandleRefundRetry processes a payment:refund_retry asynq task (D5).
 //
 // Flow:
-//  1. Call PaymentRefunder.RefundPayment (Paddle Refund API).
+//  1. Call PaymentRefunder.RefundPayment (PaymentHub Refund API).
 //  2. On success: PaymentStore.MarkRefunded(paymentID) → ack task.
 //  3. On failure:
 //     - If attempt_count < RefundRetryMaxAttempts: bump attempt_count and
@@ -491,10 +491,10 @@ func (h *Handlers) HandleRefundRetry(ctx context.Context, task *asynq.Task) erro
 		return apperr.Internal("refund retry deps not wired (refunder / store / enqueuer)", nil)
 	}
 
-	// Attempt the Paddle refund.
+	// Attempt the PaymentHub refund.
 	refundErr := h.refunder.RefundPayment(ctx, payload.ExtTxnID, payload.AmountCents, payload.Reason)
 	if refundErr == nil {
-		// Paddle accepted the refund — persist the new state.
+		// PaymentHub accepted the refund — persist the new state.
 		if err := h.paymentStore.MarkRefunded(ctx, payload.PaymentID); err != nil {
 			h.logger.Error("标记 payment 为 refunded 失败",
 				"payment_id", payload.PaymentID,
@@ -597,7 +597,7 @@ func (h *Handlers) sendRefundApologyEmail(ctx context.Context, p RefundRetryPayl
 // and the verdict_order has flipped to status='refund_failed'.
 //
 // The payload is self-contained — the producer has already resolved
-// user_email / paddle_order_id / amount / currency via an
+// user_email / ext_order_id / amount / currency via an
 // application-level join (D1) — so this handler is pure render-and-send:
 //
 //  1. Decode the payload; bad JSON or missing order_id → asynq.SkipRetry so
@@ -644,7 +644,7 @@ func (h *Handlers) HandleRefundApology(ctx context.Context, task *asynq.Task) er
 	amountDisplay := formatAmountDisplay(payload.RefundAmountCents, payload.Currency)
 	html, err := h.templates.RenderRefundFailed(locale, template.RefundFailedData{
 		PaymentID:     payload.OrderID,
-		ExtTxnID:      payload.PaddleOrderID,
+		ExtTxnID:      payload.ExtOrderID,
 		AmountDisplay: amountDisplay,
 	})
 	if err != nil {

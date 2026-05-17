@@ -110,24 +110,24 @@ func TestLoad_InvalidPort(t *testing.T) {
 	}
 }
 
-func TestLoad_PaddleWebhookSecret(t *testing.T) {
-	t.Setenv(envPaddleWebhookSecret, "whsec_test")
+func TestLoad_PaymentHubWebhookSecret(t *testing.T) {
+	t.Setenv(envPaymentHubWebhookSecret, "whsec_test")
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.PaddleWebhookSecret != "whsec_test" {
-		t.Errorf("PaddleWebhookSecret = %q", cfg.PaddleWebhookSecret)
+	if cfg.PaymentHubWebhookSecret != "whsec_test" {
+		t.Errorf("PaymentHubWebhookSecret = %q", cfg.PaymentHubWebhookSecret)
 	}
 }
 
-func TestLoad_PaddleWebhookSecret_Default(t *testing.T) {
+func TestLoad_PaymentHubWebhookSecret_Default(t *testing.T) {
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
 	}
-	if cfg.PaddleWebhookSecret != "" {
-		t.Errorf("expected empty PaddleWebhookSecret default, got %q", cfg.PaddleWebhookSecret)
+	if cfg.PaymentHubWebhookSecret != "" {
+		t.Errorf("expected empty PaymentHubWebhookSecret default, got %q", cfg.PaymentHubWebhookSecret)
 	}
 }
 

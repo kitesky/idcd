@@ -96,7 +96,7 @@ idcd/
 │
 ├── scripts/                       # 一次性脚本 / dev tools / seed
 │   ├── seed.go                    # dev 数据 seed(50 用户 + 测试 token + 模拟 monitor)
-│   ├── chaos/                     # 故障注入(toxiproxy + KMS/TSA/Paddle 50% 失败率,D4/D5 演示)
+│   ├── chaos/                     # 故障注入(toxiproxy + KMS/TSA/聚合支付 50% 失败率,D4/D5 演示)
 │   └── keymony/                   # 密钥仪式辅助脚本(air-gap 笔记本用)
 │
 ├── tests/
@@ -224,18 +224,18 @@ idcd/
 
 ### 3.3 Refund retry queue + 道歉邮箱兜底(D5 / CRITICAL GAP 8.1)
 
-**为什么**:Paddle refund API 本身可能失败(网络 / 风控)。用户付 ¥299 → 拿不到报告 → 拿不到退款 = 品牌死亡。
+**为什么**:聚合支付 refund API 本身可能失败(网络 / 风控)。用户付 ¥299 → 拿不到报告 → 拿不到退款 = 品牌死亡。
 
 **实施**:
 
 | 项 | 实施细节 |
 |---|---|
-| **`attest-refund` 独立 Worker** | 路径:`apps/attest-refund/`。监听 verdict 失败事件,调 Paddle refund。 |
+| **`attest-refund` 独立 Worker** | 路径:`apps/attest-refund/`。监听 verdict 失败事件,调 聚合支付 refund。 |
 | **retry queue 策略** | 5min retry → 30min retry → 仍失败 → `verdict_order.status=refund_failed` + P0 告警(创始人本人手机)。 |
 | **30min 强制道歉邮箱** | **无论 refund API 是否成功,30min 内必发**:"由于 [类别] 无法生成报告,已发起全额退款 ¥XXX。若 1-3 工作日内未到账,请回复此邮件,我们手动处理。" → 写 `verdict_order.refund_apology_sent_at`。 |
 | **admin dashboard** | `apps/admin/`:`/admin/refund-failed` 页面,可查 / 手动处理所有 refund_failed 订单。详 11 §15.4。 |
 
-**验证**:staging 注入 Paddle 50% refund 失败率,验证 30min 内用户收到道歉邮箱 + admin dashboard 出现该订单。
+**验证**:staging 注入 支付通道 50% refund 失败率,验证 30min 内用户收到道歉邮箱 + admin dashboard 出现该订单。
 
 ---
 
@@ -594,7 +594,7 @@ make dev-web             # next dev
 | **Verdict step-level latency** | P95 / P99 按 step 分解(拉数据 / 多节点 / LLM / PDF / KMS / TSA / 嵌入 / 归档 / 自检)| D4 |
 | **KMS 应急时间线** | 演练 + 实际应急时记录每步耗时;基线 vs 实际对比 | D11 |
 | **数据污染恢复** | Anchor 偏差告警后的恢复进度 + 节点剔除 + 重算覆盖范围 | D-Concern8 |
-| **refund_failed 累积** | Paddle refund 自动退款失败趋势 + 未处理订单数 | D5 |
+| **refund_failed 累积** | 聚合支付 refund 自动退款失败趋势 + 未处理订单数 | D5 |
 | **LLM eval 趋势** | prompt 版本 × Provider × 月度 eval 分数(必须 ≥4.0/5)| D8 + D9 |
 | **MCP SSE 连接** | 每实例并发连接数(上限 10k)+ token revoke 后断开延迟 | D13 |
 | **Agent OTA 灰度** | L1/L2/L3 错误率 vs baseline + 自动回滚事件 | K-架构 |
@@ -676,7 +676,7 @@ make dev-web             # next dev
 
 | 类别 | 存储 | 例 |
 |---|---|---|
-| 环境差异 | env vars + Vault | `DATABASE_URL`,`KMS_KEY_ID`,`PADDLE_API_KEY` |
+| 环境差异 | env vars + Vault | `DATABASE_URL`,`KMS_KEY_ID`,`PAYMENT_HUB_API_KEY` |
 | 业务参数 | PG(后台运营配置)| 限速阈值 / 配额 / 价格 / Verdict 模板列表 |
 | 功能开关 | Feature flag service | `mcp_enabled` / `attest_enabled` / `agent_ota_l1_pct` |
 
@@ -744,7 +744,7 @@ make dev-web             # next dev
 | 06-status-pages | `apps/status/`(Next.js 多租户)+ ACME + LLM 起草 Worker |
 | 07-reports | `apps/api/internal/handlers/reports/` + LLM 复盘(`packages/llm/`)|
 | 08-open-api | `apps/api/` + `packages/api-spec/` + `packages/sdk-js/` |
-| 09-billing | `apps/api/internal/handlers/billing/` + Paddle SDK + KMS |
+| 09-billing | `apps/api/internal/handlers/billing/` + payment-go-sdk + KMS |
 | 10-nodes-and-agents | `apps/gateway/` + `apps/agent/` + mTLS CA + CRL/OCSP + `infra/terraform/` |
 | 11-admin | `apps/admin/` + audit + KMS 仪式后台 + Verdict 工单 |
 | 12-compliance | `apps/api/` Gateway 限速 + CF + audit + 权威测评白名单 + KMS 应急 SOP |
@@ -822,7 +822,7 @@ make dev-web             # next dev
 | Redis 内存爆掉 | 监控 + LRU + 限速键 TTL | 14 §11.6 |
 | 多区数据一致性 | 主写单点 + 异步复制(接受短暂滞后)| 14 §11.6 |
 | **KMS 应急 5 人 1h 联系不上** | Backup HSM 1-of-1 加速通道 + 12h+4h SLA | D11 |
-| **Paddle refund API 失败** | retry queue + 30min 道歉邮箱 + refund_failed | D5 |
+| **聚合支付 refund API 失败** | retry queue + 30min 道歉邮箱 + refund_failed | D5 |
 | **Self-verify bug 互盖** | 独立进程 + 独立 subnet + 独立 KMS 客户端 | D6 |
 | **MCP token 泄露** | 90d 过期上限 + GitHub 扫描自动失活 | D2 + Concern 6 |
 | **LLM 复盘幻觉/造谣/泄密** | 强制人工审核 + sanitize 字典 + 反馈不发回 LLM Provider | D8 + Concern 7 |

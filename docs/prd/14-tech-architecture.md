@@ -319,7 +319,7 @@
   - **不同 VPC subnet**:独立 subnet,与 Generator Worker 间仅暴露 attest.idcd.com/verify HTTPS 接口,无内部 RPC
   - **独立 KMS 客户端实例**:不复用 Generator Worker 的 KMS sign 客户端 / 配置 / 缓存
   - 仅调用公开 verify 接口走与外部第三方一致的代码路径
-- **Refund Worker(v2 D5)**:失败后 Paddle refund retry queue(5min → 30min) + 30min 强制道歉邮箱 + refund_failed 状态入 admin dashboard
+- **Refund Worker(v2 D5)**:失败后 聚合支付 refund retry queue(5min → 30min) + 30min 强制道歉邮箱 + refund_failed 状态入 admin dashboard
 - **Public Verify**(`attest.idcd.com/verify`):任意第三方上传 PDF 验签的轻量服务,与主 Worker 解耦;**revoke 期间仍持续可用**(已发报告仍可被验签,详 18 §7.1)
 
 **部署**:

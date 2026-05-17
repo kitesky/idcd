@@ -21,8 +21,7 @@ const (
 	KindCloudflare ProviderKind = "cloudflare"
 	KindManual     ProviderKind = "manual"
 	KindAliyun     ProviderKind = "aliyun"
-
-	// KindDNSPod / KindRoute53 等 S2 后续接入。
+	KindDNSPod     ProviderKind = "dnspod"
 )
 
 // Provider 是 DNS 适配的工厂接口。每个实现接受 vault 解密后的 credential

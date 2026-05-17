@@ -121,6 +121,22 @@ type downloadRequest struct {
 	Password string `json:"password,omitempty"`
 }
 
+// downloadResponse is the wire shape for POST /v1/cert/certs/{id}/download
+// (W5+). The actual cert bytes never travel back through this response —
+// the caller follows download_url, which is a single-use signed token
+// resolved by GET /v1/cert/dl/{token}. See docs/prd/20-free-cert.md §10.1.
+type downloadResponse struct {
+	DownloadURL string `json:"download_url"`
+	ExpiresAt   string `json:"expires_at"`
+}
+
+// downloadCert issues a one-shot URL pointing at /v1/cert/dl/{token}.
+//
+// W5 swap: the previous in-line PEM/PFX/zip response leaked private keys
+// through the authenticated API surface (proxies, browser history,
+// service logs). We now mint a 5-minute HMAC-signed token, persist a
+// single-use Redis marker, and return {download_url, expires_at}. The
+// actual content-bearing handler lives in download_link.go.
 func downloadCert(deps Deps) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		accountID, ok := requireUser(w, r)
@@ -131,8 +147,15 @@ func downloadCert(deps Deps) http.HandlerFunc {
 		if !ok {
 			return
 		}
-		if deps.Repos == nil || deps.Vault == nil {
+		if deps.Repos == nil {
 			writeErr(w, http.StatusInternalServerError, codeInternal, "deps not configured", nil)
+			return
+		}
+		if deps.Service == nil || deps.Service.Downloads == nil {
+			// Surface a hard 503 so operators see the misconfig rather
+			// than letting downloads silently 500 on Issue.
+			writeErr(w, http.StatusServiceUnavailable, codeInternal,
+				"download token manager not configured", nil)
 			return
 		}
 		var req downloadRequest
@@ -152,7 +175,7 @@ func downloadCert(deps Deps) http.HandlerFunc {
 			// PFX requires a non-empty password — empty-password PFX
 			// files are not portable and most consumers (Windows, Java
 			// keytool) flat-out reject them. We surface the constraint
-			// up-front before doing the (expensive) key-decrypt round.
+			// up-front before issuing a token we'd refuse on redeem.
 			if req.Password == "" {
 				writeErr(w, http.StatusUnprocessableEntity, codeBadRequest,
 					"pfx export requires a non-empty password", nil)
@@ -184,60 +207,21 @@ func downloadCert(deps Deps) http.HandlerFunc {
 			return
 		}
 
-		// Decode and decrypt the private key. The on-disk handle is
-		// base64(json(vault.EncryptedKey)) — matching how the worker
-		// writes it after issuance. We tolerate raw JSON too so older
-		// rows (and tests) that skipped the base64 layer still decrypt.
-		ek, err := decodeKeyHandle(c.KeyKMSHandle)
+		token, expiresAt, err := deps.Service.Downloads.Issue(r.Context(), service.DownloadTokenPayload{
+			CertID:    c.ID,
+			AccountID: c.AccountID,
+			Format:    req.Format,
+			Password:  req.Password,
+		})
 		if err != nil {
 			writeErr(w, http.StatusInternalServerError, codeInternal,
-				"cert key handle invalid: "+err.Error(), nil)
+				"download token issue failed", nil)
 			return
 		}
-		plainPEM, err := deps.Vault.DecryptKey(r.Context(), ek)
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, codeInternal,
-				"cert key decrypt failed", nil)
-			return
-		}
-
-		fullchain := c.LeafPEM + c.ChainPEM
-
-		var (
-			body         []byte
-			contentType  string
-			disposition  string
-		)
-		switch req.Format {
-		case "pem":
-			body, err = buildZip(map[string][]byte{
-				"fullchain.pem": []byte(fullchain),
-				"privkey.pem":   plainPEM,
-			})
-			contentType = "application/zip"
-			disposition = fmt.Sprintf(`attachment; filename="cert-%d.zip"`, c.ID)
-		case "nginx":
-			body, err = buildZip(map[string][]byte{
-				"nginx.crt": []byte(fullchain),
-				"nginx.key": plainPEM,
-			})
-			contentType = "application/zip"
-			disposition = fmt.Sprintf(`attachment; filename="cert-%d-nginx.zip"`, c.ID)
-		case "pfx":
-			body, err = buildPFX(c.LeafPEM, c.ChainPEM, plainPEM, req.Password)
-			contentType = "application/x-pkcs12"
-			disposition = fmt.Sprintf(`attachment; filename="cert-%d.pfx"`, c.ID)
-		}
-		if err != nil {
-			writeErr(w, http.StatusInternalServerError, codeInternal,
-				"cert bundle build failed", nil)
-			return
-		}
-
-		w.Header().Set("Content-Type", contentType)
-		w.Header().Set("Content-Disposition", disposition)
-		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write(body)
+		writeJSON(w, http.StatusOK, downloadResponse{
+			DownloadURL: "/v1/cert/dl/" + token,
+			ExpiresAt:   expiresAt.UTC().Format(time.RFC3339),
+		})
 	}
 }
 

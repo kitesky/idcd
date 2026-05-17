@@ -318,3 +318,88 @@ func TestManualReady_PublishesToRedis(t *testing.T) {
 	require.Equal(t, http.StatusAccepted, rec.Code, rec.Body.String())
 	_ = mr
 }
+
+// --- abuse / CAA precheck -------------------------------------------------
+
+func TestCreateOrder_AbuseBlockedDomain_403(t *testing.T) {
+	pool := newMockPool(t)
+	rdb, _ := newMiniRedis(t)
+	repos := repo.NewWithPool(pool)
+	svc := service.New(service.Config{
+		Repos: repos,
+		Redis: rdb,
+		Abuse: service.NewAbuseDetector(repos),
+	})
+	deps := Deps{Repos: repos, Service: svc}
+
+	// taobao.com is on the static blocklist; the precheck must bail
+	// before the quota / insert queries fire.
+	body := createOrderRequest{SANs: []string{"www.taobao.com"}}
+	req := authedRequest(t, http.MethodPost, "/v1/cert/orders", body, "42")
+	rec := httptest.NewRecorder()
+	createOrder(deps).ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code, rec.Body.String())
+	var er errResp
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &er))
+	require.Equal(t, "CERT_ABUSE_BLOCKED", er.Code)
+	require.NoError(t, pool.ExpectationsWereMet())
+}
+
+func TestCreateOrder_CAAForbid_422(t *testing.T) {
+	pool := newMockPool(t)
+	rdb, _ := newMiniRedis(t)
+	repos := repo.NewWithPool(pool)
+	svc := service.New(service.Config{Repos: repos, Redis: rdb})
+	deps := Deps{Repos: repos, Service: svc}
+
+	// Pin a CAA fixture that forbids LE for foo.example.com (it allows
+	// only digicert).
+	restore := service.SetCAALookupForTest(service.FakeCAALookup(map[string][]string{
+		"example.com": {"digicert.com"},
+	}))
+	defer restore()
+
+	body := createOrderRequest{SANs: []string{"foo.example.com"}}
+	req := authedRequest(t, http.MethodPost, "/v1/cert/orders", body, "42")
+	rec := httptest.NewRecorder()
+	createOrder(deps).ServeHTTP(rec, req)
+	require.Equal(t, http.StatusUnprocessableEntity, rec.Code, rec.Body.String())
+	var er errResp
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &er))
+	require.Equal(t, "CERT_CAA_FORBID", er.Code)
+	require.Equal(t, "letsencrypt.org", er.Fields["required_value"])
+	require.Equal(t, "letsencrypt", er.Fields["ca"])
+}
+
+func TestCreateOrder_CAALookupFail_Continues(t *testing.T) {
+	pool := newMockPool(t)
+	rdb, _ := newMiniRedis(t)
+	repos := repo.NewWithPool(pool)
+	svc := service.New(service.Config{Repos: repos, Redis: rdb})
+	deps := Deps{Repos: repos, Service: svc}
+
+	restore := service.SetCAALookupForTest(service.FakeCAAErr())
+	defer restore()
+
+	// Quota query + insert must still happen — transient CAA failures
+	// don't block order creation.
+	pool.ExpectQuery(`SELECT .* FROM cert\.orders`).
+		WithArgs(int64(42), 100, 0).
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()))
+	insertArgs := make([]any, 16)
+	for i := range insertArgs {
+		insertArgs[i] = pgxmock.AnyArg()
+	}
+	pool.ExpectQuery(`INSERT INTO cert\.orders`).
+		WithArgs(insertArgs...).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "created_at"}).
+			AddRow(int64(900), time.Now().UTC()))
+
+	body := createOrderRequest{SANs: []string{"foo.example.com"}}
+	req := authedRequest(t, http.MethodPost, "/v1/cert/orders", body, "42")
+	rec := httptest.NewRecorder()
+	createOrder(deps).ServeHTTP(rec, req)
+	require.Equal(t, http.StatusCreated, rec.Code, rec.Body.String())
+	require.NoError(t, pool.ExpectationsWereMet())
+}
+

@@ -212,7 +212,7 @@ func TestGetCert_Forbidden(t *testing.T) {
 func TestDownloadCert_NginxFormat(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
 	row, _ := sampleCertRow(t, 9, 42, "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
@@ -225,13 +225,19 @@ func TestDownloadCert_NginxFormat(t *testing.T) {
 	r := chiRouterWith(t, "/v1/cert/certs/{id}/download", downloadCert(deps))
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Contains(t, rec.Header().Get("Content-Disposition"), "nginx")
+	// W5: format=nginx no longer streams the cert inline; the download URL
+	// itself carries the format and the GET handler ships an nginx-named
+	// zip. Asserting on Content-Disposition here is now meaningless —
+	// instead verify the JSON contract.
+	var body downloadResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.True(t, strings.HasPrefix(body.DownloadURL, "/v1/cert/dl/"))
 }
 
 func TestDownloadCert_RevokedRejected(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
 	row, _ := sampleCertRow(t, 9, 42, "revoked", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).

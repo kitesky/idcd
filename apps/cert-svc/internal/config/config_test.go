@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"testing"
 )
 
@@ -82,6 +83,47 @@ func TestLoad_InvalidPort(t *testing.T) {
 				t.Errorf("Load() with %s=%q expected error, got nil", envPort, tc.val)
 			}
 		})
+	}
+}
+
+func TestLoad_DownloadSecret_DecodesBase64(t *testing.T) {
+	raw := make([]byte, 32)
+	for i := range raw {
+		raw[i] = byte(i)
+	}
+	t.Setenv(envDownloadSecret, base64.StdEncoding.EncodeToString(raw))
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.DownloadSecret) != 32 {
+		t.Errorf("DownloadSecret len = %d, want 32", len(cfg.DownloadSecret))
+	}
+}
+
+func TestLoad_DownloadSecret_RejectsBadBase64(t *testing.T) {
+	t.Setenv(envDownloadSecret, "!!!not-base64!!!")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() expected error for bad base64, got nil")
+	}
+}
+
+func TestLoad_DownloadSecret_RejectsTooShort(t *testing.T) {
+	t.Setenv(envDownloadSecret, base64.StdEncoding.EncodeToString([]byte("short")))
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() expected error for short secret, got nil")
+	}
+}
+
+func TestLoad_DownloadSecret_DefaultsEmpty(t *testing.T) {
+	t.Setenv(envDownloadSecret, "")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.DownloadSecret) != 0 {
+		t.Errorf("DownloadSecret should default to empty, got %d bytes", len(cfg.DownloadSecret))
 	}
 }
 

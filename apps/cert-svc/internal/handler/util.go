@@ -28,6 +28,9 @@ const (
 	codeBadRequest          = "CERT_BAD_REQUEST"
 	codeInternal            = "CERT_INTERNAL"
 	codeNotImplemented      = "CERT_NOT_IMPL"
+	codeDownloadTokenInvalid = "CERT_DOWNLOAD_TOKEN_INVALID"
+	codeCAAForbid            = "CERT_CAA_FORBID"
+	codeAbuseBlocked         = "CERT_ABUSE_BLOCKED"
 )
 
 // errResp is the canonical wire shape for non-2xx responses.

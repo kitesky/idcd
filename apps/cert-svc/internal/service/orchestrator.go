@@ -16,6 +16,7 @@ import (
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/lib/cert/ca"
 	"github.com/kite365/idcd/lib/cert/dns"
+	"github.com/kite365/idcd/lib/cert/dns/manual"
 	"github.com/kite365/idcd/lib/cert/vault"
 )
 
@@ -512,20 +513,24 @@ func (s *Service) appendEventDirect(ctx context.Context, orderID int64, state *d
 // MarkManualChallengeReady can unblock the in-flight challenge.
 func (s *Service) buildSolver(ctx context.Context, order *repo.Order) (ca.DnsSolver, error) {
 	if order.DNSCredentialID == nil {
-		// No credential = manual mode.
+		// No credential = manual mode. The per-order Coordinator must be
+		// the same instance the HTTP handler injects into via
+		// MarkManualChallengeReady — going through dnsReg().Get(KindManual)
+		// would hand back the provider's built-in Coordinator, which is a
+		// separate pending map. Build the solver directly from the
+		// per-order Coordinator instead.
 		co := s.ManualCoordinator(order.ID)
-		// Wrap in a thin solver — manual.NewWithCoordinator returns a
-		// Provider; we ask it for a solver here.
-		// (The Provider's BuildSolver does not touch the credential.)
-		// Avoid importing manual here twice; build solver via registry.
-		prov, err := s.dnsReg().Get(dns.KindManual)
+		solver, err := manual.SolverFromCoordinator(co)
 		if err != nil {
-			// Fall back to constructing a solver directly via the live
-			// coordinator if the registry is empty.
-			return nil, fmt.Errorf("manual provider not registered: %w", err)
+			return nil, fmt.Errorf("manual solver: %w", err)
 		}
-		_ = co // ensures coordinator entry exists; provider has its own
-		return prov.BuildSolver(ctx, nil, normalizeSANs(order.SANs))
+		// Sanity check that the registry still knows about manual so
+		// misconfigured deployments fail loudly rather than silently
+		// drift between server / worker.
+		if _, regErr := s.dnsReg().Get(dns.KindManual); regErr != nil {
+			return nil, fmt.Errorf("manual provider not registered: %w", regErr)
+		}
+		return solver, nil
 	}
 
 	cred, err := s.repos().DNSCredentials.GetByID(ctx, *order.DNSCredentialID)

@@ -66,6 +66,19 @@ type Config struct {
 	// CARequestTimeout caps a single AcmeCA.RequestCertificate call.
 	CARequestTimeout time.Duration
 
+	// DownloadSecret is the HMAC-SHA256 key used to sign one-shot
+	// download tokens (W5). Empty means downloads are disabled —
+	// Service.Downloads will be nil and the handler must surface a
+	// 503 rather than mint forgeable tokens.
+	DownloadSecret []byte
+	// DownloadTTL overrides the default 5-minute lifetime.
+	DownloadTTL time.Duration
+
+	// Abuse is the rate / reputation gate run in front of order
+	// creation (W5). When nil the handler skips abuse checks
+	// entirely; production wiring in cmd/server always sets it.
+	Abuse *AbuseDetector
+
 	Logger *slog.Logger
 }
 
@@ -84,6 +97,16 @@ type Service struct {
 
 	mu                 sync.Mutex
 	manualCoordinators map[int64]*manual.Coordinator
+
+	// Downloads mints / consumes the one-shot tokens behind
+	// /v1/cert/dl/{token} (W5). Optional in tests; the server main
+	// always wires it.
+	Downloads *DownloadTokenManager
+
+	// Abuse is the rate / reputation gate; mirrors cfg.Abuse so the
+	// handler can dereference Service.Abuse rather than reaching
+	// into Config.
+	Abuse *AbuseDetector
 }
 
 // New returns a Service with defaults filled in. It does NOT touch
@@ -104,10 +127,19 @@ func New(cfg Config) *Service {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.Default()
 	}
-	return &Service{
+	s := &Service{
 		cfg:                cfg,
 		manualCoordinators: map[int64]*manual.Coordinator{},
 	}
+	if len(cfg.DownloadSecret) > 0 && cfg.Redis != nil {
+		var opts []DownloadOption
+		if cfg.DownloadTTL > 0 {
+			opts = append(opts, WithDownloadTTL(cfg.DownloadTTL))
+		}
+		s.Downloads = NewDownloadTokenManager(cfg.Redis, cfg.DownloadSecret, opts...)
+	}
+	s.Abuse = cfg.Abuse
+	return s
 }
 
 // ManualCoordinator returns the live Coordinator for an order, creating it

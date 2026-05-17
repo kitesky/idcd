@@ -121,14 +121,31 @@ func main() {
 	// publishes new orders and proxies manual-ready confirmations.
 	leCA := letsencrypt.New(letsencrypt.Config{Env: letsencrypt.Env(cfg.LEEnv)})
 	router := service.NewRouter(leCA)
+	abuse := service.NewAbuseDetector(repos,
+		service.WithAbuseLogger(slogLogger))
+
+	// W5: HMAC key for one-shot download URLs. Empty + non-production
+	// is tolerated (download endpoint will 503 cleanly); production
+	// deploys MUST set it or we refuse to start so we never serve a
+	// forgeable token.
+	if len(cfg.DownloadSecret) == 0 && cfg.Env == "production" {
+		slogLogger.Error("CERT_DOWNLOAD_SECRET is required in production")
+		os.Exit(1)
+	}
+	if len(cfg.DownloadSecret) == 0 {
+		slogLogger.Warn("CERT_DOWNLOAD_SECRET not set — /v1/cert/certs/{id}/download will 503")
+	}
+
 	svc := service.New(service.Config{
-		Repos:        repos,
-		Redis:        rdb,
-		Vault:        vlt,
-		DNSReg:       reg,
-		Router:       router,
-		AccountEmail: cfg.AccountEmail,
-		Logger:       slogLogger,
+		Repos:          repos,
+		Redis:          rdb,
+		Vault:          vlt,
+		DNSReg:         reg,
+		Router:         router,
+		AccountEmail:   cfg.AccountEmail,
+		Abuse:          abuse,
+		DownloadSecret: cfg.DownloadSecret,
+		Logger:         slogLogger,
 	})
 
 	// Auth. cert-svc shares the JWT secret + Redis session store with

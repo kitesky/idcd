@@ -1,8 +1,6 @@
 package handler
 
 import (
-	"archive/zip"
-	"bytes"
 	"context"
 	"crypto"
 	"crypto/ecdsa"
@@ -13,10 +11,10 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"encoding/pem"
-	"io"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -133,10 +131,14 @@ func TestGetCert_NotFound(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestDownloadCert_PEMZip(t *testing.T) {
+// TestDownloadCert_IssuesToken is the W5 contract test: POST returns a
+// signed URL pointing at /v1/cert/dl/{token} plus an RFC3339 expires_at,
+// and never the cert bytes themselves. Content-level assertions moved to
+// download_link_test.go where the GET flow can be exercised end-to-end.
+func TestDownloadCert_IssuesToken(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
 	row, _ := sampleCertRow(t, 9, 42, "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
@@ -149,26 +151,23 @@ func TestDownloadCert_PEMZip(t *testing.T) {
 	r := chiRouterWith(t, "/v1/cert/certs/{id}/download", downloadCert(deps))
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, "application/zip", rec.Header().Get("Content-Type"))
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
-	// Verify we got a real zip with the expected entries.
-	zr, err := zip.NewReader(bytes.NewReader(rec.Body.Bytes()), int64(rec.Body.Len()))
+	var body downloadResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.True(t, strings.HasPrefix(body.DownloadURL, "/v1/cert/dl/"),
+		"download_url should point at the public dl endpoint, got %q", body.DownloadURL)
+	require.NotEmpty(t, body.ExpiresAt)
+	// Sanity: expires_at parses as RFC3339 in the future.
+	exp, err := time.Parse(time.RFC3339, body.ExpiresAt)
 	require.NoError(t, err)
-	got := map[string]bool{}
-	for _, f := range zr.File {
-		got[f.Name] = true
-		rc, _ := f.Open()
-		_, _ = io.ReadAll(rc)
-		_ = rc.Close()
-	}
-	require.True(t, got["fullchain.pem"])
-	require.True(t, got["privkey.pem"])
+	require.True(t, exp.After(time.Now().Add(-time.Second)))
 }
 
 func TestDownloadCert_PFX_EmptyPasswordRejected(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
 
 	req := authedRequest(t, http.MethodPost, "/v1/cert/certs/9/download",
 		downloadRequest{Format: "pfx"}, "42")
@@ -182,7 +181,7 @@ func TestDownloadCert_PFX_EmptyPasswordRejected(t *testing.T) {
 
 func TestDownloadCert_BadFormat(t *testing.T) {
 	pool := newMockPool(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: newTestVault(t)}
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: newTestVault(t), Service: newDownloadService(t, pool)}
 
 	req := authedRequest(t, http.MethodPost, "/v1/cert/certs/9/download",
 		downloadRequest{Format: "weird"}, "42")
@@ -190,6 +189,21 @@ func TestDownloadCert_BadFormat(t *testing.T) {
 	r := chiRouterWith(t, "/v1/cert/certs/{id}/download", downloadCert(deps))
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
+}
+
+// TestDownloadCert_NoService surfaces the 503 boot-misconfig path: if the
+// service was constructed without a DownloadSecret the handler refuses
+// to mint forgeable tokens.
+func TestDownloadCert_NoService(t *testing.T) {
+	pool := newMockPool(t)
+	v := newTestVault(t)
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
+	req := authedRequest(t, http.MethodPost, "/v1/cert/certs/9/download",
+		downloadRequest{Format: "pem"}, "42")
+	rec := httptest.NewRecorder()
+	r := chiRouterWith(t, "/v1/cert/certs/{id}/download", downloadCert(deps))
+	r.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code, rec.Body.String())
 }
 
 func TestRevokeCert_ServiceUnconfigured(t *testing.T) {
@@ -231,13 +245,13 @@ func pfxCertFixture(t *testing.T) (leafPEM, chainPEM string, keyPEM []byte) {
 	return leafPEM, "", keyPEM
 }
 
-// TestDownloadCert_PFX_Success exercises the full PFX download path: the
-// handler decrypts the private key, calls buildPFX, and returns a body
-// whose Content-Type identifies a PKCS#12 archive.
-func TestDownloadCert_PFX_Success(t *testing.T) {
+// TestDownloadCert_PFX_IssuesToken: POST with format=pfx + password mints
+// a download URL (no PFX bytes inline). The actual PFX encoding path is
+// covered by download_link_test.go::TestDownloadByToken_PFX_Success.
+func TestDownloadCert_PFX_IssuesToken(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
+	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
 
 	leafPEM, chainPEM, keyPEM := pfxCertFixture(t)
 	ek, err := v.EncryptKey(context.Background(), keyPEM)
@@ -262,41 +276,11 @@ func TestDownloadCert_PFX_Success(t *testing.T) {
 	r := chiRouterWith(t, "/v1/cert/certs/{id}/download", downloadCert(deps))
 	r.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, "application/x-pkcs12", rec.Header().Get("Content-Type"))
-	require.NotEmpty(t, rec.Body.Bytes(), "pfx body must not be empty")
-	require.Contains(t, rec.Header().Get("Content-Disposition"), ".pfx")
-}
+	require.Equal(t, "application/json", rec.Header().Get("Content-Type"))
 
-// TestDownloadCert_PFX_DecryptFailure surfaces a 500 when the vault
-// cannot decrypt the stored key handle (e.g. KEK rotated).
-func TestDownloadCert_PFX_DecryptFailure(t *testing.T) {
-	pool := newMockPool(t)
-	v := newTestVault(t)
-	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v}
-
-	leafPEM, chainPEM, _ := pfxCertFixture(t)
-	// Encrypt key under a *different* vault, then point the row's handle
-	// at a fake EncryptedKey the live vault cannot decrypt.
-	handle := base64.StdEncoding.EncodeToString([]byte(
-		`{"KeyID":"unknown","Algorithm":"AES-256-GCM","Nonce":"AAAA","Ciphertext":"AAAA","Alg":"ecdsa-p256"}`))
-
-	now := time.Now().UTC()
-	row := []any{
-		int64(9), int64(1), int64(42), []string{"pfx.example.com"},
-		"lets-encrypt", "abc", "fp", leafPEM, chainPEM, handle,
-		now.Add(-time.Hour), now.Add(time.Hour * 24 * 90), "issued",
-		(*time.Time)(nil), (*string)(nil), now,
-	}
-	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
-		WithArgs(int64(9)).
-		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(row...))
-
-	req := authedRequest(t, http.MethodPost, "/v1/cert/certs/9/download",
-		downloadRequest{Format: "pfx", Password: "s3cret"}, "42")
-	rec := httptest.NewRecorder()
-	r := chiRouterWith(t, "/v1/cert/certs/{id}/download", downloadCert(deps))
-	r.ServeHTTP(rec, req)
-	require.Equal(t, http.StatusInternalServerError, rec.Code, rec.Body.String())
+	var body downloadResponse
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &body))
+	require.True(t, strings.HasPrefix(body.DownloadURL, "/v1/cert/dl/"))
 }
 
 // TestBuildPFX_HappyPath: drive the PFX builder with a real leaf + key;

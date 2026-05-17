@@ -67,6 +67,13 @@ func New(deps Deps) chi.Router {
 	r.Get("/healthz", healthz)
 	r.Get("/readyz", readyz(deps))
 
+	// W5: the one-shot download endpoint is mounted OUTSIDE the auth
+	// middleware. The token itself is the only credential — every
+	// authenticated /v1/cert/certs/{id}/download response embeds a
+	// short-lived signed token in download_url. Adding auth on top would
+	// break the "share with CI / colleague" use case the URL exists for.
+	mountDownloadLink(r, deps)
+
 	r.Route("/v1/cert", func(r chi.Router) {
 		if deps.AuthnMiddleware != nil {
 			r.Use(deps.AuthnMiddleware)

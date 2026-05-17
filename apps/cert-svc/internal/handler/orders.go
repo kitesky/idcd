@@ -3,12 +3,14 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
+	"github.com/kite365/idcd/apps/cert-svc/internal/service"
 )
 
 // daily order quota per account. S1 simplification — the real model
@@ -144,6 +146,36 @@ func createOrder(deps Deps) http.HandlerFunc {
 		if ca == "" {
 			ca = "letsencrypt"
 		}
+
+		// Abuse → CAA precheck → insert → enqueue. Abuse must run first
+		// because we'd rather not even consult DNS on flagged accounts.
+		if abuse := deps.Service.Abuse; abuse != nil {
+			if err := abuse.Check(r.Context(), accountID, ascii); err != nil {
+				if errors.Is(err, service.ErrAbuseBlocked) {
+					writeErr(w, http.StatusForbidden, codeAbuseBlocked,
+						err.Error(), nil)
+					return
+				}
+				slog.Default().Warn("abuse check errored",
+					"account_id", accountID, "error", err)
+			}
+		}
+		if err := deps.Service.CheckCAA(r.Context(), ascii, ca); err != nil {
+			if errors.Is(err, service.ErrCAAForbidden) {
+				writeErr(w, http.StatusUnprocessableEntity, codeCAAForbid,
+					"CAA records forbid the target CA: "+err.Error(),
+					map[string]string{
+						"ca":             ca,
+						"required_value": caaExpectedFor(ca),
+					})
+				return
+			}
+			// Transient lookup failures fall through — the CA will
+			// re-check CAA at validation time.
+			slog.Default().Warn("CAA check errored, continuing",
+				"account_id", accountID, "error", err)
+		}
+
 		commonName := ascii[0]
 		var idemPtr *string
 		if req.IdempotencyKey != "" {
@@ -461,6 +493,25 @@ func projectOrder(o *repo.Order) orderResponse {
 		out.FinalizedAt = &s
 	}
 	return out
+}
+
+// caaExpectedFor returns the canonical CAA issue value the user needs to
+// add for the supplied CA — surfaced in the error body so the operator
+// knows what to write into their DNS zone. Mirrors caaCAToTag from the
+// service package; duplicated here to avoid leaking package-internal
+// state.
+func caaExpectedFor(caID string) string {
+	switch caID {
+	case "letsencrypt", "lets-encrypt":
+		return "letsencrypt.org"
+	case "zerossl":
+		return "sectigo.com"
+	case "buypass":
+		return "buypass.com"
+	case "gts", "google":
+		return "pki.goog"
+	}
+	return ""
 }
 
 // itoa avoids importing strconv just for the tiny int→string conversion

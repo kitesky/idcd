@@ -7,6 +7,7 @@
 package config
 
 import (
+	"encoding/base64"
 	"fmt"
 	"os"
 	"strconv"
@@ -22,8 +23,9 @@ const (
 	envEnv          = "CERT_ENV"
 	envLEEnv        = "CERT_LE_ENV"
 	envAccountEmail = "CERT_ACME_ACCOUNT_EMAIL"
-	envJWTSecret    = "CERT_JWT_SECRET"
-	envMasterKey    = "CERT_MASTER_KEY"
+	envJWTSecret      = "CERT_JWT_SECRET"
+	envMasterKey      = "CERT_MASTER_KEY"
+	envDownloadSecret = "CERT_DOWNLOAD_SECRET"
 
 	defaultPort         = 8080
 	defaultDB           = "postgres://idcd:idcd@localhost:5432/idcd?sslmode=disable"
@@ -58,6 +60,13 @@ type Config struct {
 	// (server main, worker main, tests) can decide whether to fall
 	// back to env-only lookup or fail fast on missing config.
 	MasterKey string
+
+	// DownloadSecret is the raw HMAC-SHA256 key cert-svc uses to sign
+	// the W5 one-shot download tokens. Sourced from CERT_DOWNLOAD_SECRET
+	// (base64). Empty means the download token endpoint is disabled —
+	// /v1/cert/certs/{id}/download will return 503 rather than mint
+	// tokens we can't verify. cmd/server should fail fast when unset.
+	DownloadSecret []byte
 }
 
 // Load reads CERT_* env vars and returns a populated Config.
@@ -112,6 +121,28 @@ func Load() (*Config, error) {
 	}
 	if v := strings.TrimSpace(os.Getenv(envMasterKey)); v != "" {
 		cfg.MasterKey = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envDownloadSecret)); v != "" {
+		// Base64 (std OR url) so operators can paste from any common
+		// secret tool. We reject empty / undecodable payloads up front
+		// rather than handing the service a forgeable signing key.
+		raw, err := base64.StdEncoding.DecodeString(v)
+		if err != nil {
+			raw, err = base64.RawStdEncoding.DecodeString(v)
+		}
+		if err != nil {
+			raw, err = base64.URLEncoding.DecodeString(v)
+		}
+		if err != nil {
+			raw, err = base64.RawURLEncoding.DecodeString(v)
+		}
+		if err != nil {
+			return nil, fmt.Errorf("config: %s must be base64-encoded: %w", envDownloadSecret, err)
+		}
+		if len(raw) < 16 {
+			return nil, fmt.Errorf("config: %s decoded to %d bytes; need >=16", envDownloadSecret, len(raw))
+		}
+		cfg.DownloadSecret = raw
 	}
 
 	return cfg, nil

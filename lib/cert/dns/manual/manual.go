@@ -74,6 +74,32 @@ func (p *manualProvider) BuildSolver(_ context.Context, _ map[string]string, _ [
 	return &manualSolver{co: p.co}, nil
 }
 
+// BuildSolverWithCoordinator returns a solver bound to the supplied
+// Coordinator, ignoring the provider's built-in one. Used by callers
+// (e.g. apps/cert-svc orchestrator) that maintain per-order Coordinators
+// so HTTP-side MarkManualChallengeReady can unblock the worker.
+//
+// The provider-level Coordinator is left untouched; this method is the
+// preferred wiring path whenever the caller already has a Coordinator
+// reference for the specific request.
+func (p *manualProvider) BuildSolverWithCoordinator(_ context.Context, _ map[string]string, _ []string, co *Coordinator) (ca.DnsSolver, error) {
+	if co == nil {
+		return nil, fmt.Errorf("manual: nil coordinator")
+	}
+	return &manualSolver{co: co}, nil
+}
+
+// SolverFromCoordinator is the package-level helper for callers that only
+// hold a Coordinator (e.g. apps/cert-svc Service.ManualCoordinator) and
+// don't want to pin a dns.Provider type to construct the solver. Returns
+// a ca.DnsSolver that drives the supplied Coordinator directly.
+func SolverFromCoordinator(co *Coordinator) (ca.DnsSolver, error) {
+	if co == nil {
+		return nil, fmt.Errorf("manual: nil coordinator")
+	}
+	return &manualSolver{co: co}, nil
+}
+
 // ---- Coordinator ------------------------------------------------------------
 
 // Coordinator 跟踪所有 pending TXT 期望。线程安全。

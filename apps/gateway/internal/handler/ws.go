@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -85,16 +86,25 @@ type WSHandler struct {
 	pool      NodeAuthPool
 	streamCli *stream.Client
 	logger    *slog.Logger
+
+	// allowQueryAPIKey controls whether the deprecated api_key query
+	// parameter is accepted. Default false — query strings leak into
+	// reverse-proxy access logs, monitoring tools, and browser history,
+	// so the secret should travel in the Authorization header only.
+	// Set GATEWAY_ALLOW_QUERY_APIKEY=1 to re-enable during a controlled
+	// migration window.
+	allowQueryAPIKey bool
 }
 
 // NewWSHandler creates a new WebSocket handler.
 func NewWSHandler(h *hub.Hub, q *idcdmain.Queries, pool NodeAuthPool, streamCli *stream.Client, logger *slog.Logger) *WSHandler {
 	return &WSHandler{
-		hub:       h,
-		queries:   q,
-		pool:      pool,
-		streamCli: streamCli,
-		logger:    logger,
+		hub:              h,
+		queries:          q,
+		pool:             pool,
+		streamCli:        streamCli,
+		logger:           logger,
+		allowQueryAPIKey: os.Getenv("GATEWAY_ALLOW_QUERY_APIKEY") == "1",
 	}
 }
 
@@ -108,9 +118,17 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	apiKey := ""
 	if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 		apiKey = strings.TrimPrefix(auth, "Bearer ")
-	} else {
-		// Fallback: query param supported for backward compatibility.
+	} else if h.allowQueryAPIKey {
+		// Deprecated path — only enabled when GATEWAY_ALLOW_QUERY_APIKEY=1.
+		// We log a deprecation warning so the operator can identify the
+		// node IDs still using the old client and roll them forward.
 		apiKey = r.URL.Query().Get("api_key")
+		if apiKey != "" {
+			h.logger.Warn("ws auth: legacy api_key query parameter used; upgrade agent to send Authorization: Bearer",
+				"remote_addr", r.RemoteAddr,
+				"user_agent", r.UserAgent(),
+			)
+		}
 	}
 	if apiKey == "" {
 		http.Error(w, "missing api_key", http.StatusUnauthorized)

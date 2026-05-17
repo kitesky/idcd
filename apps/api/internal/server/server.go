@@ -4,7 +4,6 @@ package server
 import (
 	"context"
 	"crypto/tls"
-	"database/sql"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -42,7 +41,6 @@ type Server struct {
 	httpServer *http.Server
 	logger     *slog.Logger
 	config     *config.Config
-	db         *sql.DB
 	pgxPool    *pgxpool.Pool
 	redis      *redis.Client
 
@@ -52,10 +50,9 @@ type Server struct {
 }
 
 // New creates a new server instance with all middleware and routes configured.
-func New(cfg *config.Config, db *sql.DB, pgxPool *pgxpool.Pool, redis *redis.Client, logger *slog.Logger) *Server {
+func New(cfg *config.Config, pgxPool *pgxpool.Pool, redis *redis.Client, logger *slog.Logger) *Server {
 	s := &Server{
 		config:  cfg,
-		db:      db,
 		pgxPool: pgxPool,
 		redis:   redis,
 		logger:  logger,
@@ -186,7 +183,7 @@ func (s *Server) setupRouter() {
 	r.Use(s.metricsMiddleware())
 
 	// Health check routes
-	healthHandler := handler.NewHealthHandler(s.db, s.redis)
+	healthHandler := handler.NewHealthHandler(s.pgxPool, s.redis)
 	r.Get("/health", healthHandler.Health)
 	r.Get("/health/deep", healthHandler.DeepHealth)
 

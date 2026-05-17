@@ -26,8 +26,12 @@ import (
 	"github.com/kite365/idcd/lib/cert/ca/letsencrypt"
 	"github.com/kite365/idcd/lib/cert/ca/zerossl"
 	"github.com/kite365/idcd/lib/cert/dns"
+	"github.com/kite365/idcd/lib/cert/dns/aliyun"
 	"github.com/kite365/idcd/lib/cert/dns/cloudflare"
+	"github.com/kite365/idcd/lib/cert/dns/dnspod"
+	"github.com/kite365/idcd/lib/cert/dns/gcloud"
 	"github.com/kite365/idcd/lib/cert/dns/manual"
+	"github.com/kite365/idcd/lib/cert/dns/route53"
 	"github.com/kite365/idcd/lib/cert/vault/envmaster"
 	"github.com/kite365/idcd/lib/shared/logger"
 )
@@ -60,13 +64,18 @@ func main() {
 	}
 
 	reg := dns.NewRegistry()
-	if err := reg.Register(cloudflare.New(cloudflare.Config{})); err != nil {
-		log.Error("cert-worker: register cloudflare", "err", err)
-		os.Exit(1)
-	}
-	if err := reg.Register(manual.New(manual.Config{})); err != nil {
-		log.Error("cert-worker: register manual", "err", err)
-		os.Exit(1)
+	for _, p := range []dns.Provider{
+		cloudflare.New(cloudflare.Config{}),
+		manual.New(manual.Config{}),
+		aliyun.New(aliyun.Config{}),
+		dnspod.New(dnspod.Config{}),
+		route53.New(route53.Config{}),
+		gcloud.New(gcloud.Config{}),
+	} {
+		if err := reg.Register(p); err != nil {
+			log.Error("cert-worker: register dns provider", "kind", p.Kind(), "err", err)
+			os.Exit(1)
+		}
 	}
 
 	// S2: multi-CA registry. Let's Encrypt is the always-on default;

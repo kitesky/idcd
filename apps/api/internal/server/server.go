@@ -84,7 +84,28 @@ func (s *Server) setupMetrics() {
 		[]string{"method", "path"},
 	)
 
-	// Register metrics — tolerate duplicate registration (e.g., tests creating multiple Server instances).
+	// Register metrics on the Prometheus default registry.
+	//
+	// We intentionally tolerate AlreadyRegisteredError here rather than
+	// switching to a dedicated *prometheus.Registry. Rationale:
+	//   1. apps/api/internal/metrics uses promauto against the default
+	//      registry, so /metrics MUST gather from the default registry to
+	//      include those business metrics (active monitors, total users,
+	//      alert events, etc.). Switching server metrics to a dedicated
+	//      registry would split the surface in two and either drop the
+	//      business metrics or force a multi-registry Gatherer.
+	//   2. Tests may construct multiple *Server instances in the same
+	//      process (httptest harness, parallel suites). The default
+	//      registry is process-global, so the second New() would panic
+	//      without this tolerance.
+	//   3. The collectors created above are identical across instances
+	//      (same name, help, label set), so returning the AlreadyRegistered
+	//      original collector for subsequent registrations is the documented
+	//      and safe contract — see prometheus.AlreadyRegisteredError docs.
+	// If we ever need true per-instance isolation, the right fix is to move
+	// ALL metrics (server + apps/api/internal/metrics) onto a shared
+	// *prometheus.Registry and update promhttp.HandlerFor() at /metrics —
+	// not a partial migration of this file alone.
 	for _, c := range []prometheus.Collector{s.requestsTotal, s.requestDuration} {
 		if err := prometheus.Register(c); err != nil {
 			if _, ok := err.(prometheus.AlreadyRegisteredError); !ok {

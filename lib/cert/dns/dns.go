@@ -22,6 +22,7 @@ const (
 	KindManual     ProviderKind = "manual"
 	KindAliyun     ProviderKind = "aliyun"
 	KindDNSPod     ProviderKind = "dnspod"
+	KindRoute53    ProviderKind = "route53"
 )
 
 // Provider 是 DNS 适配的工厂接口。每个实现接受 vault 解密后的 credential

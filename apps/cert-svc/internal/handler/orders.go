@@ -151,6 +151,11 @@ func createOrder(deps Deps) http.HandlerFunc {
 		// because we'd rather not even consult DNS on flagged accounts.
 		if abuse := deps.Service.Abuse; abuse != nil {
 			if err := abuse.Check(r.Context(), accountID, ascii); err != nil {
+				if errors.Is(err, service.ErrAccountBanned) {
+					writeErr(w, http.StatusForbidden, codeAccountBanned,
+						err.Error(), nil)
+					return
+				}
 				if errors.Is(err, service.ErrAbuseBlocked) {
 					writeErr(w, http.StatusForbidden, codeAbuseBlocked,
 						err.Error(), nil)

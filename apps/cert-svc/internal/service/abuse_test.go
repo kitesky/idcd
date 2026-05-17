@@ -204,3 +204,63 @@ func TestUniqueRoots(t *testing.T) {
 	got := uniqueRoots([]string{"a.example.com", "b.example.com", "x.other.com"})
 	require.Equal(t, []string{"example.com", "other.com"}, got)
 }
+
+// --- Ban lookup -----------------------------------------------------------
+
+type stubBanLookup struct {
+	banned bool
+	ban    *repo.AbuseBan
+	err    error
+	calls  int
+}
+
+func (s *stubBanLookup) IsBanned(_ context.Context, _ int64) (bool, *repo.AbuseBan, error) {
+	s.calls++
+	return s.banned, s.ban, s.err
+}
+
+func TestAbuse_BanShortCircuitsCheck(t *testing.T) {
+	stub := &stubBanLookup{banned: true, ban: &repo.AbuseBan{Reason: "phishing"}}
+	a := NewAbuseDetector(nil, WithAbuseBans(stub))
+	err := a.Check(context.Background(), 7, []string{"example.com"})
+	require.ErrorIs(t, err, ErrAccountBanned)
+	require.Contains(t, err.Error(), "phishing")
+	require.Equal(t, 1, stub.calls)
+}
+
+func TestAbuse_BanLookupErrorFailsOpen(t *testing.T) {
+	stub := &stubBanLookup{err: banStubErr("conn refused")}
+	a := NewAbuseDetector(nil, WithAbuseBans(stub))
+	// No active ban → falls through to blocklist (which is empty for
+	// example.com), so the call should succeed.
+	err := a.Check(context.Background(), 7, []string{"example.com"})
+	require.NoError(t, err)
+	require.Equal(t, 1, stub.calls)
+}
+
+func TestAbuse_BanLookupNotConfigured(t *testing.T) {
+	// Without WithAbuseBans, the detector skips the ban lookup entirely.
+	a := NewAbuseDetector(nil)
+	err := a.Check(context.Background(), 7, []string{"example.com"})
+	require.NoError(t, err)
+}
+
+func TestAbuse_BanNotActive_FallsThrough(t *testing.T) {
+	stub := &stubBanLookup{banned: false}
+	a := NewAbuseDetector(nil, WithAbuseBans(stub))
+	err := a.Check(context.Background(), 7, []string{"example.com"})
+	require.NoError(t, err)
+	require.Equal(t, 1, stub.calls)
+}
+
+func TestAbuse_BanNilDetector_NoOp(t *testing.T) {
+	var a *AbuseDetector
+	require.NoError(t, a.Check(context.Background(), 7, []string{"example.com"}))
+}
+
+// banStubErr is a tiny one-shot error helper local to this test file so
+// we don't have to import errors just for this (and don't collide with
+// orchestrator_test.go's assertErr).
+type banStubErr string
+
+func (b banStubErr) Error() string { return string(b) }

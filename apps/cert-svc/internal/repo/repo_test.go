@@ -39,6 +39,7 @@ func TestNewWithPool_WiresEveryRepo(t *testing.T) {
 	assert.NotNil(t, repos.RenewalJobs)
 	assert.NotNil(t, repos.AuditLogs)
 	assert.NotNil(t, repos.Domains)
+	assert.NotNil(t, repos.AbuseBans)
 }
 
 func TestIsUniqueViolation(t *testing.T) {

@@ -16,6 +16,20 @@ import (
 // this onto 403 + CERT_ABUSE_BLOCKED.
 var ErrAbuseBlocked = errors.New("service: abuse rule blocked order")
 
+// ErrAccountBanned is returned by AbuseDetector.Check when an admin has
+// explicitly banned the account (cert.abuse_bans active row). It is
+// distinct from ErrAbuseBlocked so the handler can surface a different
+// error code (CERT_ACCOUNT_BANNED, 403) and the user sees the admin
+// action rather than a rate-rule trip.
+var ErrAccountBanned = errors.New("service: account banned by admin")
+
+// BanLookup is the read-side surface AbuseDetector needs from the
+// abuse_bans repo. Kept narrow so tests can stub without pulling in
+// pgxmock + the full repo type.
+type BanLookup interface {
+	IsBanned(ctx context.Context, accountID int64) (bool, *repo.AbuseBan, error)
+}
+
 // AbuseDetector applies the three S1 anti-abuse rules in front of order
 // creation:
 //
@@ -34,6 +48,7 @@ var ErrAbuseBlocked = errors.New("service: abuse rule blocked order")
 // schemas, in line with D1.
 type AbuseDetector struct {
 	repos     *repo.Repos
+	bans      BanLookup
 	blocklist []string
 	now       func() time.Time
 	logger    *slog.Logger
@@ -105,6 +120,14 @@ func WithAbuseLogger(l *slog.Logger) AbuseOption {
 	return func(a *AbuseDetector) { a.logger = l }
 }
 
+// WithAbuseBans wires the cert.abuse_bans lookup so Check rejects orders
+// from admin-banned accounts before any other rule fires. Nil disables
+// the lookup entirely — Check then only enforces blocklist / burst /
+// sustained, matching pre-S2 W8 behaviour.
+func WithAbuseBans(b BanLookup) AbuseOption {
+	return func(a *AbuseDetector) { a.bans = b }
+}
+
 // NewAbuseDetector constructs a detector with the S1 defaults. repos may
 // be nil — the burst / sustained checks become no-ops and only the
 // blocklist is enforced (useful for tests that don't want pgxmock).
@@ -134,6 +157,25 @@ func (a *AbuseDetector) Check(ctx context.Context, accountID int64, sans []strin
 	if a == nil || len(sans) == 0 {
 		return nil
 	}
+
+	// Rule 0: admin-recorded ban. Runs before everything else so a
+	// banned account cannot trigger DB / DNS / CA work just by retrying.
+	// A lookup error fails open (logged but allowed) — we'd rather not
+	// lock out the whole product when the bans table is unreachable.
+	if a.bans != nil {
+		banned, ban, err := a.bans.IsBanned(ctx, accountID)
+		if err != nil {
+			a.log("abuse ban lookup failed", accountID, err.Error())
+		} else if banned {
+			reason := "admin ban"
+			if ban != nil {
+				reason = ban.Reason
+			}
+			a.log("abuse ban hit", accountID, reason)
+			return fmt.Errorf("%w: %s", ErrAccountBanned, reason)
+		}
+	}
+
 	roots := uniqueRoots(sans)
 
 	// Rule 1: blocklist.

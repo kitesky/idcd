@@ -451,8 +451,10 @@ func TestAdminDNSHealth_DBError_500(t *testing.T) {
 // --- Ban -------------------------------------------------------------------
 
 type fakeAbuseGate struct {
-	banned map[int64]string
-	err    error
+	banned    map[int64]string
+	err       error
+	unbanErr  error
+	unbanned  map[int64]string
 }
 
 func (f *fakeAbuseGate) Ban(_ context.Context, id int64, reason string) error {
@@ -463,6 +465,18 @@ func (f *fakeAbuseGate) Ban(_ context.Context, id int64, reason string) error {
 		f.banned = map[int64]string{}
 	}
 	f.banned[id] = reason
+	return nil
+}
+
+func (f *fakeAbuseGate) Unban(_ context.Context, id int64, reason string) error {
+	if f.unbanErr != nil {
+		return f.unbanErr
+	}
+	if f.unbanned == nil {
+		f.unbanned = map[int64]string{}
+	}
+	f.unbanned[id] = reason
+	delete(f.banned, id)
 	return nil
 }
 
@@ -549,4 +563,82 @@ func TestAdminBan_MalformedJSON_400(t *testing.T) {
 // from pgx directly so the translation in GetByID fires correctly.
 func repoNoRowsError() error {
 	return pgx.ErrNoRows
+}
+
+// --- Unban -----------------------------------------------------------------
+
+func TestAdminUnban_NilGate_503(t *testing.T) {
+	r := chiAdminRouter(Deps{})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/42/unban", nil))
+	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+}
+
+func TestAdminUnban_BadID_404(t *testing.T) {
+	// pathInt64 returns 404 (not 400) for invalid IDs — see util.go.
+	gate := &fakeAbuseGate{}
+	r := chiAdminRouter(Deps{AdminAbuse: gate})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/notanint/unban", nil))
+	require.Equal(t, http.StatusNotFound, rec.Code)
+}
+
+func TestAdminUnban_NotBanned_404(t *testing.T) {
+	gate := &fakeAbuseGate{unbanErr: errors.New("repo: account is not currently banned")}
+	r := chiAdminRouter(Deps{AdminAbuse: gate})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/42/unban", nil))
+	require.Equal(t, http.StatusNotFound, rec.Code, rec.Body.String())
+}
+
+func TestAdminUnban_Success(t *testing.T) {
+	gate := &fakeAbuseGate{}
+	r := chiAdminRouter(Deps{AdminAbuse: gate})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/42/unban",
+		adminBanRequest{Reason: "false positive"}))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.Equal(t, "false positive", gate.unbanned[42])
+}
+
+func TestAdminUnban_DefaultReason(t *testing.T) {
+	gate := &fakeAbuseGate{}
+	r := chiAdminRouter(Deps{AdminAbuse: gate})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/42/unban", nil))
+	require.Equal(t, http.StatusOK, rec.Code)
+	require.Equal(t, "admin unban", gate.unbanned[42])
+}
+
+func TestAdminUnban_InternalError_500(t *testing.T) {
+	gate := &fakeAbuseGate{unbanErr: errors.New("db down")}
+	r := chiAdminRouter(Deps{AdminAbuse: gate})
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/42/unban", nil))
+	require.Equal(t, http.StatusInternalServerError, rec.Code)
+}
+
+func TestAdminUnban_AuditOnlyWhenRepoPresent(t *testing.T) {
+	pool := newMockPool(t)
+	pool.ExpectQuery(`INSERT INTO cert\.audit_logs`).
+		WithArgs(pgxmock.AnyArg(), "admin", "admin.account_unban",
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"id", "occurred_at"}).
+			AddRow(int64(11), time.Now().UTC()))
+
+	gate := &fakeAbuseGate{}
+	deps := Deps{AdminAbuse: gate, Repos: repo.NewWithPool(pool)}
+	r := chiAdminRouter(deps)
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
+		"/v1/admin/cert/accounts/42/unban",
+		adminBanRequest{Reason: "review complete"}))
+	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
+	require.NoError(t, pool.ExpectationsWereMet())
 }

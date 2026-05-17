@@ -31,6 +31,7 @@ const (
 	codeDownloadTokenInvalid = "CERT_DOWNLOAD_TOKEN_INVALID"
 	codeCAAForbid            = "CERT_CAA_FORBID"
 	codeAbuseBlocked         = "CERT_ABUSE_BLOCKED"
+	codeAccountBanned        = "CERT_ACCOUNT_BANNED"
 )
 
 // errResp is the canonical wire shape for non-2xx responses.

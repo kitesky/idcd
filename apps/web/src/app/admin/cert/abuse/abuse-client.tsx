@@ -17,7 +17,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { banAccount } from "../admin-cert-api"
+import { banAccount, unbanAccount } from "../admin-cert-api"
 
 export function AbuseClient() {
   const t = useTranslations("admin")
@@ -32,11 +32,17 @@ export function AbuseClient() {
     return Number.isFinite(n) && n > 0 ? n : null
   })()
 
+  const [mode, setMode] = useState<"ban" | "unban">("ban")
+
   const handleConfirm = useCallback(async () => {
     if (parsedId == null) return
     setProcessing(true)
     try {
-      const res = await banAccount(parsedId, reason || "admin ban")
+      const fallbackReason = mode === "ban" ? "admin ban" : "admin unban"
+      const res =
+        mode === "ban"
+          ? await banAccount(parsedId, reason || fallbackReason)
+          : await unbanAccount(parsedId, reason || fallbackReason)
       if (res.ok) {
         setFeedback({ ok: true, message: t("cert.abuse.success", { id: parsedId }) })
         setAccountId("")
@@ -48,7 +54,7 @@ export function AbuseClient() {
       setProcessing(false)
       setConfirmOpen(false)
     }
-  }, [parsedId, reason, t])
+  }, [mode, parsedId, reason, t])
 
   return (
     <div className="space-y-4">
@@ -78,13 +84,26 @@ export function AbuseClient() {
               />
             </div>
           </div>
-          <div className="mt-4">
+          <div className="mt-4 flex gap-2">
             <Button
               variant="destructive"
               disabled={parsedId == null || processing}
-              onClick={() => setConfirmOpen(true)}
+              onClick={() => {
+                setMode("ban")
+                setConfirmOpen(true)
+              }}
             >
               {t("cert.abuse.banButton")}
+            </Button>
+            <Button
+              variant="outline"
+              disabled={parsedId == null || processing}
+              onClick={() => {
+                setMode("unban")
+                setConfirmOpen(true)
+              }}
+            >
+              {t("cert.abuse.unbanButton")}
             </Button>
           </div>
           {feedback && (

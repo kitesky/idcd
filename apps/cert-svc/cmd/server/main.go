@@ -148,7 +148,8 @@ func main() {
 	router := service.NewRouter(leCA, extras...)
 	slogLogger.Info("ca router wired", "cas", router.Names())
 	abuse := service.NewAbuseDetector(repos,
-		service.WithAbuseLogger(slogLogger))
+		service.WithAbuseLogger(slogLogger),
+		service.WithAbuseBans(repos.AbuseBans))
 
 	// W5: HMAC key for one-shot download URLs. Empty + non-production
 	// is tolerated (download endpoint will 503 cleanly); production
@@ -202,7 +203,7 @@ func main() {
 	}
 
 	adminQuota := service.NewRepoQuotaChecker(repos.Orders, repos.Certs, nil)
-	adminAbuse := newAuditAbuseGate(repos.AuditLogs, slogLogger)
+	adminAbuse := newAuditAbuseGate(repos.AbuseBans, repos.AuditLogs, slogLogger)
 
 	router2 := handler.New(handler.Deps{
 		DB:                   pgxPinger{pool: pool},
@@ -364,42 +365,98 @@ func adminBearerAuth(token string) func(http.Handler) http.Handler {
 	}
 }
 
-// auditAbuseGate satisfies handler.AdminAbuseGate by recording each ban
-// as an immutable cert.audit_logs row. Enforcement (rejecting future
-// orders from banned accounts) requires a cert.abuse_bans table — a
-// post-S2 addition; for now the audit row is the system of record so
-// operators can review and a later migration can backfill.
+// auditAbuseGate satisfies handler.AdminAbuseGate by:
+//   1. inserting an active row into cert.abuse_bans (the source of truth
+//      AbuseDetector reads on every order create), and
+//   2. appending an immutable cert.audit_logs row so the admin action is
+//      forever discoverable.
+//
+// Ban is idempotent: an already-banned account returns nil and only
+// writes the audit log (so repeated admin clicks are recorded but do
+// not error).
 type auditAbuseGate struct {
-	repo   *repo.AuditLogsRepo
+	bans   *repo.AbuseBansRepo
+	audit  *repo.AuditLogsRepo
 	logger *slog.Logger
 }
 
-func newAuditAbuseGate(r *repo.AuditLogsRepo, l *slog.Logger) *auditAbuseGate {
-	return &auditAbuseGate{repo: r, logger: l}
+func newAuditAbuseGate(bans *repo.AbuseBansRepo, audit *repo.AuditLogsRepo, l *slog.Logger) *auditAbuseGate {
+	return &auditAbuseGate{bans: bans, audit: audit, logger: l}
 }
 
 func (g *auditAbuseGate) Ban(ctx context.Context, accountID int64, reason string) error {
-	if g == nil || g.repo == nil {
+	if g == nil || g.bans == nil {
 		return errors.New("audit gate not configured")
 	}
-	tk := "account"
-	payload, _ := json.Marshal(map[string]string{"reason": reason})
-	entry := &repo.AuditLog{
-		AccountID:  &accountID,
-		Actor:      "admin",
-		Action:     "abuse.ban",
-		TargetKind: &tk,
-		TargetID:   &accountID,
-		Payload:    payload,
-	}
-	if err := g.repo.Append(ctx, entry); err != nil {
+
+	_, err := g.bans.Ban(ctx, accountID, reason, "admin")
+	switch {
+	case err == nil:
+		// fresh ban — fall through to audit
+	case errors.Is(err, repo.ErrAlreadyBanned):
 		if g.logger != nil {
-			g.logger.Error("audit ban append failed", "account_id", accountID, "error", err)
+			g.logger.Info("ban already active — recording audit only",
+				"account_id", accountID)
+		}
+	default:
+		if g.logger != nil {
+			g.logger.Error("abuse ban insert failed",
+				"account_id", accountID, "error", err)
 		}
 		return err
 	}
+
+	if g.audit != nil {
+		tk := "account"
+		payload, _ := json.Marshal(map[string]string{"reason": reason})
+		entry := &repo.AuditLog{
+			AccountID:  &accountID,
+			Actor:      "admin",
+			Action:     "abuse.ban",
+			TargetKind: &tk,
+			TargetID:   &accountID,
+			Payload:    payload,
+		}
+		if appendErr := g.audit.Append(ctx, entry); appendErr != nil && g.logger != nil {
+			// Audit failure does NOT roll back the ban — the bans table
+			// is authoritative; log loudly so an operator can backfill.
+			g.logger.Error("audit log append failed after ban",
+				"account_id", accountID, "error", appendErr)
+		}
+	}
 	if g.logger != nil {
-		g.logger.Info("admin ban recorded", "account_id", accountID, "reason", reason)
+		g.logger.Info("admin ban recorded",
+			"account_id", accountID, "reason", reason)
+	}
+	return nil
+}
+
+func (g *auditAbuseGate) Unban(ctx context.Context, accountID int64, reason string) error {
+	if g == nil || g.bans == nil {
+		return errors.New("audit gate not configured")
+	}
+	if err := g.bans.Lift(ctx, accountID, "admin", reason); err != nil {
+		if g.logger != nil {
+			g.logger.Warn("abuse unban failed",
+				"account_id", accountID, "error", err)
+		}
+		return err
+	}
+	if g.audit != nil {
+		tk := "account"
+		payload, _ := json.Marshal(map[string]string{"reason": reason})
+		_ = g.audit.Append(ctx, &repo.AuditLog{
+			AccountID:  &accountID,
+			Actor:      "admin",
+			Action:     "abuse.unban",
+			TargetKind: &tk,
+			TargetID:   &accountID,
+			Payload:    payload,
+		})
+	}
+	if g.logger != nil {
+		g.logger.Info("admin unban recorded",
+			"account_id", accountID, "reason", reason)
 	}
 	return nil
 }

@@ -274,7 +274,13 @@ describe("AbuseClient", () => {
     fireEvent.change(screen.getByLabelText("账号 ID"), { target: { value: "42" } })
     fireEvent.click(screen.getByRole("button", { name: "封禁账号" }))
     await waitFor(() => {
-      expect(screen.getByText("确认封禁账号 42？")).toBeInTheDocument()
+      expect(screen.getByText("确认操作账号 42？")).toBeInTheDocument()
     })
+  })
+
+  it("renders unban button alongside ban", () => {
+    render(<AbuseClient />)
+    expect(screen.getByRole("button", { name: "封禁账号" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "解除封禁" })).toBeInTheDocument()
   })
 })

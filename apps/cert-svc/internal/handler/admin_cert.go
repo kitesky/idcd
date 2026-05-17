@@ -63,6 +63,9 @@ type AdminAbuseGate interface {
 	// Ban records a permanent ban for accountID. reason is a free-text
 	// note surfaced in audit_logs.payload and admin tooling.
 	Ban(ctx context.Context, accountID int64, reason string) error
+	// Unban lifts an active ban. Returns ErrNotBanned semantics when
+	// the account has no active row (handlers translate to 404).
+	Unban(ctx context.Context, accountID int64, reason string) error
 }
 
 // caaCAList is the canonical set of CAs the platform routes to. Kept in
@@ -88,6 +91,7 @@ func mountAdmin(r chi.Router, deps Deps) {
 	r.Get("/ca-quota", adminCAQuota(deps))
 	r.Get("/dns-health", adminDNSHealth(deps))
 	r.Post("/accounts/{id}/ban", adminBanAccount(deps))
+	r.Post("/accounts/{id}/unban", adminUnbanAccount(deps))
 }
 
 // rejectAllAdminUnauthenticated is the analogue of rejectAllUnauthenticated
@@ -484,6 +488,61 @@ func adminBanAccount(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusOK, adminBanResponse{
 			AccountID: id, Status: "banned",
+		})
+	}
+}
+
+func adminUnbanAccount(deps Deps) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		id, ok := pathInt64(w, r, "id")
+		if !ok {
+			return
+		}
+		if deps.AdminAbuse == nil {
+			writeErr(w, http.StatusServiceUnavailable, codeInternal,
+				"abuse gate not configured", nil)
+			return
+		}
+		var req adminBanRequest
+		if r.ContentLength > 0 || r.Header.Get("Content-Type") != "" {
+			if !readJSON(w, r, &req) {
+				return
+			}
+		}
+		if strings.TrimSpace(req.Reason) == "" {
+			req.Reason = "admin unban"
+		}
+		if err := deps.AdminAbuse.Unban(r.Context(), id, req.Reason); err != nil {
+			// The gate surfaces ErrNotBanned (via repo) when no active ban
+			// exists. We cannot import repo here cleanly; fall back to a
+			// substring match on the wrapped sentinel. Misclassification
+			// is bounded to "404 vs 500" — acceptable for an admin path.
+			if strings.Contains(err.Error(), "not currently banned") {
+				writeErr(w, http.StatusNotFound, codeNotFound,
+					"no active ban for account", nil)
+				return
+			}
+			writeErr(w, http.StatusInternalServerError, codeInternal,
+				"unban failed: "+err.Error(), nil)
+			return
+		}
+		if deps.Repos != nil && deps.Repos.AuditLogs != nil {
+			payload, _ := json.Marshal(map[string]string{
+				"actor":  "admin",
+				"reason": req.Reason,
+			})
+			tk := "account"
+			_ = deps.Repos.AuditLogs.Append(r.Context(), &repo.AuditLog{
+				AccountID:  &id,
+				Actor:      "admin",
+				Action:     "admin.account_unban",
+				TargetKind: &tk,
+				TargetID:   &id,
+				Payload:    payload,
+			})
+		}
+		writeJSON(w, http.StatusOK, adminBanResponse{
+			AccountID: id, Status: "unbanned",
 		})
 	}
 }

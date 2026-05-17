@@ -36,6 +36,7 @@ type Repos struct {
 	RenewalJobs    *RenewalJobsRepo
 	AuditLogs      *AuditLogsRepo
 	Domains        *DomainsRepo
+	AbuseBans      *AbuseBansRepo
 }
 
 // New wires every per-table repo over the given pgx pool.
@@ -55,6 +56,7 @@ func NewWithPool(pool Pool) *Repos {
 		RenewalJobs:    &RenewalJobsRepo{pool: pool},
 		AuditLogs:      &AuditLogsRepo{pool: pool},
 		Domains:        &DomainsRepo{pool: pool},
+		AbuseBans:      &AbuseBansRepo{pool: pool},
 	}
 }
 

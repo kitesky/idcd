@@ -578,6 +578,8 @@ POST   /api/v1/admin/cert/accounts/{id}/ban 反滥用临时封禁
 | `CERT_CA_RATE_LIMITED` | 429 | 上游 CA 限流（建议切 CA） |
 | `CERT_CA_AUTHZ_INVALID` | 422 | CA 验证失败（CAA / DNS） |
 | `CERT_PRIVATE_KEY_LOST` | 500 | 私钥解密失败（KMS 故障） |
+| `CERT_ABUSE_BLOCKED` | 403 | 自动反滥用规则拦截（黑名单 / 短时多根域名 / 单根域名爆发） |
+| `CERT_ACCOUNT_BANNED` | 403 | 管理员封禁（`cert.abuse_bans` 有效记录） |
 
 > 完整列表纳入 16-api-spec.yaml 增量。
 

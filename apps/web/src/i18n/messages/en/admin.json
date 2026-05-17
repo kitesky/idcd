@@ -155,13 +155,14 @@
       "reasonLabel": "Reason",
       "reasonPlaceholder": "Operator note…",
       "banButton": "Ban Account",
-      "confirmTitle": "Ban account {id}?",
-      "confirmDesc": "The account will no longer be able to create new orders. The action is recorded in audit_logs.",
+      "unbanButton": "Unban Account",
+      "confirmTitle": "Apply this action to account {id}?",
+      "confirmDesc": "Banning blocks all new orders; unbanning restores ordering immediately. The action is recorded in audit_logs.",
       "cancel": "Cancel",
-      "confirm": "Confirm Ban",
+      "confirm": "Confirm",
       "processing": "Processing…",
-      "success": "Account {id} banned successfully",
-      "error": "Ban failed: {message}"
+      "success": "Account {id} updated successfully",
+      "error": "Action failed: {message}"
     }
   }
 }

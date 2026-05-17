@@ -141,6 +141,12 @@ export function banAccount(accountId: number, reason: string, base = "") {
   )
 }
 
+export function unbanAccount(accountId: number, reason: string, base = "") {
+  return postJSON<{ account_id: number; status: string }>(
+    `/v1/admin/cert/accounts/${accountId}/unban`, { reason }, base,
+  )
+}
+
 // formatRate renders a 0..1 success rate as a percentage with one decimal,
 // returning a placeholder when the input is the "-1 = unknown" sentinel.
 export function formatRate(rate: number, unknownLabel = "—"): string {

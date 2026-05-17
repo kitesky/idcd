@@ -373,13 +373,14 @@
       "reasonLabel": "原因",
       "reasonPlaceholder": "操作员备注…",
       "banButton": "封禁账号",
-      "confirmTitle": "确认封禁账号 {id}？",
-      "confirmDesc": "封禁后该账号将无法创建新订单。操作记录会写入 audit_logs。",
+      "unbanButton": "解除封禁",
+      "confirmTitle": "确认操作账号 {id}？",
+      "confirmDesc": "封禁后该账号将无法创建新订单；解除封禁会立即恢复其下单能力。操作记录会写入 audit_logs。",
       "cancel": "取消",
-      "confirm": "确认封禁",
+      "confirm": "确认",
       "processing": "处理中…",
-      "success": "账号 {id} 已成功封禁",
-      "error": "封禁失败：{message}"
+      "success": "账号 {id} 操作成功",
+      "error": "操作失败：{message}"
     }
   }
 }

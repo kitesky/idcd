@@ -452,7 +452,7 @@ func (s *Server) setupRouter() {
 			} else {
 				billingProvider = billing.NewStubProvider()
 			}
-			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).WithEnqueuer(asynqBillingEnq)
+			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).WithEnqueuer(asynqBillingEnq).WithVerdictPublisher(repository.NewVerdictPublisher(s.redis))
 			r.Route("/billing", func(r chi.Router) {
 				// Authenticated routes
 				r.With(authnMW).Post("/subscribe", billingH.Subscribe)

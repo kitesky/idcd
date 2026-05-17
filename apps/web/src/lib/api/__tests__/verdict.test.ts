@@ -75,7 +75,7 @@ describe("verdict api helpers", () => {
         target: "example.com",
         time_window_start: "2026-01-01T00:00:00Z",
         time_window_end: "2026-01-02T00:00:00Z",
-        channel: "paddle",
+        channel: "paymenthub",
         return_url: "https://idcd.com/app/verdict/{order_id}",
       })
       expect(out.order_id).toBe("ord_1")

@@ -56,7 +56,7 @@
 
 | 表 | schema | 类型 | 高风险点 |
 |---|---|---|---|
-| `verdict_order` | idcd_attest | OLTP | 状态机 enum 完整性;Paddle 关联 |
+| `verdict_order` | idcd_attest | OLTP | 状态机 enum 完整性;支付通道关联 |
 | `verdict_report` | idcd_attest | OLTP | content_hash / signature / TSA 字段不可空 |
 | `attestation_record` | idcd_attest | append-only | 索引设计;100k+/日 写入压力 |
 | `tsa_response` | idcd_attest | append-only | 同上 + 二进制 blob 存储成本 |
@@ -139,9 +139,9 @@
 **Eng 视角必查**:
 - [ ] **完整状态机 ASCII 图**(09 §13.5 已写但需要 reviewer 验证):
   - `pending → paid → generating → (delivered | failed | refunded)`
-  - 每个 transition 是否原子操作?Paddle webhook 失败 / Worker crash / KMS 间歇性失败 各自如何回滚?
+  - 每个 transition 是否原子操作?聚合支付 webhook 失败 / Worker crash / KMS 间歇性失败 各自如何回滚?
 - [ ] **idempotency** 保证:同一 order_id 多次进入 queue 不能生成两份报告
-- [ ] Paddle refund API 失败的兜底:**自动退款失败** → 用户两小时拿不到报告 + 拿不到退款 = 灾难。需要"退款 retry queue + 人工兜底"
+- [ ] 聚合支付 refund API 失败的兜底:**自动退款失败** → 用户两小时拿不到报告 + 拿不到退款 = 灾难。需要"退款 retry queue + 人工兜底"
 - [ ] **DLQ 监控**:dead letter queue 任何 message 出现 5 分钟内必须告警
 - [ ] 历史失败模拟:在 staging 注入"KMS 间歇失败 / S3 写失败 / TSA 慢响应"等故障,验证 SLA
 - [ ] Self-verify 的"独立路径":验签 worker 不能复用 sign worker 的代码 / 配置 / 密钥缓存,否则验证无意义
@@ -341,7 +341,7 @@
 - 4 个计费维度共用同一用户账户余额还是各自独立?(09 §10 余额系统 vs 独立)
 - Verdict 件价的"Pro+ 9 折"折扣如何与订阅档绑定?
 - 用户同时有"Pro 订阅 + Compliance Pro + Agent Pro"时,API 调用走哪个配额池?
-- Paddle webhook 多个订单 / 多个 SKU 的关联追溯
+- 聚合支付 webhook 多个订单 / 多个 SKU 的关联追溯
 
 ### 4.3 12 合规 / 18 Evidence / 13 SEO 的法律边界
 
@@ -493,7 +493,7 @@
 | Verdict PDF 篡改后冒充 | 公开验签拒绝 | 修改 PDF 任一字节后调 /verify |
 | Anchor 节点被同时攻陷 | 多 Anchor 交叉 + 异常 Anchor 自动降级 | staging 同时污染 2/3 Anchor |
 | KMS API 间歇性失败 | DLQ + retry + 工单兜底 | 注入 50% KMS 失败率 |
-| Paddle webhook 漏送 / 重复 | nightly 对账 + idempotency | 模拟 webhook 失败 |
+| 聚合支付 webhook 漏送 / 重复 | nightly 对账 + idempotency | 模拟 webhook 失败 |
 
 ---
 

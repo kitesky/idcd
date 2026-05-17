@@ -3,8 +3,8 @@
 //
 //   - refund_initiate_queue (apps/attest/cmd/verifier/refund_enqueue.go):
 //     Self-Verify catches a bad PDF and asks us to refund the user.
-//   - refund_retry_queue (apps/attest/internal/handler/paddle/paddle.go):
-//     a Paddle webhook arrived but our outbound refund call failed; the
+//   - refund_retry_queue (apps/attest/internal/handler/paymenthub/paymenthub.go):
+//     a PaymentHub webhook arrived but our outbound refund call failed; the
 //     first retry hint lands here.
 //
 // Both paths converge on the same delay-zone-driven retry ladder
@@ -28,7 +28,7 @@
 //     across the two producers.
 //   - D6: refund worker never imports lib/attest/sign. It does not
 //     create attestation records. It only mutates verdict_order rows
-//     and calls Paddle. Nothing it does is part of the chain of
+//     and calls PaymentHub. Nothing it does is part of the chain of
 //     custody for the original verdict, so there is no WAL to write.
 package refund
 
@@ -45,7 +45,7 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// MaxAttempts is the cap on automatic Paddle refund retries. D5: after
+// MaxAttempts is the cap on automatic PaymentHub refund retries. D5: after
 // two failed retries we flip the order to refund_failed and send the
 // apology email — operators handle the rest from the admin dashboard.
 const MaxAttempts = 2
@@ -81,7 +81,7 @@ const memberSep = "|"
 // (D5: refund_failed → P0) and any future SLA report can group failures
 // by surface.
 const (
-	failureReasonPaddleAPI = "paddle refund api"
+	failureReasonPaymentHubAPI = "paymenthub refund api"
 )
 
 // Order is the projection refund worker needs. Kept narrow so the
@@ -100,7 +100,7 @@ type Order struct {
 	Status         string
 	OwnerID        string
 	UserEmail      string
-	PaddleOrderID  string
+	ExtOrderID  string
 	PriceCNYYuan   float64
 	Currency       string
 	RefundAttempts int
@@ -110,7 +110,7 @@ type Order struct {
 }
 
 // PriceCents converts the order's PriceCNYYuan into integer cents for
-// the Paddle API. We round half-away-from-zero so a 0.005-yuan rounding
+// the PaymentHub API. We round half-away-from-zero so a 0.005-yuan rounding
 // glitch in price_paid_cny upstream cannot silently drop a fen.
 func (o *Order) PriceCents() int64 {
 	return int64(math.Round(o.PriceCNYYuan * 100))
@@ -142,7 +142,7 @@ type OrderStore interface {
 	GetByReportID(ctx context.Context, reportID string) (*Order, error)
 
 	// GetByID fetches an order directly. Used by the retry tick to
-	// re-read status before each Paddle call (idempotency / race guard).
+	// re-read status before each PaymentHub call (idempotency / race guard).
 	GetByID(ctx context.Context, orderID string) (*Order, error)
 
 	// MarkRefunded transitions the order to status='refunded' and
@@ -155,7 +155,7 @@ type OrderStore interface {
 	// admin dashboard + P0 alert.
 	MarkRefundFailed(ctx context.Context, orderID, fromStatus, errReason string) error
 
-	// BumpRefundAttempt records that one more Paddle call failed and
+	// BumpRefundAttempt records that one more PaymentHub call failed and
 	// stores the latest error. Caller-supplied attempt count is the new
 	// (post-bump) value, which gives tests a deterministic post-state
 	// independent of the repo's read-modify-write.
@@ -173,11 +173,11 @@ type OrderStore interface {
 // id or the row was hard-deleted out from under us.
 var ErrOrderNotFound = errors.New("refund: order not found")
 
-// RefundProvider is the narrow Paddle-side dependency. The production
+// RefundProvider is the narrow PaymentHub-side dependency. The production
 // adapter wraps billing.PaymentHubProvider.RefundPayment; tests pass an
 // in-memory mock.
 type RefundProvider interface {
-	Refund(ctx context.Context, paddleOrderID string, amountCents int64, reason string) error
+	Refund(ctx context.Context, extOrderID string, amountCents int64, reason string) error
 }
 
 // ApologyMailer enqueues a single "we're sorry, the automated refund
@@ -186,7 +186,7 @@ type RefundProvider interface {
 // — see cmd/refund-worker/main.go).
 //
 // SendApology receives the fully-populated *Order (with UserEmail /
-// PaddleOrderID / PriceCents / Currency already resolved by the
+// ExtOrderID / PriceCents / Currency already resolved by the
 // adapter) plus the final failure reason; the notifier can render the
 // email without any further DB lookup. Passing the order pointer lets
 // us add fields later (e.g. locale) without changing the signature
@@ -230,7 +230,7 @@ type Config struct {
 // HandleInitiate, HandleRetryEnqueue, and TickDelayZone concurrently
 // from independent goroutines; each operation re-reads order state
 // before mutating, so two ticks picking the same delay-zone member at
-// nearly the same time still produce a single Paddle call (the second
+// nearly the same time still produce a single PaymentHub call (the second
 // finds status='refunded' and skips).
 type Handler struct {
 	cfg Config
@@ -335,7 +335,7 @@ func scheduleScore(t time.Time) float64 {
 }
 
 // parseScheduledAt parses an RFC3339Nano timestamp from a stream entry.
-// Producers (the Paddle webhook handler) emit RFC3339Nano; we tolerate
+// Producers (the PaymentHub webhook handler) emit RFC3339Nano; we tolerate
 // RFC3339 too for forward compatibility.
 func parseScheduledAt(s string) (time.Time, error) {
 	if s == "" {
@@ -350,7 +350,7 @@ func parseScheduledAt(s string) (time.Time, error) {
 // ----- public methods -----------------------------------------------------
 
 // HandleInitiate consumes a refund_initiate_queue entry. Self-Verify
-// caught a bad PDF; we attempt the first Paddle refund inline and, on
+// caught a bad PDF; we attempt the first PaymentHub refund inline and, on
 // failure, ZADD the order onto the delay zone for retry attempt 1.
 //
 // Returning a non-nil error leaves the message un-ACKed; the consumer
@@ -382,7 +382,7 @@ func (h *Handler) HandleInitiate(ctx context.Context, fields map[string]any) err
 	}
 
 	now := h.cfg.Now()
-	refundErr := h.cfg.Refunder.Refund(ctx, order.PaddleOrderID, order.PriceCents(), reason)
+	refundErr := h.cfg.Refunder.Refund(ctx, order.ExtOrderID, order.PriceCents(), reason)
 	if refundErr == nil {
 		if err := h.cfg.Orders.MarkRefunded(ctx, order.ID, order.Status, now); err != nil {
 			return fmt.Errorf("refund initiate mark refunded %s: %w", order.ID, err)
@@ -405,7 +405,7 @@ func (h *Handler) HandleInitiate(ctx context.Context, fields map[string]any) err
 	return nil
 }
 
-// HandleRetryEnqueue consumes a refund_retry_queue entry. The Paddle
+// HandleRetryEnqueue consumes a refund_retry_queue entry. The PaymentHub
 // webhook handler produces here when the inline UpdateStatus / lookup
 // path failed; we translate that producer hint into a delay-zone
 // entry and ACK. All retry work then funnels through the tick goroutine.
@@ -542,7 +542,7 @@ func (h *Handler) processRetry(ctx context.Context, orderID string, attempt int)
 	}
 
 	now := h.cfg.Now()
-	refundErr := h.cfg.Refunder.Refund(ctx, order.PaddleOrderID, order.PriceCents(), failureReasonPaddleAPI)
+	refundErr := h.cfg.Refunder.Refund(ctx, order.ExtOrderID, order.PriceCents(), failureReasonPaymentHubAPI)
 	if refundErr == nil {
 		if err := h.cfg.Orders.MarkRefunded(ctx, order.ID, order.Status, now); err != nil {
 			return fmt.Errorf("mark refunded: %w", err)

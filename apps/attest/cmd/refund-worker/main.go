@@ -4,13 +4,13 @@
 //
 //   - refund_initiate_queue: Self-Verify caught a bad PDF and asks us
 //     to refund the user (apps/attest/cmd/verifier/refund_enqueue.go).
-//   - refund_retry_queue: a Paddle webhook indicated a refund event but
+//   - refund_retry_queue: a PaymentHub webhook indicated a refund event but
 //     the inline UpdateStatus / lookup failed
-//     (apps/attest/internal/handler/paddle/paddle.go).
+//     (apps/attest/internal/handler/paymenthub/paymenthub.go).
 //
 // Both streams funnel into a shared delay-zone Redis ZSET keyed on
 // (order_id, attempt). A 30 s tick goroutine scans the ZSET and runs
-// the Paddle refund call for each due entry — up to two retries per
+// the PaymentHub refund call for each due entry — up to two retries per
 // order, then a flip to refund_failed plus an apology email
 // (DECISIONS.md §M D5).
 //
@@ -59,7 +59,7 @@ import (
 const apologyTaskType = "payment:refund_apology"
 
 // shutdownTimeout caps how long graceful shutdown may take. Beyond
-// this we abandon any in-flight Paddle call (which is fine: Paddle is
+// this we abandon any in-flight PaymentHub call (which is fine: PaymentHub is
 // idempotent on idem keys, and the retry ladder picks up where we left
 // off after restart).
 const shutdownTimeout = 10 * time.Second
@@ -129,9 +129,9 @@ func main() {
 		defer func() { _ = asynqClient.Close() }()
 	}
 
-	refunder, err := newPaddleRefunder()
+	refunder, err := newPaymentHubRefunder()
 	if err != nil {
-		log.Error("attest-refund-worker: paddle refunder init failed", "err", err)
+		log.Error("attest-refund-worker: paymenthub refunder init failed", "err", err)
 		os.Exit(1)
 	}
 
@@ -288,9 +288,9 @@ func (s *repoOrderStore) loadOrder(ctx context.Context, id string) (*refund.Orde
 		}
 		return nil, fmt.Errorf("order lookup: %w", err)
 	}
-	paddle := ""
-	if o.PaddleOrderID != nil {
-		paddle = *o.PaddleOrderID
+	paymenthub := ""
+	if o.ExtOrderID != nil {
+		paymenthub = *o.ExtOrderID
 	}
 	lastErr := ""
 	if o.RefundLastError != nil {
@@ -311,7 +311,7 @@ func (s *repoOrderStore) loadOrder(ctx context.Context, id string) (*refund.Orde
 		Status:         o.Status,
 		OwnerID:        o.OwnerID,
 		UserEmail:      email,
-		PaddleOrderID:  paddle,
+		ExtOrderID:  paymenthub,
 		PriceCNYYuan:   o.PriceCNY,
 		Currency:       "CNY",
 		RefundAttempts: o.RefundAttemptCount,
@@ -395,7 +395,7 @@ type asynqApologyMailer struct {
 type apologyPayload struct {
 	OrderID           string `json:"order_id"`
 	UserEmail         string `json:"user_email"`
-	PaddleOrderID     string `json:"paddle_order_id"`
+	ExtOrderID     string `json:"ext_order_id"`
 	RefundAmountCents int64  `json:"refund_amount_cents"`
 	Currency          string `json:"currency"`
 	FailureReason     string `json:"failure_reason"`
@@ -413,7 +413,7 @@ func (m *asynqApologyMailer) SendApology(ctx context.Context, order *refund.Orde
 	body, err := jsonMarshal(apologyPayload{
 		OrderID:           order.ID,
 		UserEmail:         order.UserEmail,
-		PaddleOrderID:     order.PaddleOrderID,
+		ExtOrderID:     order.ExtOrderID,
 		RefundAmountCents: order.PriceCents(),
 		Currency:          currency,
 		FailureReason:     reason,

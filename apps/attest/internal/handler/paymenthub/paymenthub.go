@@ -1,5 +1,5 @@
-// Package paddle implements the attest-svc Paddle webhook endpoint that
-// drives D5 refund processing: when Paddle reports a refund event the
+// Package paymenthub implements the attest-svc PaymentHub webhook endpoint that
+// drives D5 refund processing: when PaymentHub reports a refund event the
 // attest service transitions the matching verdict_order to "refunded"
 // and, on transient DB failure, enqueues the order onto the
 // `refund_retry_queue` Redis Stream so the separate retry scheduler can
@@ -9,7 +9,7 @@
 // the webhook secret, identical to apps/api/internal/handler/billing.go;
 // the helper is duplicated here rather than imported because
 // apps/attest must not depend on apps/api.
-package paddle
+package paymenthub
 
 import (
 	"context"
@@ -27,8 +27,8 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Recognised Paddle event types. Anything else is acked with 200 and
-// logged at debug; Paddle does not retry 2xx so unknown events stop
+// Recognised PaymentHub event types. Anything else is acked with 200 and
+// logged at debug; PaymentHub does not retry 2xx so unknown events stop
 // flowing.
 const (
 	EventTransactionPaymentRefunded  = "transaction.payment_refunded"
@@ -37,7 +37,7 @@ const (
 )
 
 // RefundRetryStream is the Redis Stream key the retry scheduler reads.
-// Fields per entry: order_id, paddle_event_id, attempt, scheduled_at.
+// Fields per entry: order_id, ext_event_id, attempt, scheduled_at.
 //
 // Consumer: apps/attest/cmd/refund-worker. The worker translates each
 // entry into a delay-zone ZSET member keyed by (order_id, attempt) and
@@ -54,21 +54,21 @@ const retryFirstDelay = 5 * time.Minute
 // webhookReplayWindowSecs (5 min) on both sides.
 const webhookReplayWindow = 5 * time.Minute
 
-// maxBodyBytes caps Paddle webhook payloads; events are sub-KB so 1 MiB
+// maxBodyBytes caps PaymentHub webhook payloads; events are sub-KB so 1 MiB
 // is generous and prevents trivial memory DoS on the public endpoint.
 const maxBodyBytes = 1 << 20
 
-// OrderLookup returns the verdict_order id matching paddle_order_id,
+// OrderLookup returns the verdict_order id matching ext_order_id,
 // together with the current status. Implementations live in main; the
 // interface keeps this package independent of the repo layer so tests
 // can fake it.
 type OrderLookup interface {
-	LookupByPaddleOrderID(ctx context.Context, paddleOrderID string) (orderID, status string, err error)
+	LookupByExtOrderID(ctx context.Context, extOrderID string) (orderID, status string, err error)
 }
 
 // ErrOrderNotFound is the sentinel OrderLookup implementations return
-// when no verdict_order row matches the paddle_order_id.
-var ErrOrderNotFound = errors.New("paddle: verdict_order not found")
+// when no verdict_order row matches the ext_order_id.
+var ErrOrderNotFound = errors.New("paymenthub: verdict_order not found")
 
 // OrderStatusUpdater is the subset of *repo.VerdictOrdersRepo this
 // handler needs to flip status. *repo.VerdictOrdersRepo satisfies it.
@@ -84,7 +84,7 @@ type RetryEnqueuer interface {
 	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
 }
 
-// Handler implements POST /webhooks/paddle.
+// Handler implements POST /webhooks/paymenthub.
 //
 // All fields except Logger and Now are required; constructing with any
 // of Secret / Orders / Lookup / Redis nil will panic on first request.
@@ -98,7 +98,7 @@ type Handler struct {
 	Now    func() time.Time
 }
 
-// ServeHTTP routes POST /webhooks/paddle. Anything else returns 405.
+// ServeHTTP routes POST /webhooks/paymenthub. Anything else returns 405.
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", "POST")
@@ -108,7 +108,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxBodyBytes+1))
 	if err != nil {
-		h.logger().Warn("paddle webhook: read body failed", "err", err)
+		h.logger().Warn("paymenthub webhook: read body failed", "err", err)
 		http.Error(w, "failed to read body", http.StatusBadRequest)
 		return
 	}
@@ -126,7 +126,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	var evt event
 	if err := json.Unmarshal(body, &evt); err != nil {
-		h.logger().Warn("paddle webhook: malformed JSON", "err", err)
+		h.logger().Warn("paymenthub webhook: malformed JSON", "err", err)
 		// Still 200 — replaying malformed events is pointless.
 		writeOK(w)
 		return
@@ -139,7 +139,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		EventSubscriptionPaymentRefunded:
 		h.processRefund(ctx, &evt)
 	default:
-		h.logger().Debug("paddle webhook: ignoring event", "event_type", evt.EventType)
+		h.logger().Debug("paymenthub webhook: ignoring event", "event_type", evt.EventType)
 	}
 
 	writeOK(w)
@@ -148,58 +148,58 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // processRefund looks up the verdict_order, transitions to refunded,
 // and on failure enqueues a refund_retry_queue entry. It NEVER returns
 // an error — the webhook ack is always 200 for valid signatures so
-// Paddle does not retry on transient DB issues; the retry queue is the
+// PaymentHub does not retry on transient DB issues; the retry queue is the
 // authoritative recovery path.
 func (h *Handler) processRefund(ctx context.Context, evt *event) {
-	paddleOrderID := evt.Data.PaddleOrderID
-	if paddleOrderID == "" {
-		h.logger().Warn("paddle webhook: refund event missing paddle order id",
+	extOrderID := evt.Data.ExtOrderID
+	if extOrderID == "" {
+		h.logger().Warn("paymenthub webhook: refund event missing paymenthub order id",
 			"event_id", evt.EventID, "event_type", evt.EventType)
 		return
 	}
 
-	orderID, status, err := h.Lookup.LookupByPaddleOrderID(ctx, paddleOrderID)
+	orderID, status, err := h.Lookup.LookupByExtOrderID(ctx, extOrderID)
 	if err != nil {
 		if errors.Is(err, ErrOrderNotFound) {
-			h.logger().Info("paddle webhook: no verdict_order for paddle id",
-				"paddle_order_id", paddleOrderID, "event_id", evt.EventID)
+			h.logger().Info("paymenthub webhook: no verdict_order for paymenthub id",
+				"ext_order_id", extOrderID, "event_id", evt.EventID)
 			return
 		}
-		h.enqueueRetry(ctx, paddleOrderID, evt.EventID)
-		h.logger().Warn("paddle webhook: lookup failed",
-			"paddle_order_id", paddleOrderID, "err", err)
+		h.enqueueRetry(ctx, extOrderID, evt.EventID)
+		h.logger().Warn("paymenthub webhook: lookup failed",
+			"ext_order_id", extOrderID, "err", err)
 		return
 	}
 
 	updateErr := h.Orders.UpdateStatus(ctx, orderID, status, "refunded", nil)
 	if updateErr != nil {
-		h.logger().Warn("paddle webhook: UpdateStatus failed; enqueueing retry",
+		h.logger().Warn("paymenthub webhook: UpdateStatus failed; enqueueing retry",
 			"order_id", orderID, "from", status, "err", updateErr)
 		h.enqueueRetry(ctx, orderID, evt.EventID)
 		return
 	}
-	h.logger().Info("paddle webhook: verdict_order refunded",
-		"order_id", orderID, "paddle_order_id", paddleOrderID)
+	h.logger().Info("paymenthub webhook: verdict_order refunded",
+		"order_id", orderID, "ext_order_id", extOrderID)
 }
 
 // enqueueRetry pushes one entry onto refund_retry_queue. The scheduler
 // (separate service) consumes from this stream and drives 5min/30min
 // retries plus the T+15min apology email.
-func (h *Handler) enqueueRetry(ctx context.Context, orderID, paddleEventID string) {
+func (h *Handler) enqueueRetry(ctx context.Context, orderID, extEventID string) {
 	now := h.now()
 	scheduledAt := now.Add(retryFirstDelay).UTC().Format(time.RFC3339Nano)
 	cmd := h.Redis.XAdd(ctx, &redis.XAddArgs{
 		Stream: RefundRetryStream,
 		Values: map[string]any{
 			"order_id":        orderID,
-			"paddle_event_id": paddleEventID,
+			"ext_event_id": extEventID,
 			"attempt":         "1",
 			"scheduled_at":    scheduledAt,
 		},
 	})
 	if cmd != nil {
 		if err := cmd.Err(); err != nil {
-			h.logger().Error("paddle webhook: enqueue refund_retry_queue failed",
+			h.logger().Error("paymenthub webhook: enqueue refund_retry_queue failed",
 				"order_id", orderID, "err", err)
 		}
 	}
@@ -219,7 +219,7 @@ func (h *Handler) now() time.Time {
 	return time.Now()
 }
 
-// event is the minimal Paddle webhook payload we consume. Paddle sends
+// event is the minimal PaymentHub webhook payload we consume. PaymentHub sends
 // significantly more data per event; we only decode the fields used to
 // drive the refund pipeline.
 type event struct {
@@ -229,7 +229,7 @@ type event struct {
 }
 
 type eventData struct {
-	PaddleOrderID string `json:"paddle_order_id"`
+	ExtOrderID string `json:"ext_order_id"`
 }
 
 // verifySignature is HMAC-SHA256("<timestamp>.<body>", secret) hex,

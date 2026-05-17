@@ -24,23 +24,23 @@ func TestNewLogger_AcceptsAllLevels(t *testing.T) {
 	}
 }
 
-// TestNewPaddleRefunder_MissingEnv asserts the fail-fast path: the
+// TestNewPaymentHubRefunder_MissingEnv asserts the fail-fast path: the
 // binary refuses to start without credentials, which keeps a
 // misconfigured deploy from silently dropping refund attempts.
-func TestNewPaddleRefunder_MissingEnv(t *testing.T) {
-	t.Setenv(envPaddleBaseURL, "")
-	t.Setenv(envPaddleAPIKey, "")
-	t.Setenv(envPaddleAPISecret, "")
-	_, err := newPaddleRefunder()
+func TestNewPaymentHubRefunder_MissingEnv(t *testing.T) {
+	t.Setenv(envPaymentHubBaseURL, "")
+	t.Setenv(envPaymentHubAPIKey, "")
+	t.Setenv(envPaymentHubAPISecret, "")
+	_, err := newPaymentHubRefunder()
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), envPaddleBaseURL)
+	assert.Contains(t, err.Error(), envPaymentHubBaseURL)
 }
 
-func TestNewPaddleRefunder_OK(t *testing.T) {
-	t.Setenv(envPaddleBaseURL, "https://hub.example.com")
-	t.Setenv(envPaddleAPIKey, "k")
-	t.Setenv(envPaddleAPISecret, "s")
-	p, err := newPaddleRefunder()
+func TestNewPaymentHubRefunder_OK(t *testing.T) {
+	t.Setenv(envPaymentHubBaseURL, "https://hub.example.com")
+	t.Setenv(envPaymentHubAPIKey, "k")
+	t.Setenv(envPaymentHubAPISecret, "s")
+	p, err := newPaymentHubRefunder()
 	require.NoError(t, err)
 	assert.NotNil(t, p)
 
@@ -51,19 +51,19 @@ func TestNewPaddleRefunder_OK(t *testing.T) {
 	var _ refund.RefundProvider = p
 }
 
-// TestPaddleRefunder_Refund_InputValidation covers the input checks that
+// TestPaymentHubRefunder_Refund_InputValidation covers the input checks that
 // surface before any payment-SDK call. The HTTP path is exercised in
 // the SDK's own tests; we only assert the adapter's pre-flight guards.
-func TestPaddleRefunder_Refund_InputValidation(t *testing.T) {
-	t.Setenv(envPaddleBaseURL, "https://x")
-	t.Setenv(envPaddleAPIKey, "k")
-	t.Setenv(envPaddleAPISecret, "s")
-	p, err := newPaddleRefunder()
+func TestPaymentHubRefunder_Refund_InputValidation(t *testing.T) {
+	t.Setenv(envPaymentHubBaseURL, "https://x")
+	t.Setenv(envPaymentHubAPIKey, "k")
+	t.Setenv(envPaymentHubAPISecret, "s")
+	p, err := newPaymentHubRefunder()
 	require.NoError(t, err)
 
 	err = p.Refund(context.Background(), "", 100, "x")
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "empty paddle_order_id")
+	assert.Contains(t, err.Error(), "empty ext_order_id")
 
 	err = p.Refund(context.Background(), "pdle_1", 0, "x")
 	require.Error(t, err)
@@ -96,10 +96,10 @@ func TestApologyPayload_WireShape(t *testing.T) {
 	p := apologyPayload{
 		OrderID:           "v_1",
 		UserEmail:         "u@example.com",
-		PaddleOrderID:     "pdle_1",
+		ExtOrderID:     "pdle_1",
 		RefundAmountCents: 19900,
 		Currency:          "CNY",
-		FailureReason:     "paddle 5xx",
+		FailureReason:     "paymenthub 5xx",
 		EnqueuedAt:        "2026-05-17T10:00:00Z",
 	}
 	b, err := defaultJSONMarshal(p)
@@ -108,10 +108,10 @@ func TestApologyPayload_WireShape(t *testing.T) {
 	for _, want := range []string{
 		`"order_id":"v_1"`,
 		`"user_email":"u@example.com"`,
-		`"paddle_order_id":"pdle_1"`,
+		`"ext_order_id":"pdle_1"`,
 		`"refund_amount_cents":19900`,
 		`"currency":"CNY"`,
-		`"failure_reason":"paddle 5xx"`,
+		`"failure_reason":"paymenthub 5xx"`,
 		`"enqueued_at":"2026-05-17T10:00:00Z"`,
 	} {
 		assert.Contains(t, s, want, "wire shape regression on %q", want)
@@ -188,7 +188,7 @@ func sampleApologyOrder() *refund.Order {
 		ID:            "v_1",
 		OwnerID:       "u_1",
 		UserEmail:     "u_1@example.com",
-		PaddleOrderID: "pdle_v_1",
+		ExtOrderID: "pdle_v_1",
 		PriceCNYYuan:  199.0,
 		Currency:      "CNY",
 	}

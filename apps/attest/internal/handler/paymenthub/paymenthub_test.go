@@ -1,4 +1,4 @@
-package paddle
+package paymenthub
 
 import (
 	"bytes"
@@ -30,11 +30,11 @@ type fakeLookup struct {
 	gotInput string
 }
 
-func (f *fakeLookup) LookupByPaddleOrderID(_ context.Context, paddleOrderID string) (string, string, error) {
+func (f *fakeLookup) LookupByExtOrderID(_ context.Context, extOrderID string) (string, string, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.called++
-	f.gotInput = paddleOrderID
+	f.gotInput = extOrderID
 	return f.orderID, f.status, f.err
 }
 
@@ -92,7 +92,7 @@ func newHandler(t *testing.T, lookup OrderLookup, orders OrderStatusUpdater, rdb
 
 func doRequest(t *testing.T, h *Handler, method string, body []byte, hdr http.Header) *httptest.ResponseRecorder {
 	t.Helper()
-	req := httptest.NewRequest(method, "/webhooks/paddle", bytes.NewReader(body))
+	req := httptest.NewRequest(method, "/webhooks/paymenthub", bytes.NewReader(body))
 	if hdr != nil {
 		for k, vv := range hdr {
 			for _, v := range vv {
@@ -115,10 +115,10 @@ func signedHeaders(t *testing.T, body []byte, ts time.Time) http.Header {
 	}
 }
 
-func refundBody(eventType, eventID, paddleOrderID string) []byte {
+func refundBody(eventType, eventID, extOrderID string) []byte {
 	return []byte(fmt.Sprintf(
-		`{"event_id":%q,"event_type":%q,"data":{"paddle_order_id":%q}}`,
-		eventID, eventType, paddleOrderID,
+		`{"event_id":%q,"event_type":%q,"data":{"ext_order_id":%q}}`,
+		eventID, eventType, extOrderID,
 	))
 }
 
@@ -203,8 +203,8 @@ func TestServeHTTP_UpdateStatusFailsEnqueuesRetry(t *testing.T) {
 	if got["order_id"] != "v_abc" {
 		t.Errorf("order_id: %v", got["order_id"])
 	}
-	if got["paddle_event_id"] != "evt_x" {
-		t.Errorf("paddle_event_id: %v", got["paddle_event_id"])
+	if got["ext_event_id"] != "evt_x" {
+		t.Errorf("ext_event_id: %v", got["ext_event_id"])
 	}
 	if got["attempt"] != "1" {
 		t.Errorf("attempt: %v", got["attempt"])
@@ -319,7 +319,7 @@ func TestServeHTTP_UnknownEventType(t *testing.T) {
 	mr, rdb := newRedis(t)
 	h := newHandler(t, lookup, orders, rdb, now)
 
-	body := []byte(`{"event_id":"evt","event_type":"transaction.created","data":{"paddle_order_id":"pad"}}`)
+	body := []byte(`{"event_id":"evt","event_type":"transaction.created","data":{"ext_order_id":"pad"}}`)
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
 
 	if rec.Code != http.StatusOK {
@@ -333,7 +333,7 @@ func TestServeHTTP_UnknownEventType(t *testing.T) {
 	}
 }
 
-func TestServeHTTP_UnknownPaddleOrderID(t *testing.T) {
+func TestServeHTTP_UnknownExtOrderID(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{err: ErrOrderNotFound}
 	orders := &fakeOrders{}
@@ -354,7 +354,7 @@ func TestServeHTTP_UnknownPaddleOrderID(t *testing.T) {
 	}
 }
 
-func TestServeHTTP_MissingPaddleOrderID(t *testing.T) {
+func TestServeHTTP_MissingExtOrderID(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{}
 	orders := &fakeOrders{}
@@ -368,10 +368,10 @@ func TestServeHTTP_MissingPaddleOrderID(t *testing.T) {
 		t.Fatalf("status: got %d want 200", rec.Code)
 	}
 	if lookup.called != 0 {
-		t.Fatalf("must not look up when paddle_order_id is empty")
+		t.Fatalf("must not look up when ext_order_id is empty")
 	}
 	if mr.Exists(RefundRetryStream) {
-		t.Fatalf("must not enqueue when paddle_order_id is empty")
+		t.Fatalf("must not enqueue when ext_order_id is empty")
 	}
 }
 
@@ -468,7 +468,7 @@ func TestHandler_LoggerDefaultsAndNowDefaults(t *testing.T) {
 	mac.Write(body)
 	sig := hex.EncodeToString(mac.Sum(nil))
 
-	req := httptest.NewRequest(http.MethodPost, "/webhooks/paddle", bytes.NewReader(body))
+	req := httptest.NewRequest(http.MethodPost, "/webhooks/paymenthub", bytes.NewReader(body))
 	req.Header.Set("X-Webhook-Timestamp", ts)
 	req.Header.Set("X-Webhook-Signature", sig)
 	rec := httptest.NewRecorder()

@@ -101,7 +101,7 @@ func main() {
 
 	// Refund-on-failure hand-off (D5). When the Redis addr is unset the
 	// worker still runs — recordFailure just skips the enqueue. Same
-	// fail-open posture as the Paddle webhook on cmd/server.
+	// fail-open posture as the PaymentHub webhook on cmd/server.
 	var refundEnq selfverify.RefundEnqueuer
 	if addr := strings.TrimSpace(cfg.RedisAddr); addr != "" {
 		rdb := redis.NewClient(&redis.Options{

@@ -888,8 +888,8 @@ paths:
       summary: 创建 Verdict 订单
       operationId: createVerdictOrder
       description: |
-        创建订单 → 返回 Paddle checkout URL(用户跳转支付)。
-        支付完成由 Paddle webhook → `verdict_order(status=paid)` → 进入 generation queue。
+        创建订单 → 返回 聚合支付 checkout URL(用户跳转支付)。
+        支付完成由 聚合支付 webhook → `verdict_order(status=paid)` → 进入 generation queue。
         状态机:`pending → paid → generating → delivered`(成功)或
         `pending → paid → generating → failed → refunded`(D5 兑底)或
         `... → refund_failed`(D5 兑底失败,P0 告警 + admin dashboard)。
@@ -901,7 +901,7 @@ paths:
               $ref: '#/components/schemas/CreateVerdictOrderRequest'
       responses:
         '201':
-          description: 订单创建成功 + Paddle checkout URL
+          description: 订单创建成功 + 聚合支付 checkout URL
           content:
             application/json:
               schema:
@@ -1148,7 +1148,7 @@ paths:
               $ref: '#/components/schemas/CreateComplianceSubscriptionRequest'
       responses:
         '201':
-          description: 创建成功 + Paddle checkout URL
+          description: 创建成功 + 聚合支付 checkout URL
           content:
             application/json:
               schema:
@@ -1473,13 +1473,13 @@ components:
       description: |
         Core REST API 鉴权 — `Authorization: Bearer idc_live_xxx`。
         与 ApiKeyHeader 二选一(同一 key)。
-    PaddleWebhookSignature:
+    PaymentHubWebhookSignature:
       type: apiKey
       in: header
-      name: Paddle-Signature
+      name: X-Webhook-Signature
       description: |
-        Paddle webhook 签名(Paddle 服务端 → idcd 服务端,**反向接收**)。
-        校验算法见 Paddle 官方文档;本规范不暴露 webhook 接收端 path。
+        聚合支付 webhook 签名(聚合支付服务商 → idcd 服务端,**反向接收**)。
+        校验算法见 packages/payment-go-sdk;本规范不暴露 webhook 接收端 path。
     IdcdWebhookSignature:
       type: apiKey
       in: header
@@ -2552,13 +2552,13 @@ components:
               type: object
               properties:
                 order: { $ref: '#/components/schemas/VerdictOrder' }
-                paddle_checkout_url:
+                checkout_url:
                   type: string
                   format: uri
                   description: |
-                    跳转 Paddle Checkout 完成支付;支付成功 Paddle webhook 触发 generation。
+                    跳转聚合支付 checkout 完成支付;支付成功 聚合支付 webhook 触发 generation。
                     URL 有效期 24 小时;过期需重新创建订单。
-                  example: https://pay.paddle.com/checkout/xyz
+                  example: https://pay.example.com/checkout/xyz
 
     VerdictOrder:
       type: object
@@ -2575,16 +2575,16 @@ components:
           description: |
             订单状态机(D4 + D5):
             - `pending` 待支付(刚创建)
-            - `paid` 已支付(Paddle webhook 确认)
+            - `paid` 已支付(聚合支付 webhook 确认)
             - `generating` 报告生成中(WAL 走 attestation_record)
             - `delivered` 报告已交付(self_verify 通过)
             - `failed` 生成失败(任一 step DLQ 或 self_verify 失败)
             - `refunded` 已退款(D5 自动 retry 成功 或 人工手动)
-            - **`refund_failed`** — D5 兜底失败状态:Paddle refund 30min retry 全失败,
+            - **`refund_failed`** — D5 兜底失败状态:聚合支付 refund 30min retry 全失败,
               进入 admin dashboard 等待人工处理;P0 告警创始人(7×24)。
         price_cny: { type: number, example: 299 }
-        price_paid_cny: { type: number, description: 实收(Paddle 扣费后) }
-        paddle_order_id: { type: string }
+        price_paid_cny: { type: number, description: 实收(支付通道扣费后) }
+        ext_order_id: { type: string }
         refund_reason: { type: string, nullable: true }
         refund_attempt_count:
           type: integer
@@ -2943,7 +2943,7 @@ components:
         free_verdict_count: { type: integer }
         free_verdict_used: { type: integer }
         price_cny: { type: number }
-        paddle_subscription_id: { type: string }
+        ext_subscription_id: { type: string }
         created_at: { type: string, format: date-time }
         canceled_at: { type: string, format: date-time, nullable: true }
 
@@ -2956,10 +2956,10 @@ components:
               type: object
               properties:
                 subscription: { $ref: '#/components/schemas/ComplianceSubscription' }
-                paddle_checkout_url:
+                checkout_url:
                   type: string
                   format: uri
-                  description: 跳 Paddle 完成支付
+                  description: 跳聚合支付 checkout 完成支付
 
     ComplianceReport:
       type: object

@@ -32,7 +32,7 @@ const (
 	QueueBilling = "billing"
 
 	// RefundRetryFirstDelay is the delay for the first automatic retry after
-	// a Paddle refund.failed webhook (D5: 5 minutes).
+	// a PaymentHub refund.failed webhook (D5: 5 minutes).
 	RefundRetryFirstDelay = 5 * time.Minute
 
 	// RefundRetrySecondDelay is the delay for the second automatic retry after
@@ -53,7 +53,7 @@ const (
 
 // RefundRetryPayload is the asynq payload for a refund retry task.
 //
-// The notifier worker consumes this payload, calls the Paddle Refund API,
+// The notifier worker consumes this payload, calls the PaymentHub Refund API,
 // updates the payment status, and either re-schedules another retry or
 // triggers the apology email + admin dashboard escalation.
 type RefundRetryPayload struct {
@@ -102,9 +102,9 @@ func NewAdminBillingHandler(pool BillingPool) *AdminBillingHandler {
 
 // WithEnqueuer wires a BillingEnqueuer used by RetryRefund.  When wired,
 // RetryRefund schedules an immediate asynq task instead of mutating the
-// payment row directly — this ensures the Paddle Refund API is actually
+// payment row directly — this ensures the PaymentHub Refund API is actually
 // called (D5 fix: previously the admin button set status='refunded' without
-// hitting Paddle, causing ledger divergence).
+// hitting PaymentHub, causing ledger divergence).
 func (h *AdminBillingHandler) WithEnqueuer(enq BillingEnqueuer) *AdminBillingHandler {
 	h.enqueuer = enq
 	return h
@@ -197,9 +197,9 @@ type RetryRefundResponse struct {
 // RetryRefund handles POST /v1/admin/refund-failed/:id/retry.
 //
 // D5 fix: instead of directly mutating payment.status='refunded' (which
-// previously created a ledger drift because Paddle was never re-called),
+// previously created a ledger drift because PaymentHub was never re-called),
 // this handler enqueues an immediate asynq task that the notifier worker
-// processes — the worker actually calls Paddle Refund API and updates DB
+// processes — the worker actually calls PaymentHub Refund API and updates DB
 // only after a successful provider response.
 //
 // When no BillingEnqueuer is wired (legacy/tests without a Redis-backed
@@ -272,7 +272,7 @@ func (h *AdminBillingHandler) RetryRefund(w http.ResponseWriter, r *http.Request
 	}
 
 	// Preferred path: enqueue an immediate asynq task.  The notifier worker
-	// will call Paddle Refund and update payment status only after a
+	// will call PaymentHub Refund and update payment status only after a
 	// successful provider response.
 	if h.enqueuer != nil {
 		if err := h.enqueuer.EnqueueRefundRetry(ctx, payload, 0); err != nil {

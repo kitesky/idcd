@@ -788,7 +788,7 @@ CREATE INDEX idx_subscription_renewal ON subscription(current_period_end) WHERE 
 CREATE TABLE payment_method (
   id              text PRIMARY KEY,
   owner_id        text NOT NULL,
-  type            text NOT NULL CHECK (type IN ('wechat','alipay','paddle','stripe','bank')),
+  type            text NOT NULL CHECK (type IN ('wechat','alipay','bank')),
   external_id     text,
   display         text,
   is_default      boolean DEFAULT false,
@@ -1140,11 +1140,11 @@ CREATE TABLE verdict_order (
   time_window_end    timestamptz NOT NULL,
   status          text NOT NULL,                            -- pending|paid|generating|delivered|failed|refunded|refund_failed
   price_cny       numeric(10,2) NOT NULL,
-  price_paid_cny  numeric(10,2),                            -- 实收(Paddle 扣费后)
-  paddle_order_id text,                                     -- 关联 09 order
+  price_paid_cny  numeric(10,2),                            -- 实收(支付通道扣费后)
+  ext_order_id text,                                     -- 关联 09 order
   refund_reason   text,
   refund_attempt_count int NOT NULL DEFAULT 0,              -- v2 D5: refund retry queue 累计次数
-  refund_last_error text,                                   -- v2 D5: 最后一次 refund 失败原因(Paddle 风控 / 网络 等)
+  refund_last_error text,                                   -- v2 D5: 最后一次 refund 失败原因(支付通道风控 / 网络 等)
   refund_apology_sent_at timestamptz,                       -- v2 D5: 道歉邮箱发送时间(30min 失败兜底)
   created_at      timestamptz NOT NULL DEFAULT now(),
   paid_at         timestamptz,
@@ -1386,7 +1386,7 @@ CREATE TABLE compliance_subscription (
   free_verdict_count int DEFAULT 0,                         -- Pro 含 5 份 / Enterprise 不限
   free_verdict_used  int DEFAULT 0,
   price_cny       numeric(10,2),
-  paddle_subscription_id text,
+  ,
   created_at      timestamptz NOT NULL DEFAULT now(),
   canceled_at     timestamptz
 );

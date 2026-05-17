@@ -10,16 +10,16 @@ import (
 
 // refundInitiateStream is the Redis Stream the Refund Worker consumes
 // when Self-Verify catches a bad PDF. Distinct from refund_retry_queue
-// (Paddle webhook side, used when an outbound refund call fails); this
+// (PaymentHub webhook side, used when an outbound refund call fails); this
 // one INITIATES the refund flow.
 //
-// The consumer is apps/attest/cmd/refund-worker. It calls the Paddle
+// The consumer is apps/attest/cmd/refund-worker. It calls the PaymentHub
 // refund API, persists outcomes on verdict_order, and drives the D5
 // 5min / 30min retry ladder via a shared delay-zone ZSET.
 const refundInitiateStream = "refund_initiate_queue"
 
 // redisRefundEnqueuer satisfies selfverify.RefundEnqueuer. Each call
-// XAdds one entry; the Refund Worker drains the stream and calls Paddle.
+// XAdds one entry; the Refund Worker drains the stream and calls PaymentHub.
 type redisRefundEnqueuer struct {
 	rdb    redisXAdder
 	stream string

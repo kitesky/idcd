@@ -28,7 +28,7 @@ type PaymentHubConfig struct {
 	APISecret     string
 	WebhookSecret string
 	// Channel is the default channel when the user does not specify one:
-	// "alipay", "wechat_pay", or "paddle".
+	// "alipay", "wechat_pay", or "paymenthub".
 	Channel string
 	// Currency is ISO 4217, e.g. "CNY" or "USD".
 	Currency string
@@ -135,7 +135,7 @@ func (p *PaymentHubProvider) Subscribe(ctx context.Context, req SubscribeRequest
 
 // Cancel implements Provider.
 // The payment platform does not expose a public subscription-cancel endpoint;
-// Paddle subscriptions are cancelled via Paddle's customer portal. The DB state
+// PaymentHub subscriptions are cancelled via PaymentHub's customer portal. The DB state
 // is updated when the subscription.cancelled webhook arrives.
 func (p *PaymentHubProvider) Cancel(_ context.Context, _ CancelRequest) error {
 	return nil
@@ -386,7 +386,7 @@ func channelWebMethod(channel string) string {
 		return "page" // PC 扫码/跳转页面
 	case ChannelWeChatPay:
 		return "native" // 生成二维码
-	case ChannelPaddle:
+	case ChannelPaymentHub:
 		return "checkout"
 	default:
 		return ""
@@ -400,7 +400,7 @@ func extractPayURL(payData map[string]any) string {
 		return ""
 	}
 	candidates := []string{
-		"checkout_url", // Paddle
+		"checkout_url", // PaymentHub
 		"pay_url",
 		"code_url",     // WeChat Native (QR code)
 		"h5_url",       // WeChat H5

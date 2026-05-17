@@ -34,13 +34,13 @@
 ```mermaid
 stateDiagram-v2
     [*] --> pending: 用户创建订单(/v1/verdict/orders)
-    pending --> paid: Paddle webhook 校验通过
+    pending --> paid: 聚合支付 webhook 校验通过
     pending --> [*]: 用户取消未支付订单
     paid --> generating: Generator Worker 拉 task
     generating --> delivered: 全 step 成功 + Self-Verify pass
     generating --> failed: 任一 step 3 次重试失败 / Self-Verify fail
-    failed --> refunded: Paddle refund API 成功
-    failed --> refund_failed: Paddle refund retry 3 次失败(45min)
+    failed --> refunded: 聚合支付 refund API 成功
+    failed --> refund_failed: 聚合支付 refund retry 3 次失败(45min)
     refund_failed --> refunded: 创始人手动 refund 成功
     refunded --> [*]
     delivered --> [*]
@@ -50,18 +50,18 @@ stateDiagram-v2
 
 | From | To | Trigger | Side Effect | SLA / Retry |
 |---|---|---|---|---|
-| `pending` | `paid` | Paddle webhook 签名校验通过(`paddle_order_id` idempotent) | 入 `verdict_generation_queue`(Redis Stream, idempotency by `order_id`);写 `paid_at` | Paddle webhook 自带重试 6 次 |
+| `pending` | `paid` | 聚合支付 webhook 签名校验通过(`ext_order_id` idempotent) | 入 `verdict_generation_queue`(Redis Stream, idempotency by `order_id`);写 `paid_at` | 聚合支付 webhook 自带重试 6 次 |
 | `pending` | (terminal) | 用户主动取消;30 天未支付自动清理 | 订单关闭 | — |
 | `paid` | `generating` | Generator Worker 拉 task | `verdict_order.status='generating'`;每 step 前查 `attestation_record` 走 WAL replay(D4) | 立即(< 5s) |
 | `generating` | `delivered` | Self-Verify Worker(独立进程)`/verify` 接口返回 valid → 写 `attestation_record(action=self_verified, status=success)` | 邮件 + 站内 + 可选 webhook;写 `delivered_at`;PDF 永久可下载 | P95 < 90s,P99 < 5min |
 | `generating` | `failed` | 任一 step 3 次重试失败 / Self-Verify `status=failure` → 入 DLQ | 写 `failed_at`;触发 Refund Worker;系统性聚合 ≥5/h → P0 创始人 | 5min DLQ 告警 |
-| `failed` | `refunded` | Paddle refund API 成功(可在 attempt 1/2/3 任一成功) | 写 `refunded_at`;通知用户(若 ≥ T+15min 已发道歉邮箱 → 二次成功通知) | T+0 / T+5min / T+45min |
-| `failed` | `refund_failed` | Paddle refund retry 3 次失败(`refund_attempt_count=3`,T+45min) | `refund_last_error` 记录 Paddle 风控原因;P0 告警创始人手机 7×24;入 admin dashboard `refund_failed` 队列;**T+15min 道歉邮箱已发** | 45min 上限 |
-| `refund_failed` | `refunded` | 创始人手动 refund(联系 Paddle 支持 / 手动银行转账) | 二次通知用户;入 audit_log + 月度 Verdict 健康月报 | 24h 人工 SLA |
+| `failed` | `refunded` | 聚合支付 refund API 成功(可在 attempt 1/2/3 任一成功) | 写 `refunded_at`;通知用户(若 ≥ T+15min 已发道歉邮箱 → 二次成功通知) | T+0 / T+5min / T+45min |
+| `failed` | `refund_failed` | 聚合支付 refund retry 3 次失败(`refund_attempt_count=3`,T+45min) | `refund_last_error` 记录 支付通道风控原因;P0 告警创始人手机 7×24;入 admin dashboard `refund_failed` 队列;**T+15min 道歉邮箱已发** | 45min 上限 |
+| `refund_failed` | `refunded` | 创始人手动 refund(联系支付通道客服 / 手动银行转账) | 二次通知用户;入 audit_log + 月度 Verdict 健康月报 | 24h 人工 SLA |
 
 ### 1.3 边缘 case
 
-- **Webhook 重发**:Paddle 多次发 webhook,按 `paddle_order_id` 唯一约束 idempotent 处理。
+- **Webhook 重发**:聚合支付服务商多次发 webhook,按 `ext_order_id` 唯一约束 idempotent 处理。
 - **Worker crash mid-step**:依靠 `attestation_record` WAL(UNIQUE(report_id, action))。重启后:
   ```sql
   SELECT action FROM attestation_record
@@ -296,7 +296,7 @@ stateDiagram-v2
 ```mermaid
 stateDiagram-v2
     [*] --> attempt_1: verdict_order.status=failed,Refund Worker 启动(T+0)
-    attempt_1 --> refunded: Paddle refund API success
+    attempt_1 --> refunded: 聚合支付 refund API success
     attempt_1 --> wait_5min: API failure,attempt_count=1
     wait_5min --> attempt_2: 5min 等待结束
     attempt_2 --> refunded: success
@@ -308,7 +308,7 @@ stateDiagram-v2
     attempt_3 --> refund_failed: failure,attempt_count=3
     refund_failed --> p0_alert: P0 告警创始人手机 7×24
     p0_alert --> manual_review: 创始人 1h 内响应
-    manual_review --> refunded: 联系 Paddle / 手动银行转账成功
+    manual_review --> refunded: 联系聚合服务商 / 手动银行转账成功
     manual_review --> refund_failed: 保留状态 + 入 audit_log(罕见)
     refunded --> [*]
 ```
@@ -317,11 +317,11 @@ stateDiagram-v2
 
 | T | 动作 | 用户感知 |
 |---|---|---|
-| T+0 | `failed` 状态,Refund Worker 启动;`attempt_1` Paddle refund API | (无,系统内部)|
+| T+0 | `failed` 状态,Refund Worker 启动;`attempt_1` 聚合支付 refund API | (无,系统内部)|
 | T+5min | 若失败 → `attempt_2` | (无)|
 | **T+15min** | **强制道歉邮箱**(无论 refund 是否成功)| 用户收信:"由于 [失败类别] 无法生成报告,已发起全额退款 ¥XXX。若 1-3 工作日内未到账,请回复此邮件,我们手动处理。" |
 | T+45min | `attempt_3` → 若失败 → `refund_failed` + P0 告警创始人手机 | 用户已知情(道歉信已发);后台告警仅运营 |
-| T+1-24h | 创始人手动处理(联系 Paddle / 手动银行转账)| 退款到账后二次通知 |
+| T+1-24h | 创始人手动处理(联系聚合服务商 / 手动银行转账)| 退款到账后二次通知 |
 
 ### 5.3 关键约束
 
@@ -535,8 +535,8 @@ stateDiagram-v2
 
 | 类别 | 触发条件 | SLA | 处理方 | 处理路径 |
 |---|---|---|---|---|
-| **A:纯自动** | Generator 3 次重试失败 / Self-Verify failure | **30min 内自动**:Paddle refund + 道歉邮箱(无需人工)| Refund Worker(无人工)| 详 §5 Refund Retry |
-| **B:Refund 失败** | Paddle refund retry 3 次失败 → `refund_failed` | 道歉邮箱已发 + admin dashboard 入队 + P0 告警 | 创始人手动联系 Paddle / 银行 | 24h 人工处理 |
+| **A:纯自动** | Generator 3 次重试失败 / Self-Verify failure | **30min 内自动**:聚合支付 refund + 道歉邮箱(无需人工)| Refund Worker(无人工)| 详 §5 Refund Retry |
+| **B:Refund 失败** | 聚合支付 refund retry 3 次失败 → `refund_failed` | 道歉邮箱已发 + admin dashboard 入队 + P0 告警 | 创始人手动联系聚合服务商客服 / 银行 | 24h 人工处理 |
 | **C:1h P0 本人响应** | KMS 怀疑泄露 / 节点失窃 / Backup HSM 异常 / 系统性失败(≥5 失败/小时)| **1h 内创始人响应**(手机告警 7×24)| 创始人本人 | 走 11 §15.5(KMS)/ 12 §20(KMS 应急)/ 12 §21(节点失窃)SOP |
 | **D:24h 常规客服** | 用户自助退款被拒 / 用户报障 / 申诉 / 一般咨询 | 24h 内(出差/假期都可)| Operator / 创始人邮件批处理 | /support/tickets 批处理;出差前预先回复"24h 响应"自动回复 |
 

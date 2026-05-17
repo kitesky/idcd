@@ -4,7 +4,7 @@
 // The notifier's worker handler depends on three interfaces (defined in
 // apps/notifier/internal/worker/handlers.go):
 //
-//   - PaymentRefunder     — call Paddle's refund API.
+//   - PaymentRefunder     — call PaymentHub's refund API.
 //   - PaymentStore        — persist the post-refund payment state.
 //   - RefundRetryEnqueuer — schedule the next retry attempt with a delay.
 //
@@ -44,36 +44,36 @@ const BillingQueue = "billing"
 // PaymentRefunder adapter — wraps packages/payment-go-sdk.
 // ---------------------------------------------------------------------------
 
-// PaddleRefunder calls the payment aggregation platform's refund endpoint.
+// PaymentHubRefunder calls the payment aggregation platform's refund endpoint.
 // It implements worker.PaymentRefunder.
 //
 // The same SDK + signing flow is used by apps/api/internal/billing.
 // PaymentHubProvider.RefundPayment; we re-implement just the one method here
 // instead of importing that internal package.
-type PaddleRefunder struct {
+type PaymentHubRefunder struct {
 	client payment.ClientInterface
 }
 
-// NewPaddleRefunder builds a PaddleRefunder against the platform identified
+// NewPaymentHubRefunder builds a PaymentHubRefunder against the platform identified
 // by baseURL with the given credentials. Retry behaviour mirrors the
 // api-side PaymentHubProvider (2 retries, 500ms initial delay).
-func NewPaddleRefunder(baseURL, apiKey, apiSecret string) *PaddleRefunder {
+func NewPaymentHubRefunder(baseURL, apiKey, apiSecret string) *PaymentHubRefunder {
 	c := payment.New(baseURL,
 		payment.WithAPIKey(apiKey),
 		payment.WithAPISecret(apiSecret),
 		payment.WithRetry(2, 500*time.Millisecond),
 	)
-	return &PaddleRefunder{client: c}
+	return &PaymentHubRefunder{client: c}
 }
 
-// NewPaddleRefunderWithClient is used in tests to inject a mock SDK client.
-func NewPaddleRefunderWithClient(c payment.ClientInterface) *PaddleRefunder {
-	return &PaddleRefunder{client: c}
+// NewPaymentHubRefunderWithClient is used in tests to inject a mock SDK client.
+func NewPaymentHubRefunderWithClient(c payment.ClientInterface) *PaymentHubRefunder {
+	return &PaymentHubRefunder{client: c}
 }
 
 // RefundPayment issues a refund against the payment platform.
 // extTxnID is the platform's OrderNo recorded on the original payment row.
-func (r *PaddleRefunder) RefundPayment(ctx context.Context, extTxnID string, amountCents int64, reason string) error {
+func (r *PaymentHubRefunder) RefundPayment(ctx context.Context, extTxnID string, amountCents int64, reason string) error {
 	if extTxnID == "" {
 		return errors.New("notifier/billing: RefundPayment: ext_txn_id is required")
 	}
@@ -94,7 +94,7 @@ func (r *PaddleRefunder) RefundPayment(ctx context.Context, extTxnID string, amo
 }
 
 // Compile-time interface check.
-var _ worker.PaymentRefunder = (*PaddleRefunder)(nil)
+var _ worker.PaymentRefunder = (*PaymentHubRefunder)(nil)
 
 // ---------------------------------------------------------------------------
 // PaymentStore adapter — direct SQL via pgxpool.
@@ -116,7 +116,7 @@ func NewPgPaymentStore(pool *pgxpool.Pool) *PgPaymentStore {
 }
 
 // MarkRefunded transitions the payment row to status='refunded'.
-// Called when the Paddle refund call finally succeeds during a retry.
+// Called when the PaymentHub refund call finally succeeds during a retry.
 func (s *PgPaymentStore) MarkRefunded(ctx context.Context, paymentID string) error {
 	if paymentID == "" {
 		return errors.New("notifier/billing: MarkRefunded: payment_id is required")

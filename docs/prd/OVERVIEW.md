@@ -398,7 +398,7 @@ idcd 是**三栈叠加**的产品阵型，不是单一品类的"另一个监控 
 | **Verdict 报告**(签名 + RFC3161 + 多节点交叉) | P0 | S2 | 4 个场景模板:SLA / 故障取证 / 合规自证 / 争议取证 |
 | **attestation_record 充 WAL + step-level idempotency** | P0 | S2 | **CRITICAL GAP 闭合(v2 D4)**:每 step 写 success+external_id+idempotency_key;Worker crash 续跑无重复 sign |
 | **Self-Verify Worker 独立部署** | P0 | S2 | **CRITICAL GAP 闭合(v2 D6)**:独立进程 / 独立 VPC subnet / 独立 KMS 客户端实例 / 仅调 verify 公开接口 |
-| **Refund retry queue + 30min 道歉邮箱** | P0 | S2 | **CRITICAL GAP 闭合(v2 D5)**:Paddle refund 失败 retry(5min/30min);30min 强制道歉邮箱;refund_failed 状态入 admin dashboard + P0 告警 |
+| **Refund retry queue + 30min 道歉邮箱** | P0 | S2 | **CRITICAL GAP 闭合(v2 D5)**:聚合支付 refund 失败 retry(5min/30min);30min 强制道歉邮箱;refund_failed 状态入 admin dashboard + P0 告警 |
 | 公开验签接口 attest.idcd.com/verify | P0 | S2 | 任意第三方上传 PDF 验签,不需登录;**revoke 期间仍可用**(已发报告永久可验签) |
 | Verify 接口返回 report_type=observation_only | P0 | S2 | v2 D-Concern1:第三方解析时知"一手观测数据,非鉴定结论" |
 | 报告 PDF + PAdES 签名嵌入 | P0 | S2 | 内嵌时间戳的标准格式;PAdES B-T 默认,S3 评估升 B-LT |
@@ -577,7 +577,7 @@ docs.mcp.idcd.com            **v2 NEW(D3): MCP 文档站独立子域(Cloudflare 
 **交付物**：
 - 全套监控类型 + 多通道告警（微信/钉钉/飞书/邮件/Webhook/Telegram）
 - 状态页托管（免费档带水印 + Pro 起去水印 + 自定义域名 CNAME）
-- 订阅档位 + **Paddle MoR 主通道（含微信/支付宝 via Paddle）** + 电子发票
+- 订阅档位 + **聚合支付 主通道（含微信/支付宝 ）** + 电子发票
 - API beta 开放（限量内测）
 - 管理后台 + 数据看板
 
@@ -700,7 +700,7 @@ docs.mcp.idcd.com            **v2 NEW(D3): MCP 文档站独立子域(Cloudflare 
 | 节点成本失控 | 烧钱不可持续 | 节点利用率监控、按区域裁剪 |
 | 付费转化低 | MRR 不增长 | 免费额度精算 + 关键告警入口设计 |
 | 竞品价格战 | 利润压缩 | 差异化（API、一键诊断、报告） |
-| **v2 NEW: Verdict 付费失败 = 品牌灾难** | 用户付 ¥299 拿不到报告 → 社交媒体发贴 | **CRITICAL GAP 闭合(D4/D5/D6)**:attestation_record WAL + Paddle refund retry + 30min 道歉邮箱 + Self-Verify 独立部署;S2 上线前 staging 演示 |
+| **v2 NEW: Verdict 付费失败 = 品牌灾难** | 用户付 ¥299 拿不到报告 → 社交媒体发贴 | **CRITICAL GAP 闭合(D4/D5/D6)**:attestation_record WAL + 聚合支付 refund retry + 30min 道歉邮箱 + Self-Verify 独立部署;S2 上线前 staging 演示 |
 | **v2 NEW: KMS sign key 失窃** | 信任根失守 = 公司死亡 | **D11 + Pre-4**:Shamir 3-of-5 12h 单路径(S2)+ Backup HSM 推迟 S4;S2 上线前必演练 12h 路径;revoke 期间 verify 接口仍可用;接受 SLA 滑至 24h+ 风险 |
 | **v2 NEW: MCP token 泄露(Cursor 配置被偷)** | 企业用户爆账单 | **D2**:所有 token 最长 90d 无永久;service 强制 IP 白名单;GitHub 扫描自动失活(D-Concern6) |
 | **v2 NEW: LLM 复盘幻觉/造谣/泄密** | 公开发声不可逆 | **D8/D9**:bootstrap 50 条 eval 数据集 + per-Provider eval ≥4.0;sanitize 禁用词字典;回流数据不发给 Provider train |
@@ -760,7 +760,7 @@ docs/prd/
 | 1 | **域名策略** | 单域名 idcd.com 走天下，中英双语同站（`/zh` `/en` 子路径，或按 Accept-Language 自动） | 信息架构、SEO、i18n、品牌 |
 | 2 | **首批节点** | 重起步：~100+ 节点（国内 30+ / 海外 70+） | 预算、上线节奏、节点系统设计 |
 | 3 | **众包节点** | S3 试点开放，仅作补充覆盖（家宽、冷门地区），不替代自有节点 | 节点架构需预留 Agent 开源 + 积分机制 |
-| 4 | **支付通道** | **Paddle 作为 MoR 主通道**（含微信/支付宝 via Paddle），经营性 ICP 暂不办；S3+ 视情况引入合作方代收。详见 DECISIONS.md §H1 | 计费模块、跨境收款、合规 |
+| 4 | **支付通道** | **聚合支付主通道**(微信支付/支付宝),经营性 ICP 暂不办;S3+ 视量再评估自建商户号。详见 DECISIONS.md §H1 | 计费模块、跨境收款、合规 |
 | 5 | **免费额度** | 宽松型：5 个监控 / 5min 频率 / 邮件告警 / 仅需验证邮箱 | 拉新策略、节点成本、转化漏斗 |
 | 6 | **状态页商业化** | 免费档可用但带 `Powered by idcd` 水印；Pro 起去水印 + 自定义域名（CNAME） | 状态页模块、定价档差异化 |
 | 7 | **企业版时机** | **S4（14 月+）才考虑**，S1–S3 完全不提，避免分散精力 | 路线图、首页内容、SEO 关键词、销售线索 |
@@ -776,7 +776,7 @@ docs/prd/
 | D2 | MCP token + 计量 | 所有 token 最长 90d auto_renewal 无永久;MCP units 与 API 配额完全独立池 | HIGH |
 | D3 | MCP 文档站 hosting | 独立子域 docs.mcp.idcd.com + 302 redirect | MEDIUM |
 | **D4** | **Verdict WAL 状态机** | **attestation_record 充 WAL + step idempotency + KMS idempotency token** | **CRITICAL** |
-| **D5** | **Paddle refund 兑底** | **refund retry queue(5min/30min)+ 30min 强制道歉邮箱 + refund_failed 状态** | **CRITICAL** |
+| **D5** | **聚合支付 refund 兑底** | **refund retry queue(5min/30min)+ 30min 强制道歉邮箱 + refund_failed 状态** | **CRITICAL** |
 | **D6** | **Self-verify 独立** | **独立进程 / 独立 VPC subnet / 独立 KMS 客户端 / 仅调 verify 公开接口** | **CRITICAL** |
 | D7 | 数据模型 3 修正 | 原子 UPDATE budget + session_id 索引 + 失败 case 7 天原 payload | MEDIUM |
 | D8 | LLM eval cold start | 30 公开事故 + 20 dogfood + 创始人手动标注 25h(S2 前完成) | HIGH |
@@ -823,7 +823,7 @@ docs/prd/
 - **第 7 章路线图 / S1**：首批节点目标改为 100+
 - **第 7 章路线图 / S4**：企业版完全推迟到 S4，S1–S3 不出现任何企业版功能
 - **第 4 章功能版图 / 4.5 状态页**：自定义域名标记为 Pro 起付费功能
-- **第 4 章功能版图 / 4.8 商业化**：Paddle MoR 作为主通道（含微信/支付宝 via Paddle）；经营性 ICP 暂不办
+- **第 4 章功能版图 / 4.8 商业化**：聚合支付 作为主通道（含微信/支付宝 ）；经营性 ICP 暂不办
 - **第 4 章功能版图 / 4.9 节点系统**：众包节点优先级保持 P2 / 阶段 S3
 
 ### v2.0 (2026-05-12) 增量同步修订

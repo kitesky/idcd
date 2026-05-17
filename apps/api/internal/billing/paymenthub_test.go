@@ -58,7 +58,7 @@ func defaultCfg() PaymentHubConfig {
 		APIKey:        "pk_test",
 		APISecret:     "sk_test",
 		WebhookSecret: "whsec_test",
-		Channel:       "paddle",
+		Channel:       "paymenthub",
 		Currency:      "CNY",
 	}
 }
@@ -86,12 +86,12 @@ func TestPaymentHubProvider_Name(t *testing.T) {
 
 func TestPaymentHubProvider_Subscribe_Success(t *testing.T) {
 	orderNo := "ORD20260115001"
-	checkoutURL := "https://checkout.paddle.com/xxx"
+	checkoutURL := "https://checkout.paymenthub.com/xxx"
 
 	mock := &mockPaymentClient{
 		createOrderFn: func(_ context.Context, req *payment.CreateOrderReq) (*payment.CreateOrderResp, error) {
-			assert.Equal(t, "paddle", req.Channel)
-			assert.Equal(t, "checkout", req.Method, "Paddle channel should auto-select checkout method")
+			assert.Equal(t, "paymenthub", req.Channel)
+			assert.Equal(t, "checkout", req.Method, "PaymentHub channel should auto-select checkout method")
 			assert.Equal(t, PlanPrice[PlanPro], req.Amount)
 			assert.Equal(t, "CNY", req.Currency)
 			assert.Equal(t, "u_123", req.Metadata["user_id"])
@@ -278,7 +278,7 @@ func TestPaymentHubProvider_ParseWebhook_RefundFailed(t *testing.T) {
 
 func TestPaymentHubProvider_ParseWebhook_SubscriptionCancelled(t *testing.T) {
 	data := payment.SubscriptionEventData{
-		SubscriptionID: "SUB_paddle_123",
+		SubscriptionID: "SUB_ext_123",
 		AppUserID:      "u_1",
 	}
 	body := buildWebhookBody(t, payment.EventSubscriptionCancelled, data)
@@ -289,7 +289,7 @@ func TestPaymentHubProvider_ParseWebhook_SubscriptionCancelled(t *testing.T) {
 
 	require.NoError(t, err)
 	assert.Equal(t, EventSubscriptionCancelled, evt.EventType)
-	assert.Equal(t, "SUB_paddle_123", evt.ExtSubID)
+	assert.Equal(t, "SUB_ext_123", evt.ExtSubID)
 	assert.Equal(t, "u_1", evt.UserID)
 	// SubscriptionID is empty because renewal-type events don't carry idcd DB key.
 	assert.Empty(t, evt.SubscriptionID)
@@ -346,7 +346,7 @@ func TestExtractPayURL(t *testing.T) {
 		expected string
 	}{
 		{"nil", nil, ""},
-		{"checkout_url", map[string]any{"checkout_url": "https://checkout.paddle.com/x"}, "https://checkout.paddle.com/x"},
+		{"checkout_url", map[string]any{"checkout_url": "https://checkout.paymenthub.com/x"}, "https://checkout.paymenthub.com/x"},
 		{"code_url", map[string]any{"code_url": "weixin://wxpay/..."}, "weixin://wxpay/..."},
 		{"empty value", map[string]any{"checkout_url": ""}, ""},
 		{"unknown key", map[string]any{"unknown": "https://x.com"}, ""},
@@ -439,12 +439,12 @@ func TestPaymentHubProvider_Subscribe_FallsBackToConfigChannel(t *testing.T) {
 			return &payment.CreateOrderResp{OrderNo: "ORD001", Status: "pending"}, nil
 		},
 	}
-	// defaultCfg has Channel = "paddle" → method should be "checkout".
+	// defaultCfg has Channel = "paymenthub" → method should be "checkout".
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
 
 	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
 	require.NoError(t, err)
-	assert.Equal(t, "paddle", gotChannel)
+	assert.Equal(t, "paymenthub", gotChannel)
 	assert.Equal(t, "checkout", gotMethod)
 }
 

@@ -23,7 +23,7 @@
 // records the reason. If a RefundEnqueuer is wired (Config.RefundEnqueuer
 // non-nil), the worker also enqueues a refund-initiate job for the
 // separate Refund Worker binary to consume (D5). The Refund Worker calls
-// Paddle's refund API; if that call itself fails, the Paddle webhook
+// PaymentHub's refund API; if that call itself fails, the PaymentHub webhook
 // flow's refund_retry_queue takes over the retry cadence.
 package selfverify
 

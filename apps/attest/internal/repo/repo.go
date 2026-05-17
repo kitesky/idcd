@@ -122,7 +122,7 @@ type Order struct {
 	Status              string
 	PriceCNY            float64
 	PricePaidCNY        *float64
-	PaddleOrderID       *string
+	ExtOrderID       *string
 	RefundReason        *string
 	RefundAttemptCount  int
 	RefundLastError     *string

@@ -287,7 +287,7 @@ func TestVerdictOrderHandler_Get_Owner(t *testing.T) {
 	rows := pgxmock.NewRows([]string{
 		"id", "owner_id", "template", "target",
 		"time_window_start", "time_window_end",
-		"status", "price_cny", "price_paid_cny", "paddle_order_id",
+		"status", "price_cny", "price_paid_cny", "ext_order_id",
 		"created_at", "paid_at", "delivered_at",
 	}).AddRow(
 		"v_001", "u_test_user", "sla", "example.com",
@@ -328,7 +328,7 @@ func TestVerdictOrderHandler_Get_NotOwner(t *testing.T) {
 	rows := pgxmock.NewRows([]string{
 		"id", "owner_id", "template", "target",
 		"time_window_start", "time_window_end",
-		"status", "price_cny", "price_paid_cny", "paddle_order_id",
+		"status", "price_cny", "price_paid_cny", "ext_order_id",
 		"created_at", "paid_at", "delivered_at",
 	}).AddRow(
 		"v_002", "u_other_user", "sla", "example.com",
@@ -359,7 +359,7 @@ func TestVerdictOrderHandler_Get_NotFound(t *testing.T) {
 	rows := pgxmock.NewRows([]string{
 		"id", "owner_id", "template", "target",
 		"time_window_start", "time_window_end",
-		"status", "price_cny", "price_paid_cny", "paddle_order_id",
+		"status", "price_cny", "price_paid_cny", "ext_order_id",
 		"created_at", "paid_at", "delivered_at",
 	})
 	mockPool.ExpectQuery(`SELECT .+ FROM idcd_attest\.verdict_order`).

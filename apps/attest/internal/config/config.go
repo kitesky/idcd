@@ -43,11 +43,11 @@ const (
 
 	envVerifyEndpoint = "ATTEST_VERIFY_ENDPOINT" // Self-Verify Worker target (D6)
 
-	envPaddleWebhookSecret = "ATTEST_PADDLE_WEBHOOK_SECRET" // HMAC secret for /webhooks/paddle
+	envPaymentHubWebhookSecret = "ATTEST_PAYMENT_HUB_WEBHOOK_SECRET" // HMAC secret for /webhooks/paymenthub
 
 	// D5 refund worker — Redis Stream wiring. Defaults match the producer
 	// constants in apps/attest/cmd/verifier/refund_enqueue.go and
-	// apps/attest/internal/handler/paddle/paddle.go so the consumer and
+	// apps/attest/internal/handler/paymenthub/paymenthub.go so the consumer and
 	// the two producers share keys without any further configuration.
 	envRefundInitiateStream = "ATTEST_REFUND_INITIATE_STREAM"
 	envRefundRetryStream    = "ATTEST_REFUND_RETRY_STREAM"
@@ -102,7 +102,7 @@ type Config struct {
 
 	VerifyEndpoint string // Self-Verify Worker only
 
-	PaddleWebhookSecret string // empty disables /webhooks/paddle (D5)
+	PaymentHubWebhookSecret string // empty disables /webhooks/paymenthub (D5)
 
 	// D5 refund worker (cmd/refund-worker only — verify-only / generator
 	// processes ignore these). DelayZoneKey is the Redis ZSET key
@@ -212,8 +212,8 @@ func Load() (*Config, error) {
 		cfg.VerifyEndpoint = v
 	}
 
-	if v := strings.TrimSpace(os.Getenv(envPaddleWebhookSecret)); v != "" {
-		cfg.PaddleWebhookSecret = v
+	if v := strings.TrimSpace(os.Getenv(envPaymentHubWebhookSecret)); v != "" {
+		cfg.PaymentHubWebhookSecret = v
 	}
 
 	if v := strings.TrimSpace(os.Getenv(envRefundInitiateStream)); v != "" {

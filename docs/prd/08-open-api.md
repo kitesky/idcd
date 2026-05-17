@@ -454,7 +454,7 @@ X-API-Key: idc_live_a1b2c3d4e5f6g7h8...
 ### 12a.1 下单与查询
 
 - `POST /v1/verdict/quote` — 预估价格 + 数据可用性预检
-- `POST /v1/verdict/orders` — 创建订单(返回 Paddle checkout url)
+- `POST /v1/verdict/orders` — 创建订单(返回 聚合支付 checkout url)
 - `GET  /v1/verdict/orders/<id>` — 订单状态(SSE 推进度可选)
 - `GET  /v1/verdict/reports/<id>` — 报告详情 + PDF 下载链接(签名 URL,1 小时有效)
 - `POST /v1/verdict/reports/<id>/share` — 生成分享 token(可设过期 / 密码)

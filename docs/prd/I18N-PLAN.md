@@ -589,7 +589,7 @@ export async function generateMetadata({ params }) {
 ### 4.3 支付 / 计费
 
 - Pricing 页货币按 locale 默认（cn→CNY，en→USD），UI 允许手动切换
-- 调用 Paddle SDK 时传 `locale: registry.bcp47Of(userLocale)`，Paddle 错误消息自动 i18n
+- 调用 payment-go-sdk 时传 `locale: registry.bcp47Of(userLocale)`，支付通道错误消息自动 i18n
 - Refund 邮件走 notifier 模板系统
 - 发票 PDF：S2 才做，先 placeholder
 

@@ -406,7 +406,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 - [x] **H2** 支付接口层（provider-agnostic stub，待接聚合支付）
   - `apps/api/internal/billing/`：`Provider` 接口 + `StubProvider`（内存模拟）
-  - `migration 00010`：paddle_* 字段迁移为通用 ext_* + payment_providers 配置表
+  - `migration 00010`：ext_* 字段迁移为通用 ext_* + payment_providers 配置表
   - billing API：POST /v1/billing/subscribe|cancel + GET subscription|invoices + webhook + stub-confirm
   - 22 provider tests + 25 handler tests（534 total ✓）
   - 接聚合支付只需实现 Provider 接口（Subscribe/Cancel/ParseWebhook/RefundPayment）
@@ -429,7 +429,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - *deps: D1, F3* | *完成 2026-05-14*
 
 - [x] **H5** 控制台计费 + 状态页界面
-  - `/app/billing`：定价对比表 4 档 + Paddle 占位 Alert + 空发票列表
+  - `/app/billing`：定价对比表 4 档 + 聚合支付占位 Alert + 空发票列表
   - `/app/status-pages`：列表 Card + 新建 Sheet + Free 升级 Dialog
   - `/app/usage`：4 个 Progress 卡片 + 7 天 CSS 柱状图
   - 20 tests ✓ | shadcn/ui 全组件
@@ -450,9 +450,9 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [-] 监控类型 M01-M08 可创建并正常拨测
 - [-] 至少 5 个告警通道可用（邮件+企微+钉钉+飞书+Webhook）
 - [x] 状态页可创建 + 自定义域 + ACME 自动证书
-- [-] Paddle 支付可完成订阅（测试环境验证）
+- [-] 聚合支付可完成订阅（测试环境验证）
 - [-] refund_failed 看板可查
-- [-] [👤] 海外公司主体注册完成（Paddle 收款主体）
+- [-] [👤] 
 - 目标指标：首笔商业订单 / MRR ¥10k+ / 付费用户 200+
 
 ---
@@ -616,7 +616,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 | 2026-05-13 | D1（Next.js 骨架）完成：App Router + shadcn/ui + packages/ui，15 tests ✓ | D2/D8 可启动 |
 | 2026-05-14 | D3（工具页 SSG 50+）完成：[slug] 动态路由 + tool-functions + SSE API，216 tests ✓ | A5/C3/C4 需人工操作 |
 | 2026-05-14 | F1/F2/F3（监控模块）+ G1/G2/G3（告警模块）+ H1/H6（计费DB+管理台）并行完成，735 Go tests ✓ | F4/G4/H4/H5 待做 |
-| 2026-05-14 | F4（监控UI）+ G4（告警UI）+ H4（状态页app）+ H5（计费UI）并行完成，289+9 前端 tests ✓ | H2/H3 待 Paddle 账号 [👤] |
+| 2026-05-14 | F4（监控UI）+ G4（告警UI）+ H4（状态页app）+ H5（计费UI）并行完成，289+9 前端 tests ✓ | H2/H3 已切聚合支付 |
 | 2026-05-14 | H2（支付stub）+ H3（配额执行）+ App Shell（侧边栏）+ Settings（account+api-keys）并行完成，842 Go + 334 前端 tests ✓ | 聚合支付接入待定 |
 | 2026-05-14 | L4（英文国际化基础）完成：next-intl + /en/tools/[slug] SSG + leaderboard 双语 + Nav 语言切换，543 前端 tests ✓ | — |
 | 2026-05-15 | E2E 测试全链路打通：修复 agent 重连 401 + probe stream 格式 + denylist URL 支持 + nodes 表名 + gateway Redis timeout，905 Go tests ✓ | 见下方 T 系列待做任务 |

@@ -143,7 +143,7 @@ func retryRequest(paymentID, reqID string) *http.Request {
 // TestAdminBillingHandler_RetryRefund_EnqueuesTask verifies the D5 fix:
 // RetryRefund schedules an asynq task (ProcessIn=0) instead of mutating the
 // payment row directly.  Status='refunded' MUST come from the worker after a
-// real Paddle refund response, not from the admin button.
+// real PaymentHub refund response, not from the admin button.
 func TestAdminBillingHandler_RetryRefund_EnqueuesTask(t *testing.T) {
 	h, mockPool := newAdminBillingTestHandler(t)
 	defer mockPool.Close()

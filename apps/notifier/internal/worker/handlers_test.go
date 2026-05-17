@@ -528,7 +528,7 @@ func TestHandlers_HandleRefundRetry_Success(t *testing.T) {
 
 func TestHandlers_HandleRefundRetry_FailReschedules(t *testing.T) {
 	handlers, sender := setupHandlers(t)
-	refunder := &stubRefunder{err: errors.New("paddle 502")}
+	refunder := &stubRefunder{err: errors.New("paymenthub 502")}
 	store := &stubPaymentStore{}
 	enq := &stubRetryEnqueuer{}
 	handlers = handlers.WithRefundDeps(refunder, store, enq)
@@ -612,7 +612,7 @@ func TestHandlers_HandleRefundRetry_MaxAttemptsSendsApology(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			handlers, sender := setupHandlers(t)
-			refunder := &stubRefunder{err: errors.New("paddle 500")}
+			refunder := &stubRefunder{err: errors.New("paymenthub 500")}
 			store := &stubPaymentStore{}
 			enq := &stubRetryEnqueuer{}
 			handlers = handlers.WithRefundDeps(refunder, store, enq)
@@ -669,7 +669,7 @@ func TestHandlers_HandleRefundRetry_MaxAttemptsSendsApology(t *testing.T) {
 
 func TestHandlers_HandleRefundRetry_MaxAttemptsNoEmailSkipsApology(t *testing.T) {
 	handlers, sender := setupHandlers(t)
-	refunder := &stubRefunder{err: errors.New("paddle 500")}
+	refunder := &stubRefunder{err: errors.New("paymenthub 500")}
 	store := &stubPaymentStore{}
 	enq := &stubRetryEnqueuer{}
 	handlers = handlers.WithRefundDeps(refunder, store, enq)
@@ -911,7 +911,7 @@ func TestEnqueueEmail_NilClient(t *testing.T) {
 // ---- HandleRefundApology tests (D5 / attest-side refund-worker) ----
 //
 // The apology task payload is now self-contained (the refund-worker
-// pre-resolves user_email / paddle_order_id / amount via an
+// pre-resolves user_email / ext_order_id / amount via an
 // application-level join). These tests therefore exercise the
 // render-and-send path directly, plus the fail-open ACK when
 // user_email is empty (rare race after a user deletion).
@@ -936,13 +936,13 @@ func TestHandlers_HandleRefundApology_Success(t *testing.T) {
 			name:            "cn locale on payload",
 			locale:          "cn",
 			expectedSubject: "【idcd】关于您退款延迟的致歉说明",
-			expectInBody:    []string{"致歉", "v_001", "paddle_abc", "99.00 CNY"},
+			expectInBody:    []string{"致歉", "v_001", "ord_abc", "99.00 CNY"},
 		},
 		{
 			name:            "en locale on payload",
 			locale:          "en",
 			expectedSubject: "[IDCD] We're sorry about your delayed refund",
-			expectInBody:    []string{"sorry", "v_001", "paddle_abc", "99.00 CNY"},
+			expectInBody:    []string{"sorry", "v_001", "ord_abc", "99.00 CNY"},
 		},
 		{
 			name:            "empty locale falls back to registry default",
@@ -959,7 +959,7 @@ func TestHandlers_HandleRefundApology_Success(t *testing.T) {
 			payload := RefundApologyPayload{
 				OrderID:           "v_001",
 				UserEmail:         "user@example.com",
-				PaddleOrderID:     "paddle_abc",
+				ExtOrderID:     "ord_abc",
 				RefundAmountCents: 9900,
 				Currency:          "CNY",
 				FailureReason:     "max_retries_exhausted",
@@ -1028,7 +1028,7 @@ func TestHandlers_HandleRefundApology_NoUserEmailAcks(t *testing.T) {
 	payload := RefundApologyPayload{
 		OrderID:           "v_001",
 		UserEmail:         "", // rare race — user deleted post-failure
-		PaddleOrderID:     "paddle_xyz",
+		ExtOrderID:     "ord_xyz",
 		RefundAmountCents: 1000,
 		Currency:          "CNY",
 		FailureReason:     "x",
@@ -1054,7 +1054,7 @@ func TestHandlers_HandleRefundApology_EmailSendErrorRetries(t *testing.T) {
 	payload := RefundApologyPayload{
 		OrderID:           "v_001",
 		UserEmail:         "u@example.com",
-		PaddleOrderID:     "paddle_abc",
+		ExtOrderID:     "ord_abc",
 		RefundAmountCents: 1500,
 		Currency:          "CNY",
 		FailureReason:     "x",
@@ -1081,7 +1081,7 @@ func TestHandlers_HandleRefundApology_PayloadContract(t *testing.T) {
 	rawJSON := []byte(`{
 		"order_id":"v_001",
 		"user_email":"user@example.com",
-		"paddle_order_id":"paddle_abc",
+		"ext_order_id":"ord_abc",
 		"refund_amount_cents":9900,
 		"currency":"CNY",
 		"failure_reason":"max_retries_exhausted",
@@ -1099,7 +1099,7 @@ func TestHandlers_HandleRefundApology_PayloadContract(t *testing.T) {
 	if msgs[0].To != "user@example.com" {
 		t.Errorf("To = %q", msgs[0].To)
 	}
-	for _, want := range []string{"paddle_abc", "99.00 CNY", "v_001"} {
+	for _, want := range []string{"ord_abc", "99.00 CNY", "v_001"} {
 		if !strings.Contains(msgs[0].HTML, want) {
 			t.Errorf("HTML missing %q", want)
 		}

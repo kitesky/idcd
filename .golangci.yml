@@ -18,13 +18,6 @@ linters:
     errcheck:
       check-blank: false
       check-type-assertions: false
-      # 这些方法的错误返回值按 Go 社区惯例忽略:
-      # - io.Closer.Close: defer 链路里追究无意义,真有问题上层 fs.Stat 等会暴露
-      # - net.Conn.SetRead/WriteDeadline: 仅在 Conn 已关闭时报错,与显式 Close() 路径重复
-      exclude-functions:
-        - (io.Closer).Close
-        - (net.Conn).SetReadDeadline
-        - (net.Conn).SetWriteDeadline
 
   exclusions:
     rules:
@@ -34,6 +27,13 @@ linters:
       - path: cmd/
         linters:
           - errcheck
+      # Close / SetReadDeadline / SetWriteDeadline 按 Go 社区惯例豁免 errcheck:
+      # - Close: defer 链路里追究无意义,真问题上层 IO 调用会暴露
+      # - SetRead/WriteDeadline: 仅在 Conn 已关闭时报错,与显式 Close() 路径重复
+      # 用文本正则而非 errcheck.exclude-functions 是因为后者只匹配静态接口类型,
+      # 不覆盖 *sql.DB / *os.File / *websocket.Conn 这类具体类型。
+      - linters: [errcheck]
+        text: 'Error return value of `[^`]+\.(Close|SetReadDeadline|SetWriteDeadline)` is not checked'
 
 issues:
   max-issues-per-linter: 0

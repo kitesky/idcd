@@ -5,20 +5,19 @@
 //
 // This adapter is wired into tsa.Multi as the backup provider in S2 —
 // see docs/prd/18-evidence-and-attestation.md §3.4.
+//
+// Implementation note: the protocol logic lives in
+// tsa/internal/rfc3161client; this file is configuration + naming only.
 package globalsign
 
 import (
-	"bytes"
 	"context"
 	"crypto"
-	"fmt"
-	"io"
 	"net/http"
 	"time"
 
-	"github.com/digitorus/timestamp"
-
 	"github.com/kite365/idcd/lib/attest/tsa"
+	"github.com/kite365/idcd/lib/attest/tsa/internal/rfc3161client"
 )
 
 const (
@@ -28,11 +27,6 @@ const (
 	DefaultEndpoint = "http://rfc3161.globalsign.com/advanced"
 
 	providerName = "globalsign"
-
-	requestContentType  = "application/timestamp-query"
-	responseContentType = "application/timestamp-reply"
-
-	maxResponseSize = 1 << 20
 )
 
 // Config mirrors digicert.Config. See that package for field docs;
@@ -49,11 +43,7 @@ func New(cfg Config) tsa.Provider {
 	if endpoint == "" {
 		endpoint = DefaultEndpoint
 	}
-	client := cfg.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
-	return &provider{endpoint: endpoint, client: client}
+	return &provider{endpoint: endpoint, client: cfg.HTTPClient}
 }
 
 type provider struct {
@@ -63,66 +53,14 @@ type provider struct {
 
 func (p *provider) Name() string { return providerName }
 
-// Stamp implements tsa.Provider.
+// Stamp delegates to the shared rfc3161client.Stamp. See
+// digicert.provider.Stamp for the rationale.
 func (p *provider) Stamp(ctx context.Context, hashAlg crypto.Hash, digest []byte) ([]byte, time.Time, error) {
-	if err := tsa.ValidateDigest(hashAlg, digest); err != nil {
-		return nil, time.Time{}, err
-	}
-
-	tsq, err := (&timestamp.Request{
-		HashAlgorithm: hashAlg,
-		HashedMessage: digest,
-		Certificates:  true,
-	}).Marshal()
-	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: marshal TSQ: %v", tsa.ErrInvalidInput, err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(tsq))
-	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: build request: %v", tsa.ErrUpstreamUnavailable, err)
-	}
-	req.Header.Set("Content-Type", requestContentType)
-	req.Header.Set("Accept", responseContentType)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: POST %s: %v", tsa.ErrUpstreamUnavailable, p.endpoint, err)
-	}
-	defer resp.Body.Close()
-
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
-	if readErr != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: read body: %v", tsa.ErrUpstreamUnavailable, readErr)
-	}
-	if len(body) > maxResponseSize {
-		return nil, time.Time{}, fmt.Errorf("%w: TSA response exceeds %d bytes", tsa.ErrInvalidResponse, maxResponseSize)
-	}
-
-	switch {
-	case resp.StatusCode >= 500:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP %d from %s", tsa.ErrUpstreamUnavailable, resp.StatusCode, p.endpoint)
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusProxyAuthRequired:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP %d from %s", tsa.ErrAuthFailed, resp.StatusCode, p.endpoint)
-	case resp.StatusCode == http.StatusBadRequest:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP 400 from %s", tsa.ErrInvalidInput, p.endpoint)
-	case resp.StatusCode >= 400:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP %d from %s", tsa.ErrInvalidResponse, resp.StatusCode, p.endpoint)
-	}
-
-	ts, err := timestamp.ParseResponse(body)
-	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: %v", tsa.ErrInvalidResponse, err)
-	}
-	if len(ts.RawToken) == 0 {
-		return nil, time.Time{}, fmt.Errorf("%w: empty TimeStampToken", tsa.ErrInvalidResponse)
-	}
-	if !bytes.Equal(ts.HashedMessage, digest) {
-		return nil, time.Time{}, fmt.Errorf("%w: digest mismatch (sent %x, got %x)",
-			tsa.ErrInvalidResponse, digest[:min(8, len(digest))], ts.HashedMessage[:min(8, len(ts.HashedMessage))])
-	}
-
-	return ts.RawToken, ts.Time, nil
+	return rfc3161client.Stamp(ctx, rfc3161client.Config{
+		Endpoint:     p.endpoint,
+		HTTPClient:   p.client,
+		ProviderName: providerName,
+	}, hashAlg, digest)
 }
 
 var _ tsa.Provider = (*provider)(nil)

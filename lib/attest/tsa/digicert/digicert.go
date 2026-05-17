@@ -5,20 +5,19 @@
 //
 // This adapter is one of the providers wired into tsa.Multi in S2 —
 // see docs/prd/18-evidence-and-attestation.md §3.4.
+//
+// Implementation note: the protocol logic lives in
+// tsa/internal/rfc3161client; this file is configuration + naming only.
 package digicert
 
 import (
-	"bytes"
 	"context"
 	"crypto"
-	"fmt"
-	"io"
 	"net/http"
 	"time"
 
-	"github.com/digitorus/timestamp"
-
 	"github.com/kite365/idcd/lib/attest/tsa"
+	"github.com/kite365/idcd/lib/attest/tsa/internal/rfc3161client"
 )
 
 const (
@@ -30,14 +29,6 @@ const (
 	// providerName is the value used in attestation_record.external_id
 	// and tsa_response.provider. Lowercase, stable.
 	providerName = "digicert"
-
-	// requestContentType / responseContentType are mandated by RFC3161.
-	requestContentType  = "application/timestamp-query"
-	responseContentType = "application/timestamp-reply"
-
-	// maxResponseSize bounds the body we will read from a TSA. A real
-	// RFC3161 response is a few KiB; 1 MiB is paranoid headroom.
-	maxResponseSize = 1 << 20
 )
 
 // Config holds construction parameters for the DigiCert adapter. All
@@ -64,13 +55,9 @@ func New(cfg Config) tsa.Provider {
 	if endpoint == "" {
 		endpoint = DefaultEndpoint
 	}
-	client := cfg.HTTPClient
-	if client == nil {
-		client = http.DefaultClient
-	}
 	return &provider{
 		endpoint: endpoint,
-		client:   client,
+		client:   cfg.HTTPClient, // nil → http.DefaultClient inside rfc3161client.Stamp
 	}
 }
 
@@ -81,77 +68,17 @@ type provider struct {
 
 func (p *provider) Name() string { return providerName }
 
-// Stamp implements tsa.Provider.
+// Stamp delegates to the shared rfc3161client.Stamp. Per-provider
+// behaviour is purely the endpoint + provider name; protocol semantics
+// (HTTP classification, body length cap, digest mismatch check) live in
+// the shared helper so any future fix lands in both DigiCert and
+// GlobalSign in one place.
 func (p *provider) Stamp(ctx context.Context, hashAlg crypto.Hash, digest []byte) ([]byte, time.Time, error) {
-	if err := tsa.ValidateDigest(hashAlg, digest); err != nil {
-		return nil, time.Time{}, err
-	}
-
-	tsq, err := (&timestamp.Request{
-		HashAlgorithm: hashAlg,
-		HashedMessage: digest,
-		Certificates:  true,
-	}).Marshal()
-	if err != nil {
-		// A malformed timestamp.Request only happens on unsupported hash
-		// algorithms; ValidateDigest already filtered most of those.
-		return nil, time.Time{}, fmt.Errorf("%w: marshal TSQ: %v", tsa.ErrInvalidInput, err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.endpoint, bytes.NewReader(tsq))
-	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: build request: %v", tsa.ErrUpstreamUnavailable, err)
-	}
-	req.Header.Set("Content-Type", requestContentType)
-	req.Header.Set("Accept", responseContentType)
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: POST %s: %v", tsa.ErrUpstreamUnavailable, p.endpoint, err)
-	}
-	defer resp.Body.Close()
-
-	body, readErr := io.ReadAll(io.LimitReader(resp.Body, maxResponseSize+1))
-	if readErr != nil {
-		return nil, time.Time{}, fmt.Errorf("%w: read body: %v", tsa.ErrUpstreamUnavailable, readErr)
-	}
-	if len(body) > maxResponseSize {
-		return nil, time.Time{}, fmt.Errorf("%w: TSA response exceeds %d bytes", tsa.ErrInvalidResponse, maxResponseSize)
-	}
-
-	switch {
-	case resp.StatusCode >= 500:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP %d from %s", tsa.ErrUpstreamUnavailable, resp.StatusCode, p.endpoint)
-	case resp.StatusCode == http.StatusUnauthorized, resp.StatusCode == http.StatusForbidden, resp.StatusCode == http.StatusProxyAuthRequired:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP %d from %s", tsa.ErrAuthFailed, resp.StatusCode, p.endpoint)
-	case resp.StatusCode == http.StatusBadRequest:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP 400 from %s", tsa.ErrInvalidInput, p.endpoint)
-	case resp.StatusCode >= 400:
-		return nil, time.Time{}, fmt.Errorf("%w: HTTP %d from %s", tsa.ErrInvalidResponse, resp.StatusCode, p.endpoint)
-	}
-
-	ts, err := timestamp.ParseResponse(body)
-	if err != nil {
-		// ParseResponse returns a non-nil error both for transport
-		// glitches (truncated body) and for granted-but-malformed
-		// tokens. From the caller's standpoint these are all
-		// "response unusable" — fall over.
-		return nil, time.Time{}, fmt.Errorf("%w: %v", tsa.ErrInvalidResponse, err)
-	}
-	if len(ts.RawToken) == 0 {
-		return nil, time.Time{}, fmt.Errorf("%w: empty TimeStampToken", tsa.ErrInvalidResponse)
-	}
-
-	// Defence in depth: ParseResponse already calls Parse which
-	// validates the token signature; we additionally sanity-check that
-	// the response is about the digest we sent (defeats lazy mocks and
-	// catches a TSA that mixed responses across concurrent requests).
-	if !bytes.Equal(ts.HashedMessage, digest) {
-		return nil, time.Time{}, fmt.Errorf("%w: digest mismatch (sent %x, got %x)",
-			tsa.ErrInvalidResponse, digest[:min(8, len(digest))], ts.HashedMessage[:min(8, len(ts.HashedMessage))])
-	}
-
-	return ts.RawToken, ts.Time, nil
+	return rfc3161client.Stamp(ctx, rfc3161client.Config{
+		Endpoint:     p.endpoint,
+		HTTPClient:   p.client,
+		ProviderName: providerName,
+	}, hashAlg, digest)
 }
 
 // Ensure interface satisfaction at compile time.

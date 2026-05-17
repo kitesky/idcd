@@ -66,6 +66,20 @@ func TestLoad_EnvOverrides(t *testing.T) {
 	}
 }
 
+func TestLoad_AdminToken(t *testing.T) {
+	if cfg, err := Load(); err != nil || cfg.AdminToken != "" {
+		t.Fatalf("default AdminToken should be empty; got %q err=%v", cfg.AdminToken, err)
+	}
+	t.Setenv(envAdminToken, "  s3cret  ")
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.AdminToken != "s3cret" {
+		t.Errorf("AdminToken = %q, want trimmed 's3cret'", cfg.AdminToken)
+	}
+}
+
 func TestLoad_InvalidPort(t *testing.T) {
 	cases := []struct {
 		name string

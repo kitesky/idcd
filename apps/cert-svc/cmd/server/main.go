@@ -10,8 +10,11 @@ package main
 
 import (
 	"context"
+	"crypto/subtle"
+	"encoding/json"
 	"errors"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -187,14 +190,31 @@ func main() {
 		slogLogger.Warn("CERT_JWT_SECRET not set — /v1/cert/* will reject all requests")
 	}
 
+	// Admin surface (/v1/admin/cert/*). Bearer-token middleware matches
+	// apps/api's admin pattern (lib/shared/config Server.AdminToken).
+	// Empty CERT_ADMIN_TOKEN disables admin endpoints entirely — they
+	// fall through to the handler's rejectAllAdminUnauthenticated 401.
+	var adminAuthMW func(http.Handler) http.Handler
+	if cfg.AdminToken != "" {
+		adminAuthMW = adminBearerAuth(cfg.AdminToken)
+	} else {
+		slogLogger.Warn("CERT_ADMIN_TOKEN not set — /v1/admin/cert/* will reject all requests")
+	}
+
+	adminQuota := service.NewRepoQuotaChecker(repos.Orders, repos.Certs, nil)
+	adminAbuse := newAuditAbuseGate(repos.AuditLogs, slogLogger)
+
 	router2 := handler.New(handler.Deps{
-		DB:              pgxPinger{pool: pool},
-		Redis:           redisPinger{client: rdb},
-		Service:         svc,
-		Repos:           repos,
-		Vault:           vlt,
-		DNSReg:          reg,
-		AuthnMiddleware: authnMW,
+		DB:                   pgxPinger{pool: pool},
+		Redis:                redisPinger{client: rdb},
+		Service:              svc,
+		Repos:                repos,
+		Vault:                vlt,
+		DNSReg:               reg,
+		AuthnMiddleware:      authnMW,
+		AdminAuthnMiddleware: adminAuthMW,
+		AdminQuota:           adminQuota,
+		AdminAbuse:           adminAbuse,
 	})
 
 	srv := &http.Server{
@@ -316,6 +336,72 @@ func buildVault(cfg *config.Config) (vault.Vault, error) {
 	default:
 		return envmaster.NewFromEnv("CERT_MASTER_KEY")
 	}
+}
+
+// adminBearerAuth returns a middleware that requires
+//
+//	Authorization: Bearer <CERT_ADMIN_TOKEN>
+//
+// Token comparison uses crypto/subtle so timing leaks cannot probe the
+// secret. Pattern mirrors apps/api's AdminAuthMiddleware.
+func adminBearerAuth(token string) func(http.Handler) http.Handler {
+	want := []byte(token)
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			auth := r.Header.Get("Authorization")
+			const prefix = "Bearer "
+			if len(auth) <= len(prefix) || auth[:len(prefix)] != prefix {
+				http.Error(w, `{"error":{"code":"CERT_UNAUTHORIZED","message":"missing bearer token"}}`, http.StatusUnauthorized)
+				return
+			}
+			got := []byte(auth[len(prefix):])
+			if subtle.ConstantTimeCompare(got, want) != 1 {
+				http.Error(w, `{"error":{"code":"CERT_UNAUTHORIZED","message":"invalid admin token"}}`, http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// auditAbuseGate satisfies handler.AdminAbuseGate by recording each ban
+// as an immutable cert.audit_logs row. Enforcement (rejecting future
+// orders from banned accounts) requires a cert.abuse_bans table — a
+// post-S2 addition; for now the audit row is the system of record so
+// operators can review and a later migration can backfill.
+type auditAbuseGate struct {
+	repo   *repo.AuditLogsRepo
+	logger *slog.Logger
+}
+
+func newAuditAbuseGate(r *repo.AuditLogsRepo, l *slog.Logger) *auditAbuseGate {
+	return &auditAbuseGate{repo: r, logger: l}
+}
+
+func (g *auditAbuseGate) Ban(ctx context.Context, accountID int64, reason string) error {
+	if g == nil || g.repo == nil {
+		return errors.New("audit gate not configured")
+	}
+	tk := "account"
+	payload, _ := json.Marshal(map[string]string{"reason": reason})
+	entry := &repo.AuditLog{
+		AccountID:  &accountID,
+		Actor:      "admin",
+		Action:     "abuse.ban",
+		TargetKind: &tk,
+		TargetID:   &accountID,
+		Payload:    payload,
+	}
+	if err := g.repo.Append(ctx, entry); err != nil {
+		if g.logger != nil {
+			g.logger.Error("audit ban append failed", "account_id", accountID, "error", err)
+		}
+		return err
+	}
+	if g.logger != nil {
+		g.logger.Info("admin ban recorded", "account_id", accountID, "reason", reason)
+	}
+	return nil
 }
 
 // pgxPinger / redisPinger adapt the pgx and redis client to the

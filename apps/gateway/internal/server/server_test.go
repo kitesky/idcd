@@ -85,6 +85,13 @@ func TestCertSvcProxy_RoutesHitUpstream(t *testing.T) {
 		// one-shot token IS the credential); the gateway must not add
 		// any extra auth either, just forward the request transparently.
 		{"certs_download", http.MethodGet, "/v1/cert/certs/cert_1/download?token=xyz"},
+		// /v1/admin/cert/* is the admin surface — the upstream guards it
+		// with its own Bearer admin token; gateway only proxies.
+		{"admin_orders", http.MethodGet, "/v1/admin/cert/orders"},
+		{"admin_force_fail", http.MethodPost, "/v1/admin/cert/orders/ord_1/force-fail"},
+		{"admin_ca_quota", http.MethodGet, "/v1/admin/cert/ca-quota"},
+		{"admin_dns_health", http.MethodGet, "/v1/admin/cert/dns-health"},
+		{"admin_ban", http.MethodPost, "/v1/admin/cert/accounts/1/ban"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

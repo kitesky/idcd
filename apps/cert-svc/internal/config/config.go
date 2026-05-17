@@ -27,6 +27,7 @@ const (
 	envJWTSecret      = "CERT_JWT_SECRET"
 	envMasterKey      = "CERT_MASTER_KEY"
 	envDownloadSecret = "CERT_DOWNLOAD_SECRET"
+	envAdminToken     = "CERT_ADMIN_TOKEN"
 
 	// S2 multi-CA wiring. Each adapter is optional — empty values mean
 	// the CA is not registered with the Router and cert.orders.ca rows
@@ -108,6 +109,12 @@ type Config struct {
 	// /v1/cert/certs/{id}/download will return 503 rather than mint
 	// tokens we can't verify. cmd/server should fail fast when unset.
 	DownloadSecret []byte
+
+	// AdminToken is the shared Bearer secret that guards every
+	// /v1/admin/cert/* route. Pattern mirrors apps/api's admin handler
+	// (Authorization: Bearer <token>). Empty disables admin endpoints
+	// — they fall through to the 401 admin-not-configured handler.
+	AdminToken string
 
 	// ZeroSSLEABKID / ZeroSSLEABHMACKey carry the External Account
 	// Binding credentials issued by ZeroSSL's portal. Both must be set
@@ -222,6 +229,9 @@ func Load() (*Config, error) {
 	}
 	if v := strings.TrimSpace(os.Getenv(envMasterKey)); v != "" {
 		cfg.MasterKey = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envAdminToken)); v != "" {
+		cfg.AdminToken = v
 	}
 	if v := strings.TrimSpace(os.Getenv(envDownloadSecret)); v != "" {
 		// Base64 (std OR url) so operators can paste from any common

@@ -85,6 +85,11 @@ func (s *Server) setupRouter() {
 		if proxy, err := newCertSvcProxy(s.config.CertSvcURL, s.logger); err == nil {
 			r.Handle("/v1/cert/*", proxy)
 			r.Handle("/v1/cert", proxy)
+			// Admin surface on the same upstream; cert-svc enforces a
+			// separate Bearer admin token on /v1/admin/cert/*. Gateway
+			// adds no extra auth — the upstream is the source of truth.
+			r.Handle("/v1/admin/cert/*", proxy)
+			r.Handle("/v1/admin/cert", proxy)
 		} else {
 			s.logger.Error("cert-svc reverse proxy disabled — invalid CertSvcURL",
 				"url", s.config.CertSvcURL, "error", err)

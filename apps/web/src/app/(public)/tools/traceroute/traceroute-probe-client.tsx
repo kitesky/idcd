@@ -11,17 +11,20 @@ export default function TracerouteProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState("")
+  const [shareCtx, setShareCtx] = useState<{ target: string; params: Record<string, unknown> } | null>(null)
 
   const handleSubmit = async (target: string, params: Record<string, unknown>) => {
     try {
       setSubmitError("")
       setTaskId(null)
+      setShareCtx(null)
       const res = await probeTraceroute({
         target,
         node_ids: selectedNodes.length > 0 ? selectedNodes : undefined,
         ...params,
       })
       setTaskId(res.task_id)
+      setShareCtx({ target, params })
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "提交失败")
     }
@@ -43,7 +46,11 @@ export default function TracerouteProbeClient() {
         </div>
 
         <div>
-          <ProbeResults taskId={taskId} error={submitError} />
+          <ProbeResults
+            taskId={taskId}
+            error={submitError}
+            shareContext={shareCtx ? { tool: "traceroute", ...shareCtx } : undefined}
+          />
         </div>
       </div>
 

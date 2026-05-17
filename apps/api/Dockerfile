@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine3.20 AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ WORKDIR /app/apps/api
 RUN go build -o /bin/api ./cmd/api/
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
 # wget for HEALTHCHECK; ca-certificates / tzdata for TLS + Asia/Shanghai TZ.
 RUN apk add --no-cache ca-certificates tzdata wget \

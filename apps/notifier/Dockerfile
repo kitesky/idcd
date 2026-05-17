@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine3.20 AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ WORKDIR /app/apps/notifier
 RUN go build -o /bin/notifier ./cmd/notifier/
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -u 10001 idcd

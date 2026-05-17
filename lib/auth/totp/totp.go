@@ -1,6 +1,7 @@
 package totp
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha1"
@@ -36,8 +37,15 @@ func GenerateCode(secret string, t time.Time) (string, error) {
 	return fmt.Sprintf("%06d", code%1_000_000), nil
 }
 
+// ValidateCode validates a TOTP code against the secret using the system
+// clock and a ±1 step window. For new code paths prefer Validator which adds
+// clock injection and replay protection (see RFC 6238 §5.2 — codes must be
+// single-use within their validity window).
 func ValidateCode(secret, code string) (bool, error) {
-	now := time.Now()
+	return validateCodeAt(secret, code, time.Now())
+}
+
+func validateCodeAt(secret, code string, now time.Time) (bool, error) {
 	for _, delta := range []int64{-1, 0, 1} {
 		t := now.Add(time.Duration(delta) * 30 * time.Second)
 		c, err := GenerateCode(secret, t)
@@ -49,6 +57,55 @@ func ValidateCode(secret, code string) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// ReplayStore tracks consumed TOTP codes to prevent reuse within the
+// validity window. SetNX semantics: Mark must atomically claim a key and
+// report whether it was previously absent.
+type ReplayStore interface {
+	// Mark reports true if key was newly inserted (=> first use); false if
+	// it already exists (=> replay). TTL bounds how long the entry stays
+	// blocked; callers should set ≥ 90s to cover the ±1 step window.
+	Mark(ctx context.Context, key string, ttl time.Duration) (bool, error)
+}
+
+// Validator validates codes with an injectable clock + optional replay
+// protection. The zero value is a working validator using time.Now and no
+// replay protection (matches legacy ValidateCode behaviour).
+type Validator struct {
+	Now    func() time.Time
+	Replay ReplayStore
+}
+
+func (v *Validator) now() time.Time {
+	if v != nil && v.Now != nil {
+		return v.Now()
+	}
+	return time.Now()
+}
+
+// Validate verifies code for secret. When userID is non-empty and Replay
+// is configured, a successful validation also claims the code so a second
+// validation with the same (userID, code) within the window returns
+// (false, nil).
+func (v *Validator) Validate(ctx context.Context, secret, userID, code string) (bool, error) {
+	ok, err := validateCodeAt(secret, code, v.now())
+	if err != nil || !ok {
+		return ok, err
+	}
+	if v == nil || v.Replay == nil || userID == "" {
+		return true, nil
+	}
+	// 90s = 3 × 30s step covers the ±1 window we accepted above plus a
+	// small safety margin for clock skew between caller + Redis.
+	fresh, err := v.Replay.Mark(ctx, UsedCodeKey(userID, code), 90*time.Second)
+	if err != nil {
+		return false, fmt.Errorf("totp replay store: %w", err)
+	}
+	if !fresh {
+		return false, nil
+	}
+	return true, nil
 }
 
 // UsedCodeKey returns the Redis key for tracking a consumed TOTP code.

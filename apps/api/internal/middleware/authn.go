@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	apiI18n "github.com/kite365/idcd/apps/api/internal/i18n"
@@ -15,6 +16,44 @@ import (
 	"github.com/kite365/idcd/lib/auth/session"
 	"github.com/kite365/idcd/lib/shared/apperr"
 )
+
+// touchCoalesceWindow is how long we suppress duplicate last_used updates
+// for the same token ID. Under burst load this caps the goroutine spawn
+// rate to ~1/window/token instead of 1 per request. 30s is short enough
+// that the timestamp stays accurate for "last activity" UIs.
+const touchCoalesceWindow = 30 * time.Second
+
+var (
+	patTouchMu   sync.Mutex
+	patTouchLast = make(map[string]time.Time)
+
+	apiKeyTouchMu   sync.Mutex
+	apiKeyTouchLast = make(map[string]time.Time)
+)
+
+// shouldTouch returns true if the timestamp for id is older than window,
+// updating the map in the same critical section. The caller spawns its
+// goroutine only when this returns true.
+func shouldTouch(mu *sync.Mutex, last map[string]time.Time, id string) bool {
+	mu.Lock()
+	defer mu.Unlock()
+	now := time.Now()
+	if prev, ok := last[id]; ok && now.Sub(prev) < touchCoalesceWindow {
+		return false
+	}
+	last[id] = now
+	// Opportunistic GC: keep the maps bounded by dropping stale entries on
+	// every miss-path. O(map size) but bounded by request rate × window.
+	if len(last) > 4096 {
+		cutoff := now.Add(-2 * touchCoalesceWindow)
+		for k, t := range last {
+			if t.Before(cutoff) {
+				delete(last, k)
+			}
+		}
+	}
+	return true
+}
 
 type contextKey string
 
@@ -208,8 +247,11 @@ func verifyPAT(w http.ResponseWriter, r *http.Request, patSvc PATVerifier, rawTo
 
 	// Fire-and-forget last_used update. Detached from request context so a
 	// caller cancellation doesn't drop the write. Bounded timeout prevents
-	// leaks if the backend is slow.
-	go touchLastUsedPAT(patSvc, info.ID)
+	// leaks if the backend is slow. Coalesced per token so a burst of
+	// requests doesn't spawn one goroutine per hit.
+	if shouldTouch(&patTouchMu, patTouchLast, info.ID) {
+		go touchLastUsedPAT(patSvc, info.ID)
+	}
 
 	return ctx, true
 }
@@ -236,7 +278,9 @@ func verifyAPIKey(w http.ResponseWriter, r *http.Request, apiKeySvc APIKeyVerifi
 	ctx = context.WithValue(ctx, authMethodKey, AuthMethodAPIKey)
 	ctx = context.WithValue(ctx, apiKeyIDKey, info.ID)
 
-	go touchLastUsedAPIKey(apiKeySvc, info.ID)
+	if shouldTouch(&apiKeyTouchMu, apiKeyTouchLast, info.ID) {
+		go touchLastUsedAPIKey(apiKeySvc, info.ID)
+	}
 
 	return ctx, true
 }

@@ -637,13 +637,14 @@ func (s *Server) setupRouter() {
 			r.Post("/{node_id}/reload-config", nodeCmdH.QueueReloadConfig)
 		})
 
-		// Prometheus metrics endpoint — VPN/internal only (no auth; rely on network policy).
-		// Exposes the default Prometheus registry including idcd business metrics from
-		// the internal/metrics package.
-		r.Get("/internal/metrics", promhttp.Handler().ServeHTTP)
-
 		// Admin management endpoints (token-protected, VPN-only in production).
 		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+
+		// Prometheus metrics endpoint — gated by the same admin Bearer token
+		// as /internal/admin/*. Network policy alone is not enough: metrics
+		// leak rich business data (user counts, billing volume, error rates)
+		// that an attacker inside the VPN must not freely scrape.
+		r.With(adminH.AdminAuthMiddleware).Get("/internal/metrics", promhttp.Handler().ServeHTTP)
 		var blocklistHandlerStore handler.BlocklistStore
 		if s.redis != nil {
 			blocklistHandlerStore = &redisBlocklistAdapter{client: s.redis}

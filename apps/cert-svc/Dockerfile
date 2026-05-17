@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine3.20 AS builder
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN go build -o /bin/cert-svc ./cmd/server/ \
  && go build -o /bin/cert-renewer ./cmd/renewer/
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
 RUN apk add --no-cache ca-certificates tzdata wget \
  && adduser -D -u 10001 idcd

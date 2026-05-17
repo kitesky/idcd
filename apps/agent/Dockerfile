@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26-alpine3.20 AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ WORKDIR /app/apps/agent
 RUN go build -o /bin/agent ./cmd/agent/
 
 # Runtime stage
-FROM alpine:latest
+FROM alpine:3.20
 
 # wget for HEALTHCHECK on agent's loopback /health endpoint (port 9101).
 RUN apk add --no-cache ca-certificates tzdata wget \

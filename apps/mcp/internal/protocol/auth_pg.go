@@ -105,9 +105,14 @@ func (v *PGTokenValidator) Validate(ctx context.Context, rawToken string) (*Prin
 		return nil, fmt.Errorf("mcp token: db lookup: %w", err)
 	}
 
-	// Expiry: nullable today (v1 PATs may be perpetual). v2-S3 will enforce
-	// NOT NULL with the 90d cap from DECISIONS §M D2.
-	if expiresAt != nil && !v.nowFunc().Before(*expiresAt) {
+	// D2 (no permanent MCP token): treat NULL expires_at as already
+	// expired. The legacy PAT table still allows NULL — those rows must
+	// be rotated to a bounded-lifetime token before they can be used over
+	// the MCP HTTP transport.
+	if expiresAt == nil {
+		return nil, ErrTokenExpired
+	}
+	if !v.nowFunc().Before(*expiresAt) {
 		return nil, ErrTokenExpired
 	}
 

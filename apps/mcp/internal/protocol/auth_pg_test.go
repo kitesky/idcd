@@ -54,10 +54,10 @@ func TestPGTokenValidator_Hit(t *testing.T) {
 	}
 }
 
-func TestPGTokenValidator_HitNullExpiry(t *testing.T) {
-	// v1 PAT may have nullable expires_at. Validator must accept it (treat
-	// as "never expires") so existing API-issued PATs keep working. v2-S3
-	// will tighten the schema to NOT NULL.
+func TestPGTokenValidator_RejectsNullExpiry(t *testing.T) {
+	// D2 (DECISIONS §M) forbids permanent MCP tokens. A PAT row with
+	// NULL expires_at must be rejected — legacy PATs need to rotate
+	// to a bounded-lifetime token before they can be used over MCP.
 	mock, v := newPGTestValidator(t)
 	defer mock.Close()
 
@@ -70,11 +70,11 @@ func TestPGTokenValidator_HitNullExpiry(t *testing.T) {
 			AddRow("pat_null_exp", "usr_7", (*time.Time)(nil)))
 
 	p, err := v.Validate(context.Background(), raw)
-	if err != nil {
-		t.Fatalf("Validate err = %v", err)
+	if !errors.Is(err, ErrTokenExpired) {
+		t.Fatalf("Validate err = %v, want ErrTokenExpired", err)
 	}
-	if p.TokenID != "pat_null_exp" || p.UserID != "usr_7" {
-		t.Errorf("principal = %+v", p)
+	if p != nil {
+		t.Errorf("expected nil principal on rejected token, got %+v", p)
 	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Errorf("unmet expectations: %v", err)

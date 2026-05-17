@@ -112,24 +112,19 @@ func main() {
 	)
 	tsaProvider := &multiProviderAdapter{multi: multi, fallbackName: primary.name}
 
-	// --- Signer X.509 cert (dev fixture) -----------------------------
-	signerCert, certChain, err := loadDevSignerCert()
+	// --- Signer X.509 cert -------------------------------------------
+	signerCert, certChain, err := wireSignerCert(log)
 	if err != nil {
 		log.Error("attest-generator: signer cert load", "err", err)
 		os.Exit(1)
 	}
-	log.Warn("attest-generator: using DEV signer certificate (self-signed); production must override before S2 GA",
-		"subject", signerCert.Subject.CommonName,
-		"not_after", signerCert.NotAfter.Format(time.RFC3339),
-	)
 
-	// --- Archiver (local file system; S3 in W7+) ---------------------
-	archiveDir := strings.TrimSpace(os.Getenv("ATTEST_LOCAL_ARCHIVE_DIR"))
-	if archiveDir == "" {
-		archiveDir = defaultArchiveDir
+	// --- Archiver ----------------------------------------------------
+	archiver, err := wireArchiver(log)
+	if err != nil {
+		log.Error("attest-generator: archiver init", "err", err)
+		os.Exit(1)
 	}
-	archiver := service.NewLocalArchiver(archiveDir)
-	log.Info("attest-generator: archiver wired", "type", "local", "dir", archiveDir)
 
 	// --- Service orchestrator ----------------------------------------
 	svc := service.New(service.Config{

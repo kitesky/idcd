@@ -179,10 +179,7 @@
     },
     "probe": {
       "label": "主机:端口",
-      "placeholder": "example.com:443",
-      "extraHint": "格式: host:port",
-      "extraFieldLabel": "端口（可选，已含在地址中则忽略）",
-      "extraFieldPlaceholder": "443"
+      "placeholder": "example.com:443"
     }
   },
   "tcping": {
@@ -214,8 +211,7 @@
     },
     "probe": {
       "label": "SMTP 服务器",
-      "placeholder": "smtp.example.com",
-      "extraHint": "默认端口 25/465/587"
+      "placeholder": "smtp.example.com"
     }
   },
   "rdns": {
@@ -299,10 +295,7 @@
     },
     "probe": {
       "label": "域名",
-      "placeholder": "example.com",
-      "extraHint": "DKIM 选择器（如 default、google）",
-      "extraFieldLabel": "DKIM 选择器",
-      "extraFieldPlaceholder": "default"
+      "placeholder": "example.com"
     }
   },
   "bgp": {
@@ -670,13 +663,10 @@
     "querying": "查询中…",
     "queryFailed": "查询失败",
     "usage": "使用说明",
-    "status": "状态",
-    "targetLabel": "目标",
-    "note": "说明"
+    "status": "状态"
   },
   "_ui": {
     "loading": "检测中...",
-    "copied": "已复制",
     "input": "输入",
     "submit": "提交",
     "status": "状态",

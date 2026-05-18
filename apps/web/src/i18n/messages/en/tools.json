@@ -179,10 +179,7 @@
     },
     "probe": {
       "label": "host:port",
-      "placeholder": "example.com:443",
-      "extraHint": "Format: host:port",
-      "extraFieldLabel": "Port (optional, ignored if already in the address)",
-      "extraFieldPlaceholder": "443"
+      "placeholder": "example.com:443"
     }
   },
   "tcping": {
@@ -214,8 +211,7 @@
     },
     "probe": {
       "label": "SMTP server",
-      "placeholder": "smtp.example.com",
-      "extraHint": "Default ports 25 / 465 / 587"
+      "placeholder": "smtp.example.com"
     }
   },
   "rdns": {
@@ -299,10 +295,7 @@
     },
     "probe": {
       "label": "Domain",
-      "placeholder": "example.com",
-      "extraHint": "DKIM selector (e.g. default, google)",
-      "extraFieldLabel": "DKIM selector",
-      "extraFieldPlaceholder": "default"
+      "placeholder": "example.com"
     }
   },
   "bgp": {
@@ -670,13 +663,10 @@
     "querying": "Querying…",
     "queryFailed": "Query failed",
     "usage": "Usage",
-    "status": "Status",
-    "targetLabel": "Target",
-    "note": "Note"
+    "status": "Status"
   },
   "_ui": {
     "loading": "Checking...",
-    "copied": "Copied",
     "input": "Input",
     "submit": "Submit",
     "status": "Status",

@@ -68,7 +68,7 @@ export default function ReferralPage() {
 
   useEffect(() => {
     async function fetchAll() {
-      // eslint-disable-next-line react-hooks/set-state-in-effect -- 进入页面时重置 loading，随后异步 fetch
+       
       setLoading(true)
       setError(null)
       try {

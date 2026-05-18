@@ -1,26 +1,50 @@
 {
   "ping": {
     "title": "多地 Ping 测试",
-    "description": "全球多节点 ICMP Ping 拨测，检测网络延迟和丢包率",
+    "description": "从全球多个节点 Ping 目标主机，检测网络延迟和连通性",
     "meta": {
       "title": "多地 Ping 测试 - 全球延迟检测 | idcd",
       "description": "全球 100+ 真实探测节点 ICMP Ping 测试，检测网络延迟和丢包率。"
+    },
+    "probe": {
+      "helpTips": [
+        "目标地址：输入域名或 IP 地址（如 example.com 或 1.1.1.1）",
+        "发送次数：选择发送 Ping 包的数量（4、10 或 20 次）",
+        "结果指标：显示平均延迟、最小/最大延迟和丢包率",
+        "节点选择：可选择特定节点，默认使用所有可用节点"
+      ]
     }
   },
   "http": {
     "title": "HTTP/HTTPS 拨测",
-    "description": "多地点 HTTP/HTTPS 连通性测试，检测响应时间",
+    "description": "从全球多个节点测试 HTTP/HTTPS 服务的可用性和响应时间",
     "meta": {
       "title": "HTTP/HTTPS 拨测 - 多地点可用性测试 | idcd",
       "description": "从全球多个节点测试 HTTP/HTTPS 可用性和响应时间。"
+    },
+    "probe": {
+      "helpTips": [
+        "目标地址：输入完整的 HTTP/HTTPS URL（如 https://example.com）",
+        "请求方法：选择 GET、POST 或 HEAD 方法",
+        "跟随重定向：是否自动跟随 3xx 重定向响应",
+        "节点选择：可选择特定节点，默认使用所有可用节点"
+      ]
     }
   },
   "dns": {
-    "title": "DNS 查询",
-    "description": "全球 DNS 解析 + 污染对比检测",
+    "title": "DNS 解析查询",
+    "description": "从全球多个节点查询 DNS 记录，检测域名解析结果和响应时间",
     "meta": {
       "title": "DNS 查询 - 全球 DNS 解析检测 | idcd",
       "description": "从全球多个 DNS 解析器查询域名，检测 DNS 污染和劫持。"
+    },
+    "probe": {
+      "helpTips": [
+        "目标域名：输入要查询的域名（如 example.com）",
+        "记录类型：A(IPv4)、AAAA(IPv6)、MX(邮件)、TXT(文本)、CNAME(别名)、NS(域名服务器)",
+        "查询内容：显示 DNS 解析结果、响应时间和权威服务器",
+        "节点选择：可选择特定节点，默认使用所有可用节点"
+      ]
     }
   },
   "traceroute": {
@@ -659,11 +683,43 @@
   },
   "_probe": {
     "queryParams": "查询参数",
+    "probeParams": "检测参数",
     "query": "查询",
     "querying": "查询中…",
     "queryFailed": "查询失败",
+    "submitFailed": "提交失败",
+    "start": "开始检测",
+    "starting": "检测中...",
+    "nodesAuto": "可选择特定节点，默认使用所有可用节点",
     "usage": "使用说明",
     "status": "状态"
+  },
+  "_form": {
+    "probeParams": "拨测参数",
+    "targetAddress": "目标地址",
+    "actionStart": "开始拨测",
+    "actionLoading": "拨测中...",
+    "actionFailed": "提交失败",
+    "selectPort": "选择端口",
+    "http": {
+      "method": "请求方法",
+      "followRedirect": "跟随重定向"
+    },
+    "ping": {
+      "count": "发送次数",
+      "times4": "4 次",
+      "times10": "10 次",
+      "times20": "20 次"
+    },
+    "dns": {
+      "recordType": "记录类型",
+      "typeA": "A (IPv4)",
+      "typeAAAA": "AAAA (IPv6)",
+      "typeMX": "MX (邮件)",
+      "typeTXT": "TXT (文本)",
+      "typeCNAME": "CNAME (别名)",
+      "typeNS": "NS (域名服务器)"
+    }
   },
   "_ui": {
     "loading": "检测中...",

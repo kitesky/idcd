@@ -1,641 +1,29 @@
 {
-  "ping": {
-    "title": "Ping Check",
-    "description": "Global multi-node ICMP ping from 100+ locations — measure latency and packet loss",
-    "meta": {
-      "title": "Ping Check — Global ICMP Latency Test | idcd",
-      "description": "Test ICMP ping latency and packet loss from 100+ real probe nodes worldwide. Identify network issues in seconds."
-    }
-  },
-  "http": {
-    "title": "HTTP Check",
-    "description": "Multi-region HTTP/HTTPS connectivity test — verify uptime and response times worldwide",
-    "meta": {
-      "title": "HTTP Check — Multi-Region Uptime Test | idcd",
-      "description": "Verify HTTP/HTTPS availability and response times from multiple global regions. Catch downtime before your users do."
-    }
-  },
-  "dns": {
-    "title": "DNS Lookup",
-    "description": "Global DNS resolution with DNS pollution detection across multiple resolvers",
-    "meta": {
-      "title": "DNS Lookup — Global DNS Resolution Test | idcd",
-      "description": "Query DNS records from resolvers worldwide and detect DNS pollution or hijacking. Supports A, AAAA, MX, TXT, CNAME."
-    }
-  },
-  "traceroute": {
-    "title": "Traceroute",
-    "description": "Trace the network path and each hop from global nodes to your target",
-    "meta": {
-      "title": "Traceroute — Global Network Path Tracing | idcd",
-      "description": "Trace the route your packets take to any destination from global nodes. Pinpoint latency bottlenecks hop by hop."
-    }
-  },
-  "ssl": {
-    "title": "SSL Certificate Check",
-    "description": "Inspect SSL/TLS certificate validity, issuer, and security configuration",
-    "meta": {
-      "title": "SSL Certificate Check — TLS Validity & Config | idcd",
-      "description": "Verify your domain's SSL/TLS certificate expiry, issuer chain, and cipher configuration. Get alerted before certs expire."
+  "_form": {
+    "probeParams": "Probe Parameters",
+    "targetAddress": "Target Address",
+    "actionStart": "Start Probe",
+    "actionLoading": "Probing...",
+    "actionFailed": "Submission failed",
+    "selectPort": "Select Port",
+    "http": {
+      "method": "Method",
+      "followRedirect": "Follow Redirect"
     },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "example.com",
-      "actionLabel": "Check",
-      "loadingLabel": "Checking...",
-      "helpTips": [
-        "Domain: enter a bare domain without https:// (e.g. example.com)",
-        "Checks HTTPS certificate validity and expiry",
-        "Shows certificate issuer and validity period"
-      ],
-      "result": {
-        "title": "Certificate info",
-        "expiresInDays": "Expires in {days} days",
-        "expired": "Expired",
-        "rows": {
-          "domain": "Domain",
-          "issuer": "Issuer",
-          "validFrom": "Valid from",
-          "validTo": "Valid to",
-          "certStatus": "Cert status"
-        },
-        "status": {
-          "valid": "Valid",
-          "invalid": "Invalid"
-        }
-      }
-    }
-  },
-  "ip": {
-    "title": "IP Geolocation",
-    "description": "Look up IP address geolocation, ASN, and ISP information",
-    "meta": {
-      "title": "IP Geolocation — IP Address Lookup | idcd",
-      "description": "Look up any IP address for geolocation, ASN, ISP, and organization data. Supports IPv4 and IPv6."
+    "ping": {
+      "count": "Count",
+      "times4": "4 times",
+      "times10": "10 times",
+      "times20": "20 times"
     },
-    "probe": {
-      "label": "IP address or domain",
-      "placeholder": "1.1.1.1 or example.com",
-      "helpTips": [
-        "Supported formats: IPv4 (1.1.1.1), IPv6 (2606::1), domain (example.com)",
-        "Shows geolocation, ASN, and ISP information",
-        "Flags datacenter IPs and proxy/VPN exits"
-      ],
-      "result": {
-        "title": "Lookup result",
-        "rows": {
-          "ip": "IP",
-          "country": "Country/Region",
-          "city": "City",
-          "asn": "ASN",
-          "isp": "ISP"
-        },
-        "badge": {
-          "datacenter": "Datacenter",
-          "proxy": "Proxy/VPN"
-        }
-      }
-    }
-  },
-  "whois": {
-    "title": "WHOIS Lookup",
-    "description": "Query domain registration details, registrar, and expiry date",
-    "meta": {
-      "title": "WHOIS Lookup — Domain Registration Info | idcd",
-      "description": "Query domain WHOIS records for registrar, registrant, creation date, expiry date, and name servers."
-    },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "example.com",
-      "helpTips": [
-        "Domain: enter a bare domain without https:// (e.g. example.com)",
-        "Shows registrar, registration date, expiry date, and NS records",
-        "WHOIS data for some TLDs may be limited"
-      ],
-      "result": {
-        "title": "WHOIS info",
-        "rows": {
-          "domain": "Domain",
-          "registrar": "Registrar",
-          "createdAt": "Registered",
-          "expiresAt": "Expires",
-          "nameServers": "Name servers",
-          "note": "Note"
-        }
-      }
-    }
-  },
-  "icp": {
-    "title": "ICP Filing Check",
-    "description": "Check China ICP (Internet Content Provider) filing status for a domain",
-    "meta": {
-      "title": "ICP Filing Check — China ICP Beian Lookup | idcd",
-      "description": "Check whether a domain has a valid China ICP (Internet Content Provider) filing (ICP 备案). Required for hosting in mainland China."
-    },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "baidu.com",
-      "helpTips": [
-        "Domain: enter a bare domain without https:// (e.g. baidu.com)",
-        "Queries the MIIT ICP/IP Address/Domain Information Filing System",
-        "Websites providing Internet services in mainland China must complete ICP filing"
-      ],
-      "result": {
-        "title": "ICP filing info",
-        "noFiling": "Not filed",
-        "rows": {
-          "domain": "Domain",
-          "icpNumber": "Filing No.",
-          "company": "Sponsor",
-          "type": "Filing type",
-          "filedAt": "Filed on",
-          "note": "Note"
-        }
-      }
-    }
-  },
-  "diagnose": {
-    "title": "Network Diagnostics",
-    "description": "One-click comprehensive network diagnostics — automatically detect common issues",
-    "meta": {
-      "title": "Network Diagnostics — One-Click Network Check | idcd",
-      "description": "Run a comprehensive network diagnostic in one click. Automatically detects DNS failures, latency spikes, routing issues, and more."
-    }
-  },
-  "ipv6-check": {
-    "title": "IPv6 Check",
-    "description": "Validate, expand, and compress IPv6 addresses with format conversion",
-    "meta": {
-      "title": "IPv6 Check — Address Validation & Conversion | idcd",
-      "description": "Validate IPv6 addresses, convert between expanded and compressed formats, and detect address type (global, link-local, loopback)."
-    }
-  },
-  "tcp": {
-    "title": "TCP Port Test",
-    "description": "Test TCP port reachability and connection latency",
-    "meta": {
-      "title": "TCP Port Test — Connectivity Check | idcd",
-      "description": "Test whether a TCP port on a target host is reachable and measure connection latency."
-    },
-    "probe": {
-      "label": "host:port",
-      "placeholder": "example.com:443"
-    }
-  },
-  "tcping": {
-    "title": "TCP Ping",
-    "description": "Test TCP port reachability and measure connection latency from global probe nodes",
-    "meta": {
-      "title": "TCP Ping — Port Connectivity Tester | idcd",
-      "description": "Test TCP port reachability and measure connection latency to any host from global probe nodes. Instantly detect blocked or closed ports."
-    }
-  },
-  "mtr": {
-    "title": "MTR Test",
-    "description": "Combined ping + traceroute network path diagnostics",
-    "meta": {
-      "title": "MTR Network Test — Combined Path Diagnostics | idcd",
-      "description": "MTR combines ping and traceroute to continuously diagnose network path issues from global nodes."
-    },
-    "probe": {
-      "label": "Target",
-      "placeholder": "example.com or 1.1.1.1"
-    }
-  },
-  "smtp": {
-    "title": "SMTP Test",
-    "description": "Test SMTP mail server connectivity",
-    "meta": {
-      "title": "SMTP Mail Server Test — Connectivity Check | idcd",
-      "description": "Test whether an SMTP mail server is reachable and diagnose email delivery issues."
-    },
-    "probe": {
-      "label": "SMTP server",
-      "placeholder": "smtp.example.com"
-    }
-  },
-  "rdns": {
-    "title": "Reverse DNS Lookup",
-    "description": "Query reverse DNS (PTR) records for an IP address",
-    "meta": {
-      "title": "Reverse DNS Lookup — PTR Record Query | idcd",
-      "description": "Look up the PTR record for any IP address to find its associated hostname."
-    },
-    "probe": {
-      "label": "IP address",
-      "placeholder": "8.8.8.8"
-    }
-  },
-  "asn": {
-    "title": "ASN Lookup",
-    "description": "Query network information for an Autonomous System Number",
-    "meta": {
-      "title": "ASN Lookup — Autonomous System Info | idcd",
-      "description": "Query ASN details including carrier name, IP prefixes, and network organization."
-    },
-    "probe": {
-      "label": "ASN",
-      "placeholder": "AS13335 or 13335"
-    }
-  },
-  "mx": {
-    "title": "MX Record Lookup",
-    "description": "Query domain mail exchanger records",
-    "meta": {
-      "title": "MX Record Lookup — Mail Server Query | idcd",
-      "description": "Query MX records to verify mail server configuration and routing."
-    },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "example.com"
-    }
-  },
-  "spf": {
-    "title": "SPF Record Lookup",
-    "description": "Query domain SPF email authentication records",
-    "meta": {
-      "title": "SPF Record Lookup — Sender Policy Check | idcd",
-      "description": "Query and validate SPF (Sender Policy Framework) records for a domain."
-    },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "example.com"
-    }
-  },
-  "dmarc": {
-    "title": "DMARC Lookup",
-    "description": "Query domain DMARC email authentication policy",
-    "meta": {
-      "title": "DMARC Lookup — Email Auth Policy Check | idcd",
-      "description": "Query DMARC records and validate email authentication reporting and compliance policy."
-    },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "example.com"
-    }
-  },
-  "ntp": {
-    "title": "NTP Test",
-    "description": "Test NTP time synchronization server",
-    "meta": {
-      "title": "NTP Server Test — Time Sync Check | idcd",
-      "description": "Test NTP server connectivity and measure time offset."
-    },
-    "probe": {
-      "label": "NTP server",
-      "placeholder": "pool.ntp.org or time.cloudflare.com"
-    }
-  },
-  "dkim": {
-    "title": "DKIM Key Lookup",
-    "description": "Query domain DKIM public key records",
-    "meta": {
-      "title": "DKIM Key Lookup — Email Signing Key Check | idcd",
-      "description": "Query DKIM public key records for a domain to verify email signing configuration."
-    },
-    "probe": {
-      "label": "Domain",
-      "placeholder": "example.com"
-    }
-  },
-  "bgp": {
-    "title": "BGP Route Lookup",
-    "description": "Query BGP routing information for an IP or prefix",
-    "meta": {
-      "title": "BGP Route Lookup — Prefix & Path Info | idcd",
-      "description": "Query BGP routing data including AS path and prefix announcements for any IP."
-    },
-    "probe": {
-      "label": "IP or prefix",
-      "placeholder": "1.1.1.0/24 or 1.1.1.1"
-    }
-  },
-  "speedtest": {
-    "title": "Speed Test",
-    "description": "Test network download and upload bandwidth",
-    "meta": {
-      "title": "Speed Test — Network Bandwidth Test | idcd",
-      "description": "Measure network download and upload speed (Mbps) via multi-node HTTP throughput testing."
-    }
-  },
-  "base64": {
-    "title": "Base64 Encoder/Decoder",
-    "description": "Encode or decode Base64 strings and files online",
-    "meta": {
-      "title": "Base64 Encoder/Decoder — Encode & Decode Online | idcd",
-      "description": "Instantly encode or decode Base64 strings and files in your browser. Supports URL-safe Base64 with no data ever leaving your device."
-    }
-  },
-  "cidr-calculator": {
-    "title": "CIDR Calculator",
-    "description": "Calculate subnet masks, host ranges, and broadcast addresses",
-    "meta": {
-      "title": "CIDR Calculator — Subnet & IP Range Tool | idcd",
-      "description": "Calculate subnet masks, broadcast addresses, and host ranges from any CIDR notation. Supports IPv4 and IPv6 supernetting."
-    }
-  },
-  "cron-parser": {
-    "title": "Cron Expression Parser",
-    "description": "Parse and visualize cron schedule expressions",
-    "meta": {
-      "title": "Cron Expression Parser — Schedule Visualizer | idcd",
-      "description": "Parse and visualize any cron expression with a human-readable schedule preview. See the next 10 run times at a glance."
-    }
-  },
-  "hash": {
-    "title": "Hash Generator",
-    "description": "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes",
-    "meta": {
-      "title": "Hash Generator — MD5, SHA-1, SHA-256 & More | idcd",
-      "description": "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes from text or files instantly. All computation runs locally in your browser."
-    }
-  },
-  "ipv6-converter": {
-    "title": "IPv6 Converter",
-    "description": "Convert IPv6 addresses between full, compressed, and mixed notations",
-    "meta": {
-      "title": "IPv6 Converter — Format & Notation Converter | idcd",
-      "description": "Convert IPv6 addresses between full, compressed, and mixed notations. Also converts between IPv6 and decimal or hex representations."
-    }
-  },
-  "json-formatter": {
-    "title": "JSON Formatter",
-    "description": "Format, minify, and validate JSON with syntax highlighting",
-    "meta": {
-      "title": "JSON Formatter — Beautify & Validate JSON | idcd",
-      "description": "Format, minify, and validate JSON with syntax highlighting and error detection. Supports large payloads with instant client-side processing."
-    }
-  },
-  "jwt-decoder": {
-    "title": "JWT Decoder",
-    "description": "Decode and inspect JWT headers, payloads, and signatures",
-    "meta": {
-      "title": "JWT Decoder — Decode & Inspect JWTs | idcd",
-      "description": "Decode JWT headers, payloads, and signatures without sending tokens to any server. Verify expiry and claims in one click."
-    }
-  },
-  "qrcode": {
-    "title": "QR Code Generator",
-    "description": "Create QR codes for URLs, text, or contact info",
-    "meta": {
-      "title": "QR Code Generator — Create QR Codes Online | idcd",
-      "description": "Generate QR codes for URLs, text, or contact info with customizable size and error correction. Download as PNG or SVG instantly."
-    }
-  },
-  "regex-tester": {
-    "title": "Regex Tester",
-    "description": "Live regular expression testing with match highlighting",
-    "meta": {
-      "title": "Regex Tester — Live Regular Expression Editor | idcd",
-      "description": "Test and debug regular expressions with real-time match highlighting and group capture display. Supports PCRE, JavaScript, and Python flavors."
-    }
-  },
-  "timestamp": {
-    "title": "Timestamp Converter",
-    "description": "Convert Unix timestamps to readable dates and back across any timezone",
-    "meta": {
-      "title": "Timestamp Converter — Unix Time Converter | idcd",
-      "description": "Convert Unix timestamps to human-readable dates and back, across any timezone. Supports seconds, milliseconds, and ISO 8601 formats."
-    }
-  },
-  "yaml-formatter": {
-    "title": "YAML Formatter",
-    "description": "Format, validate, and beautify YAML documents",
-    "meta": {
-      "title": "YAML Formatter — Online YAML Beautifier | idcd",
-      "description": "Format and validate YAML online with syntax highlighting. Supports YAML-to-JSON conversion."
-    }
-  },
-  "xml-formatter": {
-    "title": "XML Formatter",
-    "description": "Format, validate, and beautify XML documents",
-    "meta": {
-      "title": "XML Formatter — Online XML Beautifier | idcd",
-      "description": "Format, validate, and minify XML online with syntax error detection."
-    }
-  },
-  "url-encode": {
-    "title": "URL Encoder / Decoder",
-    "description": "Encode or decode URL-encoded strings",
-    "meta": {
-      "title": "URL Encoder / Decoder — Online URL Encoding | idcd",
-      "description": "Encode and decode URL strings online. Supports both encodeURIComponent and encodeURI formats."
-    }
-  },
-  "unicode": {
-    "title": "Unicode Converter",
-    "description": "Look up Unicode characters and convert between code points and glyphs",
-    "meta": {
-      "title": "Unicode Converter — Code Point Lookup | idcd",
-      "description": "Look up Unicode character details and convert between characters and their Unicode code points."
-    }
-  },
-  "color-picker": {
-    "title": "Color Converter",
-    "description": "Convert colors between HEX, RGB, and HSL formats",
-    "meta": {
-      "title": "Color Converter — HEX / RGB / HSL Tool | idcd",
-      "description": "Convert colors between HEX, RGB, and HSL formats with a live preview. Works entirely in your browser."
-    }
-  },
-  "markdown": {
-    "title": "Markdown Preview",
-    "description": "Edit Markdown with a live rendered preview",
-    "meta": {
-      "title": "Markdown Preview — Live Markdown Editor | idcd",
-      "description": "Edit and preview Markdown in real time. No installation required."
-    }
-  },
-  "diff": {
-    "title": "Text Diff",
-    "description": "Compare two text blocks line by line",
-    "meta": {
-      "title": "Text Diff — Online Line-by-Line Comparison | idcd",
-      "description": "Compare two blocks of text side by side and highlight differences line by line."
-    }
-  },
-  "word-counter": {
-    "title": "Word Counter",
-    "description": "Count words, characters, lines, and paragraphs in text",
-    "meta": {
-      "title": "Word Counter — Character & Line Count | idcd",
-      "description": "Count words, characters, lines, and paragraphs instantly. Supports mixed English and Chinese text."
-    }
-  },
-  "password-gen": {
-    "title": "Password Generator",
-    "description": "Generate strong random passwords",
-    "meta": {
-      "title": "Password Generator — Strong Random Password | idcd",
-      "description": "Generate cryptographically strong random passwords with customizable length and character sets."
-    }
-  },
-  "uuid-gen": {
-    "title": "UUID Generator",
-    "description": "Generate UUID v4 identifiers in bulk",
-    "meta": {
-      "title": "UUID Generator — Online UUID v4 Creator | idcd",
-      "description": "Generate UUID v4 unique identifiers instantly. Supports bulk generation."
-    }
-  },
-  "number-convert": {
-    "title": "Number Base Converter",
-    "description": "Convert numbers between binary, octal, decimal, and hexadecimal",
-    "meta": {
-      "title": "Number Base Converter — Bin / Oct / Dec / Hex | idcd",
-      "description": "Convert numbers between binary, octal, decimal, and hexadecimal bases instantly."
-    }
-  },
-  "text-case": {
-    "title": "Text Case Converter",
-    "description": "Convert text between camelCase, snake_case, PascalCase, and more",
-    "meta": {
-      "title": "Text Case Converter — camelCase / snake_case | idcd",
-      "description": "Convert text between camelCase, snake_case, PascalCase, kebab-case, and UPPER_CASE formats."
-    }
-  },
-  "html-encode": {
-    "title": "HTML Entity Encoder",
-    "description": "Encode and decode HTML entities",
-    "meta": {
-      "title": "HTML Entity Encoder — Escape & Unescape HTML | idcd",
-      "description": "Encode special characters as HTML entities and decode them back. Prevents XSS injection."
-    }
-  },
-  "json-to-yaml": {
-    "title": "JSON ↔ YAML",
-    "description": "Convert between JSON and YAML formats",
-    "meta": {
-      "title": "JSON / YAML Converter — Format Conversion | idcd",
-      "description": "Convert JSON to YAML and YAML to JSON with format validation. Works entirely in your browser."
-    }
-  },
-  "url-parser": {
-    "title": "URL Parser",
-    "description": "Parse and inspect URL components",
-    "meta": {
-      "title": "URL Parser — URL Structure Inspector | idcd",
-      "description": "Break down a URL into its components: protocol, host, path, query parameters, and fragment."
-    }
-  },
-  "user-agent": {
-    "title": "User-Agent Parser",
-    "description": "Parse User-Agent strings to identify browser, OS, and device",
-    "meta": {
-      "title": "User-Agent Parser — Browser & OS Detector | idcd",
-      "description": "Parse User-Agent strings to identify the browser, operating system, and device type."
-    }
-  },
-  "http-status": {
-    "title": "HTTP Status Codes",
-    "description": "Look up HTTP response status code meanings",
-    "meta": {
-      "title": "HTTP Status Codes — Complete Reference | idcd",
-      "description": "Look up the meaning of any HTTP status code. Covers all 1xx, 2xx, 3xx, 4xx, and 5xx codes."
-    }
-  },
-  "mime-type": {
-    "title": "MIME Type Lookup",
-    "description": "Look up MIME types for file extensions",
-    "meta": {
-      "title": "MIME Type Lookup — File Type Reference | idcd",
-      "description": "Find the MIME type for any file extension, or look up extensions for a given MIME type."
-    }
-  },
-  "timezone": {
-    "title": "Timezone Converter",
-    "description": "Convert times across global timezones",
-    "meta": {
-      "title": "Timezone Converter — World Clock | idcd",
-      "description": "Convert and compare times across any timezone. View current time in major cities worldwide."
-    }
-  },
-  "date-calc": {
-    "title": "Date Calculator",
-    "description": "Calculate date differences and add or subtract days",
-    "meta": {
-      "title": "Date Calculator — Date Difference & Offset | idcd",
-      "description": "Calculate the number of days between two dates or add and subtract days from any date."
-    }
-  },
-  "image-base64": {
-    "title": "Image to Base64",
-    "description": "Convert images to Base64-encoded Data URLs",
-    "meta": {
-      "title": "Image to Base64 — Convert Image to Data URL | idcd",
-      "description": "Convert image files to Base64-encoded Data URLs for embedding directly in HTML or CSS."
-    }
-  },
-  "csv-formatter": {
-    "title": "CSV Formatter",
-    "description": "Parse and display CSV data as a table",
-    "meta": {
-      "title": "CSV Formatter — Parse & Preview CSV | idcd",
-      "description": "Parse CSV data and display it as a formatted table. Works with any delimiter."
-    }
-  },
-  "number-format": {
-    "title": "Number Formatter",
-    "description": "Format numbers with thousands separators and currency styles",
-    "meta": {
-      "title": "Number Formatter — Thousands & Currency Format | idcd",
-      "description": "Format numbers with thousands separators, currency symbols, and custom decimal precision."
-    }
-  },
-  "lorem": {
-    "title": "Lorem Ipsum Generator",
-    "description": "Generate Lorem Ipsum placeholder text",
-    "meta": {
-      "title": "Lorem Ipsum Generator — Placeholder Text | idcd",
-      "description": "Generate Lorem Ipsum placeholder text with customizable paragraph count."
-    }
-  },
-  "line-sort": {
-    "title": "Line Sorter",
-    "description": "Sort text lines in ascending or descending order",
-    "meta": {
-      "title": "Line Sorter — Online Text Line Sorting | idcd",
-      "description": "Sort text lines alphabetically in ascending or descending order. Supports deduplication and case-insensitive sorting."
-    }
-  },
-  "duplicate-remover": {
-    "title": "Duplicate Line Remover",
-    "description": "Remove duplicate lines from text, keeping only unique lines",
-    "meta": {
-      "title": "Duplicate Line Remover — Remove Repeated Lines | idcd",
-      "description": "Remove duplicate lines from text and keep only unique lines. Case-sensitive and case-insensitive modes."
-    }
-  },
-  "text-stats": {
-    "title": "Text Statistics",
-    "description": "Word frequency, character frequency, and text analysis",
-    "meta": {
-      "title": "Text Statistics — Word & Character Frequency | idcd",
-      "description": "Analyze text for word frequency, character frequency, sentence count, and more."
-    }
-  },
-  "escape-html": {
-    "title": "HTML Escape",
-    "description": "Safely escape HTML content",
-    "meta": {
-      "title": "HTML Escape — Safe HTML Content Encoder | idcd",
-      "description": "Escape HTML content to safe text format to prevent XSS injection."
-    }
-  },
-  "chmod-calc": {
-    "title": "chmod Calculator",
-    "description": "Visualize and calculate Unix file permissions",
-    "meta": {
-      "title": "chmod Calculator — Unix File Permissions | idcd",
-      "description": "Visually calculate Unix/Linux file permissions and convert between octal and symbolic notation."
-    }
-  },
-  "sort-json": {
-    "title": "JSON Key Sorter",
-    "description": "Sort JSON object keys alphabetically",
-    "meta": {
-      "title": "JSON Key Sorter — Alphabetical JSON Keys | idcd",
-      "description": "Sort JSON object keys alphabetically for easier comparison and version control diffs."
+    "dns": {
+      "recordType": "Record Type",
+      "typeA": "A (IPv4)",
+      "typeAAAA": "AAAA (IPv6)",
+      "typeMX": "MX (Mail)",
+      "typeTXT": "TXT (Text)",
+      "typeCNAME": "CNAME (Alias)",
+      "typeNS": "NS (Name Server)"
     }
   },
   "_page": {
@@ -680,5 +68,644 @@
     "port": "Port",
     "decode": "Decode",
     "encode": "Encode"
+  },
+  "asn": {
+    "title": "ASN Lookup",
+    "description": "Query network information for an Autonomous System Number",
+    "meta": {
+      "title": "ASN Lookup — Autonomous System Info | idcd",
+      "description": "Query ASN details including carrier name, IP prefixes, and network organization."
+    },
+    "probe": {
+      "label": "ASN",
+      "placeholder": "AS13335 or 13335"
+    }
+  },
+  "base64": {
+    "title": "Base64 Encoder/Decoder",
+    "description": "Encode or decode Base64 strings and files online",
+    "meta": {
+      "title": "Base64 Encoder/Decoder — Encode & Decode Online | idcd",
+      "description": "Instantly encode or decode Base64 strings and files in your browser. Supports URL-safe Base64 with no data ever leaving your device."
+    }
+  },
+  "bgp": {
+    "title": "BGP Route Lookup",
+    "description": "Query BGP routing information for an IP or prefix",
+    "meta": {
+      "title": "BGP Route Lookup — Prefix & Path Info | idcd",
+      "description": "Query BGP routing data including AS path and prefix announcements for any IP."
+    },
+    "probe": {
+      "label": "IP or prefix",
+      "placeholder": "1.1.1.0/24 or 1.1.1.1"
+    }
+  },
+  "chmod-calc": {
+    "title": "chmod Calculator",
+    "description": "Visualize and calculate Unix file permissions",
+    "meta": {
+      "title": "chmod Calculator — Unix File Permissions | idcd",
+      "description": "Visually calculate Unix/Linux file permissions and convert between octal and symbolic notation."
+    }
+  },
+  "cidr-calculator": {
+    "title": "CIDR Calculator",
+    "description": "Calculate subnet masks, host ranges, and broadcast addresses",
+    "meta": {
+      "title": "CIDR Calculator — Subnet & IP Range Tool | idcd",
+      "description": "Calculate subnet masks, broadcast addresses, and host ranges from any CIDR notation. Supports IPv4 and IPv6 supernetting."
+    }
+  },
+  "color-picker": {
+    "title": "Color Converter",
+    "description": "Convert colors between HEX, RGB, and HSL formats",
+    "meta": {
+      "title": "Color Converter — HEX / RGB / HSL Tool | idcd",
+      "description": "Convert colors between HEX, RGB, and HSL formats with a live preview. Works entirely in your browser."
+    }
+  },
+  "cron-parser": {
+    "title": "Cron Expression Parser",
+    "description": "Parse and visualize cron schedule expressions",
+    "meta": {
+      "title": "Cron Expression Parser — Schedule Visualizer | idcd",
+      "description": "Parse and visualize any cron expression with a human-readable schedule preview. See the next 10 run times at a glance."
+    }
+  },
+  "csv-formatter": {
+    "title": "CSV Formatter",
+    "description": "Parse and display CSV data as a table",
+    "meta": {
+      "title": "CSV Formatter — Parse & Preview CSV | idcd",
+      "description": "Parse CSV data and display it as a formatted table. Works with any delimiter."
+    }
+  },
+  "date-calc": {
+    "title": "Date Calculator",
+    "description": "Calculate date differences and add or subtract days",
+    "meta": {
+      "title": "Date Calculator — Date Difference & Offset | idcd",
+      "description": "Calculate the number of days between two dates or add and subtract days from any date."
+    }
+  },
+  "diagnose": {
+    "title": "Network Diagnostics",
+    "description": "One-click comprehensive network diagnostics — automatically detect common issues",
+    "meta": {
+      "title": "Network Diagnostics — One-Click Network Check | idcd",
+      "description": "Run a comprehensive network diagnostic in one click. Automatically detects DNS failures, latency spikes, routing issues, and more."
+    }
+  },
+  "diff": {
+    "title": "Text Diff",
+    "description": "Compare two text blocks line by line",
+    "meta": {
+      "title": "Text Diff — Online Line-by-Line Comparison | idcd",
+      "description": "Compare two blocks of text side by side and highlight differences line by line."
+    }
+  },
+  "dkim": {
+    "title": "DKIM Key Lookup",
+    "description": "Query domain DKIM public key records",
+    "meta": {
+      "title": "DKIM Key Lookup — Email Signing Key Check | idcd",
+      "description": "Query DKIM public key records for a domain to verify email signing configuration."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
+    }
+  },
+  "dmarc": {
+    "title": "DMARC Lookup",
+    "description": "Query domain DMARC email authentication policy",
+    "meta": {
+      "title": "DMARC Lookup — Email Auth Policy Check | idcd",
+      "description": "Query DMARC records and validate email authentication reporting and compliance policy."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
+    }
+  },
+  "dns": {
+    "title": "DNS Lookup",
+    "description": "Global DNS resolution with DNS pollution detection across multiple resolvers",
+    "meta": {
+      "title": "DNS Lookup — Global DNS Resolution Test | idcd",
+      "description": "Query DNS records from resolvers worldwide and detect DNS pollution or hijacking. Supports A, AAAA, MX, TXT, CNAME."
+    }
+  },
+  "duplicate-remover": {
+    "title": "Duplicate Line Remover",
+    "description": "Remove duplicate lines from text, keeping only unique lines",
+    "meta": {
+      "title": "Duplicate Line Remover — Remove Repeated Lines | idcd",
+      "description": "Remove duplicate lines from text and keep only unique lines. Case-sensitive and case-insensitive modes."
+    }
+  },
+  "escape-html": {
+    "title": "HTML Escape",
+    "description": "Safely escape HTML content",
+    "meta": {
+      "title": "HTML Escape — Safe HTML Content Encoder | idcd",
+      "description": "Escape HTML content to safe text format to prevent XSS injection."
+    }
+  },
+  "hash": {
+    "title": "Hash Generator",
+    "description": "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes",
+    "meta": {
+      "title": "Hash Generator — MD5, SHA-1, SHA-256 & More | idcd",
+      "description": "Generate MD5, SHA-1, SHA-256, and SHA-512 hashes from text or files instantly. All computation runs locally in your browser."
+    }
+  },
+  "html-encode": {
+    "title": "HTML Entity Encoder",
+    "description": "Encode and decode HTML entities",
+    "meta": {
+      "title": "HTML Entity Encoder — Escape & Unescape HTML | idcd",
+      "description": "Encode special characters as HTML entities and decode them back. Prevents XSS injection."
+    }
+  },
+  "http": {
+    "title": "HTTP Check",
+    "description": "Multi-region HTTP/HTTPS connectivity test — verify uptime and response times worldwide",
+    "meta": {
+      "title": "HTTP Check — Multi-Region Uptime Test | idcd",
+      "description": "Verify HTTP/HTTPS availability and response times from multiple global regions. Catch downtime before your users do."
+    }
+  },
+  "http-status": {
+    "title": "HTTP Status Codes",
+    "description": "Look up HTTP response status code meanings",
+    "meta": {
+      "title": "HTTP Status Codes — Complete Reference | idcd",
+      "description": "Look up the meaning of any HTTP status code. Covers all 1xx, 2xx, 3xx, 4xx, and 5xx codes."
+    }
+  },
+  "icp": {
+    "title": "ICP Filing Check",
+    "description": "Check China ICP (Internet Content Provider) filing status for a domain",
+    "meta": {
+      "title": "ICP Filing Check — China ICP Beian Lookup | idcd",
+      "description": "Check whether a domain has a valid China ICP (Internet Content Provider) filing (ICP 备案). Required for hosting in mainland China."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "baidu.com",
+      "helpTips": [
+        "Domain: enter a bare domain without https:// (e.g. baidu.com)",
+        "Queries the MIIT ICP/IP Address/Domain Information Filing System",
+        "Websites providing Internet services in mainland China must complete ICP filing"
+      ],
+      "result": {
+        "title": "ICP filing info",
+        "noFiling": "Not filed",
+        "rows": {
+          "domain": "Domain",
+          "icpNumber": "Filing No.",
+          "company": "Sponsor",
+          "type": "Filing type",
+          "filedAt": "Filed on",
+          "note": "Note"
+        }
+      }
+    }
+  },
+  "image-base64": {
+    "title": "Image to Base64",
+    "description": "Convert images to Base64-encoded Data URLs",
+    "meta": {
+      "title": "Image to Base64 — Convert Image to Data URL | idcd",
+      "description": "Convert image files to Base64-encoded Data URLs for embedding directly in HTML or CSS."
+    }
+  },
+  "ip": {
+    "title": "IP Geolocation",
+    "description": "Look up IP address geolocation, ASN, and ISP information",
+    "meta": {
+      "title": "IP Geolocation — IP Address Lookup | idcd",
+      "description": "Look up any IP address for geolocation, ASN, ISP, and organization data. Supports IPv4 and IPv6."
+    },
+    "probe": {
+      "label": "IP address or domain",
+      "placeholder": "1.1.1.1 or example.com",
+      "helpTips": [
+        "Supported formats: IPv4 (1.1.1.1), IPv6 (2606::1), domain (example.com)",
+        "Shows geolocation, ASN, and ISP information",
+        "Flags datacenter IPs and proxy/VPN exits"
+      ],
+      "result": {
+        "title": "Lookup result",
+        "rows": {
+          "ip": "IP",
+          "country": "Country/Region",
+          "city": "City",
+          "asn": "ASN",
+          "isp": "ISP"
+        },
+        "badge": {
+          "datacenter": "Datacenter",
+          "proxy": "Proxy/VPN"
+        }
+      }
+    }
+  },
+  "ipv6-check": {
+    "title": "IPv6 Check",
+    "description": "Validate, expand, and compress IPv6 addresses with format conversion",
+    "meta": {
+      "title": "IPv6 Check — Address Validation & Conversion | idcd",
+      "description": "Validate IPv6 addresses, convert between expanded and compressed formats, and detect address type (global, link-local, loopback)."
+    }
+  },
+  "ipv6-converter": {
+    "title": "IPv6 Converter",
+    "description": "Convert IPv6 addresses between full, compressed, and mixed notations",
+    "meta": {
+      "title": "IPv6 Converter — Format & Notation Converter | idcd",
+      "description": "Convert IPv6 addresses between full, compressed, and mixed notations. Also converts between IPv6 and decimal or hex representations."
+    }
+  },
+  "json-formatter": {
+    "title": "JSON Formatter",
+    "description": "Format, minify, and validate JSON with syntax highlighting",
+    "meta": {
+      "title": "JSON Formatter — Beautify & Validate JSON | idcd",
+      "description": "Format, minify, and validate JSON with syntax highlighting and error detection. Supports large payloads with instant client-side processing."
+    }
+  },
+  "json-to-yaml": {
+    "title": "JSON ↔ YAML",
+    "description": "Convert between JSON and YAML formats",
+    "meta": {
+      "title": "JSON / YAML Converter — Format Conversion | idcd",
+      "description": "Convert JSON to YAML and YAML to JSON with format validation. Works entirely in your browser."
+    }
+  },
+  "jwt-decoder": {
+    "title": "JWT Decoder",
+    "description": "Decode and inspect JWT headers, payloads, and signatures",
+    "meta": {
+      "title": "JWT Decoder — Decode & Inspect JWTs | idcd",
+      "description": "Decode JWT headers, payloads, and signatures without sending tokens to any server. Verify expiry and claims in one click."
+    }
+  },
+  "line-sort": {
+    "title": "Line Sorter",
+    "description": "Sort text lines in ascending or descending order",
+    "meta": {
+      "title": "Line Sorter — Online Text Line Sorting | idcd",
+      "description": "Sort text lines alphabetically in ascending or descending order. Supports deduplication and case-insensitive sorting."
+    }
+  },
+  "lorem": {
+    "title": "Lorem Ipsum Generator",
+    "description": "Generate Lorem Ipsum placeholder text",
+    "meta": {
+      "title": "Lorem Ipsum Generator — Placeholder Text | idcd",
+      "description": "Generate Lorem Ipsum placeholder text with customizable paragraph count."
+    }
+  },
+  "markdown": {
+    "title": "Markdown Preview",
+    "description": "Edit Markdown with a live rendered preview",
+    "meta": {
+      "title": "Markdown Preview — Live Markdown Editor | idcd",
+      "description": "Edit and preview Markdown in real time. No installation required."
+    }
+  },
+  "mime-type": {
+    "title": "MIME Type Lookup",
+    "description": "Look up MIME types for file extensions",
+    "meta": {
+      "title": "MIME Type Lookup — File Type Reference | idcd",
+      "description": "Find the MIME type for any file extension, or look up extensions for a given MIME type."
+    }
+  },
+  "mtr": {
+    "title": "MTR Test",
+    "description": "Combined ping + traceroute network path diagnostics",
+    "meta": {
+      "title": "MTR Network Test — Combined Path Diagnostics | idcd",
+      "description": "MTR combines ping and traceroute to continuously diagnose network path issues from global nodes."
+    },
+    "probe": {
+      "label": "Target",
+      "placeholder": "example.com or 1.1.1.1"
+    }
+  },
+  "mx": {
+    "title": "MX Record Lookup",
+    "description": "Query domain mail exchanger records",
+    "meta": {
+      "title": "MX Record Lookup — Mail Server Query | idcd",
+      "description": "Query MX records to verify mail server configuration and routing."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
+    }
+  },
+  "ntp": {
+    "title": "NTP Test",
+    "description": "Test NTP time synchronization server",
+    "meta": {
+      "title": "NTP Server Test — Time Sync Check | idcd",
+      "description": "Test NTP server connectivity and measure time offset."
+    },
+    "probe": {
+      "label": "NTP server",
+      "placeholder": "pool.ntp.org or time.cloudflare.com"
+    }
+  },
+  "number-convert": {
+    "title": "Number Base Converter",
+    "description": "Convert numbers between binary, octal, decimal, and hexadecimal",
+    "meta": {
+      "title": "Number Base Converter — Bin / Oct / Dec / Hex | idcd",
+      "description": "Convert numbers between binary, octal, decimal, and hexadecimal bases instantly."
+    }
+  },
+  "number-format": {
+    "title": "Number Formatter",
+    "description": "Format numbers with thousands separators and currency styles",
+    "meta": {
+      "title": "Number Formatter — Thousands & Currency Format | idcd",
+      "description": "Format numbers with thousands separators, currency symbols, and custom decimal precision."
+    }
+  },
+  "password-gen": {
+    "title": "Password Generator",
+    "description": "Generate strong random passwords",
+    "meta": {
+      "title": "Password Generator — Strong Random Password | idcd",
+      "description": "Generate cryptographically strong random passwords with customizable length and character sets."
+    }
+  },
+  "ping": {
+    "title": "Ping Check",
+    "description": "Global multi-node ICMP ping from 100+ locations — measure latency and packet loss",
+    "meta": {
+      "title": "Ping Check — Global ICMP Latency Test | idcd",
+      "description": "Test ICMP ping latency and packet loss from 100+ real probe nodes worldwide. Identify network issues in seconds."
+    }
+  },
+  "qrcode": {
+    "title": "QR Code Generator",
+    "description": "Create QR codes for URLs, text, or contact info",
+    "meta": {
+      "title": "QR Code Generator — Create QR Codes Online | idcd",
+      "description": "Generate QR codes for URLs, text, or contact info with customizable size and error correction. Download as PNG or SVG instantly."
+    }
+  },
+  "rdns": {
+    "title": "Reverse DNS Lookup",
+    "description": "Query reverse DNS (PTR) records for an IP address",
+    "meta": {
+      "title": "Reverse DNS Lookup — PTR Record Query | idcd",
+      "description": "Look up the PTR record for any IP address to find its associated hostname."
+    },
+    "probe": {
+      "label": "IP address",
+      "placeholder": "8.8.8.8"
+    }
+  },
+  "regex-tester": {
+    "title": "Regex Tester",
+    "description": "Live regular expression testing with match highlighting",
+    "meta": {
+      "title": "Regex Tester — Live Regular Expression Editor | idcd",
+      "description": "Test and debug regular expressions with real-time match highlighting and group capture display. Supports PCRE, JavaScript, and Python flavors."
+    }
+  },
+  "smtp": {
+    "title": "SMTP Test",
+    "description": "Test SMTP mail server connectivity",
+    "meta": {
+      "title": "SMTP Mail Server Test — Connectivity Check | idcd",
+      "description": "Test whether an SMTP mail server is reachable and diagnose email delivery issues."
+    },
+    "probe": {
+      "label": "SMTP server",
+      "placeholder": "smtp.example.com"
+    }
+  },
+  "sort-json": {
+    "title": "JSON Key Sorter",
+    "description": "Sort JSON object keys alphabetically",
+    "meta": {
+      "title": "JSON Key Sorter — Alphabetical JSON Keys | idcd",
+      "description": "Sort JSON object keys alphabetically for easier comparison and version control diffs."
+    }
+  },
+  "speedtest": {
+    "title": "Speed Test",
+    "description": "Test network download and upload bandwidth",
+    "meta": {
+      "title": "Speed Test — Network Bandwidth Test | idcd",
+      "description": "Measure network download and upload speed (Mbps) via multi-node HTTP throughput testing."
+    }
+  },
+  "spf": {
+    "title": "SPF Record Lookup",
+    "description": "Query domain SPF email authentication records",
+    "meta": {
+      "title": "SPF Record Lookup — Sender Policy Check | idcd",
+      "description": "Query and validate SPF (Sender Policy Framework) records for a domain."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com"
+    }
+  },
+  "ssl": {
+    "title": "SSL Certificate Check",
+    "description": "Inspect SSL/TLS certificate validity, issuer, and security configuration",
+    "meta": {
+      "title": "SSL Certificate Check — TLS Validity & Config | idcd",
+      "description": "Verify your domain's SSL/TLS certificate expiry, issuer chain, and cipher configuration. Get alerted before certs expire."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com",
+      "actionLabel": "Check",
+      "loadingLabel": "Checking...",
+      "helpTips": [
+        "Domain: enter a bare domain without https:// (e.g. example.com)",
+        "Checks HTTPS certificate validity and expiry",
+        "Shows certificate issuer and validity period"
+      ],
+      "result": {
+        "title": "Certificate info",
+        "expiresInDays": "Expires in {days} days",
+        "expired": "Expired",
+        "rows": {
+          "domain": "Domain",
+          "issuer": "Issuer",
+          "validFrom": "Valid from",
+          "validTo": "Valid to",
+          "certStatus": "Cert status"
+        },
+        "status": {
+          "valid": "Valid",
+          "invalid": "Invalid"
+        }
+      }
+    }
+  },
+  "tcp": {
+    "title": "TCP Port Test",
+    "description": "Test TCP port reachability and connection latency",
+    "meta": {
+      "title": "TCP Port Test — Connectivity Check | idcd",
+      "description": "Test whether a TCP port on a target host is reachable and measure connection latency."
+    },
+    "probe": {
+      "label": "host:port",
+      "placeholder": "example.com:443"
+    }
+  },
+  "tcping": {
+    "title": "TCP Ping",
+    "description": "Test TCP port reachability and measure connection latency from global probe nodes",
+    "meta": {
+      "title": "TCP Ping — Port Connectivity Tester | idcd",
+      "description": "Test TCP port reachability and measure connection latency to any host from global probe nodes. Instantly detect blocked or closed ports."
+    }
+  },
+  "text-case": {
+    "title": "Text Case Converter",
+    "description": "Convert text between camelCase, snake_case, PascalCase, and more",
+    "meta": {
+      "title": "Text Case Converter — camelCase / snake_case | idcd",
+      "description": "Convert text between camelCase, snake_case, PascalCase, kebab-case, and UPPER_CASE formats."
+    }
+  },
+  "text-stats": {
+    "title": "Text Statistics",
+    "description": "Word frequency, character frequency, and text analysis",
+    "meta": {
+      "title": "Text Statistics — Word & Character Frequency | idcd",
+      "description": "Analyze text for word frequency, character frequency, sentence count, and more."
+    }
+  },
+  "timestamp": {
+    "title": "Timestamp Converter",
+    "description": "Convert Unix timestamps to readable dates and back across any timezone",
+    "meta": {
+      "title": "Timestamp Converter — Unix Time Converter | idcd",
+      "description": "Convert Unix timestamps to human-readable dates and back, across any timezone. Supports seconds, milliseconds, and ISO 8601 formats."
+    }
+  },
+  "timezone": {
+    "title": "Timezone Converter",
+    "description": "Convert times across global timezones",
+    "meta": {
+      "title": "Timezone Converter — World Clock | idcd",
+      "description": "Convert and compare times across any timezone. View current time in major cities worldwide."
+    }
+  },
+  "traceroute": {
+    "title": "Traceroute",
+    "description": "Trace the network path and each hop from global nodes to your target",
+    "meta": {
+      "title": "Traceroute — Global Network Path Tracing | idcd",
+      "description": "Trace the route your packets take to any destination from global nodes. Pinpoint latency bottlenecks hop by hop."
+    }
+  },
+  "unicode": {
+    "title": "Unicode Converter",
+    "description": "Look up Unicode characters and convert between code points and glyphs",
+    "meta": {
+      "title": "Unicode Converter — Code Point Lookup | idcd",
+      "description": "Look up Unicode character details and convert between characters and their Unicode code points."
+    }
+  },
+  "url-encode": {
+    "title": "URL Encoder / Decoder",
+    "description": "Encode or decode URL-encoded strings",
+    "meta": {
+      "title": "URL Encoder / Decoder — Online URL Encoding | idcd",
+      "description": "Encode and decode URL strings online. Supports both encodeURIComponent and encodeURI formats."
+    }
+  },
+  "url-parser": {
+    "title": "URL Parser",
+    "description": "Parse and inspect URL components",
+    "meta": {
+      "title": "URL Parser — URL Structure Inspector | idcd",
+      "description": "Break down a URL into its components: protocol, host, path, query parameters, and fragment."
+    }
+  },
+  "user-agent": {
+    "title": "User-Agent Parser",
+    "description": "Parse User-Agent strings to identify browser, OS, and device",
+    "meta": {
+      "title": "User-Agent Parser — Browser & OS Detector | idcd",
+      "description": "Parse User-Agent strings to identify the browser, operating system, and device type."
+    }
+  },
+  "uuid-gen": {
+    "title": "UUID Generator",
+    "description": "Generate UUID v4 identifiers in bulk",
+    "meta": {
+      "title": "UUID Generator — Online UUID v4 Creator | idcd",
+      "description": "Generate UUID v4 unique identifiers instantly. Supports bulk generation."
+    }
+  },
+  "whois": {
+    "title": "WHOIS Lookup",
+    "description": "Query domain registration details, registrar, and expiry date",
+    "meta": {
+      "title": "WHOIS Lookup — Domain Registration Info | idcd",
+      "description": "Query domain WHOIS records for registrar, registrant, creation date, expiry date, and name servers."
+    },
+    "probe": {
+      "label": "Domain",
+      "placeholder": "example.com",
+      "helpTips": [
+        "Domain: enter a bare domain without https:// (e.g. example.com)",
+        "Shows registrar, registration date, expiry date, and NS records",
+        "WHOIS data for some TLDs may be limited"
+      ],
+      "result": {
+        "title": "WHOIS info",
+        "rows": {
+          "domain": "Domain",
+          "registrar": "Registrar",
+          "createdAt": "Registered",
+          "expiresAt": "Expires",
+          "nameServers": "Name servers",
+          "note": "Note"
+        }
+      }
+    }
+  },
+  "word-counter": {
+    "title": "Word Counter",
+    "description": "Count words, characters, lines, and paragraphs in text",
+    "meta": {
+      "title": "Word Counter — Character & Line Count | idcd",
+      "description": "Count words, characters, lines, and paragraphs instantly. Supports mixed English and Chinese text."
+    }
+  },
+  "xml-formatter": {
+    "title": "XML Formatter",
+    "description": "Format, validate, and beautify XML documents",
+    "meta": {
+      "title": "XML Formatter — Online XML Beautifier | idcd",
+      "description": "Format, validate, and minify XML online with syntax error detection."
+    }
+  },
+  "yaml-formatter": {
+    "title": "YAML Formatter",
+    "description": "Format, validate, and beautify YAML documents",
+    "meta": {
+      "title": "YAML Formatter — Online YAML Beautifier | idcd",
+      "description": "Format and validate YAML online with syntax highlighting. Supports YAML-to-JSON conversion."
+    }
   }
 }

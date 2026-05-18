@@ -9,12 +9,8 @@ export default defineConfig({
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
     pool: 'forks',
-    poolOptions: {
-      forks: {
-        maxForks: 2,
-        minForks: 1,
-      },
-    },
+    // vitest 4 移除 InlineConfig.poolOptions；并发上限改为顶层 maxWorkers。
+    maxWorkers: 2,
     env: {
       // Set polling timeout to 0 so probe poll loop exits immediately in tests.
       // Tests mock /v1/probe/tasks/ with 404; without this the suite would hang.
@@ -25,7 +21,6 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': resolve(__dirname, './src'),
-      '@config': resolve(__dirname, '../../config'),
     }
   }
 })

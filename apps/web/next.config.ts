@@ -1,4 +1,3 @@
-import path from 'node:path'
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
 import createMDX from '@next/mdx'
@@ -23,11 +22,12 @@ const nextConfig: NextConfig = {
   pageExtensions: ['ts', 'tsx'],
   // Turbopack 默认支持 .mdx，dev 模式自动应用 createMDX 配置；
   // production build (webpack) 由 withMDX 包装注入 loader。
-  // turbopack.root 指向 monorepo 根，否则跨包 import (config/locales.json) 被拒
+  // 显式把 Turbopack root 和 file tracing root 锁在本目录，
+  // 禁止向 monorepo 上层扫描（Go 二进制 / worktree / docs 会撑爆 dev 内存导致 OOM）。
   turbopack: {
-    root: path.resolve(__dirname, '../..'),
+    root: __dirname,
   },
-  outputFileTracingRoot: path.resolve(__dirname, '../..'),
+  outputFileTracingRoot: __dirname,
   images: {
     remotePatterns: [
       {

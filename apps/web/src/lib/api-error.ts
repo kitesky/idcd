@@ -37,18 +37,15 @@ type GlobalT = ReturnType<typeof useTranslations>
  * The `errors.UNKNOWN` key is expected to exist in every locale's
  * `messages/{locale}/errors.json` (enforced by lint:i18n in Phase 5).
  */
+// next-intl 4 收紧 Translator 类型，`t(key as never, params)` 这条 escape hatch
+// 失效。helper 内用 unknown 收口，cast 成宽松签名。
+type LooseT = (key: string, params?: Record<string, unknown>) => string
+
 export function translateApiError(err: ApiError, t: GlobalT): string {
   if (err.code) {
     const key = `errors.${err.code}`
     try {
-      // err.params is typed loosely (Record<string, unknown>) because the
-      // backend may send arbitrary JSON values; cast to TranslationValues so
-      // next-intl accepts it. Dynamic key path needs `as never` since
-      // next-intl can't statically prove a runtime-built code is valid.
-      const translated = t(
-        key as never,
-        err.params as Record<string, string | number | boolean | Date | null | undefined> | undefined,
-      )
+      const translated = (t as unknown as LooseT)(key, err.params)
       // useTranslations returns the key itself when a translation is missing.
       // Detect that and fall through.
       if (translated && translated !== key) return translated

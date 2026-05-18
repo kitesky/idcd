@@ -1,8 +1,7 @@
 import type { Metadata, Viewport } from "next"
 import { headers } from "next/headers"
 import { Geist, Geist_Mono } from "next/font/google"
-import { NextIntlClientProvider } from "next-intl"
-import { onError, getMessageFallback } from "@/i18n/error-handlers"
+import { IntlProvider } from "@/i18n/intl-provider"
 import { ThemeProvider } from "@/components/providers"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { Toaster } from "@/components/ui/sonner"
@@ -75,14 +74,7 @@ export default async function RootLayout({
   return (
     <html lang={htmlLang} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen flex flex-col`}>
-        <NextIntlClientProvider
-          locale={locale}
-          messages={messages}
-          timeZone="Asia/Shanghai"
-          now={new Date()}
-          onError={onError}
-          getMessageFallback={getMessageFallback}
-        >
+        <IntlProvider locale={locale} messages={messages} now={new Date()}>
           <ThemeProvider nonce={nonce}>
             <TooltipProvider delayDuration={200}>
               {children}
@@ -90,7 +82,7 @@ export default async function RootLayout({
               <Toaster />
             </TooltipProvider>
           </ThemeProvider>
-        </NextIntlClientProvider>
+        </IntlProvider>
       </body>
     </html>
   )

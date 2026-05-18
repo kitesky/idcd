@@ -60,15 +60,19 @@ export class ToolError extends Error {
  * @param t   next-intl 翻译函数 (任意 namespace 或全局)
  * @param fallback 当不是 ToolError 时的兜底文案，默认用 `err.message`
  */
-type AnyT = (key: never, params?: ToolErrorParams) => string
+// next-intl 4 收紧了 Translator 类型 — Translator<…, NS> 的 params 现在按 key 推断，
+// 没有占位符的 key 会被推断成 `params: undefined`，导致 `t(key as never, params)`
+// 的 params 类型不可赋值。这里用 unknown 收口，内部 cast 成宽松签名，调用方
+// （`useTranslations(...)` 的返回值）可以无障碍传进来。
+type LooseT = (key: string, params?: ToolErrorParams) => string
 
 export function translateToolError(
   err: unknown,
-  t: AnyT,
+  t: unknown,
   fallback?: string,
 ): string {
   if (err instanceof ToolError) {
-    return t(err.i18nKey as never, err.i18nParams)
+    return (t as LooseT)(err.i18nKey, err.i18nParams)
   }
   if (err instanceof Error) return fallback ?? err.message
   return fallback ?? String(err)

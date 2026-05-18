@@ -2,36 +2,31 @@ import { getRequestConfig } from 'next-intl/server'
 import { headers } from 'next/headers'
 import { defaultLocale, fallbackChain, isSupported } from './registry'
 
-// Stable list of namespaces. Adding a new namespace = append one entry here
-// + drop the JSON in every messages/{locale}/ directory. Missing files at a
-// given locale are tolerated by loadNamespace's fallback chain.
+// Stable list of namespaces — must mirror messages/cn/*.json 1:1. Adding a new
+// namespace = append one entry here + drop the JSON in every messages/{locale}/
+// directory + add to types.d.ts. Missing files at a given locale are tolerated
+// by loadNamespace's fallback chain (admin uses this in non-cn locales).
 const NAMESPACES = [
-  'nav',
-  'footer',
-  'tools',
+  'about',
+  'admin',
+  'alerts',
   'auth',
+  'billing',
+  'common',
+  'dashboard',
+  'docs',
+  'errors',
   'home',
+  'incidents',
   'leaderboard',
+  'monitors',
+  'nav',
   'nodes',
   'pricing',
-  'errors',
-  'common',
-  'monitors',
-  'alerts',
   'settings',
-  'billing',
-  'dashboard',
   'status',
-  'statusPages',
-  'incidents',
+  'tools',
   'userMenu',
-  'admin',
-  'docs',
-  'enums',
-  'validation',
-  'about',
-  'transparency',
-  'legal',
 ] as const
 
 type Namespace = (typeof NAMESPACES)[number]

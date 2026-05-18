@@ -402,9 +402,10 @@ func TestProbeHandler_TaskResult_200(t *testing.T) {
 	resultJSON := json.RawMessage(`{"latency_ms":42,"success":true}`)
 	now := time.Now()
 
-	rows := pgxmock.NewRows([]string{"status", "result", "created_at", "completed_at"}).
-		AddRow("completed", &resultJSON, now, &now)
-	mockPool.ExpectQuery("SELECT status, result, created_at, completed_at").
+	// Task is anonymous (initiated_by/api_key_id NULL) so no ownership check.
+	rows := pgxmock.NewRows([]string{"status", "result", "created_at", "completed_at", "initiated_by", "api_key_id"}).
+		AddRow("completed", &resultJSON, now, &now, (*string)(nil), (*string)(nil))
+	mockPool.ExpectQuery("SELECT status, result, created_at, completed_at, initiated_by, api_key_id").
 		WithArgs("pt_test_001").
 		WillReturnRows(rows)
 
@@ -455,7 +456,7 @@ func TestProbeHandler_TaskResult_404(t *testing.T) {
 	defer mr.Close()
 	defer mockPool.Close()
 
-	mockPool.ExpectQuery("SELECT status, result, created_at, completed_at").
+	mockPool.ExpectQuery("SELECT status, result, created_at, completed_at, initiated_by, api_key_id").
 		WithArgs("pt_notfound").
 		WillReturnError(pgx.ErrNoRows)
 

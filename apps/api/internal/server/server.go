@@ -371,7 +371,17 @@ func (s *Server) setupRouter() {
 			// Probe endpoints
 			streamClient := stream.New(s.redis)
 			probeH := handler.NewProbeHandler(s.pgxPool, streamClient)
+			// Probe creation runs anonymously (public tool pages) — auth is
+			// optional. Wrapping the route group with OptionalAuthnWithTokens
+			// lets the handlers see the caller's user_id / api_key_id when
+			// the request DOES come from a logged-in session, so:
+			//   - createProbeTask records initiated_by / api_key_id for audit;
+			//   - TaskResult can enforce ownership on tasks that were created
+			//     under an account (preventing leaked task_ids from disclosing
+			//     other users' probe results).
+			optAuthnMW := middleware.OptionalAuthnWithTokens(jwtSvc, sessSvc, patVerifier, apiKeyVerifier)
 			r.Route("/probe", func(r chi.Router) {
+				r.Use(optAuthnMW)
 				r.Post("/http", probeH.HTTP)
 				r.Post("/ping", probeH.Ping)
 				r.Post("/tcp", probeH.TCP)
@@ -382,7 +392,7 @@ func (s *Server) setupRouter() {
 				r.Post("/smtp", probeH.SMTP)
 				r.Post("/ntp", probeH.NTP)
 				r.Post("/speedtest", probeH.Speedtest)
-				// T1 — async 任务结果查询
+				// T1 — async 任务结果查询（owner-scoped 校验在 handler 里做）
 				r.Get("/tasks/{taskId}", probeH.TaskResult)
 			})
 			r.Post("/diagnose", probeH.Diagnose)

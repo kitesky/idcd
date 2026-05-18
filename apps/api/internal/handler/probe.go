@@ -258,8 +258,12 @@ func (h *ProbeHandler) createProbeTask(
 	if userID := middleware.UserIDFromContext(r.Context()); userID != "" {
 		initiatedBy = &userID
 	}
-	// api_key_id stays nil until PAT/APIKey middleware lands.
-	var apiKeyID *string = nil
+	// api_key_id is populated when the request was authenticated via an API
+	// key — preserves the audit trail back to the issuing key.
+	var apiKeyID *string
+	if k := middleware.APIKeyIDFromContext(r.Context()); k != "" {
+		apiKeyID = &k
+	}
 
 	// Get client IP
 	clientIP := getClientIP(r)
@@ -377,7 +381,14 @@ func getClientIP(r *http.Request) string {
 	return middleware.ClientIP(r)
 }
 
-// TaskResult handles GET /v1/probe/tasks/{taskId}
+// TaskResult handles GET /v1/probe/tasks/{taskId}.
+//
+// Anonymous task lookups remain allowed (public tool pages create probe
+// tasks without logging in), but tasks that WERE created by an authenticated
+// user are scoped to that user. A leaked task_id therefore can't be used by
+// another account to read someone else's probe result. The router pairs this
+// handler with OptionalAuthnWithTokens so UserID / APIKeyID land in context
+// when a Bearer / cookie is present.
 func (h *ProbeHandler) TaskResult(w http.ResponseWriter, r *http.Request) {
 	taskID := chi.URLParam(r, "taskId")
 	if taskID == "" {
@@ -390,11 +401,13 @@ func (h *ProbeHandler) TaskResult(w http.ResponseWriter, r *http.Request) {
 	var result *json.RawMessage
 	var createdAt time.Time
 	var completedAt *time.Time
+	var initiatedBy *string
+	var taskAPIKeyID *string
 
 	err := h.pool.QueryRow(ctx, `
-		SELECT status, result, created_at, completed_at
+		SELECT status, result, created_at, completed_at, initiated_by, api_key_id
 		FROM probe_task WHERE id = $1
-	`, taskID).Scan(&status, &result, &createdAt, &completedAt)
+	`, taskID).Scan(&status, &result, &createdAt, &completedAt, &initiatedBy, &taskAPIKeyID)
 
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -403,6 +416,17 @@ func (h *ProbeHandler) TaskResult(w http.ResponseWriter, r *http.Request) {
 		}
 		response.Error(w, r, apperr.Internal("query failed", err))
 		return
+	}
+
+	// Ownership check: if the task was created by an authenticated principal,
+	// only that principal can read the result. Return 404 (not 403) so an
+	// attacker can't enumerate which task IDs exist on other accounts.
+	if initiatedBy != nil && *initiatedBy != "" {
+		requesterUserID := middleware.UserIDFromContext(ctx)
+		if requesterUserID != *initiatedBy {
+			response.Error(w, r, apperr.NotFound("task not found"))
+			return
+		}
 	}
 
 	type TaskResultResponse struct {

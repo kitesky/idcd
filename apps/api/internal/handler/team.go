@@ -624,30 +624,33 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Atomically consume the invitation — prevents two concurrent accepts with the same token.
+	// Atomically consume the invitation — prevents two concurrent accepts with the same token
+	// AND eliminates the race where the expiry check happens after the row is marked accepted.
 	var invID, teamID, role, invitedBy string
-	var expiresAt time.Time
 	err := h.pool.QueryRow(r.Context(),
 		`UPDATE team_invitations
 		 SET status = 'accepted'
-		 WHERE token = $1 AND status = 'pending'
-		 RETURNING id, team_id, role, invited_by, expires_at`,
+		 WHERE token = $1 AND status = 'pending' AND expires_at > NOW()
+		 RETURNING id, team_id, role, invited_by`,
 		req.Token,
-	).Scan(&invID, &teamID, &role, &invitedBy, &expiresAt)
+	).Scan(&invID, &teamID, &role, &invitedBy)
 	if err != nil {
 		if err == pgx.ErrNoRows {
+			// Could be: token unknown, already used, OR expired.
+			// Probe the row to give a clearer error to the user.
+			var exists bool
+			_ = h.pool.QueryRow(r.Context(),
+				`SELECT EXISTS (SELECT 1 FROM team_invitations WHERE token = $1 AND expires_at <= NOW())`,
+				req.Token,
+			).Scan(&exists)
+			if exists {
+				response.Error(w, r, apperr.Validation("invitation has expired", ""))
+				return
+			}
 			response.Error(w, r, apperr.NotFound("invitation not found or already used"))
 			return
 		}
 		response.Error(w, r, apperr.Internal("failed to accept invitation", err))
-		return
-	}
-
-	if time.Now().After(expiresAt) {
-		// Roll back the status change since the invite is expired.
-		_, _ = h.pool.Exec(r.Context(),
-			`UPDATE team_invitations SET status = 'pending' WHERE id = $1`, invID)
-		response.Error(w, r, apperr.Validation("invitation has expired", ""))
 		return
 	}
 

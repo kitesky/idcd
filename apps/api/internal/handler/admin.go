@@ -3,6 +3,7 @@ package handler
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"strconv"
 	"strings"
@@ -45,7 +46,9 @@ func (h *AdminHandler) AdminAuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 		token := strings.TrimPrefix(auth, "Bearer ")
-		if token == "" || token != h.adminToken {
+		// Constant-time compare to prevent length/byte-leak timing attacks.
+		if token == "" || h.adminToken == "" ||
+			subtle.ConstantTimeCompare([]byte(token), []byte(h.adminToken)) != 1 {
 			response.Error(w, r, apperr.Unauthorized("invalid admin token"))
 			return
 		}

@@ -164,16 +164,20 @@ const CHECKS: CheckDef[] = [
 const INTERNAL_TLDS = new Set(["localhost", "local", "internal", "intranet", "localdomain"])
 // Compiled once at module load — reused on every isPublicDomain call.
 const IPV4_DOTTED_RE = /^(\d{1,3}\.){3}\d{1,3}$/
-// Catches ALL all-digit / dotted-decimal / short-form IPv4 (`127.1`, `0`,
-// `2130706433`, `1.1`, `0x7f.0.0.1`, …). Any host that has zero non-digit
-// characters in its labels is an integer-form IP and must be rejected
-// regardless of dot count.
-const NUMERIC_HOST_RE = /^[0-9a-fA-FxX.]+$/
+// All-numeric (with optional dots) — covers decimal integer (2130706433),
+// short-form IPv4 (127.1), and octal forms (0177.0.0.1). They all collapse
+// to an IPv4 address at the OS resolver.
+const DIGITS_AND_DOTS_RE = /^[0-9.]+$/
 // Each DNS label: starts and ends with alnum, optionally has hyphens in the middle.
 const LABEL_RE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?$/i
 
 // Block internal/reserved hostnames to prevent SSRF via the diagnose endpoint.
 // Only allows public domain names (labels separated by dots, no IPs, no localhost).
+//
+// This is a defense-in-depth check — the backend (`denylist.CheckTarget`) is
+// the authoritative SSRF guard with full DNS resolution + RFC1918/loopback
+// detection. We deliberately keep this layer simple to avoid the hex-letter
+// false-positive that previously rejected legitimate domains like `bad.cafe`.
 function isPublicDomain(domain: string): boolean {
   // Reject any character that could carve out an auth section, port,
   // path, query, or shell injection vector before downstream code uses it.
@@ -183,16 +187,12 @@ function isPublicDomain(domain: string): boolean {
   // (fe80::1%eth0), bracketed ([::1]), or mapped (::ffff:127.0.0.1).
   if (domain.includes(":") || domain.startsWith("[") || domain.endsWith("]")) return false
 
-  // Reject IPv4 in dotted notation AND any all-numeric host (short-form
-  // like 127.1, decimal integer 2130706433, hex 0x7f000001, octal 0177...
-  // — all of which resolve to a v4 address at the OS layer).
+  // Reject IPv4: dotted-decimal, short-form, decimal integer, octal.
   if (IPV4_DOTTED_RE.test(domain)) return false
-  if (NUMERIC_HOST_RE.test(domain) && !/[g-wyz]/i.test(domain)) {
-    // Has no characters outside the hex/decimal alphabet — treat as an
-    // integer-form IP. (Pure DNS labels almost always contain at least
-    // one letter from g-z, breaking this match.)
-    return false
-  }
+  if (DIGITS_AND_DOTS_RE.test(domain)) return false
+  // Hex IPv4 (0x7f000001) — only the explicit "0x" form is treated as IP
+  // at the resolver; bare hex strings like "cafe" are domain labels.
+  if (/^0[xX][0-9a-fA-F]+$/.test(domain)) return false
 
   const labels = domain.split(".")
   if (labels.length < 2) return false

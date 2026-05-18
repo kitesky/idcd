@@ -135,12 +135,12 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 	h, mockPool := newTeamTestHandler(t)
 	defer mockPool.Close()
 
-	expiresAt := time.Now().Add(24 * time.Hour)
-	// Now uses UPDATE...RETURNING to atomically consume the invitation.
+	// UPDATE...RETURNING atomically consumes the invitation, with expiry
+	// merged into the WHERE clause so the check can't race the status flip.
 	mockPool.ExpectQuery(regexp.QuoteMeta(`UPDATE team_invitations`)).
 		WithArgs("valid-token-abc").
-		WillReturnRows(pgxmock.NewRows([]string{"id", "team_id", "role", "invited_by", "expires_at"}).
-			AddRow("tinv_xyz", "team_abc", "member", "u_inviter", expiresAt))
+		WillReturnRows(pgxmock.NewRows([]string{"id", "team_id", "role", "invited_by"}).
+			AddRow("tinv_xyz", "team_abc", "member", "u_inviter"))
 
 	mockPool.ExpectExec(regexp.QuoteMeta(`INSERT INTO team_memberships`)).
 		WithArgs(pgxmock.AnyArg(), "team_abc", "u_joiner", "member", "u_inviter").

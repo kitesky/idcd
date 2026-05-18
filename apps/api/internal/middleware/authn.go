@@ -200,6 +200,76 @@ func AuthnWithTokens(
 	}
 }
 
+// OptionalAuthnWithTokens is the relaxed sibling of AuthnWithTokens.
+//
+// If a valid Bearer / cookie token is present, it populates the same context
+// values as AuthnWithTokens (user_id, auth_method, pat_id, api_key_id). If the
+// token is missing OR fails verification, the request is passed through
+// anonymously — no error response.
+//
+// Use this for endpoints that have legitimate anonymous traffic (e.g. the
+// public tool pages' probe-task lookup) but want to enforce ownership when
+// the caller IS authenticated. Handlers must then check whether the resource
+// belongs to UserIDFromContext / APIKeyIDFromContext before exposing it.
+func OptionalAuthnWithTokens(
+	jwtSvc TokenVerifier,
+	sessSvc SessionChecker,
+	patSvc PATVerifier,
+	apiKeySvc APIKeyVerifier,
+) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			token := extractBearerToken(r)
+			if token == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			ctx := r.Context()
+			switch {
+			case isPATToken(token):
+				if patSvc != nil {
+					if info, err := patSvc.VerifyPAT(ctx, token); err == nil && info != nil {
+						if info.ExpiresAt == nil || info.ExpiresAt.IsZero() || time.Now().UTC().Before(*info.ExpiresAt) {
+							ctx = context.WithValue(ctx, userIDKey, info.UserID)
+							ctx = context.WithValue(ctx, authMethodKey, AuthMethodPAT)
+							ctx = context.WithValue(ctx, patIDKey, info.ID)
+							if shouldTouch(&patTouchMu, patTouchLast, info.ID) {
+								go touchLastUsedPAT(patSvc, info.ID)
+							}
+						}
+					}
+				}
+			case isAPIKeyToken(token):
+				if apiKeySvc != nil {
+					if info, err := apiKeySvc.VerifyAPIKey(ctx, token); err == nil && info != nil {
+						statusOK := info.Status == "" || info.Status == apiKeyStatusActive
+						notExpired := info.ExpiresAt == nil || info.ExpiresAt.IsZero() || time.Now().UTC().Before(*info.ExpiresAt)
+						if statusOK && notExpired {
+							ctx = context.WithValue(ctx, userIDKey, info.OwnerID)
+							ctx = context.WithValue(ctx, authMethodKey, AuthMethodAPIKey)
+							ctx = context.WithValue(ctx, apiKeyIDKey, info.ID)
+							if shouldTouch(&apiKeyTouchMu, apiKeyTouchLast, info.ID) {
+								go touchLastUsedAPIKey(apiKeySvc, info.ID)
+							}
+						}
+					}
+				}
+			default:
+				if claims, err := jwtSvc.Verify(token); err == nil {
+					if _, sErr := sessSvc.Get(ctx, claims.SessionID); sErr == nil {
+						ctx = context.WithValue(ctx, userIDKey, claims.UserID)
+						ctx = context.WithValue(ctx, sessionIDKey, claims.SessionID)
+						ctx = context.WithValue(ctx, authMethodKey, AuthMethodJWT)
+						ctx = apiI18n.WithClaims(ctx, claims)
+					}
+				}
+			}
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+}
+
 // verifyJWT runs the legacy JWT + Redis session path.
 func verifyJWT(w http.ResponseWriter, r *http.Request, jwtSvc TokenVerifier, sessSvc SessionChecker, token string) (context.Context, bool) {
 	claims, err := jwtSvc.Verify(token)

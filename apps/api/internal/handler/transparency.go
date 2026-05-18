@@ -94,10 +94,13 @@ func (h *TransparencyHandler) queryNodes(ctx context.Context) (total, active int
 	if h.pool == nil {
 		return
 	}
+	// Source of truth for v2 probe nodes is enrolled_nodes (migration 00030).
+	// The legacy `nodes` table is unused — querying it silently fell back to
+	// the stub values, so the dashboard was showing fabricated counts.
 	var dbTotal, dbActive int
 	err := h.pool.QueryRow(ctx, `
-		SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'online')
-		FROM nodes
+		SELECT COUNT(*), COUNT(*) FILTER (WHERE status = 'active')
+		FROM enrolled_nodes
 	`).Scan(&dbTotal, &dbActive)
 	if err != nil {
 		return
@@ -105,8 +108,10 @@ func (h *TransparencyHandler) queryNodes(ctx context.Context) (total, active int
 	return dbTotal, dbActive
 }
 
-// queryUptimeInterval fetches uptime percentage for the given interval string.
-func (h *TransparencyHandler) queryUptimeInterval(ctx context.Context, interval string) float64 {
+// queryUptimeDays fetches uptime percentage for the given window in days.
+// `days` is passed as a parameter (not interpolated) — see make_interval — so
+// even if the caller ever forwards user input, no SQL is composed at runtime.
+func (h *TransparencyHandler) queryUptimeDays(ctx context.Context, days int) float64 {
 	var pct float64
 	err := h.pool.QueryRow(ctx, `
 		SELECT COALESCE(ROUND(
@@ -114,8 +119,8 @@ func (h *TransparencyHandler) queryUptimeInterval(ctx context.Context, interval 
 			2
 		), 0)
 		FROM monitor_checks
-		WHERE check_at > NOW() - INTERVAL '`+interval+`'
-	`).Scan(&pct)
+		WHERE check_at > NOW() - make_interval(days => $1)
+	`, days).Scan(&pct)
 	if err != nil {
 		return 0
 	}
@@ -131,13 +136,13 @@ func (h *TransparencyHandler) queryUptime(ctx context.Context) (u30, u90, u365 f
 		return
 	}
 
-	if v := h.queryUptimeInterval(ctx, "30 days"); v > 0 {
+	if v := h.queryUptimeDays(ctx, 30); v > 0 {
 		u30 = v
 	}
-	if v := h.queryUptimeInterval(ctx, "90 days"); v > 0 {
+	if v := h.queryUptimeDays(ctx, 90); v > 0 {
 		u90 = v
 	}
-	if v := h.queryUptimeInterval(ctx, "365 days"); v > 0 {
+	if v := h.queryUptimeDays(ctx, 365); v > 0 {
 		u365 = v
 	}
 	return

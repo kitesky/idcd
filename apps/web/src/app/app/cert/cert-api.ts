@@ -29,6 +29,7 @@ import type {
   OrderStatus,
   RevokeReason,
 } from "./types"
+import { API_CREDENTIALS_POLICY } from "@/lib/api"
 
 const API_BASE =
   (typeof process !== "undefined" &&
@@ -95,7 +96,7 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let res: Response
   try {
     res = await fetch(url, {
-      credentials: "include",
+      credentials: API_CREDENTIALS_POLICY,
       ...init,
       headers: {
         Accept: "application/json",

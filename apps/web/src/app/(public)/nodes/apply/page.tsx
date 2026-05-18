@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
+import { API_CREDENTIALS_POLICY } from "@/lib/api"
 
 const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8080"
 
@@ -69,7 +70,7 @@ export default function NodeApplyPage() {
       const res = await fetch(`${API_BASE}/v1/nodes/apply`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        credentials: API_CREDENTIALS_POLICY,
         body: JSON.stringify(body),
       })
 

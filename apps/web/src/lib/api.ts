@@ -4,6 +4,48 @@ import type { ApiError as ApiErrorShape } from "@/lib/api-error"
 export const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
 
 /**
+ * Decide once per module-load whether to send credentials with API calls.
+ *
+ * Browsers already isolate cookies by hostname, but a misconfigured
+ * NEXT_PUBLIC_API_URL pointing at an unrelated origin (e.g. evil.com) would
+ * still ship request headers / body to that host. We refuse to opt into
+ * `credentials: "include"` unless the API origin is the same host as the
+ * page, the same registrable domain (app.idcd.com ↔ api.idcd.com), or a
+ * dev-time loopback. Anything else falls back to `"omit"` and logs a warn
+ * so a misconfiguration surfaces in the console instead of silently
+ * leaking through.
+ */
+export const API_CREDENTIALS_POLICY: RequestCredentials = (() => {
+  if (typeof window === "undefined") return "include"
+  let apiHost: string
+  try {
+    apiHost = new URL(API_BASE, window.location.origin).hostname
+  } catch {
+    return "include"
+  }
+  const winHost = window.location.hostname
+  if (apiHost === winHost) return "include"
+  if (apiHost === "localhost" || apiHost === "127.0.0.1") return "include"
+  if (winHost === "localhost" || winHost === "127.0.0.1") return "include"
+  // Same registrable-domain heuristic — match the last two labels. Not a
+  // full PSL lookup (would need a 30 KB list), but enough to recognise
+  // sibling subdomains while rejecting wholly unrelated origins.
+  const lastTwo = (h: string) => {
+    const parts = h.split(".")
+    return parts.length >= 2 ? parts.slice(-2).join(".") : h
+  }
+  if (lastTwo(apiHost) === lastTwo(winHost) && lastTwo(apiHost).includes(".")) {
+    return "include"
+  }
+  if (typeof console !== "undefined") {
+    console.warn(
+      `[api] credentials disabled: NEXT_PUBLIC_API_URL host "${apiHost}" is not same-domain as page host "${winHost}"`,
+    )
+  }
+  return "omit"
+})()
+
+/**
  * Concrete Error subclass thrown by {@link apiRequest} for non-2xx responses.
  *
  * Keeps the shape declared in `@/lib/api-error` (`code` / `message` / `params` /
@@ -99,12 +141,11 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
   try {
     const res = await fetch(API_BASE + path, {
       ...options,
-      // credentials: "include" sends the HttpOnly access_token cookie
-      // automatically. This is REQUIRED for the cookie-based session auth —
-      // omitting it would break login.  Security note: API_BASE must point
-      // at an origin we control (idcd-owned eTLD+1). The deploy contract
-      // for NEXT_PUBLIC_API_URL enforces that; do not relax it.
-      credentials: "include",
+      // credentials policy is derived once at module load; "include" sends
+      // the HttpOnly access_token cookie for same-domain deploys and falls
+      // back to "omit" if NEXT_PUBLIC_API_URL is misconfigured to a host
+      // outside the deploy's registrable domain. See API_CREDENTIALS_POLICY.
+      credentials: API_CREDENTIALS_POLICY,
       headers: { ...defaultHeaders, ...localeHeaders, ...csrfHeaders, ...options?.headers },
       signal: options?.signal ?? ownController?.signal,
     })

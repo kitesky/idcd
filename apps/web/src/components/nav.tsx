@@ -26,6 +26,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet"
 import { cn } from "@/lib/utils"
+import { API_CREDENTIALS_POLICY } from "@/lib/api"
 import { useTranslations } from "next-intl"
 import { useTheme } from "next-themes"
 
@@ -174,7 +175,7 @@ function NavUserMenu({ mobile = false }: { mobile?: boolean }) {
 
   useEffect(() => {
     const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
-    fetch(`${API_BASE}/v1/account/profile`, { credentials: "include" })
+    fetch(`${API_BASE}/v1/account/profile`, { credentials: API_CREDENTIALS_POLICY })
       .then(res => {
         if (!res.ok) { setUser(null); return null }
         return res.json()

@@ -3,6 +3,8 @@
  * Implements double-submit cookie pattern with X-CSRF-Token header.
  */
 
+import { API_CREDENTIALS_POLICY } from "@/lib/api"
+
 const CSRF_COOKIE_NAME = 'csrf_token'
 const CSRF_HEADER_NAME = 'X-CSRF-Token'
 
@@ -81,10 +83,12 @@ export async function initCSRFToken(endpoint = '/v1/info/ip'): Promise<void> {
   }
 
   try {
-    // Make a lightweight GET request to trigger CSRF cookie generation
+    // Make a lightweight GET request to trigger CSRF cookie generation.
+    // Uses the shared same-domain credentials policy so a misconfigured
+    // NEXT_PUBLIC_API_URL doesn't leak the bootstrap request to a third party.
     await fetch(endpoint, {
       method: 'GET',
-      credentials: 'include', // Ensure cookies are sent/received
+      credentials: API_CREDENTIALS_POLICY,
     })
   } catch (error) {
     console.error('Failed to initialize CSRF token:', error)

@@ -2,8 +2,7 @@ import type { Metadata } from "next"
 import { getT } from "@/i18n/getT"
 import { MonitorDetailClient } from "./monitor-detail-client"
 import type { Monitor, MonitorType } from "../types"
-
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+import { API_BASE, API_CREDENTIALS_POLICY } from "@/lib/api"
 
 type Props = {
   params: Promise<{ id: string }>
@@ -58,7 +57,7 @@ async function fetchMonitor(id: string): Promise<Monitor | null> {
   try {
     const res = await fetch(`${API_BASE}/v1/monitors/${id}`, {
       next: { revalidate: 0 },
-      credentials: "include",
+      credentials: API_CREDENTIALS_POLICY,
     })
     if (!res.ok) return null
     const body = await res.json()

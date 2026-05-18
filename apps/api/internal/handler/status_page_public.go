@@ -85,13 +85,19 @@ func (h *StatusPagePublicHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Pre-fetch 30-day daily aggregates for ALL monitors in one query, then
+	// fan them out per monitor below. Previously buildPublicMonitor ran one
+	// aggregation query per monitor — 50 monitors meant 50 round-trips.
+	since := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	dailyByMonitor, err := h.batchDailyChecks(ctx, monitorIDs, since)
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to query monitor history", err))
+		return
+	}
+
 	pubMonitors := make([]publicMonitor, 0, len(monitors))
 	for _, m := range monitors {
-		pm, err := h.buildPublicMonitor(ctx, m, currentStatuses[m.ID])
-		if err != nil {
-			response.Error(w, r, apperr.Internal("failed to build monitor data", err))
-			return
-		}
+		pm := buildPublicMonitorFromRows(m, currentStatuses[m.ID], dailyByMonitor[m.ID], since)
 		pubMonitors = append(pubMonitors, pm)
 	}
 
@@ -168,48 +174,58 @@ type dayCheckRow struct {
 	success int64
 }
 
-// buildPublicMonitor assembles monitor display data using a currentStatus pre-fetched
-// by the caller (batchCurrentStatuses) to avoid an N+1 round-trip per monitor.
-func (h *StatusPagePublicHandler) buildPublicMonitor(ctx context.Context, m idcdmain.Monitor, currentStatus string) (publicMonitor, error) {
-	since := time.Now().UTC().Add(-30 * 24 * time.Hour)
-
-	rows, err := h.pool.Query(ctx,
-		`SELECT DATE(check_at AT TIME ZONE 'UTC') AS day,
-		        COUNT(*) AS total,
-		        COUNT(*) FILTER (WHERE status = 'up') AS success
-		 FROM monitor_checks
-		 WHERE monitor_id = $1 AND check_at >= $2
-		 GROUP BY day
-		 ORDER BY day ASC`,
-		m.ID, since,
+// batchDailyChecks fetches 30-day per-day uptime aggregates for ALL monitors
+// in a single query, grouped by (monitor_id, day). Returns
+// map[monitor_id][]dayCheckRow. Failures degrade open — caller treats missing
+// keys as "no data" (operational).
+func (h *StatusPagePublicHandler) batchDailyChecks(ctx context.Context, monitorIDs []string, since time.Time) (map[string][]dayCheckRow, error) {
+	result := make(map[string][]dayCheckRow, len(monitorIDs))
+	if len(monitorIDs) == 0 {
+		return result, nil
+	}
+	rows, err := h.pool.Query(ctx, `
+		SELECT
+			monitor_id,
+			DATE(check_at AT TIME ZONE 'UTC') AS day,
+			COUNT(*) AS total,
+			COUNT(*) FILTER (WHERE status = 'up') AS success
+		FROM monitor_checks
+		WHERE monitor_id = ANY($1) AND check_at >= $2
+		GROUP BY monitor_id, day
+		ORDER BY monitor_id, day ASC`,
+		monitorIDs, since,
 	)
 	if err != nil {
-		return publicMonitor{}, err
+		return result, err
 	}
 	defer rows.Close()
-
-	var dayRows []dayCheckRow
 	for rows.Next() {
+		var monID string
 		var dr dayCheckRow
-		if err := rows.Scan(&dr.date, &dr.total, &dr.success); err != nil {
-			return publicMonitor{}, err
+		if err := rows.Scan(&monID, &dr.date, &dr.total, &dr.success); err != nil {
+			return result, err
 		}
-		dayRows = append(dayRows, dr)
+		result[monID] = append(result[monID], dr)
 	}
 	if err := rows.Err(); err != nil {
-		return publicMonitor{}, err
+		return result, err
 	}
+	return result, nil
+}
 
+// buildPublicMonitorFromRows assembles the per-monitor response from the
+// pre-fetched batch aggregates produced by batchDailyChecks. dayRows may be
+// nil — that just means no check data in the window (handled as 100% / op).
+func buildPublicMonitorFromRows(m idcdmain.Monitor, currentStatus string, dayRows []dayCheckRow, since time.Time) publicMonitor {
 	history := buildHistory(dayRows, since)
 	uptimePct := computeUptimePercent(dayRows)
-
 	return publicMonitor{
 		ID:            m.ID,
 		Name:          m.Name,
 		Status:        currentStatus,
 		UptimePercent: uptimePct,
 		History:       history,
-	}, nil
+	}
 }
 
 // buildHistory produces a 30-day window oldest-first (since+0 … since+29).

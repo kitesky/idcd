@@ -480,7 +480,10 @@ func (s *Server) setupRouter() {
 			} else {
 				billingProvider = billing.NewStubProvider()
 			}
-			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).WithEnqueuer(asynqBillingEnq).WithVerdictPublisher(repository.NewVerdictPublisher(s.redis))
+			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).
+				WithEnqueuer(asynqBillingEnq).
+				WithVerdictPublisher(repository.NewVerdictPublisher(s.redis)).
+				WithURLs(s.config.Server.AppBaseURL, s.config.Server.PublicAPIURL)
 			r.Route("/billing", func(r chi.Router) {
 				// Authenticated routes
 				r.With(authnMW).Post("/subscribe", billingH.Subscribe)
@@ -489,7 +492,11 @@ func (s *Server) setupRouter() {
 				r.With(authnMW).Get("/invoices", billingH.ListInvoices)
 				// Unauthenticated routes
 				r.Post("/webhook", billingH.Webhook)
-				r.Get("/stub-confirm", billingH.StubConfirm)
+				// PRG split: GET renders a confirm form (no state change),
+				// POST actually activates the subscription. Prevents CSRF /
+				// link-prefetch from silently flipping subscription state.
+				r.Get("/stub-confirm", billingH.StubConfirmForm)
+				r.Post("/stub-confirm", billingH.StubConfirm)
 			})
 
 			// Verdict endpoints (create paid verdict order, fetch order status,

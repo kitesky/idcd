@@ -818,6 +818,13 @@ func (h *MonitorHandler) fetchUptimeMap(ctx context.Context, monitorIDs []string
 			result[mid] = pct
 		}
 	}
+	// A partial-read failure (network blip, server-side cursor error) would
+	// otherwise be silently swallowed and produce a uptime map missing entries
+	// for the failed rows. Treat it like the initial Query() error path —
+	// return nil so callers fall through to 0.0 defaults.
+	if err := rows.Err(); err != nil {
+		return nil
+	}
 	return result
 }
 

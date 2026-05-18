@@ -25,6 +25,44 @@ const (
 	patDisplayPrefixN = 8
 )
 
+// allowedPATScopes is the closed set of scopes a Personal Access Token may
+// declare. Anything else is rejected at creation time so a user cannot mint
+// a token bearing privileges that the rest of the system doesn't recognise
+// (the auth middleware silently ignores unknown scopes, which would let an
+// attacker fabricate "admin"/"billing:refund" labels on their own tokens).
+//
+// Keep this list in sync with the scopes accepted by downstream authorization
+// checks. New scopes must be added here and to the relevant scope-checking
+// middleware in the same change.
+var allowedPATScopes = map[string]struct{}{
+	"read":            {},
+	"write":           {},
+	"read:monitors":   {},
+	"write:monitors":  {},
+	"read:probes":     {},
+	"write:probes":    {},
+	"read:certs":      {},
+	"write:certs":     {},
+	"read:verdicts":   {},
+	"write:verdicts":  {},
+	"read:billing":    {},
+	"read:teams":      {},
+	"write:teams":     {},
+	"read:status":     {},
+	"write:status":    {},
+}
+
+// validatePATScopes returns the first invalid scope encountered, or "" if all
+// scopes are in the allowlist. An empty slice is valid (no extra grants).
+func validatePATScopes(scopes []string) string {
+	for _, s := range scopes {
+		if _, ok := allowedPATScopes[s]; !ok {
+			return s
+		}
+	}
+	return ""
+}
+
 // PATPool is the minimal pgx interface needed by PATHandler.
 type PATPool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -84,6 +122,10 @@ func (h *PATHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(req.Scopes) == 0 {
 		req.Scopes = []string{}
+	}
+	if bad := validatePATScopes(req.Scopes); bad != "" {
+		response.Error(w, r, apperr.Validation("unknown scope: "+bad, "scopes"))
+		return
 	}
 
 	rawToken, tokenPrefix, tokenHash, err := generatePAT()

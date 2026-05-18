@@ -325,19 +325,30 @@ func (h *TeamHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	_, err = h.pool.Exec(r.Context(), `DELETE FROM team_invitations WHERE team_id = $1`, teamID)
+	// Single transaction — without this, a failure on the second/third DELETE
+	// could leave orphaned memberships or invitations that point at a team
+	// row that no longer exists.
+	tx, err := h.pool.Begin(r.Context())
 	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to begin transaction", err))
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
+	if _, err := tx.Exec(r.Context(), `DELETE FROM team_invitations WHERE team_id = $1`, teamID); err != nil {
 		response.Error(w, r, apperr.Internal("failed to delete invitations", err))
 		return
 	}
-	_, err = h.pool.Exec(r.Context(), `DELETE FROM team_memberships WHERE team_id = $1`, teamID)
-	if err != nil {
+	if _, err := tx.Exec(r.Context(), `DELETE FROM team_memberships WHERE team_id = $1`, teamID); err != nil {
 		response.Error(w, r, apperr.Internal("failed to delete memberships", err))
 		return
 	}
-	_, err = h.pool.Exec(r.Context(), `DELETE FROM teams WHERE id = $1`, teamID)
-	if err != nil {
+	if _, err := tx.Exec(r.Context(), `DELETE FROM teams WHERE id = $1`, teamID); err != nil {
 		response.Error(w, r, apperr.Internal("failed to delete team", err))
+		return
+	}
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, r, apperr.Internal("failed to commit team deletion", err))
 		return
 	}
 

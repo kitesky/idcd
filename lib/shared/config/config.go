@@ -97,6 +97,12 @@ type ServerConfig struct {
 	AdminToken  string   `yaml:"admin_token"`
 	RPID        string   `yaml:"rp_id"`        // WebAuthn Relying Party ID (default: idcd.com)
 	AppBaseURL  string   `yaml:"app_base_url"` // Frontend base URL for email deep-links, e.g. "https://app.idcd.com"
+	// PublicAPIURL is the externally-reachable base URL for the API service
+	// itself (e.g. "https://api.idcd.com"). Used to build webhook callback
+	// URLs that the payment platform calls back into. MUST NOT be derived
+	// from request headers like Origin/Host — a tampered client header
+	// would redirect refund / payment webhooks to an attacker URL.
+	PublicAPIURL string `yaml:"public_api_url"`
 }
 
 type JWTConfig struct {

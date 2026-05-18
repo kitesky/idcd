@@ -24,7 +24,9 @@ func newBillingTestHandler(t *testing.T) (*BillingHandler, pgxmock.PgxPoolIface,
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	stub := billing.NewStubProvider()
-	h := NewBillingHandler(mockPool, stub)
+	// WithURLs is required since the handler now refuses to build a
+	// NotifyURL from a client-supplied Origin header.
+	h := NewBillingHandler(mockPool, stub).WithURLs("http://app.test", "http://api.test")
 	return h, mockPool, stub
 }
 

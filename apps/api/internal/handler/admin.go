@@ -227,6 +227,9 @@ func (h *AdminHandler) AdminUsers(w http.ResponseWriter, r *http.Request) {
 	// Fetch users with plan from subscriptions (LEFT JOIN) and monitor count (subquery)
 	var rows pgx.Rows
 	var err error
+	// monitor_count was previously a correlated subquery — O(users) extra
+	// query plans per request. Replaced with a LEFT JOIN over a per-user
+	// aggregate so the optimiser can plan a single hash-join.
 	if q != "" {
 		likeQ := "%" + q + "%"
 		rows, err = h.pool.Query(ctx, `
@@ -235,10 +238,15 @@ func (h *AdminHandler) AdminUsers(w http.ResponseWriter, r *http.Request) {
 				u.email,
 				u.status,
 				COALESCE(s.plan, 'free') AS plan,
-				(SELECT COUNT(*) FROM monitors m WHERE m.user_id = u.id) AS monitor_count,
+				COALESCE(mc.cnt, 0) AS monitor_count,
 				u.created_at
 			FROM "user" u
 			LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
+			LEFT JOIN (
+				SELECT user_id, COUNT(*) AS cnt
+				FROM monitors
+				GROUP BY user_id
+			) mc ON mc.user_id = u.id
 			WHERE u.email ILIKE $1
 			ORDER BY u.created_at DESC
 			LIMIT $2 OFFSET $3
@@ -250,10 +258,15 @@ func (h *AdminHandler) AdminUsers(w http.ResponseWriter, r *http.Request) {
 				u.email,
 				u.status,
 				COALESCE(s.plan, 'free') AS plan,
-				(SELECT COUNT(*) FROM monitors m WHERE m.user_id = u.id) AS monitor_count,
+				COALESCE(mc.cnt, 0) AS monitor_count,
 				u.created_at
 			FROM "user" u
 			LEFT JOIN subscriptions s ON s.user_id = u.id AND s.status = 'active'
+			LEFT JOIN (
+				SELECT user_id, COUNT(*) AS cnt
+				FROM monitors
+				GROUP BY user_id
+			) mc ON mc.user_id = u.id
 			ORDER BY u.created_at DESC
 			LIMIT $1 OFFSET $2
 		`, perPage, offset)

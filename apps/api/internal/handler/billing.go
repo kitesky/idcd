@@ -7,7 +7,9 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/kite365/idcd/apps/api/internal/billing"
@@ -45,11 +47,29 @@ type BillingHandler struct {
 	provider         billing.Provider
 	enqueuer         BillingEnqueuer        // optional: nil disables automatic refund retry scheduling
 	verdictPublisher VerdictStreamPublisher // optional: nil disables verdict_generation_queue push
+
+	// appBaseURL is the frontend origin (e.g. "https://app.idcd.com") used
+	// to build user-facing return URLs the payment platform redirects to.
+	appBaseURL string
+	// publicAPIURL is the API service's externally-reachable origin (e.g.
+	// "https://api.idcd.com") used to build the webhook NotifyURL. MUST be
+	// server-side configuration — never derived from request headers.
+	publicAPIURL string
 }
 
 // NewBillingHandler wires a BillingHandler with the given DB pool and payment provider.
 func NewBillingHandler(pool BillingPool, provider billing.Provider) *BillingHandler {
 	return &BillingHandler{pool: pool, provider: provider}
+}
+
+// WithURLs configures the trusted server-side base URLs used to construct
+// ReturnURL (user browser redirect after pay) and NotifyURL (server-to-server
+// webhook callback). NotifyURL in particular MUST come from config — see the
+// security note on BillingHandler.publicAPIURL.
+func (h *BillingHandler) WithURLs(appBase, publicAPI string) *BillingHandler {
+	h.appBaseURL = appBase
+	h.publicAPIURL = publicAPI
+	return h
 }
 
 // WithEnqueuer wires a BillingEnqueuer used for automatic refund retries
@@ -151,12 +171,28 @@ func (h *BillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	// ReturnURL: where the user's browser lands after pay. Falls back to the
+	// request Origin only in non-production environments so dev/test still
+	// works without explicit config; production deployments MUST set
+	// server.app_base_url.
+	returnBase := h.appBaseURL
+	if returnBase == "" {
+		returnBase = r.Header.Get("Origin")
+	}
+	// NotifyURL: server-to-server webhook callback. MUST come from config —
+	// trusting a client header here lets a forged Origin redirect refund /
+	// payment webhooks to an attacker URL.
+	if h.publicAPIURL == "" {
+		response.Error(w, r, apperr.Internal("billing public_api_url is not configured", nil))
+		return
+	}
+
 	result, err := h.provider.Subscribe(ctx, billing.SubscribeRequest{
 		UserID:    userID,
 		Plan:      plan,
 		Channel:   req.Channel,
-		ReturnURL: r.Header.Get("Origin") + "/app/billing",
-		NotifyURL: r.Header.Get("Origin") + "/v1/billing/webhook",
+		ReturnURL: returnBase + "/app/billing",
+		NotifyURL: h.publicAPIURL + "/v1/billing/webhook",
 	})
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to initiate subscription", err))
@@ -581,10 +617,15 @@ func (h *BillingHandler) scheduleRefundRetry(ctx context.Context, extTxnID strin
 
 // ---- StubConfirm ----
 
-// StubConfirm handles GET /v1/billing/stub-confirm.
+// StubConfirm handles POST /v1/billing/stub-confirm.
 // Only active when the configured provider is "stub".
-// Query params: sub_id, plan.
+// Body / query params: sub_id, plan.
 // Marks the subscription active and writes a payment record, then redirects.
+//
+// State changes happen on POST only — the paired GET handler
+// (StubConfirmForm) renders an HTML form that POSTs back here, following the
+// Post-Redirect-Get pattern so a leaked link / CSRF GET cannot silently
+// activate a subscription.
 func (h *BillingHandler) StubConfirm(w http.ResponseWriter, r *http.Request) {
 	// Only allow stub provider.
 	if h.provider.Name() != "stub" {
@@ -593,6 +634,11 @@ func (h *BillingHandler) StubConfirm(w http.ResponseWriter, r *http.Request) {
 	}
 
 	subID := r.URL.Query().Get("sub_id")
+	if subID == "" {
+		if err := r.ParseForm(); err == nil {
+			subID = r.Form.Get("sub_id")
+		}
+	}
 	if subID == "" {
 		response.Error(w, r, apperr.Validation("missing sub_id", ""))
 		return
@@ -681,6 +727,62 @@ func (h *BillingHandler) StubConfirm(w http.ResponseWriter, r *http.Request) {
 
 	http.Redirect(w, r, "/app/billing?success=1", http.StatusFound)
 }
+
+// StubConfirmForm handles GET /v1/billing/stub-confirm.
+// Returns a minimal HTML page that POSTs back to the same URL with the
+// preserved query string. Kept on GET specifically so that the stub provider
+// can hand a browser-clickable URL back to the user — the actual state change
+// is gated behind the user clicking the form's submit button (POST).
+func (h *BillingHandler) StubConfirmForm(w http.ResponseWriter, r *http.Request) {
+	if h.provider.Name() != "stub" {
+		response.Error(w, r, apperr.Forbidden("stub-confirm only available in stub mode"))
+		return
+	}
+	subID := r.URL.Query().Get("sub_id")
+	if subID == "" {
+		response.Error(w, r, apperr.Validation("missing sub_id", ""))
+		return
+	}
+	plan := r.URL.Query().Get("plan")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	// Inputs are echoed via Go templates' default escaping (text/template's
+	// HTMLEscapeString) to prevent reflected XSS from a forged sub_id.
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><title>Confirm stub payment</title>
+<style>body{font-family:sans-serif;max-width:480px;margin:80px auto;padding:0 16px;color:#333}
+button{padding:8px 24px;background:#0070f3;color:#fff;border:0;border-radius:4px;font-size:16px;cursor:pointer}
+.muted{color:#999;font-size:13px;margin-top:24px}</style></head>
+<body>
+<h2>Confirm subscription</h2>
+<p>You are about to activate stub subscription <code>%s</code>%s.</p>
+<form method="POST" action="/v1/billing/stub-confirm?sub_id=%s&amp;plan=%s">
+<button type="submit">Confirm</button>
+</form>
+<p class="muted">This page only appears in stub / development mode.</p>
+</body></html>`,
+		htmlEscape(subID),
+		planSuffix(plan),
+		urlEscape(subID),
+		urlEscape(plan),
+	)
+}
+
+func planSuffix(plan string) string {
+	if plan == "" {
+		return ""
+	}
+	return " for plan <code>" + htmlEscape(plan) + "</code>"
+}
+
+// htmlEscape is a tiny HTML escaper for the stub-confirm template — keeps
+// the form free of XSS-via-sub_id without pulling in html/template.
+func htmlEscape(s string) string {
+	r := strings.NewReplacer("&", "&amp;", "<", "&lt;", ">", "&gt;", `"`, "&quot;", "'", "&#39;")
+	return r.Replace(s)
+}
+
+// urlEscape encodes a query value safely for form action attribute.
+func urlEscape(s string) string { return url.QueryEscape(s) }
 
 // parseIntParam parses a query param as int with a default fallback.
 func parseIntParam(s string, def int) int {

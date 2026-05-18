@@ -38,7 +38,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-public',
-      testMatch: /(public|tools|diagnose|probe-ping|diagnose-flow|register)\.spec\.ts/,
+      testMatch: /(public|tools|diagnose|probe-ping|diagnose-flow|register|utility-tools|probe-submit|info-query)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {

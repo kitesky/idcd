@@ -103,15 +103,16 @@ clean:
 # ── DB 迁移快捷命令 ────────────────────────────────────────────
 _DSN := $(shell python3 -c "import yaml; c=yaml.safe_load(open('config/dev.env.yaml')); print(c['database']['main']['dsn'])" 2>/dev/null)
 _GOOSE := go run github.com/pressly/goose/v3/cmd/goose@latest
+_MIG_DIR := lib/db/migrations/idcd_main
 
 migrate-up:
-	$(_GOOSE) -dir packages/db/migrations/idcd_main postgres "$(_DSN)" up
+	$(_GOOSE) -dir $(_MIG_DIR) postgres "$(_DSN)" up
 
 migrate-down:
-	$(_GOOSE) -dir packages/db/migrations/idcd_main postgres "$(_DSN)" down
+	$(_GOOSE) -dir $(_MIG_DIR) postgres "$(_DSN)" down
 
 migrate-status:
-	$(_GOOSE) -dir packages/db/migrations/idcd_main postgres "$(_DSN)" status
+	$(_GOOSE) -dir $(_MIG_DIR) postgres "$(_DSN)" status
 
 sqlc-gen:
 	sqlc generate -f packages/db/sqlc.yaml

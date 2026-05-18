@@ -83,10 +83,7 @@ function LanguageSwitcher() {
  * just wraps validators.
  */
 function buildProfileSchema(
-  t: (
-    key: string,
-    params?: Record<string, string | number | boolean | Date | null | undefined>,
-  ) => string,
+  t: ReturnType<typeof useTranslations<"settings">>,
 ) {
   return z.object({
     email: z.string().email(),
@@ -126,7 +123,7 @@ export default function ProfilePage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const profileSchema = buildProfileSchema(t as never)
+  const profileSchema = buildProfileSchema(t)
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {

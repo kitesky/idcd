@@ -48,21 +48,27 @@ export class ToolError extends Error {
 /**
  * 在 React 组件里把任意 error 翻译成本地化文本。
  *
+ * 调用方传 `useTranslations()`(全局) 或 `useTranslations('docs')` 等，t 函数会
+ * 在内部用 ToolError 的 i18nKey (运行时拼出的字符串) 查表。运行时 key
+ * next-intl 无法静态校验,helper 内部用 `as never` 收口。
+ *
  * @example
- *   const t = useTranslations('docs.toolFunctions.errors')
- *   try { ... } catch (e) { setError(translateToolError(e, (key, params) => t(key, params))) }
+ *   const t = useTranslations()
+ *   try { ... } catch (e) { setError(translateToolError(e, t, 'fallback')) }
  *
  * @param err 被 catch 的 error 对象
- * @param t   docs.toolFunctions.errors 命名空间的翻译函数
+ * @param t   next-intl 翻译函数 (任意 namespace 或全局)
  * @param fallback 当不是 ToolError 时的兜底文案，默认用 `err.message`
  */
+type AnyT = (key: never, params?: ToolErrorParams) => string
+
 export function translateToolError(
   err: unknown,
-  t: (key: string, params?: ToolErrorParams) => string,
+  t: AnyT,
   fallback?: string,
 ): string {
   if (err instanceof ToolError) {
-    return t(err.i18nKey, err.i18nParams)
+    return t(err.i18nKey as never, err.i18nParams)
   }
   if (err instanceof Error) return fallback ?? err.message
   return fallback ?? String(err)

@@ -109,12 +109,9 @@ function StatCard({ title, value, icon, badge, testId, loading }: StatCardProps)
   )
 }
 
-type Translator = (
-  key: string,
-  params?: Record<string, string | number | boolean | Date | null | undefined>,
-) => string
+type DashboardT = ReturnType<typeof useTranslations<"dashboard">>
 
-function monitorStatusBadge(status: string, t: Translator) {
+function monitorStatusBadge(status: string, t: DashboardT) {
   switch (status) {
     case "active":
       return <Badge variant="success">{t("monitorStatus.active")}</Badge>
@@ -127,7 +124,7 @@ function monitorStatusBadge(status: string, t: Translator) {
   }
 }
 
-function formatRelative(iso: string | undefined, t: Translator): string {
+function formatRelative(iso: string | undefined, t: DashboardT): string {
   if (!iso) return "—"
   const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000)
   if (diff < 60) return t("timeAgo.seconds", { n: diff })
@@ -410,7 +407,7 @@ export default function DashboardPage() {
                             <Badge variant="destructive">DOWN</Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                            {formatRelative(mon.last_check_at, t as never)}
+                            {formatRelative(mon.last_check_at, t)}
                           </TableCell>
                         </TableRow>
                       ))
@@ -461,7 +458,7 @@ export default function DashboardPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                          {formatRelative(evt.startedAt, t as never)}
+                          {formatRelative(evt.startedAt, t)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -499,12 +496,12 @@ export default function DashboardPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center justify-between text-sm font-medium">
                         <span className="truncate">{mon.name}</span>
-                        {monitorStatusBadge(mon.status, t as never)}
+                        {monitorStatusBadge(mon.status, t)}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-xs text-muted-foreground">
-                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at, t as never) })}
+                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at, t) })}
                       </p>
                     </CardContent>
                   </Card>
@@ -536,7 +533,7 @@ export default function DashboardPage() {
                     className="flex flex-1 cursor-pointer items-center justify-between text-sm"
                   >
                     <span>{mon.name}</span>
-                    {monitorStatusBadge(mon.status, t as never)}
+                    {monitorStatusBadge(mon.status, t)}
                   </label>
                 </div>
               ))

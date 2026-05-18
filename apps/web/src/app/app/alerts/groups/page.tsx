@@ -155,7 +155,7 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
     } catch (err: unknown) {
       const msg =
         err instanceof ApiError
-          ? translateApiError(err, tErr as never)
+          ? translateApiError(err, tErr)
           : err instanceof Error
             ? err.message
             : t("createFailed")
@@ -314,7 +314,7 @@ export default function AlertGroupsPage() {
     } catch (err: unknown) {
       const msg =
         err instanceof ApiError
-          ? translateApiError(err, tErr as never)
+          ? translateApiError(err, tErr)
           : err instanceof Error
             ? err.message
             : t("deleteFailed")

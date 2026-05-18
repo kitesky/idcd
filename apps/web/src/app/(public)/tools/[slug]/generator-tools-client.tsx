@@ -364,7 +364,7 @@ export function SortJsonClient() {
       setOutput(JSON.stringify(sortJSON(obj), null, indent))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, 'JSON 解析失败'))
+      setError(translateToolError(e, tErr, 'JSON 解析失败'))
       setOutput('')
     }
   }

@@ -49,13 +49,10 @@ async function revokeSession(id: string): Promise<void> {
 // ── Utilities ─────────────────────────────────────────────────────────────────
 
 /**
- * Subset of next-intl's `useTranslations` we actually use here. Mirrors
- * its `TranslationValues` shape (string | number | boolean | Date | null).
+ * Bound to next-intl's `useTranslations('settings')` typed t — accepts only
+ * keys from settings.json (so `t("sessions.relative.justNow")` is type-checked).
  */
-type Translator = (
-  key: string,
-  params?: Record<string, string | number | boolean | Date | null | undefined>,
-) => string
+type SettingsT = ReturnType<typeof useTranslations<"settings">>
 
 /**
  * Locale-aware relative time formatter. Keys live under
@@ -63,7 +60,7 @@ type Translator = (
  * locale (e.g. "刚刚" vs "just now"). Callers pass the bound `t` returned
  * by `useTranslations('settings')`.
  */
-function formatRelativeTime(iso: string, t: Translator): string {
+function formatRelativeTime(iso: string, t: SettingsT): string {
   const date = new Date(iso)
   const diffMs = Date.now() - date.getTime()
   const diffMin = Math.floor(diffMs / 60_000)
@@ -299,10 +296,10 @@ export function SessionsClient() {
                       className="text-xs text-muted-foreground"
                       title={formatDateTime(sess.created_at, bcp47)}
                     >
-                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at, t as never)}
+                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at, t)}
                       {sess.last_seen_at && sess.last_seen_at !== sess.created_at && (
                         <span className="ml-2 text-muted-foreground/70">
-                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at, t as never)}
+                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at, t)}
                         </span>
                       )}
                     </p>

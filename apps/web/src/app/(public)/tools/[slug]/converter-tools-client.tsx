@@ -36,7 +36,7 @@ export function UrlEncodeClient() {
     try {
       return mode === 'encode' ? urlEncode(input) : urlDecode(input)
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '处理失败'))
+      setError(translateToolError(e, tErr, '处理失败'))
       return ''
     }
   }
@@ -122,7 +122,7 @@ export function UnicodeClient() {
     try {
       setCharResult(v ? codePointToChar(v) : '')
     } catch (e) {
-      setCpError(translateToolError(e, tErr as never, '无效'))
+      setCpError(translateToolError(e, tErr, '无效'))
       setCharResult('')
     }
   }
@@ -204,7 +204,7 @@ export function JwtDecodeClient() {
       setResult(decodeJWT(v))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '解码失败'))
+      setError(translateToolError(e, tErr, '解码失败'))
       setResult(null)
     }
   }
@@ -298,7 +298,7 @@ export function NumberConvertClient() {
       setResult(numberToAllBases(input, fromBase))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '转换失败'))
+      setError(translateToolError(e, tErr, '转换失败'))
       setResult(null)
     }
   }
@@ -379,7 +379,7 @@ export function JsonToYamlClient() {
         setOutput(JSON.stringify(obj, null, 2))
       }
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '转换失败'))
+      setError(translateToolError(e, tErr, '转换失败'))
     }
   }
 
@@ -435,7 +435,7 @@ export function YamlFormatterClient() {
       setOutput(formatYAML(input))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '格式化失败'))
+      setError(translateToolError(e, tErr, '格式化失败'))
     }
   }
 
@@ -484,7 +484,7 @@ export function XmlFormatterClient() {
       }
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '处理失败'))
+      setError(translateToolError(e, tErr, '处理失败'))
     }
   }
 
@@ -544,7 +544,7 @@ export function UrlParserClient() {
       setResult(parseURL(url))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '解析失败，请确认 URL 格式正确'))
+      setError(translateToolError(e, tErr, '解析失败，请确认 URL 格式正确'))
       setResult(null)
     }
   }

@@ -518,7 +518,7 @@ function EventsTab({ initialMonitorId = "" }: EventsTabProps) {
                   {formatDuration(
                     evt.startedAt,
                     evt.resolvedAt ?? evt.acknowledgedAt,
-                    t as never,
+                    t,
                   )}
                 </TableCell>
                 <TableCell>

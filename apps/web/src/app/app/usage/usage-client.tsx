@@ -65,12 +65,12 @@ interface PointsData {
   total_earned: number
 }
 
-type Translator = (
-  key: string,
-  params?: Record<string, string | number | boolean | Date | null | undefined>,
-) => string
+// Bound to useTranslations("billing.usage") — keys are checked against the
+// `billing.usage.*` subtree, so `t("tomorrowAt")` / `t("today")` etc. are
+// statically validated.
+type UsageT = ReturnType<typeof useTranslations<"billing.usage">>
 
-function formatResetTime(resetAtUnix: number, t: Translator): string {
+function formatResetTime(resetAtUnix: number, t: UsageT): string {
   const d = new Date(resetAtUnix * 1000)
   const hh = String(d.getHours()).padStart(2, "0")
   const mm = String(d.getMinutes()).padStart(2, "0")
@@ -85,14 +85,15 @@ function progressColor(used: number, limit: number): string {
   return ""
 }
 
-function formatTrendLabel(date: string, isLast: boolean, t: Translator): string {
+function formatTrendLabel(date: string, isLast: boolean, t: UsageT): string {
   if (isLast) return t("today")
   const d = new Date(date + "T00:00:00Z")
   const keys = ["sun", "mon", "tue", "wed", "thu", "fri", "sat"] as const
-  return t(`weekday.${keys[d.getUTCDay()]}`)
+  // Dynamic weekday key — TS can't statically prove the runtime value is valid.
+  return t(`weekday.${keys[d.getUTCDay()]}` as never)
 }
 
-function getRedeemOptions(t: Translator) {
+function getRedeemOptions(t: UsageT) {
   return [
     { value: "api_calls", label: t("redeemOptions.apiCalls"), points: 500 },
     { value: "monitors", label: t("redeemOptions.monitors"), points: 1000 },
@@ -107,7 +108,7 @@ interface PointsBalanceCardProps {
 
 function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardProps) {
   const t = useTranslations("billing.usage")
-  const REDEEM_OPTIONS = getRedeemOptions(t as never)
+  const REDEEM_OPTIONS = getRedeemOptions(t)
   const [redeemType, setRedeemType] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [redeeming, setRedeeming] = useState(false)
@@ -304,7 +305,7 @@ export function UsageClient() {
                 />
                 {data && (
                   <p className="text-xs text-muted-foreground">
-                    {t("resetTimeLabel", { time: formatResetTime(data.api_calls.reset_at, t as never) })}
+                    {t("resetTimeLabel", { time: formatResetTime(data.api_calls.reset_at, t) })}
                   </p>
                 )}
               </>
@@ -484,7 +485,7 @@ export function UsageClient() {
               {(data?.api_calls_trend ?? []).map((d, i, arr) => {
                 const max = Math.max(...arr.map((x) => x.count), 1)
                 const heightPct = (d.count / max) * 100
-                const label = formatTrendLabel(d.date, i === arr.length - 1, t as never)
+                const label = formatTrendLabel(d.date, i === arr.length - 1, t)
                 return (
                   <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
                     <span className="text-xs text-muted-foreground tabular-nums">

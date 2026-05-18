@@ -72,16 +72,17 @@ export const CHANNEL_TYPES: ChannelType[] = [
 
 /**
  * Format duration from start time to now (or to end time) into a
- * locale-aware string. The translator must expose
- * `alerts.duration.{minutes,hours,hoursAndMinutes}` keys.
+ * locale-aware string. Callers pass the typed `t` from
+ * `useTranslations("alerts")`; keys `duration.{minutes,hours,hoursAndMinutes}`
+ * are statically validated against alerts.json.
  */
+import type { useTranslations } from "next-intl"
+type AlertsT = ReturnType<typeof useTranslations<"alerts">>
+
 export function formatDuration(
   startedAt: string,
   endedAt: string | undefined,
-  t: (
-    key: string,
-    params?: Record<string, string | number | boolean | Date | null | undefined>,
-  ) => string,
+  t: AlertsT,
 ): string {
   const start = new Date(startedAt).getTime()
   const end = endedAt ? new Date(endedAt).getTime() : Date.now()

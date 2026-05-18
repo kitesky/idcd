@@ -68,17 +68,14 @@ interface PlanMeta {
   }
 }
 
-type Translator = (
-  key: string,
-  params?: Record<string, string | number | boolean | Date | null | undefined>,
-) => string
+type BillingT = ReturnType<typeof useTranslations<"billing">>
 
 /**
  * Build the plan catalog with locale-aware labels. `price`, frequency and
  * "unlimited" values come from `billing.plan.prices.*` / `freqLabels.*` /
  * `unlimited` so each locale can format currency words appropriately.
  */
-function getPlans(t: Translator): PlanMeta[] {
+function getPlans(t: BillingT): PlanMeta[] {
   const unlimited = t("plan.unlimited")
   return [
     {
@@ -140,7 +137,7 @@ function getPlans(t: Translator): PlanMeta[] {
   ]
 }
 
-function getStatusLabels(t: Translator): Record<string, string> {
+function getStatusLabels(t: BillingT): Record<string, string> {
   return {
     active: t("plan.statusActive"),
     pending: t("plan.statusPending"),
@@ -201,8 +198,8 @@ export function BillingClient() {
   const t = useTranslations("billing")
   const locale = useLocale()
   const bcp47 = bcp47Of(locale)
-  const PLANS = getPlans(t as never)
-  const STATUS_LABELS = getStatusLabels(t as never)
+  const PLANS = getPlans(t)
+  const STATUS_LABELS = getStatusLabels(t)
 
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [invoices, setInvoices] = useState<Invoice[]>([])

@@ -39,7 +39,7 @@ export function RegexClient() {
     }
     if (error) setError('')
   } catch (e) {
-    if (!error) setError(translateToolError(e, tErr as never, '无效的正则表达式'))
+    if (!error) setError(translateToolError(e, tErr, '无效的正则表达式'))
   }
 
   const flagOptions = ['g', 'i', 'm', 's', 'u']
@@ -153,7 +153,7 @@ export function CronVizClient() {
       setNextTimes(times)
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '无效的 Cron 表达式'))
+      setError(translateToolError(e, tErr, '无效的 Cron 表达式'))
       setNextTimes([])
     }
   }
@@ -231,7 +231,7 @@ export function CidrCalcClient() {
       setResult(parseCIDR(input))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '计算失败'))
+      setError(translateToolError(e, tErr, '计算失败'))
       setResult(null)
     }
   }
@@ -481,7 +481,7 @@ export function DateCalcClient() {
       setDiffResult(dateDiff(date1, date2))
       setErrors(prev => ({ ...prev, diff: '' }))
     } catch (e) {
-      setErrors(prev => ({ ...prev, diff: translateToolError(e, tErr as never, '错误') }))
+      setErrors(prev => ({ ...prev, diff: translateToolError(e, tErr, '错误') }))
     }
   }
 
@@ -490,7 +490,7 @@ export function DateCalcClient() {
       setAddResult(addDays(addInput, days))
       setErrors(prev => ({ ...prev, add: '' }))
     } catch (e) {
-      setErrors(prev => ({ ...prev, add: translateToolError(e, tErr as never, '错误') }))
+      setErrors(prev => ({ ...prev, add: translateToolError(e, tErr, '错误') }))
     }
   }
 
@@ -562,7 +562,7 @@ export function CsvFormatterClient() {
       setTable(parseCSV(input, delimiter || ','))
       setError('')
     } catch (e) {
-      setError(translateToolError(e, tErr as never, '解析失败'))
+      setError(translateToolError(e, tErr, '解析失败'))
       setTable(null)
     }
   }

@@ -533,6 +533,16 @@ func (h *MonitorHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Re-check the interval quota — a user who created a monitor on Pro and
+	// then downgraded to Free could otherwise keep a faster interval than
+	// their plan now allows.
+	if req.IntervalS != nil {
+		plan := h.userPlan(ctx, userID)
+		if checkQuotaErr(w, r, quota.CheckMonitorInterval(plan, int(*req.IntervalS))) {
+			return
+		}
+	}
+
 	updated, err := h.updateMonitor(ctx, m, req)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to update monitor", err))

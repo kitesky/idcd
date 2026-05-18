@@ -33,23 +33,23 @@ func TestAPISecret(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(secret, "idc_live_") {
-		t.Fatalf("expected idc_live_ prefix, got %q", secret)
+	if !strings.HasPrefix(secret, "sk_live_") {
+		t.Fatalf("expected sk_live_ prefix, got %q", secret)
 	}
-	// idc_live_ (9 chars) + 64 hex chars
-	if len(secret) != 9+64 {
-		t.Fatalf("expected len %d, got %d", 9+64, len(secret))
+	// sk_live_ (8 chars) + 64 hex chars
+	if len(secret) != 8+64 {
+		t.Fatalf("expected len %d, got %d", 8+64, len(secret))
 	}
 }
 
 func TestAPIKeyPrefix(t *testing.T) {
 	secret, _ := idgen.APISecret()
 	prefix := idgen.APIKeyPrefix(secret)
-	if !strings.HasPrefix(prefix, "idc_live_") {
-		t.Fatalf("prefix should start with idc_live_, got %q", prefix)
+	if !strings.HasPrefix(prefix, "sk_live_") {
+		t.Fatalf("prefix should start with sk_live_, got %q", prefix)
 	}
-	if len(prefix) != 9+8 {
-		t.Fatalf("expected len %d, got %d", 9+8, len(prefix))
+	if len(prefix) != 8+8 {
+		t.Fatalf("expected len %d, got %d", 8+8, len(prefix))
 	}
 }
 

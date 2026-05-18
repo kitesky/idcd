@@ -619,6 +619,14 @@ func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
 
+	// SSRF / metadata-host guard. While the upstream service is a fixed
+	// third-party URL, we still refuse to forward internal IPs / metadata
+	// hostnames as the lookup target — both to avoid leaking topology and to
+	// keep quota from being burned on obviously-wrong inputs.
+	if rejectIfBlockedHost(w, r, query) {
+		return
+	}
+
 	result := h.queryICP(r.Context(), query)
 	response.JSON(w, r, http.StatusOK, result)
 }
@@ -781,6 +789,11 @@ func (h *InfoHandler) ASN(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// SSRF / metadata-host guard before forwarding to the third-party service.
+	if rejectIfBlockedHost(w, r, query) {
+		return
+	}
+
 	apiURL := fmt.Sprintf("http://ip-api.com/json/%s?fields=status,message,country,countryCode,isp,as", query)
 	req, err := http.NewRequestWithContext(r.Context(), "GET", apiURL, nil)
 	if err != nil {
@@ -833,6 +846,10 @@ func (h *InfoHandler) BGP(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
+		return
+	}
+	// SSRF / metadata-host guard before forwarding to the third-party service.
+	if rejectIfBlockedHost(w, r, query) {
 		return
 	}
 

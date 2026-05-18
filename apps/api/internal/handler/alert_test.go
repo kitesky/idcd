@@ -319,7 +319,11 @@ func TestAlertHandler_TestChannel_NotFound(t *testing.T) {
 // ─────────────────────────────────────────────
 
 func TestAlertHandler_CreatePolicy_Success(t *testing.T) {
-	pool := &mockAlertPool{execResult: pgconn.NewCommandTag("INSERT 0 1")}
+	// QueryRow now serves the ownership EXISTS check — return true.
+	pool := &mockAlertPool{
+		execResult:  pgconn.NewCommandTag("INSERT 0 1"),
+		queryRowVal: &mockAlertRow{values: []any{true}},
+	}
 	h := NewAlertHandler(pool)
 
 	body := map[string]any{

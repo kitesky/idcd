@@ -391,9 +391,22 @@ func (s *Service) driveRevoke(ctx context.Context, order *repo.Order) error {
 	}
 
 	now := time.Now().UTC()
-	_ = s.repos().Certs.UpdateStatus(ctx, cert.ID, repo.CertStatusIssued, repo.CertStatusRevoked, &now, cert.RevokeReason)
-	_ = s.repos().Orders.UpdateStatus(ctx, order.ID, repo.OrderStatusRevoking, repo.OrderStatusRevoked, nil)
-	_ = s.repos().Orders.SetFinalizedAt(ctx, order.ID, now)
+	// Surface — but don't fail — DB write errors so an operator can spot a
+	// cert that's revoked at the CA but stuck "revoking" in our table. The
+	// CA-side revoke already succeeded above, so retrying the whole job
+	// would re-revoke; the right recovery is admin re-sync, not auto-retry.
+	if err := s.repos().Certs.UpdateStatus(ctx, cert.ID, repo.CertStatusIssued, repo.CertStatusRevoked, &now, cert.RevokeReason); err != nil {
+		s.cfg.Logger.Warn("revoke: cert UpdateStatus failed (CA already revoked)",
+			"order_id", order.ID, "cert_id", cert.ID, "err", err)
+	}
+	if err := s.repos().Orders.UpdateStatus(ctx, order.ID, repo.OrderStatusRevoking, repo.OrderStatusRevoked, nil); err != nil {
+		s.cfg.Logger.Warn("revoke: order UpdateStatus failed (CA already revoked)",
+			"order_id", order.ID, "err", err)
+	}
+	if err := s.repos().Orders.SetFinalizedAt(ctx, order.ID, now); err != nil {
+		s.cfg.Logger.Warn("revoke: order SetFinalizedAt failed",
+			"order_id", order.ID, "err", err)
+	}
 	metrics.RecordOrderResult("revoked", order.CA, order.Tier, 0)
 	return nil
 }

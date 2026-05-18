@@ -330,8 +330,12 @@ func (h *ProbeHandler) createProbeTask(
 // DB failure and is wrapped, so the caller can map it to 500.
 func (h *ProbeHandler) resolveActiveNodeID(ctx context.Context) (string, error) {
 	var nodeID string
+	// ORDER BY random() spreads load across all active nodes instead of
+	// letting Postgres pick whichever row the current plan happens to read
+	// first — without an ORDER BY clause the result was effectively pinned
+	// to one node and hot-spotted under steady traffic.
 	err := h.pool.QueryRow(ctx,
-		`SELECT node_id FROM enrolled_nodes WHERE status='active' LIMIT 1`,
+		`SELECT node_id FROM enrolled_nodes WHERE status='active' ORDER BY random() LIMIT 1`,
 	).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

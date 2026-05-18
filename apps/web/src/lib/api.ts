@@ -99,7 +99,11 @@ export async function apiRequest<T = unknown>(path: string, options?: RequestIni
   try {
     const res = await fetch(API_BASE + path, {
       ...options,
-      // credentials: "include" sends the HttpOnly access_token cookie automatically.
+      // credentials: "include" sends the HttpOnly access_token cookie
+      // automatically. This is REQUIRED for the cookie-based session auth —
+      // omitting it would break login.  Security note: API_BASE must point
+      // at an origin we control (idcd-owned eTLD+1). The deploy contract
+      // for NEXT_PUBLIC_API_URL enforces that; do not relax it.
       credentials: "include",
       headers: { ...defaultHeaders, ...localeHeaders, ...csrfHeaders, ...options?.headers },
       signal: options?.signal ?? ownController?.signal,

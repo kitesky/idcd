@@ -85,15 +85,19 @@ func Node(countryCode, regionCode string, seq int, provider string) string {
 
 // --- Secret values (not IDs, longer and cryptographically random) ---
 
-// APISecret returns a full API secret in idc_live_xxx format.
+// APISecret returns a full API secret in sk_live_xxx format.
 // The secret is 32 random bytes encoded as hex (64 hex chars).
 // Only shown to the user once; store SHA-256(secret) in DB.
+//
+// Prefix matches the canonical user-facing format used by
+// apps/api/internal/handler/apikey_handler.go — keeps log greps and
+// documentation consistent so a key generated either way is recognisable.
 func APISecret() (string, error) {
 	b := make([]byte, 32)
 	if _, err := rand.Read(b); err != nil {
 		return "", fmt.Errorf("idgen.APISecret: %w", err)
 	}
-	return "idc_live_" + hex.EncodeToString(b), nil
+	return "sk_live_" + hex.EncodeToString(b), nil
 }
 
 // RawSecret returns 32 cryptographically random bytes as a 64-char lowercase hex string.
@@ -116,8 +120,8 @@ func SHA256Hex(s string) string {
 // APIKeyPrefix returns the displayable prefix (first 8 hex chars of secret).
 // Stored in DB for prefix-based lookup without exposing the full secret.
 func APIKeyPrefix(secret string) string {
-	// secret format: "idc_live_" + 64 hex chars
-	const headerLen = len("idc_live_")
+	// secret format: "sk_live_" + 64 hex chars
+	const headerLen = len("sk_live_")
 	if len(secret) < headerLen+8 {
 		return secret
 	}

@@ -960,7 +960,7 @@ func TestCertConsumer_WithCertRegistry_Overrides(t *testing.T) {
 	regYAML := []byte(`{
 		"default": "fr",
 		"locales": [
-			{"code": "fr", "bcp47": "fr-FR", "label": "Français", "nativeLabel": "Français", "baseLanguage": "fr", "acceptLanguageAliases": ["fr"], "dir": "ltr", "fontStack": "latin", "fallback": []}
+			{"code": "fr", "bcp47": "fr-FR", "label": "Français", "nativeLabel": "Français", "baseLanguage": "fr", "acceptLanguageAliases": ["fr"], "dir": "ltr", "fontStack": "latin", "fallback": [], "currency": "EUR"}
 		]
 	}`)
 	// The real i18n package exposes LoadFromBytesForTesting; use it via the

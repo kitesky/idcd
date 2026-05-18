@@ -323,6 +323,10 @@ func TestBillingHandler_Webhook_PaymentSucceeded(t *testing.T) {
 	mockPool.ExpectExec("UPDATE subscriptions").
 		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	// Idempotency probe: existing payment? (returns false → proceed with INSERT)
+	mockPool.ExpectQuery("SELECT EXISTS").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 	mockPool.ExpectExec("INSERT INTO payments").
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
@@ -417,6 +421,9 @@ func TestBillingHandler_Webhook_PaymentSucceeded_VerdictOrderEnqueues(t *testing
 	// 1. subscription activation UPDATE — fires when SubscriptionID != "".
 	//    For verdict orders the subscription_id is empty, so no UPDATE on
 	//    subscriptions. But we DO write a payment + invoice (AmountCents > 0).
+	mockPool.ExpectQuery("SELECT EXISTS").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 	mockPool.ExpectExec("INSERT INTO payments").
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
@@ -473,6 +480,9 @@ func TestBillingHandler_Webhook_PaymentSucceeded_VerdictDuplicateNoEnqueue(t *te
 	pub := &stubVerdictPublisher{}
 	h = h.WithVerdictPublisher(pub)
 
+	mockPool.ExpectQuery("SELECT EXISTS").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 	mockPool.ExpectExec("INSERT INTO payments").
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
@@ -520,6 +530,9 @@ func TestBillingHandler_Webhook_PaymentSucceeded_VerdictPublisherFailDoesNotFail
 	pub := &stubVerdictPublisher{err: assertEnqueueError{}}
 	h = h.WithVerdictPublisher(pub)
 
+	mockPool.ExpectQuery("SELECT EXISTS").
+		WithArgs(pgxmock.AnyArg(), pgxmock.AnyArg()).
+		WillReturnRows(pgxmock.NewRows([]string{"exists"}).AddRow(false))
 	mockPool.ExpectExec("INSERT INTO payments").
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),

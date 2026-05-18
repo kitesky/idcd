@@ -450,31 +450,44 @@ func (h *BillingHandler) handleWebhookEvent(ctx context.Context, event *billing.
 				return fmt.Errorf("billing: activate subscription %s: %w", event.SubscriptionID, err)
 			}
 		}
-		// Persist payment record.
-		payID := idgen.New("pay_")
-		invID := idgen.Invoice()
+		// Persist payment record. Webhook idempotency is keyed on
+		// (provider, ext_txn_id) — re-deliveries from the payment platform
+		// generate a fresh internal id each time, so ON CONFLICT (id) would
+		// happily insert duplicate rows for the same external transaction.
+		// Guard with an existence check before insert.
 		if event.UserID != "" && event.AmountCents > 0 {
 			currency := event.Currency
 			if currency == "" {
 				currency = "CNY"
 			}
-			if _, err := h.pool.Exec(ctx, `
-				INSERT INTO payments (id, user_id, invoice_id, provider, ext_txn_id,
-				                      amount_cents, currency, status, created_at)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,'succeeded',$8)
-				ON CONFLICT (id) DO NOTHING
-			`, payID, event.UserID, invID, h.provider.Name(), event.ExtTxnID,
-				event.AmountCents, currency, now); err != nil {
-				return fmt.Errorf("billing: insert payment record pay=%s: %w", payID, err)
+			var paymentExists bool
+			if err := h.pool.QueryRow(ctx,
+				`SELECT EXISTS (SELECT 1 FROM payments WHERE provider = $1 AND ext_txn_id = $2)`,
+				h.provider.Name(), event.ExtTxnID,
+			).Scan(&paymentExists); err != nil {
+				return fmt.Errorf("billing: check duplicate payment ext_txn=%s: %w", event.ExtTxnID, err)
 			}
-			if _, err := h.pool.Exec(ctx, `
-				INSERT INTO invoices (id, user_id, subscription_id, provider, ext_invoice_id,
-				                      amount_cents, currency, status, paid_at, created_at)
-				VALUES ($1,$2,$3,$4,$5,$6,$7,'paid',$8,$8)
-				ON CONFLICT (id) DO NOTHING
-			`, invID, event.UserID, event.SubscriptionID, h.provider.Name(), event.ExtTxnID,
-				event.AmountCents, currency, now); err != nil {
-				return fmt.Errorf("billing: insert invoice record inv=%s: %w", invID, err)
+			if !paymentExists {
+				payID := idgen.New("pay_")
+				invID := idgen.Invoice()
+				if _, err := h.pool.Exec(ctx, `
+					INSERT INTO payments (id, user_id, invoice_id, provider, ext_txn_id,
+					                      amount_cents, currency, status, created_at)
+					VALUES ($1,$2,$3,$4,$5,$6,$7,'succeeded',$8)
+					ON CONFLICT (id) DO NOTHING
+				`, payID, event.UserID, invID, h.provider.Name(), event.ExtTxnID,
+					event.AmountCents, currency, now); err != nil {
+					return fmt.Errorf("billing: insert payment record pay=%s: %w", payID, err)
+				}
+				if _, err := h.pool.Exec(ctx, `
+					INSERT INTO invoices (id, user_id, subscription_id, provider, ext_invoice_id,
+					                      amount_cents, currency, status, paid_at, created_at)
+					VALUES ($1,$2,$3,$4,$5,$6,$7,'paid',$8,$8)
+					ON CONFLICT (id) DO NOTHING
+				`, invID, event.UserID, event.SubscriptionID, h.provider.Name(), event.ExtTxnID,
+					event.AmountCents, currency, now); err != nil {
+					return fmt.Errorf("billing: insert invoice record inv=%s: %w", invID, err)
+				}
 			}
 		}
 

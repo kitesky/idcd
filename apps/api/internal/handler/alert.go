@@ -325,6 +325,24 @@ func (h *AlertHandler) CreatePolicy(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Ownership check: a user cannot attach an alert policy to a monitor
+	// they don't own. Without this, anyone could pollute someone else's
+	// monitor with arbitrary alert policies (they couldn't read the events,
+	// but they could create noise or denial-of-quota).
+	var ownsMonitor bool
+	if err := h.pool.QueryRow(ctx,
+		`SELECT EXISTS (SELECT 1 FROM monitors WHERE id = $1 AND user_id = $2)`,
+		req.MonitorID, userID,
+	).Scan(&ownsMonitor); err != nil {
+		response.Error(w, r, apperr.Internal("failed to verify monitor ownership", err))
+		return
+	}
+	if !ownsMonitor {
+		// 404 (not 403) so we don't leak whether the monitor exists.
+		response.Error(w, r, apperr.NotFound("monitor not found"))
+		return
+	}
+
 	delayS := 0
 	if req.DelayS != nil {
 		delayS = *req.DelayS
@@ -450,80 +468,70 @@ func (h *AlertHandler) UpdatePolicy(w http.ResponseWriter, r *http.Request) {
 
 	id := chi.URLParam(r, "id")
 
-	// Fetch existing policy
-	var existing AlertPolicyResponse
-	var channelIDsJSON []byte
-	var createdAt time.Time
-	err := h.pool.QueryRow(ctx, `
-		SELECT id, user_id, monitor_id, channel_ids, name, delay_s, recovery_n,
-		       mute_start, mute_end, enabled, created_at
-		FROM alert_policies WHERE id = $1 AND user_id = $2`, id, userID).
-		Scan(&existing.ID, &existing.UserID, &existing.MonitorID, &channelIDsJSON,
-			&existing.Name, &existing.DelayS, &existing.RecoveryN,
-			&existing.MuteStart, &existing.MuteEnd, &existing.Enabled, &createdAt)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			response.Error(w, r, apperr.NotFound("alert policy not found"))
-		} else {
-			response.Error(w, r, apperr.Internal("failed to fetch alert policy", err))
-		}
-		return
-	}
-	if err := json.Unmarshal(channelIDsJSON, &existing.ChannelIDs); err != nil {
-		existing.ChannelIDs = []string{}
-	}
-	existing.CreatedAt = createdAt.UTC().Format(time.RFC3339)
-
 	var req UpdatePolicyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		response.Error(w, r, apperr.Validation("invalid JSON request body", ""))
 		return
 	}
 
-	// Apply patch
-	if req.Name != nil {
-		existing.Name = *req.Name
-	}
+	// Atomic partial update via COALESCE — eliminates the read-modify-write
+	// race where two concurrent PATCHes would last-write-wins each other's
+	// unrelated field changes. Each column either takes the new value (when
+	// the request supplied it) or keeps its existing one.
+	var channelIDsJSON []byte
 	if req.ChannelIDs != nil {
-		existing.ChannelIDs = *req.ChannelIDs
-	}
-	if req.DelayS != nil {
-		existing.DelayS = *req.DelayS
-	}
-	if req.RecoveryN != nil {
-		existing.RecoveryN = *req.RecoveryN
-	}
-	if req.MuteStart != nil {
-		existing.MuteStart = req.MuteStart
-	}
-	if req.MuteEnd != nil {
-		existing.MuteEnd = req.MuteEnd
-	}
-	if req.Enabled != nil {
-		existing.Enabled = *req.Enabled
+		var err error
+		channelIDsJSON, err = json.Marshal(*req.ChannelIDs)
+		if err != nil {
+			response.Error(w, r, apperr.Internal("failed to marshal channel_ids", err))
+			return
+		}
 	}
 
-	newChannelIDsJSON, err := json.Marshal(existing.ChannelIDs)
-	if err != nil {
-		response.Error(w, r, apperr.Internal("failed to marshal channel_ids", err))
-		return
-	}
-
-	_, err = h.pool.Exec(ctx, `
-		UPDATE alert_policies
-		SET name=$1, channel_ids=$2, delay_s=$3, recovery_n=$4,
-		    mute_start=$5, mute_end=$6, enabled=$7
-		WHERE id=$8 AND user_id=$9`,
-		existing.Name, newChannelIDsJSON, existing.DelayS, existing.RecoveryN,
-		existing.MuteStart, existing.MuteEnd, existing.Enabled,
+	var (
+		row             AlertPolicyResponse
+		retChannelsJSON []byte
+		createdAt       time.Time
+	)
+	err := h.pool.QueryRow(ctx, `
+		UPDATE alert_policies SET
+			name        = COALESCE($3, name),
+			channel_ids = COALESCE($4, channel_ids),
+			delay_s     = COALESCE($5, delay_s),
+			recovery_n  = COALESCE($6, recovery_n),
+			mute_start  = CASE WHEN $7::boolean THEN $8 ELSE mute_start END,
+			mute_end    = CASE WHEN $9::boolean THEN $10 ELSE mute_end END,
+			enabled     = COALESCE($11, enabled)
+		WHERE id = $1 AND user_id = $2
+		RETURNING id, user_id, monitor_id, channel_ids, name, delay_s, recovery_n,
+		          mute_start, mute_end, enabled, created_at`,
 		id, userID,
+		req.Name,
+		channelIDsJSON,
+		req.DelayS,
+		req.RecoveryN,
+		req.MuteStart != nil, req.MuteStart,
+		req.MuteEnd != nil, req.MuteEnd,
+		req.Enabled,
+	).Scan(
+		&row.ID, &row.UserID, &row.MonitorID, &retChannelsJSON,
+		&row.Name, &row.DelayS, &row.RecoveryN,
+		&row.MuteStart, &row.MuteEnd, &row.Enabled, &createdAt,
 	)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, r, apperr.NotFound("alert policy not found"))
+			return
+		}
 		response.Error(w, r, apperr.Internal("failed to update alert policy", err))
 		return
 	}
+	if err := json.Unmarshal(retChannelsJSON, &row.ChannelIDs); err != nil {
+		row.ChannelIDs = []string{}
+	}
+	row.CreatedAt = createdAt.UTC().Format(time.RFC3339)
 
-	response.JSON(w, r, http.StatusOK, existing)
+	response.JSON(w, r, http.StatusOK, row)
 }
 
 // DeletePolicy handles DELETE /v1/alert-policies/:id.

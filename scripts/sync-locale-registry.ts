@@ -20,6 +20,10 @@ import { resolve } from 'node:path'
 const ROOT = resolve(import.meta.dirname, '..')
 const REGISTRY_PATH = resolve(ROOT, 'config/locales.json')
 
+// Next.js 16 outputFileTracingRoot 锁在 apps/web 后无法跨 monorepo 读取，
+// 因此 web runtime 复制了一份；必须保持与 canonical config 同 canonical hash。
+const WEB_REGISTRY_PATH = resolve(ROOT, 'apps/web/src/i18n/locales.json')
+
 function fail(code: number, ...lines: string[]): never {
   for (const l of lines) console.error(l)
   process.exit(code)
@@ -48,27 +52,27 @@ interface Registry {
   locales: LocaleEntry[]
 }
 
-function loadRegistry(): { raw: string; parsed: Registry } {
-  if (!existsSync(REGISTRY_PATH)) {
-    fail(1, `[i18n] registry not found at ${REGISTRY_PATH}`)
+function readRegistry(path: string, errCode: number): Registry {
+  if (!existsSync(path)) {
+    fail(errCode, `[i18n] registry not found at ${path}`)
   }
-  const raw = readFileSync(REGISTRY_PATH, 'utf8')
   let parsed: Registry
   try {
-    parsed = JSON.parse(raw) as Registry
+    parsed = JSON.parse(readFileSync(path, 'utf8')) as Registry
   } catch (e) {
-    fail(1, `[i18n] invalid JSON in ${REGISTRY_PATH}: ${(e as Error).message}`)
+    fail(errCode, `[i18n] invalid JSON in ${path}: ${(e as Error).message}`)
   }
-  validate(parsed)
-  return { raw, parsed }
+  validate(parsed, errCode, path)
+  return parsed
 }
 
-function validate(r: Registry): void {
+function validate(r: Registry, errCode: number, path: string): void {
+  const prefix = `[i18n] ${path}`
   if (typeof r.default !== 'string' || !r.default) {
-    fail(1, '[i18n] registry.default missing')
+    fail(errCode, `${prefix}: registry.default missing`)
   }
   if (!Array.isArray(r.locales) || r.locales.length === 0) {
-    fail(1, '[i18n] registry.locales empty')
+    fail(errCode, `${prefix}: registry.locales empty`)
   }
   const codes = new Set<string>()
   for (const l of r.locales) {
@@ -86,33 +90,37 @@ function validate(r: Registry): void {
     ]
     for (const k of required) {
       if (l[k] === undefined || l[k] === null) {
-        fail(1, `[i18n] locale ${l.code ?? '(unnamed)'} missing field "${k}"`)
+        fail(errCode, `${prefix}: locale ${l.code ?? '(unnamed)'} missing field "${k}"`)
       }
     }
     if (codes.has(l.code)) {
-      fail(1, `[i18n] duplicate locale code "${l.code}"`)
+      fail(errCode, `${prefix}: duplicate locale code "${l.code}"`)
     }
     codes.add(l.code)
     if (!/^[a-z]{2,5}$/.test(l.code)) {
-      fail(1, `[i18n] locale code "${l.code}" must match /^[a-z]{2,5}$/`)
+      fail(errCode, `${prefix}: locale code "${l.code}" must match /^[a-z]{2,5}$/`)
     }
     if (!/^[a-z]{2}(-[A-Z][a-z]{3})?(-[A-Z]{2})?$/.test(l.bcp47)) {
-      fail(1, `[i18n] locale "${l.code}" bcp47 "${l.bcp47}" not well-formed`)
+      fail(errCode, `${prefix}: locale "${l.code}" bcp47 "${l.bcp47}" not well-formed`)
     }
     if (l.dir !== 'ltr' && l.dir !== 'rtl') {
-      fail(1, `[i18n] locale "${l.code}" dir must be ltr or rtl`)
+      fail(errCode, `${prefix}: locale "${l.code}" dir must be ltr or rtl`)
     }
     if (!/^[A-Z]{3}$/.test(l.currency)) {
-      fail(1, `[i18n] locale "${l.code}" currency "${l.currency}" must be ISO 4217 (3 uppercase letters)`)
+      fail(errCode, `${prefix}: locale "${l.code}" currency "${l.currency}" must be ISO 4217 (3 uppercase letters)`)
     }
   }
   if (!codes.has(r.default)) {
-    fail(1, `[i18n] default "${r.default}" not in locales[]`)
+    fail(errCode, `${prefix}: default "${r.default}" not in locales[]`)
   }
 }
 
 function hashCanonical(parsed: Registry): string {
-  const canonical = JSON.stringify(canonicalize(parsed))
+  // Hash only the load-bearing fields. Cosmetic fields like `$schema` differ
+  // between the canonical config copy (declares schema) and the web mirror
+  // (just plain JSON), but must not break the equivalence check.
+  const stripped: Registry = { default: parsed.default, locales: parsed.locales }
+  const canonical = JSON.stringify(canonicalize(stripped))
   return createHash('sha256').update(canonical).digest('hex').slice(0, 12)
 }
 
@@ -128,16 +136,32 @@ function canonicalize(value: unknown): unknown {
   return value
 }
 
+function checkWebMirror(canonicalHash: string): void {
+  const webHash = hashCanonical(readRegistry(WEB_REGISTRY_PATH, 2))
+  if (webHash !== canonicalHash) {
+    fail(
+      2,
+      `[i18n] apps/web/src/i18n/locales.json out of sync with config/locales.json`,
+      `       config hash: ${canonicalHash}`,
+      `       web hash:    ${webHash}`,
+      `       fix: copy config/locales.json → apps/web/src/i18n/locales.json (preserve $schema if present)`,
+    )
+  }
+}
+
 function main(): void {
-  const { parsed } = loadRegistry()
+  const parsed = readRegistry(REGISTRY_PATH, 1)
   const hash = hashCanonical(parsed)
   const codes = parsed.locales.map((l) => l.code).join(', ')
+
+  checkWebMirror(hash)
 
   ok(
     `[i18n] registry OK`,
     `       default: ${parsed.default}`,
     `       locales: ${codes}`,
     `       hash:    ${hash}`,
+    `       web mirror: in sync`,
   )
 }
 

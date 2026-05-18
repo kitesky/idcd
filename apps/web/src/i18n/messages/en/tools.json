@@ -51,7 +51,12 @@
     "querying": "Querying…",
     "queryFailed": "Query failed",
     "usage": "Usage",
-    "status": "Status"
+    "status": "Status",
+    "probeParams": "Probe parameters",
+    "start": "Start probe",
+    "starting": "Probing...",
+    "submitFailed": "Submission failed",
+    "nodesAuto": "Pick specific nodes; defaults to all available nodes"
   },
   "_ui": {
     "loading": "Checking...",
@@ -195,6 +200,14 @@
     "meta": {
       "title": "DNS Lookup — Global DNS Resolution Test | idcd",
       "description": "Query DNS records from resolvers worldwide and detect DNS pollution or hijacking. Supports A, AAAA, MX, TXT, CNAME."
+    },
+    "probe": {
+      "helpTips": [
+        "Target: the domain name to resolve (e.g. example.com)",
+        "Record type: A (IPv4), AAAA (IPv6), MX (mail), TXT, CNAME (alias), NS (name server)",
+        "Result: DNS resolution result, response time, and authoritative server",
+        "Nodes: pick specific nodes; defaults to all available nodes"
+      ]
     }
   },
   "duplicate-remover": {
@@ -235,6 +248,14 @@
     "meta": {
       "title": "HTTP Check — Multi-Region Uptime Test | idcd",
       "description": "Verify HTTP/HTTPS availability and response times from multiple global regions. Catch downtime before your users do."
+    },
+    "probe": {
+      "helpTips": [
+        "Target: full HTTP/HTTPS URL (e.g. https://example.com)",
+        "Method: choose GET, POST, or HEAD",
+        "Redirect: whether to follow 3xx responses automatically",
+        "Nodes: pick specific nodes; defaults to all available nodes"
+      ]
     }
   },
   "http-status": {
@@ -451,6 +472,14 @@
     "meta": {
       "title": "Ping Check — Global ICMP Latency Test | idcd",
       "description": "Test ICMP ping latency and packet loss from 100+ real probe nodes worldwide. Identify network issues in seconds."
+    },
+    "probe": {
+      "helpTips": [
+        "Target: domain or IP address (e.g. example.com or 1.1.1.1)",
+        "Count: number of ping packets to send (4, 10, or 20)",
+        "Result metrics: average / min / max latency and packet loss",
+        "Nodes: pick specific nodes; defaults to all available nodes"
+      ]
     }
   },
   "qrcode": {

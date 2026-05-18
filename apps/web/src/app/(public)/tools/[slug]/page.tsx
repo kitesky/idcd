@@ -78,7 +78,8 @@ export default async function ToolSlugPage({ params }: Props) {
     <>
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        // XSS: escape `<` so a translated value containing `</script>` can't break out
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd).replace(/</g, '\\u003c') }}
       />
       <Suspense fallback={null}>
         <ToolRenderer slug={slug} />

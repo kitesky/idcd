@@ -1,15 +1,8 @@
 import { getRequestConfig } from 'next-intl/server'
 import { headers } from 'next/headers'
 import { defaultLocale, fallbackChain, isSupported } from './registry'
+// re-applied client-side in <IntlProvider> so RSC and client render missing keys the same way
 import { onError, getMessageFallback } from './error-handlers'
-
-// onError/getMessageFallback are imported here so they participate in
-// server-side rendering — but they are NOT returned to next-intl 4. The pair
-// is re-applied on the client via <IntlProvider> (src/i18n/intl-provider.tsx),
-// which is a client component and can carry functions safely. Next.js 16's
-// stricter RSC boundary check (functions cannot cross server→client) made
-// the old request.ts return value invalid.
-void onError; void getMessageFallback
 
 // Stable list of namespaces — must mirror messages/cn/*.json 1:1. Adding a new
 // namespace = append one entry here + drop the JSON in every messages/{locale}/
@@ -100,5 +93,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
   return {
     locale,
     messages: await loadMessages(locale),
+    onError,
+    getMessageFallback,
   }
 })

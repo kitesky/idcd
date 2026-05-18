@@ -38,12 +38,12 @@ export default defineConfig({
     },
     {
       name: 'chromium-public',
-      testMatch: /(public|tools|diagnose|probe-ping|diagnose-flow|register|utility-tools|probe-submit|info-query)\.spec\.ts/,
+      testMatch: /(public|tools|diagnose|probe-ping|diagnose-flow|register|utility-tools|probe-submit|info-query|probe-extended)\.spec\.ts/,
       use: { ...devices['Desktop Chrome'] },
     },
     {
       name: 'chromium-app',
-      testMatch: /(app|api-key-create|monitor-list|monitor-create|cert-wizard|incidents-list)\.spec\.ts/,
+      testMatch: /(app|api-key-create|monitor-list|monitor-create|cert-wizard|incidents-list|status-page-create|cert-dns-creds|alert-policy)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'tests/e2e/.auth/user.json',

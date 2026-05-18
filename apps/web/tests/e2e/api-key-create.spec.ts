@@ -33,4 +33,18 @@ test('user can create an API key via the settings dialog', async ({ page }) => {
   await expect(page.locator('[data-testid="new-key-reveal"]')).toBeVisible({ timeout: 10_000 })
 
   expect(errors, `pageerror: ${errors.join(' | ')}`).toHaveLength(0)
+
+  // Cleanup: close dialog and revoke the key we just created so re-runs don't
+  // hit the per-account API key quota (5–6 keys is enough to start getting 403).
+  // The dialog has a close button after reveal; the row gets a revoke control.
+  await page.keyboard.press('Escape').catch(() => undefined)
+  await page.waitForTimeout(300)
+  const revokeBtn = page.locator(`[data-testid^="btn-revoke-"]`).first()
+  if (await revokeBtn.isVisible().catch(() => false)) {
+    await revokeBtn.click()
+    const confirmBtn = page.locator('[data-testid^="btn-confirm-revoke-"]').first()
+    if (await confirmBtn.isVisible().catch(() => false)) {
+      await confirmBtn.click()
+    }
+  }
 })

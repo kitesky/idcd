@@ -21,6 +21,16 @@ import { join } from 'node:path'
 export const USE_TRANSLATIONS_BIND_RE =
   /(?:const|let|var)\s+(\w+)\s*=\s*(?:await\s+)?(?:useTranslations|getT|getTranslations)\((?:\s*['"]([^'"]+)['"][^)]*)?\)/g
 
+// Also captures cross-function `t` passing where the receiving function annotates
+// its parameter with a typed-prop signature:
+//   `function X({ t }: { t: ReturnType<typeof useTranslations<"NS">> })`
+//   `function X(arg: A, t: ReturnType<typeof useTranslations<"NS">>)`
+// The named generic argument (`"NS"`) makes the namespace recoverable. Helpers
+// without an explicit generic argument cannot be attributed and stay invisible
+// to the scanner (false negatives are acceptable per module docs).
+export const USE_TRANSLATIONS_TYPED_PARAM_RE =
+  /\b(\w+)\s*:\s*ReturnType<typeof\s+(?:useTranslations|getT|getTranslations)<['"]([^'"]+)['"]>>/g
+
 export const FILE_EXT_RE = /\.(ts|tsx)$/
 
 const SKIP_DIRS = new Set(['node_modules', '.next', '__tests__'])
@@ -62,6 +72,18 @@ export function scanFile(content: string, used: Map<string, Set<string>>): void 
       pos: m.index ?? 0,
       varName,
       nsPath: nsRaw ? nsRaw.split('.') : [],
+    })
+    candidateNames.add(varName)
+  }
+
+  for (const m of content.matchAll(USE_TRANSLATIONS_TYPED_PARAM_RE)) {
+    const varName = m[1]!
+    const nsRaw = m[2]!
+    events.push({
+      type: 'bind',
+      pos: m.index ?? 0,
+      varName,
+      nsPath: nsRaw.split('.'),
     })
     candidateNames.add(varName)
   }
@@ -164,12 +186,44 @@ export function scanDynamicFile(
     candidateNames.add(m[1]!)
   }
 
+  for (const m of content.matchAll(USE_TRANSLATIONS_TYPED_PARAM_RE)) {
+    events.push({
+      type: 'bind',
+      pos: m.index ?? 0,
+      varName: m[1]!,
+      nsPath: m[2]!.split('.'),
+    })
+    candidateNames.add(m[1]!)
+  }
+
+  // Index identifier → template literal value for the
+  //   `const key = `${...}.foo`; t(key)`
+  // indirection pattern. Risk is low because we only honour the binding when the
+  // *same* identifier shows up inside a tracked `t(...)` later; unrelated tpl
+  // literals (URLs, SQL, etc.) never collide with that.
+  const tplLiteralBinds = new Map<string, string>()
+  const tplBindRe =
+    /(?:const|let|var)\s+(\w+)\s*=\s*`([^`]+)`/g
+  for (const m of content.matchAll(tplBindRe)) {
+    const tpl = m[2]!
+    if (!tpl.includes('${')) continue
+    tplLiteralBinds.set(m[1]!, tpl)
+  }
   for (const name of candidateNames) {
     // Template-literal `t(`...`)` — only with `${...}` interpolation.
     const tplRe = new RegExp(`\\b${name}\\(\\s*\`([^\`]+)\``, 'g')
     for (const m of content.matchAll(tplRe)) {
       const tpl = m[1]!
       if (!tpl.includes('${')) continue
+      events.push({ type: 'tpl', pos: m.index ?? 0, varName: name, tpl, coversChildren: false })
+    }
+    // Indirect call: `t(identifier)` where identifier was previously bound to a
+    // template literal containing `${...}`.
+    const identCallRe = new RegExp(`\\b${name}\\(\\s*(\\w+)\\s*[,)]`, 'g')
+    for (const m of content.matchAll(identCallRe)) {
+      const ident = m[1]!
+      const tpl = tplLiteralBinds.get(ident)
+      if (!tpl) continue
       events.push({ type: 'tpl', pos: m.index ?? 0, varName: name, tpl, coversChildren: false })
     }
     // `t.raw('lit')` or `t.raw(\`tpl\`)` — covers every descendant key.

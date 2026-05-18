@@ -126,7 +126,7 @@ function PriceDisplay({
 }: {
   plan: PlanConfig
   cycle: BillingCycle
-  t: ReturnType<typeof useTranslations>
+  t: ReturnType<typeof useTranslations<"pricing">>
 }) {
   const price = cycle === "monthly" ? plan.monthlyPrice : plan.yearlyPrice
   const originalMonthly = plan.monthlyPrice

@@ -43,7 +43,7 @@ export default defineConfig({
     },
     {
       name: 'chromium-app',
-      testMatch: /(app|api-key-create|monitor-list|monitor-create|monitor-lifecycle|cert-wizard|incidents-list|status-page-create|cert-dns-creds|alert-policy|alert-events|auth-lifecycle)\.spec\.ts/,
+      testMatch: /(app|api-key-create|monitor-list|monitor-create|monitor-lifecycle|cert-wizard|incidents-list|status-page-create|cert-dns-creds|alert-policy|alert-events|auth-lifecycle|oncall-billing-usage)\.spec\.ts/,
       use: {
         ...devices['Desktop Chrome'],
         storageState: 'tests/e2e/.auth/user.json',

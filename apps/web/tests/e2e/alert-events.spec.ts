@@ -44,14 +44,9 @@ test('alert channels tab exposes "add channel" entry', async ({ page }) => {
   const errors: string[] = []
   page.on('pageerror', e => errors.push(e.message))
 
-  await page.goto('/app/alerts')
+  // Channels are a tab on /app/alerts, selectable via ?tab=channels query.
+  await page.goto('/app/alerts?tab=channels')
   await page.waitForLoadState('domcontentloaded')
-
-  // The tab text in zh-CN is "告警通道"; English is "Channels".
-  const channelsTab = page.getByRole('tab', { name: /告警通道|channel/i }).first()
-  if (await channelsTab.isVisible().catch(() => false)) {
-    await channelsTab.click()
-  }
 
   const addChannelBtn = page.locator('[data-testid="add-channel-btn"]')
   await expect(addChannelBtn).toBeVisible({ timeout: 10_000 })

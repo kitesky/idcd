@@ -289,12 +289,17 @@ func (p *Processor) insertProbeResult(ctx context.Context, taskID, nodeID string
 	return err
 }
 
-// completeProbeTask transitions a probe_task from "running" to "completed" and writes the result.
+// completeProbeTask transitions a probe_task from "queued" or "running" to
+// "completed" and writes the result. Earlier versions only matched 'running',
+// but the dispatcher never transitions queued→running — leaving every task
+// stuck at queued and the result silently discarded. E2E real-flow testing
+// surfaced this as "submit a probe, never see a result" (T18 from session
+// notes 2026-05-15).
 func (p *Processor) completeProbeTask(ctx context.Context, taskID string, resultJSON []byte) error {
 	_, err := p.pool.Exec(ctx, `
 		UPDATE probe_task
 		SET status = 'completed', completed_at = NOW(), result = $2
-		WHERE id = $1 AND status = 'running'
+		WHERE id = $1 AND status IN ('queued', 'running')
 	`, taskID, resultJSON)
 	return err
 }

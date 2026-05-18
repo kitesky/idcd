@@ -162,9 +162,6 @@
     "subtitle": "SLA 月报与告警噪音分析",
     "slaTab": "SLA 月报",
     "noiseTab": "告警噪音分析",
-    "generate": "生成报告",
-    "period": "报告周期",
-    "download": "下载报告",
     "exportPDF": "导出 PDF",
     "exportCSV": "导出 CSV",
     "granularity": {

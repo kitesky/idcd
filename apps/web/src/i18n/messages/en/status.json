@@ -162,9 +162,6 @@
     "subtitle": "SLA monthly reports and alert noise analysis",
     "slaTab": "SLA Report",
     "noiseTab": "Alert Noise Analysis",
-    "generate": "Generate Report",
-    "period": "Report Period",
-    "download": "Download Report",
     "exportPDF": "Export PDF",
     "exportCSV": "Export CSV",
     "granularity": {

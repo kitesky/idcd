@@ -1,6 +1,7 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
+import { useTranslations } from "next-intl"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -24,6 +25,10 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Printer, Download } from "lucide-react"
 import { apiRequest } from "@/lib/api"
+
+// ── Typed translator alias ─────────────────────────────────────────────────
+
+type ReportsT = ReturnType<typeof useTranslations<"status.reports">>
 
 // ── Print styles ───────────────────────────────────────────────────────────
 
@@ -237,30 +242,37 @@ interface NoiseReportResponse {
 // ── Noise analysis Tab ─────────────────────────────────────────────────────
 
 function NoiseTab() {
+  const t = useTranslations("status.reports")
   const [data, setData] = useState<NoiseReportResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [days, setDays] = useState("7")
 
-  const loadNoise = useCallback(async (d: string) => {
+  useEffect(() => {
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步 fetch；days 变化触发
     setLoading(true)
     setError(null)
-    try {
-      const res = await apiRequest<{ data: NoiseReportResponse }>(
-        `/v1/reports/alert-noise?days=${d}`,
-      )
-      setData(res?.data ?? null)
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载噪音数据失败")
-    } finally {
-      setLoading(false)
+    apiRequest<{ data: NoiseReportResponse }>(
+      `/v1/reports/alert-noise?days=${days}`,
+    )
+      .then((res) => {
+        if (cancelled) return
+        setData(res?.data ?? null)
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : t("noise.loadFailed"))
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadNoise 内部 await 后 setState；days 变化触发
-    void loadNoise(days)
-  }, [days, loadNoise])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定但 lint 不识别
+  }, [days])
 
   const noMonitors = !data || data.noisiest_monitors.length === 0
   const noTrend = !data || data.daily_trend.length === 0
@@ -275,17 +287,15 @@ function NoiseTab() {
     <div className="space-y-6" data-testid="noise-tab">
       {/* Controls */}
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-muted-foreground">
-          分析近期告警触发频率，识别频繁抖动的监控项
-        </p>
+        <p className="text-sm text-muted-foreground">{t("noise.desc")}</p>
         <Select value={days} onValueChange={setDays}>
           <SelectTrigger className="w-[140px]" data-testid="noise-days-select">
-            <SelectValue placeholder="时间范围" />
+            <SelectValue placeholder={t("noise.daysRange.placeholder")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="7">最近 7 天</SelectItem>
-            <SelectItem value="14">最近 14 天</SelectItem>
-            <SelectItem value="30">最近 30 天</SelectItem>
+            <SelectItem value="7">{t("noise.daysRange.7")}</SelectItem>
+            <SelectItem value="14">{t("noise.daysRange.14")}</SelectItem>
+            <SelectItem value="30">{t("noise.daysRange.30")}</SelectItem>
           </SelectContent>
         </Select>
       </div>
@@ -301,7 +311,7 @@ function NoiseTab() {
         <div className="flex flex-wrap gap-3">
           <Card className="flex-1 min-w-[140px]">
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground mb-1">总触发次数</p>
+              <p className="text-xs text-muted-foreground mb-1">{t("noise.totalFirings")}</p>
               <p className="text-2xl font-bold tabular-nums">
                 {data.total_firings.toLocaleString()}
               </p>
@@ -309,7 +319,7 @@ function NoiseTab() {
           </Card>
           <Card className="flex-1 min-w-[140px]">
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground mb-1">总抖动次数</p>
+              <p className="text-xs text-muted-foreground mb-1">{t("noise.totalFlaps")}</p>
               <p className="text-2xl font-bold tabular-nums">
                 {data.total_flaps.toLocaleString()}
               </p>
@@ -317,7 +327,7 @@ function NoiseTab() {
           </Card>
           <Card className="flex-1 min-w-[140px]">
             <CardContent className="pt-4 pb-4">
-              <p className="text-xs text-muted-foreground mb-1">统计区间</p>
+              <p className="text-xs text-muted-foreground mb-1">{t("noise.period")}</p>
               <p className="text-sm font-medium tabular-nums">
                 {data.period.from} ~ {data.period.to}
               </p>
@@ -329,7 +339,7 @@ function NoiseTab() {
       {/* Top 10 noisy monitors table */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">噪音最高监控 Top 10</CardTitle>
+          <CardTitle className="text-base font-semibold">{t("noise.top10")}</CardTitle>
         </CardHeader>
         <CardContent className="overflow-x-auto p-0">
           {loading ? (
@@ -343,19 +353,17 @@ function NoiseTab() {
               className="flex flex-col items-center justify-center py-14 text-center"
               data-testid="noise-empty"
             >
-              <p className="text-sm font-medium text-muted-foreground">近期无告警噪音</p>
-              <p className="mt-1 text-xs text-muted-foreground">
-                所选时间范围内没有告警触发记录
-              </p>
+              <p className="text-sm font-medium text-muted-foreground">{t("noise.empty")}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{t("noise.emptyDesc")}</p>
             </div>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="pl-4">排名</TableHead>
-                  <TableHead>监控 ID</TableHead>
-                  <TableHead className="text-right">触发次数</TableHead>
-                  <TableHead className="text-right pr-4">抖动次数</TableHead>
+                  <TableHead className="pl-4">{t("noise.table.rank")}</TableHead>
+                  <TableHead>{t("noise.table.monitorId")}</TableHead>
+                  <TableHead className="text-right">{t("noise.table.firings")}</TableHead>
+                  <TableHead className="text-right pr-4">{t("noise.table.flaps")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -391,7 +399,7 @@ function NoiseTab() {
       {/* Daily trend — 7 mini cards */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base font-semibold">最近 7 天每日趋势</CardTitle>
+          <CardTitle className="text-base font-semibold">{t("noise.trend")}</CardTitle>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -402,7 +410,7 @@ function NoiseTab() {
             </div>
           ) : noTrend ? (
             <p className="py-8 text-center text-sm text-muted-foreground" data-testid="trend-empty">
-              暂无每日趋势数据
+              {t("noise.trendEmpty")}
             </p>
           ) : (
             <div className="flex gap-2 overflow-x-auto pb-1">
@@ -442,32 +450,39 @@ function NoiseTab() {
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function ReportsPage() {
+  const t = useTranslations("status.reports")
   const [months, setMonths] = useState("3")
   const [granularity, setGranularity] = useState<Granularity>("monthly")
   const [monitors, setMonitors] = useState<SLAMonitorEntry[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const loadData = useCallback(async (m: string) => {
+  useEffect(() => {
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步 fetch；months 变化触发
     setLoading(true)
     setError(null)
-    try {
-      const res = await apiRequest<{ data: { entries: SLAEntry[] } }>(
-        `/v1/reports/sla?months=${m}`,
-      )
-      const entries = res?.data?.entries ?? []
-      setMonitors(groupEntries(entries))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "加载 SLA 数据失败")
-    } finally {
-      setLoading(false)
+    apiRequest<{ data: { entries: SLAEntry[] } }>(
+      `/v1/reports/sla?months=${months}`,
+    )
+      .then((res) => {
+        if (cancelled) return
+        const entries = res?.data?.entries ?? []
+        setMonitors(groupEntries(entries))
+      })
+      .catch((err) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : t("sla.loadFailed"))
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
-  }, [])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- loadData 内部 await 后 setState；months 变化触发
-    void loadData(months)
-  }, [months, loadData])
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定但 lint 不识别
+  }, [months])
 
   function handleMonthsChange(val: string) {
     setMonths(val)
@@ -478,22 +493,21 @@ export default function ReportsPage() {
       ? monitors.map(aggregateToQuarterly)
       : monitors
 
-  const periodColumnLabel = granularity === "quarterly" ? "季度" : "月份"
+  const periodColumnLabel =
+    granularity === "quarterly" ? t("sla.period.quarter") : t("sla.period.month")
 
   return (
     <div data-testid="reports-page">
       <GlobalPrintStyle />
       <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight">报告</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          SLA 月报与告警噪音分析
-        </p>
+        <h1 className="text-2xl font-bold tracking-tight">{t("title")}</h1>
+        <p className="mt-1 text-sm text-muted-foreground">{t("subtitle")}</p>
       </div>
 
       <Tabs defaultValue="sla">
         <TabsList className="mb-6">
-          <TabsTrigger value="sla">SLA 月报</TabsTrigger>
-          <TabsTrigger value="noise">告警噪音分析</TabsTrigger>
+          <TabsTrigger value="sla">{t("slaTab")}</TabsTrigger>
+          <TabsTrigger value="noise">{t("noiseTab")}</TabsTrigger>
         </TabsList>
 
         {/* ── SLA Tab ── */}
@@ -506,7 +520,7 @@ export default function ReportsPage() {
               data-testid="pdf-export-btn"
             >
               <Printer className="mr-2 h-4 w-4" />
-              导出 PDF
+              {t("exportPDF")}
             </Button>
             <Button
               variant="outline"
@@ -515,7 +529,7 @@ export default function ReportsPage() {
               data-testid="csv-export-btn"
             >
               <Download className="mr-2 h-4 w-4" />
-              导出 CSV
+              {t("exportCSV")}
             </Button>
             <Select
               value={granularity}
@@ -525,21 +539,21 @@ export default function ReportsPage() {
                 className="w-[120px]"
                 data-testid="granularity-select"
               >
-                <SelectValue placeholder="显示维度" />
+                <SelectValue placeholder={t("granularity.placeholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="monthly">月度</SelectItem>
-                <SelectItem value="quarterly">季度</SelectItem>
+                <SelectItem value="monthly">{t("granularity.monthly")}</SelectItem>
+                <SelectItem value="quarterly">{t("granularity.quarterly")}</SelectItem>
               </SelectContent>
             </Select>
             <Select value={months} onValueChange={handleMonthsChange}>
               <SelectTrigger className="w-[140px]" data-testid="months-select">
-                <SelectValue placeholder="选择月数" />
+                <SelectValue placeholder={t("monthsRange.placeholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="3">最近 3 个月</SelectItem>
-                <SelectItem value="6">最近 6 个月</SelectItem>
-                <SelectItem value="12">最近 12 个月</SelectItem>
+                <SelectItem value="3">{t("monthsRange.3")}</SelectItem>
+                <SelectItem value="6">{t("monthsRange.6")}</SelectItem>
+                <SelectItem value="12">{t("monthsRange.12")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -561,55 +575,18 @@ export default function ReportsPage() {
               className="flex flex-col items-center justify-center rounded-lg border border-dashed py-16 text-center"
               data-testid="reports-empty"
             >
-              <p className="text-lg font-medium text-muted-foreground">暂无 SLA 数据</p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                当前时间范围内没有监控报告，请尝试扩大查询范围。
-              </p>
+              <p className="text-lg font-medium text-muted-foreground">{t("sla.empty")}</p>
+              <p className="mt-1 text-sm text-muted-foreground">{t("sla.emptyDesc")}</p>
             </div>
           ) : (
             <div className="flex flex-col gap-6">
               {displayMonitors.map((monitor) => (
-                <Card key={monitor.id} data-testid={`monitor-card-${monitor.id}`}>
-                  <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
-                    <div className="flex items-center gap-3">
-                      <CardTitle className="text-base font-semibold">
-                        {monitor.name}
-                      </CardTitle>
-                    </div>
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                      <span>平均在线率</span>
-                      {uptimeBadge(monitor.avg_uptime_pct)}
-                    </div>
-                  </CardHeader>
-                  <CardContent className="overflow-x-auto">
-                    <Table>
-                      <TableHeader>
-                        <TableRow>
-                          <TableHead>{periodColumnLabel}</TableHead>
-                          <TableHead>在线率</TableHead>
-                          <TableHead className="text-right">总检查数</TableHead>
-                          <TableHead className="text-right">失败次数</TableHead>
-                        </TableRow>
-                      </TableHeader>
-                      <TableBody>
-                        {monitor.months.map((entry) => (
-                          <TableRow key={entry.month}>
-                            <TableCell className="font-mono text-sm">
-                              {entry.month}
-                            </TableCell>
-                            <TableCell>{uptimeBadge(entry.uptime_pct)}</TableCell>
-                            <TableCell className="text-right text-sm tabular-nums">
-                              {entry.total_checks.toLocaleString()}
-                            </TableCell>
-                            <TableCell className="text-right text-sm tabular-nums">
-                              {entry.failed_checks}
-                            </TableCell>
-                          </TableRow>
-                        ))}
-                      </TableBody>
-                    </Table>
-                  </CardContent>
-                </Card>
+                <MonitorCard
+                  key={monitor.id}
+                  monitor={monitor}
+                  periodColumnLabel={periodColumnLabel}
+                  t={t}
+                />
               ))}
             </div>
           )}
@@ -621,5 +598,55 @@ export default function ReportsPage() {
         </TabsContent>
       </Tabs>
     </div>
+  )
+}
+
+// ── Monitor Card ───────────────────────────────────────────────────────────
+
+interface MonitorCardProps {
+  monitor: SLAMonitorEntry
+  periodColumnLabel: string
+  t: ReportsT
+}
+
+function MonitorCard({ monitor, periodColumnLabel, t }: MonitorCardProps) {
+  return (
+    <Card data-testid={`monitor-card-${monitor.id}`}>
+      <CardHeader className="flex flex-row items-center justify-between gap-4 pb-3">
+        <div className="flex items-center gap-3">
+          <CardTitle className="text-base font-semibold">{monitor.name}</CardTitle>
+        </div>
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <span>{t("sla.avgUptime")}</span>
+          {uptimeBadge(monitor.avg_uptime_pct)}
+        </div>
+      </CardHeader>
+      <CardContent className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>{periodColumnLabel}</TableHead>
+              <TableHead>{t("sla.table.uptime")}</TableHead>
+              <TableHead className="text-right">{t("sla.table.totalChecks")}</TableHead>
+              <TableHead className="text-right">{t("sla.table.failedChecks")}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {monitor.months.map((entry) => (
+              <TableRow key={entry.month}>
+                <TableCell className="font-mono text-sm">{entry.month}</TableCell>
+                <TableCell>{uptimeBadge(entry.uptime_pct)}</TableCell>
+                <TableCell className="text-right text-sm tabular-nums">
+                  {entry.total_checks.toLocaleString()}
+                </TableCell>
+                <TableCell className="text-right text-sm tabular-nums">
+                  {entry.failed_checks}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   )
 }

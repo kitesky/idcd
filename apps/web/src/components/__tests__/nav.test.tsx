@@ -27,6 +27,8 @@ vi.mock("next-intl", () => ({
   useTranslations: () => (key: string) => {
     const map: Record<string, string> = {
       "links.tools": "工具",
+      "links.monitors": "监控",
+      "links.freeSslCert": "免费 SSL 证书",
       "links.agent": "AI Agent",
       "links.nodes": "节点",
       "links.becomeNode": "成为节点",
@@ -68,8 +70,8 @@ describe("Nav", () => {
     renderNav()
 
     expect(screen.getByText("工具")).toBeInTheDocument()
-    expect(screen.getByText("节点")).toBeInTheDocument()
-    expect(screen.getByText("定价")).toBeInTheDocument()
+    expect(screen.getByText("监控")).toBeInTheDocument()
+    expect(screen.getByText("免费 SSL 证书")).toBeInTheDocument()
     expect(screen.getByText("文档")).toBeInTheDocument()
   })
 

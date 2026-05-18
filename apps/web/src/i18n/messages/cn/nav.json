@@ -5,6 +5,7 @@
   "links": {
     "tools": "工具",
     "monitors": "监控",
+    "freeSslCert": "免费 SSL 证书",
     "agent": "AI Agent",
     "nodes": "节点",
     "becomeNode": "成为节点",
@@ -129,8 +130,10 @@
         "mtr": "MTR 路由"
       },
       "monitoring": {
-        "title": "监控",
-        "monitors": "监控",
+        "title": "监控 & 节点",
+        "monitors": "监控介绍",
+        "nodes": "节点",
+        "becomeNode": "成为节点",
         "alerts": "告警配置",
         "reports": "多维分析"
       },

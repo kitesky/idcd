@@ -5,6 +5,7 @@
   "links": {
     "tools": "Tools",
     "monitors": "Monitoring",
+    "freeSslCert": "Free SSL Cert",
     "agent": "AI Agent",
     "nodes": "Nodes",
     "becomeNode": "Become a Node",
@@ -129,8 +130,10 @@
         "mtr": "MTR Route"
       },
       "monitoring": {
-        "title": "Monitoring",
-        "monitors": "Monitors",
+        "title": "Monitoring & Nodes",
+        "monitors": "About Monitoring",
+        "nodes": "Nodes",
+        "becomeNode": "Become a Node",
         "alerts": "Alert Settings",
         "reports": "Analytics"
       },

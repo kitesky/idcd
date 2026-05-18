@@ -737,10 +737,8 @@ function buildNavItems(t: ReturnType<typeof useTranslations<"nav">>, p: string) 
   return [
     { name: t("links.tools"), mega: toolsMenu, href: undefined as string | undefined },
     { name: t("links.monitors"), mega: undefined as typeof toolsMenu | undefined, href: `${p}/monitors` },
+    { name: t("links.freeSslCert"), mega: undefined, href: `${p}/cert` },
     { name: t("links.agent"), mega: undefined, href: `${p}/agent` },
-    { name: t("links.nodes"), mega: undefined, href: `${p}/nodes` },
-    { name: t("links.becomeNode"), mega: undefined, href: `${p}/nodes/apply` },
-    { name: t("links.pricing"), mega: undefined, href: `${p}/pricing` },
     { name: t("links.docs"), mega: undefined, href: `${p}/docs/api` },
   ]
 }
@@ -783,18 +781,18 @@ export function Nav() {
         </a>
 
         {/* Desktop nav */}
-        <div className="hidden md:flex md:items-center md:gap-0 ml-8">
+        <div className="hidden md:flex md:items-center md:gap-0 ml-6 min-w-0 flex-1">
           {navItems.map((item) => (
             <div
               key={item.name}
-              className="relative"
+              className="relative flex-shrink-0"
               onMouseEnter={() => item.mega ? handleMouseEnter(item.name) : undefined}
               onMouseLeave={item.mega ? handleMouseLeave : undefined}
             >
               {item.mega ? (
                 <button
                   className={cn(
-                    "flex items-center gap-0.5 px-3.5 py-1.5 text-sm font-medium rounded-md transition-colors",
+                    "flex items-center gap-0.5 px-3 py-1.5 text-sm font-medium rounded-md transition-colors whitespace-nowrap",
                     openMenu === item.name
                       ? "text-primary bg-muted"
                       : "text-foreground/80 hover:text-foreground hover:bg-muted/60"
@@ -811,7 +809,7 @@ export function Nav() {
               ) : (
                 <a
                   href={item.href}
-                  className="flex items-center px-3.5 py-1.5 text-sm font-medium rounded-md text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors"
+                  className="flex items-center px-3 py-1.5 text-sm font-medium rounded-md text-foreground/80 hover:text-foreground hover:bg-muted/60 transition-colors whitespace-nowrap"
                 >
                   {item.name}
                 </a>
@@ -821,7 +819,7 @@ export function Nav() {
         </div>
 
         {/* Desktop right */}
-        <div className="hidden md:flex md:items-center md:gap-4 ml-auto">
+        <div className="hidden md:flex md:items-center md:gap-3 ml-auto flex-shrink-0">
           <NavSearch />
           <ThemeToggle />
           <LangToggle />

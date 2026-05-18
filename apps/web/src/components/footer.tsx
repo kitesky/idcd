@@ -80,9 +80,9 @@ export function Footer() {
     {
       title: t("footer.sections.monitoring.title"),
       links: [
-        { name: t("footer.sections.monitoring.monitors"), href: "/app/monitors" },
-        { name: t("footer.sections.monitoring.alerts"), href: "/app/alerts" },
-        { name: t("footer.sections.monitoring.reports"), href: "/app/reports" },
+        { name: t("footer.sections.monitoring.monitors"), href: "/monitors" },
+        { name: t("footer.sections.monitoring.nodes"), href: "/nodes" },
+        { name: t("footer.sections.monitoring.becomeNode"), href: "/nodes/apply" },
       ],
     },
   ]

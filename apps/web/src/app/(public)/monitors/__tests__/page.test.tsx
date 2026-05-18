@@ -14,7 +14,7 @@ describe("MonitorsLandingPage", () => {
     expect(ctas[0]).toHaveAttribute("href", "/auth/register")
   })
 
-  it("renders all 8 monitor type cards", () => {
+  it("renders all 7 monitor type cards", () => {
     render(<MonitorsLandingPage />)
     for (const name of [
       "HTTP / HTTPS",
@@ -23,7 +23,6 @@ describe("MonitorsLandingPage", () => {
       "DNS 解析",
       "SSL 到期",
       "域名到期",
-      "ICP 备案变更",
       "关键字检测",
     ]) {
       expect(screen.getByText(name)).toBeInTheDocument()

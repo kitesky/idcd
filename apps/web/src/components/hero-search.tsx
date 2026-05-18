@@ -424,13 +424,6 @@ export function HeroSearch() {
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Settings2 className="h-3.5 w-3.5 flex-shrink-0" />
             <span>{t("hero.advancedConfig")}</span>
-            <span className="mx-2 opacity-30">|</span>
-            <span>
-              <Link href="/app/monitors/new" className="text-primary underline underline-offset-4">
-                {t("hero.createMonitor")}
-              </Link>
-              {t("hero.createMonitorDesc")}
-            </span>
           </div>
           <Link href="/tools/diagnose" className="text-xs text-primary underline underline-offset-4">
             {t("hero.compareCheck")}

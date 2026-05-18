@@ -40,7 +40,7 @@ function Hero() {
       </div>
       <div className="flex flex-wrap justify-center gap-8 mb-8 text-center">
         <div>
-          <div className="text-3xl font-bold">8+</div>
+          <div className="text-3xl font-bold">7+</div>
           <div className="text-sm text-muted-foreground">监控类型</div>
         </div>
         <div>
@@ -136,7 +136,6 @@ const monitorTypes = [
   { Icon: FileSearch, name: "DNS 解析", desc: "校验 A / AAAA / CNAME 返回值，避免被劫持 / 缓存污染" },
   { Icon: Lock, name: "SSL 到期", desc: "证书剩余天数、签发者、CN 校验，提前 30 / 14 / 7 天三阶告警" },
   { Icon: CalendarClock, name: "域名到期", desc: "WHOIS 周扫一次，到期前提前续费，永不再被甩锅「忘了续费」" },
-  { Icon: ShieldCheck, name: "ICP 备案变更", desc: "国内站合规必备，备案号 / 主体一变立刻报，避免被监管下架" },
   { Icon: FileSearch, name: "关键字检测", desc: "页面 HTML 里关键字消失（如「购买」按钮没了）也算异常，比 200 更严格" },
 ] as const
 
@@ -145,8 +144,8 @@ function MonitorTypes() {
     <section className="py-12 px-4">
       <div className="max-w-screen-xl mx-auto">
         <div className="text-center mb-8">
-          <h2 className="text-2xl font-bold mb-2">8 类监控，覆盖全链路</h2>
-          <p className="text-muted-foreground">从最底层的 ICMP 到合规层的 ICP 备案，一个面板搞定</p>
+          <h2 className="text-2xl font-bold mb-2">7 类监控，覆盖全链路</h2>
+          <p className="text-muted-foreground">从最底层的 ICMP 到 SSL / 域名到期，一个面板搞定</p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {monitorTypes.map((m) => (

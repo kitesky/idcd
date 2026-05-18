@@ -1,8 +1,9 @@
 "use client"
 
-import { useState, useEffect, useCallback } from "react"
+import { useState, useEffect } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
+import { useTranslations } from "next-intl"
 import { ArrowLeft, Plus, Trash2, AlertCircle, ExternalLink } from "lucide-react"
 import {
   Card,
@@ -46,6 +47,10 @@ import {
 } from "@/components/ui/alert-dialog"
 import { apiRequest } from "@/lib/api"
 import { toast } from "sonner"
+
+// ── Typed translator alias ───────────────────────────────────────────────────
+
+type StatusPageDetailT = ReturnType<typeof useTranslations<"status.statusPages.detail">>
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -131,6 +136,7 @@ function PageSkeleton() {
 // ── Main Page ────────────────────────────────────────────────────────────────
 
 export default function StatusPageDetailPage() {
+  const t = useTranslations("status.statusPages.detail")
   const params = useParams()
   const id = params.id as string
 
@@ -163,54 +169,83 @@ export default function StatusPageDetailPage() {
   const [adding, setAdding] = useState(false)
   const [addError, setAddError] = useState<string | null>(null)
 
-  // ── Fetch status page ──────────────────────────────────────────────────────
-  const fetchPage = useCallback(async () => {
+  // ── Fetch status page + linked monitors on mount / id change ───────────────
+  useEffect(() => {
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步 fetch；id 变化触发
     setLoading(true)
     setError(null)
-    try {
-      const json = await apiRequest<{ data: { status_page: StatusPage } }>(`/v1/status-pages/${id}`)
-      const found = json.data.status_page
-      if (!found) {
-        setError("状态页不存在")
-        return
-      }
-      setPage(found)
-      setName(found.name)
-      setSlug(found.slug)
-      setIsPublic(found.is_public)
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "加载失败")
-    } finally {
-      setLoading(false)
+    apiRequest<{ data: { status_page: StatusPage } }>(`/v1/status-pages/${id}`)
+      .then((json) => {
+        if (cancelled) return
+        const found = json?.data?.status_page
+        if (!found) {
+          setError(t("notFound"))
+          return
+        }
+        setPage(found)
+        setName(found.name)
+        setSlug(found.slug)
+        setIsPublic(found.is_public)
+      })
+      .catch((e) => {
+        if (cancelled) return
+        setError(e instanceof Error ? e.message : t("loadFailed"))
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定但 lint 不识别
+  }, [id])
+
+  useEffect(() => {
+    let cancelled = false
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- 异步 fetch；id 变化触发
+    setLinkedLoading(true)
+    apiRequest<{ data: { monitors: StatusPageMonitor[] } }>(
+      `/v1/status-pages/${id}/monitors`,
+    )
+      .then((json) => {
+        if (cancelled) return
+        setLinkedMonitors(json?.data?.monitors ?? [])
+      })
+      .catch(() => {
+        if (cancelled) return
+        // Endpoint may not exist yet — treat as empty list
+        setLinkedMonitors([])
+      })
+      .finally(() => {
+        if (cancelled) return
+        setLinkedLoading(false)
+      })
+    return () => {
+      cancelled = true
     }
   }, [id])
 
-  // ── Fetch linked monitors ──────────────────────────────────────────────────
-  const fetchLinkedMonitors = useCallback(async () => {
+  // Refetch linked monitors after add — separate helper, not in deps
+  async function refetchLinkedMonitors() {
     setLinkedLoading(true)
     try {
       const json = await apiRequest<{ data: { monitors: StatusPageMonitor[] } }>(
         `/v1/status-pages/${id}/monitors`,
       )
-      setLinkedMonitors(json.data.monitors ?? [])
+      setLinkedMonitors(json?.data?.monitors ?? [])
     } catch {
-      // Endpoint may not exist yet — treat as empty list
       setLinkedMonitors([])
     } finally {
       setLinkedLoading(false)
     }
-  }, [id])
-
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- fetchPage/fetchLinkedMonitors 内部 await 后 setState
-    void fetchPage()
-    void fetchLinkedMonitors()
-  }, [fetchPage, fetchLinkedMonitors])
+  }
 
   // ── Save basic info ────────────────────────────────────────────────────────
   async function handleSave() {
     if (!name.trim() || !slug.trim()) {
-      setSaveError("名称和 Slug 不能为空")
+      setSaveError(t("nameSlugRequired"))
       return
     }
     setSaving(true)
@@ -226,7 +261,7 @@ export default function StatusPageDetailPage() {
       // Update local page state
       setPage((prev) => prev ? { ...prev, name: name.trim(), slug: slug.trim(), is_public: isPublic } : prev)
     } catch (e) {
-      setSaveError(e instanceof Error ? e.message : "保存失败")
+      setSaveError(e instanceof Error ? e.message : t("saveFailed"))
     } finally {
       setSaving(false)
     }
@@ -243,7 +278,7 @@ export default function StatusPageDetailPage() {
       setLinkedMonitors((prev) => prev.filter((m) => m.monitor_id !== removeTarget.monitor_id))
       setRemoveTarget(null)
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : "删除失败")
+      toast.error(e instanceof Error ? e.message : t("saveFailed"))
     } finally {
       setRemoving(false)
     }
@@ -260,7 +295,7 @@ export default function StatusPageDetailPage() {
       const linked = new Set(linkedMonitors.map((m) => m.monitor_id))
       setAllMonitors((json.data.items ?? []).filter((m) => !linked.has(m.id)))
     } catch (e) {
-      setAddError(e instanceof Error ? e.message : "加载监控列表失败")
+      setAddError(e instanceof Error ? e.message : t("addMonitorDialog.loading"))
     } finally {
       setMonitorsLoading(false)
     }
@@ -277,10 +312,10 @@ export default function StatusPageDetailPage() {
         body: JSON.stringify({ monitor_id: selectedMonitorId }),
       })
       // Refresh linked list and close dialog
-      await fetchLinkedMonitors()
+      await refetchLinkedMonitors()
       setAddDialogOpen(false)
     } catch (e) {
-      setAddError(e instanceof Error ? e.message : "添加失败")
+      setAddError(e instanceof Error ? e.message : t("saveFailed"))
     } finally {
       setAdding(false)
     }
@@ -304,11 +339,11 @@ export default function StatusPageDetailPage() {
           className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="h-4 w-4" />
-          返回状态页列表
+          {t("backToList")}
         </Link>
         <Alert variant="destructive">
           <AlertCircle className="h-4 w-4" />
-          <AlertTitle>加载失败</AlertTitle>
+          <AlertTitle>{t("loadFailed")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       </div>
@@ -329,7 +364,7 @@ export default function StatusPageDetailPage() {
           <BreadcrumbList>
             <BreadcrumbItem>
               <BreadcrumbLink asChild>
-                <Link href="/app/status-pages">状态页管理</Link>
+                <Link href="/app/status-pages">{t("backToList")}</Link>
               </BreadcrumbLink>
             </BreadcrumbItem>
             <BreadcrumbSeparator />
@@ -353,7 +388,7 @@ export default function StatusPageDetailPage() {
 
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <span>
-            公开地址：
+            {t("publicUrl")}
             <a
               href={`/status/${page?.slug}`}
               target="_blank"
@@ -370,8 +405,8 @@ export default function StatusPageDetailPage() {
       {/* Basic info form */}
       <Card>
         <CardHeader>
-          <CardTitle>基本信息</CardTitle>
-          <CardDescription>修改状态页名称、Slug 和可见性</CardDescription>
+          <CardTitle>{t("basicInfo")}</CardTitle>
+          <CardDescription>{t("basicInfoDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-5">
           {saveError && (
@@ -382,23 +417,23 @@ export default function StatusPageDetailPage() {
           )}
           {saveSuccess && (
             <Alert>
-              <AlertDescription>保存成功</AlertDescription>
+              <AlertDescription>{t("saveSuccess")}</AlertDescription>
             </Alert>
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="sp-name">名称</Label>
+            <Label htmlFor="sp-name">{t("name")}</Label>
             <Input
               id="sp-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="我的服务状态页"
+              placeholder={t("namePlaceholder")}
               disabled={saving}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="sp-slug">Slug</Label>
+            <Label htmlFor="sp-slug">{t("slug")}</Label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">/status/</span>
               <Input
@@ -418,19 +453,15 @@ export default function StatusPageDetailPage() {
                 className="flex-1"
               />
             </div>
-            <p className="text-xs text-muted-foreground">
-              只允许小写字母、数字和连字符
-            </p>
+            <p className="text-xs text-muted-foreground">{t("slugHint")}</p>
           </div>
 
           <div className="flex items-center justify-between rounded-md border p-3">
             <div className="space-y-0.5">
               <Label htmlFor="sp-public" className="cursor-pointer text-sm font-medium">
-                公开可见
+                {t("publicVisible")}
               </Label>
-              <p className="text-xs text-muted-foreground">
-                开启后，任何人可通过链接访问此状态页
-              </p>
+              <p className="text-xs text-muted-foreground">{t("publicVisibleDesc")}</p>
             </div>
             <Switch
               id="sp-public"
@@ -441,7 +472,7 @@ export default function StatusPageDetailPage() {
           </div>
 
           <Button onClick={handleSave} disabled={saving}>
-            {saving ? "保存中…" : "保存"}
+            {saving ? t("saving") : t("save")}
           </Button>
         </CardContent>
       </Card>
@@ -450,14 +481,12 @@ export default function StatusPageDetailPage() {
       <Card>
         <CardHeader className="flex flex-row items-center justify-between space-y-0">
           <div>
-            <CardTitle>关联监控</CardTitle>
-            <CardDescription className="mt-1">
-              此状态页显示的监控项目
-            </CardDescription>
+            <CardTitle>{t("linkedMonitors")}</CardTitle>
+            <CardDescription className="mt-1">{t("linkedMonitorsDesc")}</CardDescription>
           </div>
           <Button size="sm" variant="outline" onClick={handleOpenAddDialog}>
             <Plus className="mr-1 h-4 w-4" />
-            添加监控
+            {t("addMonitor")}
           </Button>
         </CardHeader>
         <CardContent>
@@ -478,7 +507,7 @@ export default function StatusPageDetailPage() {
             </div>
           ) : linkedMonitors.length === 0 ? (
             <div className="flex flex-col items-center justify-center rounded-md border border-dashed py-10 text-center">
-              <p className="text-sm text-muted-foreground">暂无关联监控</p>
+              <p className="text-sm text-muted-foreground">{t("noLinkedMonitors")}</p>
               <Button
                 size="sm"
                 variant="ghost"
@@ -486,36 +515,14 @@ export default function StatusPageDetailPage() {
                 onClick={handleOpenAddDialog}
               >
                 <Plus className="mr-1 h-4 w-4" />
-                添加第一个监控
+                {t("addFirstMonitor")}
               </Button>
             </div>
           ) : (
-            <div className="space-y-2">
-              {linkedMonitors.map((m) => (
-                <div
-                  key={m.monitor_id}
-                  className="flex items-center justify-between rounded-md border p-3"
-                >
-                  <div className="min-w-0 flex-1 space-y-0.5">
-                    <p className="truncate text-sm font-medium">{m.name}</p>
-                    <p className="truncate text-xs text-muted-foreground">{m.target}</p>
-                  </div>
-                  <div className="ml-3 flex items-center gap-2">
-                    <Badge variant="outline" className="text-xs">
-                      {m.type}
-                    </Badge>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => setRemoveTarget(m)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <MonitorList
+              monitors={linkedMonitors}
+              onRemove={(m) => setRemoveTarget(m)}
+            />
           )}
         </CardContent>
       </Card>
@@ -527,105 +534,189 @@ export default function StatusPageDetailPage() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>移除关联监控</AlertDialogTitle>
+            <AlertDialogTitle>{t("removeMonitor")}</AlertDialogTitle>
             <AlertDialogDescription>
-              确定要从此状态页移除监控「{removeTarget?.name}」吗？此操作不会删除监控本身。
+              {t("removeMonitorDesc", { name: removeTarget?.name ?? "" })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={removing}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={removing}>
+              {t("addMonitorDialog.cancel")}
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleRemoveMonitor}
               disabled={removing}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              {removing ? "移除中…" : "确认移除"}
+              {removing ? t("removing") : t("confirmRemove")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
       {/* Add monitor dialog */}
-      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
-        <DialogContent className="max-w-md">
-          <DialogHeader>
-            <DialogTitle>添加监控</DialogTitle>
-            <DialogDescription>
-              选择要关联到此状态页的监控项目
-            </DialogDescription>
-          </DialogHeader>
+      <AddMonitorDialog
+        open={addDialogOpen}
+        onOpenChange={setAddDialogOpen}
+        monitorsLoading={monitorsLoading}
+        addError={addError}
+        allMonitors={allMonitors}
+        selectedMonitorId={selectedMonitorId}
+        onSelect={setSelectedMonitorId}
+        adding={adding}
+        onCancel={() => setAddDialogOpen(false)}
+        onConfirm={handleAddMonitor}
+        t={t}
+      />
+    </div>
+  )
+}
 
-          <div className="max-h-72 overflow-y-auto">
-            {monitorsLoading ? (
-              <div className="space-y-2 p-1">
-                {[1, 2, 3].map((i) => (
-                  <div key={i} className="flex items-center gap-3 rounded-md border p-3">
-                    <Skeleton className="h-4 w-4 rounded-sm" />
-                    <div className="flex-1 space-y-1">
-                      <Skeleton className="h-4 w-36" />
-                      <Skeleton className="h-3 w-28" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : addError ? (
-              <Alert variant="destructive" className="mx-1">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription>{addError}</AlertDescription>
-              </Alert>
-            ) : allMonitors.length === 0 ? (
-              <p className="py-6 text-center text-sm text-muted-foreground">
-                所有监控均已关联，或暂无可用监控
-              </p>
-            ) : (
-              <div className="space-y-1 p-1">
-                {allMonitors.map((m) => {
-                  const selected = selectedMonitorId === m.id
-                  return (
-                    <button
-                      key={m.id}
-                      type="button"
-                      onClick={() => setSelectedMonitorId(selected ? null : m.id)}
-                      className={`w-full rounded-md border p-3 text-left transition-colors ${
-                        selected
-                          ? "border-primary bg-primary/5"
-                          : "hover:bg-accent"
-                      }`}
-                    >
-                      <p className="text-sm font-medium">{m.name}</p>
-                      <p className="text-xs text-muted-foreground">{m.target}</p>
-                    </button>
-                  )
-                })}
-              </div>
-            )}
+// ── Linked monitor list (extracted to keep main component readable) ──────────
+
+interface MonitorListProps {
+  monitors: StatusPageMonitor[]
+  onRemove: (m: StatusPageMonitor) => void
+}
+
+function MonitorList({ monitors, onRemove }: MonitorListProps) {
+  return (
+    <div className="space-y-2">
+      {monitors.map((m) => (
+        <div
+          key={m.monitor_id}
+          className="flex items-center justify-between rounded-md border p-3"
+        >
+          <div className="min-w-0 flex-1 space-y-0.5">
+            <p className="truncate text-sm font-medium">{m.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{m.target}</p>
           </div>
+          <div className="ml-3 flex items-center gap-2">
+            <Badge variant="outline" className="text-xs">
+              {m.type}
+            </Badge>
+            <Button
+              size="icon"
+              variant="ghost"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={() => onRemove(m)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
 
-          {/* Show add-action error below the list (not the fetch error shown inside scroll area) */}
-          {addError && !monitorsLoading && allMonitors.length > 0 && (
-            <Alert variant="destructive">
+// ── Add monitor dialog (extracted, takes typed t) ────────────────────────────
+
+interface AddMonitorDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  monitorsLoading: boolean
+  addError: string | null
+  allMonitors: ApiMonitor[]
+  selectedMonitorId: string | null
+  onSelect: (id: string | null) => void
+  adding: boolean
+  onCancel: () => void
+  onConfirm: () => void
+  t: StatusPageDetailT
+}
+
+function AddMonitorDialog({
+  open,
+  onOpenChange,
+  monitorsLoading,
+  addError,
+  allMonitors,
+  selectedMonitorId,
+  onSelect,
+  adding,
+  onCancel,
+  onConfirm,
+  t,
+}: AddMonitorDialogProps) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>{t("addMonitorDialog.title")}</DialogTitle>
+          <DialogDescription>{t("addMonitorDialog.desc")}</DialogDescription>
+        </DialogHeader>
+
+        <div className="max-h-72 overflow-y-auto">
+          {monitorsLoading ? (
+            <div className="space-y-2 p-1">
+              {[1, 2, 3].map((i) => (
+                <div key={i} className="flex items-center gap-3 rounded-md border p-3">
+                  <Skeleton className="h-4 w-4 rounded-sm" />
+                  <div className="flex-1 space-y-1">
+                    <Skeleton className="h-4 w-36" />
+                    <Skeleton className="h-3 w-28" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : addError ? (
+            <Alert variant="destructive" className="mx-1">
               <AlertCircle className="h-4 w-4" />
               <AlertDescription>{addError}</AlertDescription>
             </Alert>
+          ) : allMonitors.length === 0 ? (
+            <p className="py-6 text-center text-sm text-muted-foreground">
+              {t("addMonitorDialog.noAvailable")}
+            </p>
+          ) : (
+            <div className="space-y-1 p-1">
+              {allMonitors.map((m) => {
+                const selected = selectedMonitorId === m.id
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => onSelect(selected ? null : m.id)}
+                    className={`w-full rounded-md border p-3 text-left transition-colors ${
+                      selected
+                        ? "border-primary bg-primary/5"
+                        : "hover:bg-accent"
+                    }`}
+                  >
+                    <p className="text-sm font-medium">{m.name}</p>
+                    <p className="text-xs text-muted-foreground">{m.target}</p>
+                  </button>
+                )
+              })}
+            </div>
           )}
+        </div>
 
-          <DialogFooter>
-            <Button
-              variant="outline"
-              onClick={() => setAddDialogOpen(false)}
-              disabled={adding}
-            >
-              取消
-            </Button>
-            <Button
-              onClick={handleAddMonitor}
-              disabled={!selectedMonitorId || adding}
-            >
-              {adding ? "添加中…" : "添加"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-    </div>
+        {/* Show add-action error below the list (not the fetch error shown inside scroll area) */}
+        {addError && !monitorsLoading && allMonitors.length > 0 && (
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{addError}</AlertDescription>
+          </Alert>
+        )}
+
+        <DialogFooter>
+          <Button
+            variant="outline"
+            onClick={onCancel}
+            disabled={adding}
+          >
+            {t("addMonitorDialog.cancel")}
+          </Button>
+          <Button
+            onClick={onConfirm}
+            disabled={!selectedMonitorId || adding}
+          >
+            {adding ? t("addMonitorDialog.adding") : t("addMonitorDialog.add")}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   )
 }

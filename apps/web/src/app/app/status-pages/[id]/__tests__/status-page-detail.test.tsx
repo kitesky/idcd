@@ -25,6 +25,52 @@ vi.mock("next/link", () => ({
   ),
 }))
 
+vi.mock("next-intl", () => ({
+  useTranslations: (ns: string) => (key: string, params?: Record<string, string | number>) => {
+    const translations: Record<string, string> = {
+      "status.statusPages.detail.backToList": "返回状态页列表",
+      "status.statusPages.detail.notFound": "状态页不存在",
+      "status.statusPages.detail.loadFailed": "加载失败",
+      "status.statusPages.detail.publicUrl": "公开地址：",
+      "status.statusPages.detail.basicInfo": "基本信息",
+      "status.statusPages.detail.basicInfoDesc": "修改状态页名称、Slug 和可见性",
+      "status.statusPages.detail.name": "名称",
+      "status.statusPages.detail.namePlaceholder": "我的服务状态页",
+      "status.statusPages.detail.slug": "Slug",
+      "status.statusPages.detail.slugHint": "只允许小写字母、数字和连字符",
+      "status.statusPages.detail.publicVisible": "公开可见",
+      "status.statusPages.detail.publicVisibleDesc": "开启后，任何人可通过链接访问此状态页",
+      "status.statusPages.detail.saving": "保存中…",
+      "status.statusPages.detail.save": "保存",
+      "status.statusPages.detail.saveSuccess": "保存成功",
+      "status.statusPages.detail.nameSlugRequired": "名称和 Slug 不能为空",
+      "status.statusPages.detail.saveFailed": "保存失败",
+      "status.statusPages.detail.linkedMonitors": "关联监控",
+      "status.statusPages.detail.linkedMonitorsDesc": "此状态页显示的监控项目",
+      "status.statusPages.detail.addMonitor": "添加监控",
+      "status.statusPages.detail.noLinkedMonitors": "暂无关联监控",
+      "status.statusPages.detail.addFirstMonitor": "添加第一个监控",
+      "status.statusPages.detail.removeMonitor": "移除关联监控",
+      "status.statusPages.detail.removeMonitorDesc": "确定要从此状态页移除监控「{name}」吗？此操作不会删除监控本身。",
+      "status.statusPages.detail.removing": "移除中…",
+      "status.statusPages.detail.confirmRemove": "确认移除",
+      "status.statusPages.detail.addMonitorDialog.title": "添加监控",
+      "status.statusPages.detail.addMonitorDialog.desc": "选择要关联到此状态页的监控项目",
+      "status.statusPages.detail.addMonitorDialog.noAvailable": "所有监控均已关联，或暂无可用监控",
+      "status.statusPages.detail.addMonitorDialog.loading": "加载监控列表失败",
+      "status.statusPages.detail.addMonitorDialog.adding": "添加中…",
+      "status.statusPages.detail.addMonitorDialog.add": "添加",
+      "status.statusPages.detail.addMonitorDialog.cancel": "取消",
+    }
+    const fullKey = `${ns}.${key}`
+    const raw = translations[fullKey] ?? key
+    if (!params) return raw
+    return raw.replace(/\{(\w+)\}/g, (_, k) =>
+      Object.prototype.hasOwnProperty.call(params, k) ? String(params[k]) : `{${k}}`,
+    )
+  },
+}))
+
 import { apiRequest } from "@/lib/api"
 import StatusPageDetailPage from "../page"
 

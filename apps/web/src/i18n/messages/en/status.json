@@ -4,8 +4,6 @@
     "description": "Create and manage publicly visible service status pages",
     "create": "New Status Page",
     "list": "Status Page List",
-    "domain": "Custom Domain",
-    "monitors": "Linked Monitors",
     "empty": "No status pages yet",
     "loadFailed": "Failed to load, please refresh",
     "visit": "Visit",

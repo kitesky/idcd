@@ -666,24 +666,13 @@
   },
   "_probe": {
     "queryParams": "查询参数",
-    "results": "查询结果",
-    "sampleData": "示例数据",
-    "runQuery": "开始查询",
     "query": "查询",
     "querying": "查询中…",
     "queryFailed": "查询失败",
-    "copyLink": "复制链接",
     "usage": "使用说明",
     "status": "状态",
     "targetLabel": "目标",
-    "note": "说明",
-    "fallbackStatus": "查询完成",
-    "fallbackNote": "实际数据将由后端拨测节点返回",
-    "fallbackTip1": "拨测请求通过全球分布式节点执行",
-    "fallbackTip2": "结果仅供参考",
-    "defaults": {
-      "label": "目标"
-    }
+    "note": "说明"
   },
   "_ui": {
     "loading": "检测中...",

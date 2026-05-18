@@ -666,24 +666,13 @@
   },
   "_probe": {
     "queryParams": "Query parameters",
-    "results": "Results",
-    "sampleData": "Sample data",
-    "runQuery": "Run query",
     "query": "Query",
     "querying": "Querying…",
     "queryFailed": "Query failed",
-    "copyLink": "Copy link",
     "usage": "Usage",
     "status": "Status",
     "targetLabel": "Target",
-    "note": "Note",
-    "fallbackStatus": "Query complete",
-    "fallbackNote": "Real data will be returned by the backend probe nodes",
-    "fallbackTip1": "Probe requests run on globally distributed nodes",
-    "fallbackTip2": "Results are for reference only",
-    "defaults": {
-      "label": "Target"
-    }
+    "note": "Note"
   },
   "_ui": {
     "loading": "Checking...",

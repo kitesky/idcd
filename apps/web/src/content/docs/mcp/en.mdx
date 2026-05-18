@@ -1,0 +1,45 @@
+export const meta = {
+  title: 'MCP Server | idcd Docs',
+  description: 'Use the idcd MCP Server to let Claude, Cursor, the Codex CLI, and other AI tools call global network probes directly.',
+}
+
+# idcd MCP Server
+
+idcd ships a Model Context Protocol (MCP) server so AI tools — Claude, Cursor, Codex CLI, and friends — can run network probes from anywhere in the world.
+
+## Supported tools
+
+| Tool | Function |
+|------|----------|
+| `ping` | Multi-node ICMP ping |
+| `http` | HTTP / HTTPS reachability |
+| `dns` | DNS resolution |
+| `traceroute` | Route tracing |
+| `ssl` | SSL certificate inspection |
+| `ip` | IP ownership / ASN lookup |
+| `whois` | WHOIS lookup |
+| `diagnose` | One-shot, full diagnostic |
+
+## Install
+
+### stdio mode (recommended for Claude Code / Cursor)
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+### Set your API key
+
+```bash
+export IDCD_API_KEY=sk_live_your_key_here
+```
+
+Generate keys from the [idcd dashboard](/app/settings/api-keys).
+
+## Quick links
+
+- [5-minute quick start](/docs/mcp/quickstart)
+- [Authentication](/docs/mcp/authentication)
+- [Tool reference](/docs/mcp/tools)
+- [Claude Code integration](/docs/mcp/examples/claude-code)
+- [Cursor IDE integration](/docs/mcp/examples/cursor)

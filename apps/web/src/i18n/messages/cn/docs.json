@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "title": "文档 | idcd",
+    "description": "idcd 网络诊断工具平台文档，包含工具使用说明、MCP Server 接入指南等。"
+  },
+  "home": {
+    "title": "idcd 文档",
+    "subtitle": "欢迎使用 idcd 网络诊断工具平台。",
+    "sections": {
+      "gettingStarted": {
+        "title": "快速开始",
+        "description": "5 分钟了解 idcd 平台功能和基本使用方式",
+        "href": "/docs/getting-started"
+      },
+      "tools": {
+        "title": "工具文档",
+        "description": "HTTP 拨测、Ping、DNS、SSL 等全部工具的参数和使用说明",
+        "href": "/docs/tools/http"
+      },
+      "mcp": {
+        "title": "MCP Server",
+        "description": "让 Claude、Cursor 等 AI 工具直接调用全球网络拨测能力",
+        "href": "/docs/mcp"
+      }
+    },
+    "featuresTitle": "主要功能",
+    "features": {
+      "http": {
+        "name": "HTTP/HTTPS 拨测",
+        "description": "检测网站可达性、响应时间、状态码"
+      },
+      "ping": {
+        "name": "Ping 测试",
+        "description": "测试延迟、丢包率"
+      },
+      "tcping": {
+        "name": "TCPing",
+        "description": "TCP 端口连通性和响应时间"
+      },
+      "dns": {
+        "name": "DNS 查询",
+        "description": "多地 DNS 解析结果对比"
+      },
+      "traceroute": {
+        "name": "路由追踪",
+        "description": "查看数据包路径，定位延迟节点"
+      },
+      "mcp": {
+        "name": "MCP Server",
+        "description": "AI 工具直接调用拨测能力"
+      }
+    }
+  },
+  "toolsIndex": {
+    "meta": {
+      "title": "工具文档 | idcd"
+    },
+    "title": "工具文档",
+    "subtitle": "全部工具的参数说明和使用示例。",
+    "items": {
+      "http":  { "title": "HTTP/HTTPS 拨测", "description": "检测网站可达性、响应时间、状态码", "href": "/docs/tools/http" },
+      "ping":  { "title": "多地 Ping",       "description": "测试延迟、丢包率",                     "href": "/docs/tools/ping" },
+      "dns":   { "title": "DNS 解析",        "description": "多地 DNS 解析结果对比",               "href": "/docs/tools/dns" },
+      "ssl":   { "title": "SSL 证书",        "description": "检测证书有效期和配置",                 "href": "/docs/tools/ssl" },
+      "whois": { "title": "WHOIS 查询",      "description": "查询域名注册信息",                     "href": "/docs/tools/whois" }
+    }
+  },
+  "sidebar": {
+    "intro": {
+      "heading": "入门",
+      "items": {
+        "home": "文档首页",
+        "gettingStarted": "快速开始"
+      }
+    },
+    "tools": {
+      "heading": "工具文档",
+      "items": {
+        "http": "HTTP 拨测",
+        "ping": "多地 Ping",
+        "dns": "DNS 解析",
+        "ssl": "SSL 证书",
+        "whois": "WHOIS 查询"
+      }
+    },
+    "mcp": {
+      "heading": "MCP Server",
+      "items": {
+        "intro": "MCP 简介",
+        "quickstart": "快速接入",
+        "authentication": "认证配置",
+        "tools": "工具列表",
+        "claudeCode": "Claude Code",
+        "cursor": "Cursor IDE",
+        "python": "Python SDK"
+      }
+    }
+  },
+  "notFound": {
+    "title": "文档加载失败",
+    "description": "找不到对应语言的文档内容，请稍后重试或返回文档首页。",
+    "backHome": "返回文档首页"
+  },
+  "toolFunctions": {
+    "errors": {
+      "invalidCodePoint": "无效的码点",
+      "invalidJwtFormat": "无效的 JWT 格式，需要 3 个部分（Header.Payload.Signature）",
+      "cannotDecodeJwtHeader": "无法解码 JWT Header",
+      "cannotDecodeJwtPayload": "无法解码 JWT Payload",
+      "cidrFormat": "格式应为 IP/前缀，如 192.168.1.0/24",
+      "cidrPrefixRange": "前缀长度必须在 0-32 之间",
+      "invalidIPv4": "无效的 IPv4 地址",
+      "ipv6MultipleDoubleColon": "无效的 IPv6：不能有多个 ::",
+      "ipv6TooManyGroups": "IPv6 组数太多",
+      "ipv6Need8Groups": "IPv6 必须有 8 组",
+      "ipv6InvalidChars": "无效的 IPv6 字符",
+      "inputRequired": "输入不能为空",
+      "invalidBaseNumber": "\"{value}\" 不是有效的 {base} 进制数",
+      "invalidNumber": "无效数字",
+      "invalidDateFormat": "无效的日期格式",
+      "invalidOctalPermission": "无效的八进制权限"
+    }
+  }
+}

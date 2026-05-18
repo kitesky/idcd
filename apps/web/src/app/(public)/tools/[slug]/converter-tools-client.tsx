@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   Card, CardContent, CardHeader, CardTitle,
   Textarea, Button, Badge, Label, Input,
@@ -15,9 +16,11 @@ import {
   parseUserAgent,
   formatNumber, formatCurrency,
 } from '@/lib/tool-functions'
+import { translateToolError } from '@/lib/tool-error'
 
 // ── URL 编解码 ───────────────────────────────────────────────────────────────
 export function UrlEncodeClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<'encode' | 'decode'>('encode')
   const [error, setError] = useState('')
@@ -32,7 +35,7 @@ export function UrlEncodeClient() {
     try {
       return mode === 'encode' ? urlEncode(input) : urlDecode(input)
     } catch (e) {
-      setError(e instanceof Error ? e.message : '处理失败')
+      setError(translateToolError(e, tErr, '处理失败'))
       return ''
     }
   }
@@ -98,6 +101,7 @@ export function UrlEncodeClient() {
 
 // ── Unicode 转换 ─────────────────────────────────────────────────────────────
 export function UnicodeClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [char, setChar] = useState('')
   const [codePoint, setCodePoint] = useState('')
   const [text, setText] = useState('')
@@ -117,7 +121,7 @@ export function UnicodeClient() {
     try {
       setCharResult(v ? codePointToChar(v) : '')
     } catch (e) {
-      setCpError(e instanceof Error ? e.message : '无效')
+      setCpError(translateToolError(e, tErr, '无效'))
       setCharResult('')
     }
   }
@@ -187,6 +191,7 @@ export function UnicodeClient() {
 
 // ── JWT 解码 ─────────────────────────────────────────────────────────────────
 export function JwtDecodeClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [result, setResult] = useState<ReturnType<typeof decodeJWT> | null>(null)
   const [error, setError] = useState('')
@@ -198,7 +203,7 @@ export function JwtDecodeClient() {
       setResult(decodeJWT(v))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '解码失败')
+      setError(translateToolError(e, tErr, '解码失败'))
       setResult(null)
     }
   }
@@ -272,6 +277,7 @@ export function JwtDecodeClient() {
 
 // ── 进制转换 ─────────────────────────────────────────────────────────────────
 export function NumberConvertClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [fromBase, setFromBase] = useState(10)
   const [result, setResult] = useState<Record<string, string> | null>(null)
@@ -290,7 +296,7 @@ export function NumberConvertClient() {
       setResult(numberToAllBases(input, fromBase))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '转换失败')
+      setError(translateToolError(e, tErr, '转换失败'))
       setResult(null)
     }
   }
@@ -348,6 +354,7 @@ export function NumberConvertClient() {
 
 // ── JSON ↔ YAML ───────────────────────────────────────────────────────────────
 export function JsonToYamlClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [mode, setMode] = useState<'j2y' | 'y2j'>('j2y')
   const [output, setOutput] = useState('')
@@ -370,7 +377,7 @@ export function JsonToYamlClient() {
         setOutput(JSON.stringify(obj, null, 2))
       }
     } catch (e) {
-      setError(e instanceof Error ? e.message : '转换失败')
+      setError(translateToolError(e, tErr, '转换失败'))
     }
   }
 
@@ -416,6 +423,7 @@ export function JsonToYamlClient() {
 
 // ── YAML 格式化 ──────────────────────────────────────────────────────────────
 export function YamlFormatterClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [error, setError] = useState('')
@@ -425,7 +433,7 @@ export function YamlFormatterClient() {
       setOutput(formatYAML(input))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '格式化失败')
+      setError(translateToolError(e, tErr, '格式化失败'))
     }
   }
 
@@ -458,6 +466,7 @@ export function YamlFormatterClient() {
 
 // ── XML 格式化 ───────────────────────────────────────────────────────────────
 export function XmlFormatterClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [error, setError] = useState('')
@@ -473,7 +482,7 @@ export function XmlFormatterClient() {
       }
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '处理失败')
+      setError(translateToolError(e, tErr, '处理失败'))
     }
   }
 
@@ -523,6 +532,7 @@ export function XmlFormatterClient() {
 
 // ── URL 解析 ─────────────────────────────────────────────────────────────────
 export function UrlParserClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [url, setUrl] = useState('https://example.com:8080/path/to/page?foo=bar&q=%E4%B8%AD%E6%96%87#section')
   const [result, setResult] = useState<Record<string, string> | null>(null)
   const [error, setError] = useState('')
@@ -532,7 +542,7 @@ export function UrlParserClient() {
       setResult(parseURL(url))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '解析失败，请确认 URL 格式正确')
+      setError(translateToolError(e, tErr, '解析失败，请确认 URL 格式正确'))
       setResult(null)
     }
   }

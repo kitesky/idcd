@@ -1,0 +1,45 @@
+export const meta = {
+  title: 'MCP Server | idcd 文档',
+  description: '通过 idcd MCP Server 让 Claude、Cursor、Codex CLI 等 AI 工具直接调用全球网络拨测能力。',
+}
+
+# idcd MCP Server
+
+idcd 提供 MCP（Model Context Protocol）server，让 AI 工具（Claude、Cursor、Codex CLI 等）直接调用全球网络拨测能力。
+
+## 支持的工具
+
+| 工具 | 功能 |
+|------|------|
+| `ping` | 多节点 ICMP Ping 检测 |
+| `http` | HTTP/HTTPS 连通性检测 |
+| `dns` | DNS 解析查询 |
+| `traceroute` | 路由追踪 |
+| `ssl` | SSL 证书检测 |
+| `ip` | IP 归属与 ASN 查询 |
+| `whois` | WHOIS 查询 |
+| `diagnose` | 一键全面诊断 |
+
+## 安装
+
+### stdio 模式（推荐 Claude Code / Cursor）
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+### 配置 API Key
+
+```bash
+export IDCD_API_KEY=sk_live_your_key_here
+```
+
+前往 [idcd 控制台](/app/settings/api-keys) 创建 API Key。
+
+## 快速链接
+
+- [5 分钟快速开始](/docs/mcp/quickstart)
+- [认证配置](/docs/mcp/authentication)
+- [工具列表](/docs/mcp/tools)
+- [Claude Code 集成](/docs/mcp/examples/claude-code)
+- [Cursor IDE 集成](/docs/mcp/examples/cursor)

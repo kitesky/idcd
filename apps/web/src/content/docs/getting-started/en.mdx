@@ -1,0 +1,99 @@
+export const meta = {
+  title: 'Getting Started | idcd Docs',
+  description: 'A 5-minute tour of the idcd multi-node network diagnostics platform: node coverage, monitor creation, alert channels, and SLA reports.',
+}
+
+# Getting Started
+
+## What is idcd?
+
+idcd is a multi-node network diagnostics platform that runs distributed probes from data centers around the world. With idcd you can:
+
+- Test reachability of your services from globally distributed nodes
+- Capture real-world latency and performance data
+- Pinpoint network issues by geography
+- Generate verifiable diagnostic evidence
+
+## Node coverage
+
+idcd operates probe nodes in the following regions:
+
+- **Asia**: mainland China (Beijing, Shanghai, Guangzhou), Hong Kong, Japan, Singapore
+- **North America**: US East / US West
+- **Europe**: UK, Germany, France
+
+## Quick start
+
+1. Open the [tools page](/tools)
+2. Pick the tool you need (HTTP probe, Ping, etc.)
+3. Enter the target domain or IP
+4. Click Start and wait for results from each node
+
+## API access
+
+idcd exposes both a REST API and an MCP Server for programmatic access:
+
+- [MCP Server](/docs/mcp) — let Claude, Cursor, and other AI tools call probes directly
+- REST API — see the API docs (coming soon)
+
+---
+
+## Step 1: Create your first monitor
+
+1. Sign in and open [Monitors](/app/monitors), then click "Create monitor"
+2. Pick a monitor type:
+   - **HTTP/HTTPS**: probe API or website availability (most common)
+   - **Ping**: probe server reachability
+   - **TCP**: probe a specific port
+   - **SSL expiry**: get warned before your HTTPS cert expires
+3. Enter the target URL, e.g. `https://api.example.com/health`
+4. Set the check interval (we recommend **5 minutes**; 1 minute for high-availability services)
+5. Advanced settings (optional):
+   - Status code assertion: expect `200`
+   - Keyword match: response body must contain a string
+   - Timeout: max wait per probe (default 10s)
+
+## Step 2: Configure alert channels
+
+1. Open [Alerts](/app/alerts) → Channels tab
+2. Click "Add channel" and pick a delivery method:
+   - **Email**: deliver to your mailbox
+   - **WeCom**: push via the Wecom bot webhook
+   - **Feishu**: push via Feishu custom bot webhook
+   - **Webhook**: arbitrary HTTP callback, integrate anything
+3. Hit "Test" next to the channel to verify it can receive messages
+4. Create an alert policy: bind monitors + channels, and set the trigger delay (0 = immediate; 2–3 minutes recommended to filter flapping)
+
+## Step 3: Inspect monitoring data
+
+- **Dashboard**: overall health summary; pin critical monitors at the top
+- **Monitor detail**: 24-hour latency chart, average response time, uptime ratio
+- **Incidents**: timeline of past outages and post-mortem reports
+- **SLA monthly report**: download PDF or CSV from the [Reports](/app/reports) page
+
+## API access (developers)
+
+1. Open [Settings → API Keys](/app/settings/api-keys) and create a key
+2. Send the key in the `Authorization` header:
+
+   `Authorization: Bearer <your-key>`
+
+3. Read the full reference: [API docs](/docs/mcp)
+
+## FAQ
+
+**Q: Monitor shows DOWN but the service is healthy?**
+
+Check the node selection; specific regions may be experiencing transient network issues. Try increasing the timeout or moving probes closer to the target.
+
+**Q: Too many false-positive alerts?**
+
+In your alert policy, raise the "trigger delay" (e.g., 3 minutes). Notifications only fire when failures persist beyond the window, which filters short blips.
+
+**Q: How do I share service status externally?**
+
+Use [Status Pages](/app/status-pages) to publish a public page (custom domain supported) for customers or users to follow live health.
+
+**Q: How does a team collaborate?**
+
+In [Settings → Team](/app/settings) you can invite members; different roles map to different read/write permissions.

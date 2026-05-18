@@ -1,0 +1,94 @@
+export const meta = {
+  title: 'Cursor IDE integration | idcd MCP Docs',
+  description: 'Run idcd MCP from inside Cursor IDE so Composer / Chat can call global network probes.',
+}
+
+# Cursor IDE integration
+
+Plug idcd MCP into Cursor and the AI assistant gains live network probes from around the world.
+
+## Prerequisites
+
+- [Cursor IDE](https://cursor.sh) v0.40+ installed
+- API key generated in the [idcd dashboard](/app/settings/api-keys)
+- Go 1.21+
+
+## Install the MCP server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+Locate the binary:
+
+```bash
+which mcp
+```
+
+## Configure Cursor
+
+Open Cursor settings (`Cmd+,`), go to **Features → MCP Servers**, and paste:
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/Users/yourname/go/bin/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+Replace the path with the output of `which mcp`.
+
+## Or via project config
+
+Create `.cursor/mcp.json` at the project root (project-scoped only):
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+## Example usage
+
+Once configured, ask Composer or Chat in plain English:
+
+```
+You: Is my API server api.example.com reachable from Southeast Asia?
+AI: [calls http with Singapore + Tokyo nodes]
+Result:
+Singapore — 200 OK (156ms)
+Tokyo     — 200 OK (89ms)
+Bangkok   — connection timeout ❌
+Verdict: Thailand egress failing, check CDN configuration.
+```
+
+## Available tools
+
+See the [tool reference](/docs/mcp/tools): ping, http, dns, traceroute, ssl, ip, whois, diagnose.
+
+## Troubleshooting
+
+### Cursor cannot find the MCP server
+
+Use an absolute path to the `mcp` binary (no `~/` or relative paths).
+
+### Tool calls return errors
+
+Test connectivity from the terminal:
+
+```bash
+IDCD_API_KEY=sk_live_xxx mcp ping --target google.com
+```

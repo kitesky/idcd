@@ -200,6 +200,7 @@ export function TeamClient() {
       })
       .catch((err) => setError(err.message ?? t("team.loadFailed")))
       .finally(() => setLoadingTeam(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅初次挂载加载团队；t 用于 fallback 文案，不需要重跑 effect
   }, [])
 
   function loadTeamDetails(teamId: string) {

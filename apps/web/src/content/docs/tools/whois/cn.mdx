@@ -1,0 +1,58 @@
+export const meta = {
+  title: 'WHOIS 查询 | idcd 工具文档',
+  description: 'idcd WHOIS 工具：查询域名注册商、注册/到期时间、Nameservers，覆盖 com/net/org/io/cn 等顶级域。',
+}
+
+# WHOIS 查询
+
+查询域名注册信息，包括注册商、注册人、到期时间和 DNS 服务器。
+
+## 功能说明
+
+- 查询域名注册商和注册状态
+- 显示域名到期时间，预防域名被抢注
+- 列出权威 DNS 服务器（Nameservers）
+- 支持 .com/.net/.org/.io/.cn 等主流顶级域
+
+## API 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `domain` | string | 是 | 查询的域名（支持带/不带 www） |
+
+## 响应字段
+
+| 字段 | 说明 |
+|------|------|
+| `registrar` | 注册商名称 |
+| `created_at` | 注册时间 |
+| `expires_at` | 到期时间 |
+| `updated_at` | 最后更新时间 |
+| `nameservers` | 权威 DNS 服务器列表 |
+| `status` | 域名状态（clientTransferProhibited 等） |
+| `raw` | 原始 WHOIS 文本 |
+
+## 示例
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/whois \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+```
+
+### 典型响应
+
+```json
+{
+  "registrar": "GoDaddy.com, LLC",
+  "created_at": "1995-08-14T00:00:00Z",
+  "expires_at": "2027-08-13T04:00:00Z",
+  "nameservers": ["ns1.example.com", "ns2.example.com"],
+  "status": ["clientDeleteProhibited", "clientTransferProhibited"]
+}
+```
+
+## 在线工具
+
+无需 API Key，直接在 [在线工具](/tools/whois) 中试用。

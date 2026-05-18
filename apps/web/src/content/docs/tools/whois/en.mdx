@@ -1,0 +1,58 @@
+export const meta = {
+  title: 'WHOIS lookup | idcd Tool Docs',
+  description: 'idcd WHOIS lookup: registrar, registration/expiry dates, nameservers — supports com/net/org/io/cn and more.',
+}
+
+# WHOIS lookup
+
+Query domain registration details — registrar, registrant, expiry, and nameservers.
+
+## Capabilities
+
+- Reports registrar and registration status
+- Surfaces expiry date so you don't lose the domain
+- Lists authoritative nameservers
+- Supports .com / .net / .org / .io / .cn and most other TLDs
+
+## Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | string | yes | Domain (with or without `www.`) |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `registrar` | Registrar name |
+| `created_at` | Registration date |
+| `expires_at` | Expiry date |
+| `updated_at` | Last update |
+| `nameservers` | Authoritative nameservers |
+| `status` | Domain status flags (e.g. `clientTransferProhibited`) |
+| `raw` | Raw WHOIS text |
+
+## Example
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/whois \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+```
+
+### Sample response
+
+```json
+{
+  "registrar": "GoDaddy.com, LLC",
+  "created_at": "1995-08-14T00:00:00Z",
+  "expires_at": "2027-08-13T04:00:00Z",
+  "nameservers": ["ns1.example.com", "ns2.example.com"],
+  "status": ["clientDeleteProhibited", "clientTransferProhibited"]
+}
+```
+
+## Online tool
+
+Use the [online WHOIS tool](/tools/whois) — no API key required.

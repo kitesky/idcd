@@ -1,0 +1,60 @@
+export const meta = {
+  title: 'MCP Quickstart | idcd Docs',
+  description: 'Wire the idcd MCP Server into Claude Code or Cursor in five minutes — your AI gains a global network probe.',
+}
+
+# Add idcd to Claude Code in 5 minutes
+
+**Step 1**: get an API key
+
+Open the [idcd dashboard](/app/settings/api-keys) and create a key.
+
+**Step 2**: install the MCP server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+**Step 3**: register with Claude Code
+
+```bash
+claude mcp add idcd -- /path/to/mcp --api-key sk_live_xxx
+```
+
+…or set an environment variable first:
+
+```bash
+export IDCD_API_KEY=sk_live_xxx
+claude mcp add idcd -- /path/to/mcp
+```
+
+**Step 4**: use it in a conversation
+
+```
+You: Check global ping latency for google.com
+Claude: [calls the ping tool]
+PING google.com
+Node: Tokyo JP — 32ms ✓
+Node: Singapore SG — 45ms ✓
+Average: 38ms | Loss: 0%
+```
+
+## Cursor IDE integration
+
+Add an MCP server entry in Cursor settings:
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "args": ["--api-key", "sk_live_xxx"]
+    }
+  }
+}
+```
+
+## What's next
+
+- [Authentication](/docs/mcp/authentication) — manage API keys and scopes
+- [Tool reference](/docs/mcp/tools) — every tool's parameters in detail

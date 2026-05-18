@@ -1,0 +1,64 @@
+export const meta = {
+  title: 'SSL 证书检测 | idcd 工具文档',
+  description: 'idcd SSL 证书检测工具：到期时间、证书链、SAN、颁发机构、TLS 版本与监控告警。',
+}
+
+# SSL 证书检测
+
+检测 HTTPS 网站的 SSL 证书有效性、到期时间、颁发机构和配置安全性。
+
+## 功能说明
+
+- 检测证书有效期，提前告警到期风险
+- 验证证书链完整性
+- 检查证书绑定的域名（SAN/CN）
+- 显示颁发机构（CA）信息
+- 检测 TLS 协议版本和加密套件
+
+## API 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `domain` | string | 是 | 域名（不含 https://） |
+| `port` | number | 否 | 端口号，默认 443 |
+
+## 响应字段
+
+| 字段 | 说明 |
+|------|------|
+| `valid` | 证书是否有效 |
+| `expires_at` | 到期时间（ISO 8601） |
+| `days_remaining` | 剩余天数 |
+| `issuer` | 颁发机构 |
+| `subject` | 证书主体 |
+| `san` | Subject Alternative Names 列表 |
+| `tls_version` | TLS 协议版本 |
+
+## 示例
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/ssl \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+```
+
+### 典型响应
+
+```json
+{
+  "valid": true,
+  "expires_at": "2026-12-31T23:59:59Z",
+  "days_remaining": 230,
+  "issuer": "Let's Encrypt",
+  "tls_version": "TLS 1.3"
+}
+```
+
+## 配合监控使用
+
+在 [新建监控](/app/monitors/new) 时选择「SSL 证书」类型，可在证书到期前 30/15/7 天自动发送告警。
+
+## 在线工具
+
+无需 API Key，直接在 [在线工具](/tools/ssl) 中试用。

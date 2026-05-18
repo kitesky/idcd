@@ -1,0 +1,41 @@
+export const meta = {
+  title: 'MCP 认证配置 | idcd 文档',
+  description: 'idcd MCP Server 的 API Key 类型、有效期与权限范围说明（Personal / Workspace / Service）。',
+}
+
+# 认证配置
+
+## API Key 类型
+
+| 类型 | 有效期 | 适用场景 |
+|------|--------|----------|
+| Personal | 24 小时 | 个人开发调试 |
+| Workspace | 90 天 | 团队共享 |
+| Service | 90 天（可续期） | 生产环境集成 |
+
+**注意**：所有 Token 最长 90 天，无永久 Token（D2 决策）。
+
+## 创建 API Key
+
+1. 登录 [idcd 控制台](/app/settings/api-keys)
+2. 进入「设置 → API Keys」
+3. 点击「创建新 Key」，选择类型和有效期
+4. 复制 Key（只显示一次）
+
+## 使用方式
+
+### 环境变量（推荐）
+
+```bash
+export IDCD_API_KEY=sk_live_xxxxxxxx
+```
+
+### 命令行参数
+
+```bash
+mcp --api-key sk_live_xxxxxxxx
+```
+
+## 权限范围
+
+MCP Token 仅可访问拨测工具 API，与主账号 API 配额独立（D2 决策）。

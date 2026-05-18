@@ -1,0 +1,54 @@
+export const meta = {
+  title: 'DNS resolution | idcd Tool Docs',
+  description: 'idcd multi-region DNS lookups: A / AAAA / MX / TXT / CNAME records, cross-region comparison to spot poisoning or hijack.',
+}
+
+# DNS resolution
+
+Query DNS from multiple regions in parallel to spot DNS poisoning, hijacking, or inconsistent records.
+
+## Capabilities
+
+- A / AAAA / MX / TXT / CNAME / NS / SOA records
+- Queries multiple regional resolvers in parallel
+- Compares results across regions to surface poisoning / hijacks
+- Exposes TTL
+
+## Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | string | yes | Domain to query |
+| `type` | string | no | Record type, default A |
+| `nodes` | string[] | no | Specific probe nodes |
+
+## Examples
+
+### Query A records
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/dns \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com", "type": "A"}'
+```
+
+### Query MX records
+
+```json
+{
+  "domain": "gmail.com",
+  "type": "MX",
+  "nodes": ["beijing", "tokyo", "us-east"]
+}
+```
+
+## Typical use cases
+
+- Verify global DNS propagation for a freshly created record
+- Compare China vs. overseas resolution (CDN splits)
+- Debug email delivery (MX / SPF / DKIM)
+
+## Online tool
+
+Use the [online DNS tool](/tools/dns) — no API key required.

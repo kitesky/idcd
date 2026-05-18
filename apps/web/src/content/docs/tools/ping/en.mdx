@@ -1,0 +1,63 @@
+export const meta = {
+  title: 'Multi-region Ping | idcd Tool Docs',
+  description: 'idcd multi-region ping: measure latency and packet loss from global nodes, supports domain/IP and custom packet count.',
+}
+
+# Multi-region ping
+
+Send ICMP pings to a target from globally distributed nodes — measure latency and loss to quickly gauge network quality.
+
+## Capabilities
+
+- Domain names and IPs
+- Probes from multiple continents in parallel
+- Returns avg / min / max latency and loss percentage
+- Customisable packet count
+
+## Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `target` | string | yes | Domain or IP |
+| `nodes` | string[] | no | Specific nodes; auto-selects a global sample if omitted |
+| `count` | number | no | Packets per node, default 5, max 20 |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `avg_ms` | Average latency (ms) |
+| `min_ms` | Minimum latency |
+| `max_ms` | Maximum latency |
+| `loss_pct` | Packet loss (%) |
+| `node` | Probe node (city / carrier) |
+
+## Example
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/ping \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target": "google.com",
+    "nodes": ["tokyo", "singapore", "us-east", "eu-west"],
+    "count": 5
+  }'
+```
+
+### Sample response
+
+```json
+{
+  "results": [
+    { "node": "Tokyo JP",       "avg_ms": 28, "loss_pct": 0 },
+    { "node": "Singapore SG",   "avg_ms": 45, "loss_pct": 0 },
+    { "node": "Virginia US",    "avg_ms": 102, "loss_pct": 0 },
+    { "node": "Frankfurt DE",   "avg_ms": 78, "loss_pct": 0 }
+  ]
+}
+```
+
+## Online tool
+
+Use the [online Ping tool](/tools/ping) — no API key required.

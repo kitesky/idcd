@@ -1,0 +1,94 @@
+export const meta = {
+  title: 'Cursor IDE 集成 | idcd MCP 文档',
+  description: '在 Cursor IDE 中接入 idcd MCP Server，让 Composer / Chat 调用全球网络拨测工具。',
+}
+
+# Cursor IDE 集成
+
+在 Cursor IDE 中集成 idcd MCP Server，让 AI 助手直接调用全球网络拨测能力。
+
+## 前置条件
+
+- 已安装 [Cursor IDE](https://cursor.sh) v0.40+
+- 已在 [idcd 控制台](/app/settings/api-keys) 创建 API Key
+- 已安装 Go 1.21+
+
+## 安装 MCP Server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+获取 mcp 二进制路径：
+
+```bash
+which mcp
+```
+
+## 配置 Cursor
+
+打开 Cursor 设置（`Cmd+,`），进入 **Features → MCP Servers**，添加以下配置：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/Users/yourname/go/bin/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+将路径替换为 `which mcp` 的输出。
+
+## 或通过配置文件
+
+在项目根目录创建 `.cursor/mcp.json`（仅对当前项目生效）：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+## 使用示例
+
+配置完成后，在 Cursor Composer 或 Chat 中描述网络检测需求：
+
+```
+你: 我的 API 服务器 api.example.com 在东南亚有没有访问问题？
+AI: [调用 http tool，选择新加坡和东京节点]
+检测结果：
+Singapore — 200 OK (156ms)
+Tokyo     — 200 OK (89ms)
+Bangkok   — 连接超时 ❌
+结论：泰国节点访问异常，建议检查 CDN 配置。
+```
+
+## 可用工具
+
+详见 [工具列表](/docs/mcp/tools)，支持 ping、http、dns、traceroute、ssl、ip、whois、diagnose。
+
+## 常见问题
+
+### Cursor 无法找到 MCP server
+
+使用 mcp 二进制的绝对路径（不要用 `~/` 或相对路径）。
+
+### 工具调用返回错误
+
+在终端测试连通性：
+
+```bash
+IDCD_API_KEY=sk_live_xxx mcp ping --target google.com
+```

@@ -1,17 +1,33 @@
 import path from 'node:path'
 import type { NextConfig } from 'next'
 import createNextIntlPlugin from 'next-intl/plugin'
+import createMDX from '@next/mdx'
 
 const withNextIntl = createNextIntlPlugin('./i18n.ts')
+
+// MDX 用作内容源（非 page 扩展）。文档动态从 src/content/docs/{slug}/{locale}.mdx
+// import，所以这里不把 mdx 加入 pageExtensions，避免误把 content/* 当作页面路由。
+const withMDX = createMDX({
+  extension: /\.mdx?$/,
+  options: {
+    // 用空 array 显式声明，未来需要 remark/rehype 插件时在这里加。
+    remarkPlugins: [],
+    rehypePlugins: [],
+  },
+})
 
 const nextConfig: NextConfig = {
   // output: 'standalone' — 改用 @opennextjs/cloudflare，不需要 standalone 模式
   // typedRoutes: true,  // 77 页面时内存开销过大，仅在 CI build 中开启
-  // monorepo 根：让 Turbopack 允许从 ../../config 等仓库根目录读文件（如 locales.json）
-  outputFileTracingRoot: path.resolve(__dirname, '../..'),
+  // pageExtensions 不含 mdx：MDX 走动态 import，避免 content/* 被识别为路由
+  pageExtensions: ['ts', 'tsx'],
+  // Turbopack 默认支持 .mdx，dev 模式自动应用 createMDX 配置；
+  // production build (webpack) 由 withMDX 包装注入 loader。
+  // turbopack.root 指向 monorepo 根，否则跨包 import (config/locales.json) 被拒
   turbopack: {
     root: path.resolve(__dirname, '../..'),
   },
+  outputFileTracingRoot: path.resolve(__dirname, '../..'),
   images: {
     remotePatterns: [
       {
@@ -55,4 +71,4 @@ const nextConfig: NextConfig = {
   }
 }
 
-export default withNextIntl(nextConfig)
+export default withNextIntl(withMDX(nextConfig))

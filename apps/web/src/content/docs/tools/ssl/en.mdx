@@ -1,0 +1,64 @@
+export const meta = {
+  title: 'SSL certificate probe | idcd Tool Docs',
+  description: 'idcd SSL certificate probe: expiry, chain validation, SAN, issuer, TLS version, plus monitor wiring.',
+}
+
+# SSL certificate probe
+
+Inspect HTTPS certificates: validity, expiry, issuer, and TLS configuration.
+
+## Capabilities
+
+- Detects certificate expiry — surface risk in advance
+- Validates the certificate chain
+- Lists bound hostnames (SAN / CN)
+- Reports the certificate authority
+- Reports TLS protocol version and cipher
+
+## Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `domain` | string | yes | Hostname (without https://) |
+| `port` | number | no | Port, default 443 |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `valid` | Certificate validity flag |
+| `expires_at` | Expiry timestamp (ISO 8601) |
+| `days_remaining` | Days until expiry |
+| `issuer` | Certificate authority |
+| `subject` | Certificate subject |
+| `san` | Subject Alternative Names |
+| `tls_version` | TLS protocol version |
+
+## Example
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/ssl \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com"}'
+```
+
+### Sample response
+
+```json
+{
+  "valid": true,
+  "expires_at": "2026-12-31T23:59:59Z",
+  "days_remaining": 230,
+  "issuer": "Let's Encrypt",
+  "tls_version": "TLS 1.3"
+}
+```
+
+## Pair with a monitor
+
+Create a [new monitor](/app/monitors/new) of type "SSL Certificate" — it auto-alerts at 30 / 15 / 7 days before expiry.
+
+## Online tool
+
+Use the [online SSL tool](/tools/ssl) — no API key required.

@@ -1,0 +1,41 @@
+export const meta = {
+  title: 'MCP Authentication | idcd Docs',
+  description: 'API key types, lifetimes, and scopes for the idcd MCP Server (Personal / Workspace / Service).',
+}
+
+# Authentication
+
+## API key types
+
+| Type | Lifetime | Use case |
+|------|----------|----------|
+| Personal | 24 hours | Personal development |
+| Workspace | 90 days | Team-shared access |
+| Service | 90 days (auto-renewable) | Production integrations |
+
+**Note**: every token expires within 90 days — there are no permanent tokens (decision D2).
+
+## Create an API key
+
+1. Sign in to the [idcd dashboard](/app/settings/api-keys)
+2. Navigate to **Settings → API Keys**
+3. Click **Create new key**, choose type and lifetime
+4. Copy the key — it is shown only once
+
+## Use the key
+
+### Environment variable (recommended)
+
+```bash
+export IDCD_API_KEY=sk_live_xxxxxxxx
+```
+
+### Command-line flag
+
+```bash
+mcp --api-key sk_live_xxxxxxxx
+```
+
+## Scope
+
+MCP tokens only grant access to probe tool APIs and have a quota pool fully independent from the main account API (decision D2).

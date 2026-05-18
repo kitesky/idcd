@@ -1,0 +1,63 @@
+export const meta = {
+  title: '多地 Ping | idcd 工具文档',
+  description: 'idcd 多地 Ping 工具：从全球节点测量延迟、丢包率，支持域名/IP 与自定义发包数量。',
+}
+
+# 多地 Ping
+
+从全球多个节点同时发送 ICMP Ping，测量延迟和丢包率，快速判断网络质量。
+
+## 功能说明
+
+- 支持域名和 IP 地址
+- 自动从多个大洲节点同时检测
+- 返回平均延迟、最小/最大延迟、丢包率
+- 可自定义发包数量
+
+## API 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `target` | string | 是 | 目标域名或 IP |
+| `nodes` | string[] | 否 | 指定节点，不填自动选择全球代表节点 |
+| `count` | number | 否 | 每个节点发包数，默认 5，最大 20 |
+
+## 响应字段
+
+| 字段 | 说明 |
+|------|------|
+| `avg_ms` | 平均延迟（毫秒） |
+| `min_ms` | 最小延迟 |
+| `max_ms` | 最大延迟 |
+| `loss_pct` | 丢包率（%） |
+| `node` | 检测节点（城市/运营商） |
+
+## 示例
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/ping \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "target": "google.com",
+    "nodes": ["tokyo", "singapore", "us-east", "eu-west"],
+    "count": 5
+  }'
+```
+
+### 典型响应
+
+```json
+{
+  "results": [
+    { "node": "Tokyo JP",       "avg_ms": 28, "loss_pct": 0 },
+    { "node": "Singapore SG",   "avg_ms": 45, "loss_pct": 0 },
+    { "node": "Virginia US",    "avg_ms": 102, "loss_pct": 0 },
+    { "node": "Frankfurt DE",   "avg_ms": 78, "loss_pct": 0 }
+  ]
+}
+```
+
+## 在线工具
+
+无需 API Key，直接在 [在线工具](/tools/ping) 中试用。

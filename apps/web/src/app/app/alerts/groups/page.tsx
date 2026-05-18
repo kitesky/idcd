@@ -165,6 +165,7 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
     }
   }
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- react-hook-form 的 form.watch 返回值不能被 memoized (库限制)
   const groupByValue = form.watch("group_by")
   const groupValuePlaceholder =
     groupByValue === "tag"

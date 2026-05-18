@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "title": "Docs | idcd",
+    "description": "Documentation for the idcd network diagnostics platform — tool reference, MCP Server setup, and more."
+  },
+  "home": {
+    "title": "idcd Docs",
+    "subtitle": "Welcome to the idcd network diagnostics platform.",
+    "sections": {
+      "gettingStarted": {
+        "title": "Getting started",
+        "description": "Get up to speed on idcd in five minutes",
+        "href": "/docs/getting-started"
+      },
+      "tools": {
+        "title": "Tool reference",
+        "description": "Parameters and examples for every tool: HTTP, Ping, DNS, SSL, …",
+        "href": "/docs/tools/http"
+      },
+      "mcp": {
+        "title": "MCP Server",
+        "description": "Let Claude, Cursor, and other AI tools call global probes directly",
+        "href": "/docs/mcp"
+      }
+    },
+    "featuresTitle": "Key features",
+    "features": {
+      "http": {
+        "name": "HTTP / HTTPS probes",
+        "description": "Reachability, latency, and status codes"
+      },
+      "ping": {
+        "name": "Ping",
+        "description": "Latency and packet loss measurements"
+      },
+      "tcping": {
+        "name": "TCPing",
+        "description": "TCP port reachability and response time"
+      },
+      "dns": {
+        "name": "DNS lookups",
+        "description": "Cross-region DNS resolution comparison"
+      },
+      "traceroute": {
+        "name": "Traceroute",
+        "description": "Visualise packet paths and pinpoint latency hops"
+      },
+      "mcp": {
+        "name": "MCP Server",
+        "description": "AI tools can invoke probes natively"
+      }
+    }
+  },
+  "toolsIndex": {
+    "meta": {
+      "title": "Tool reference | idcd"
+    },
+    "title": "Tool reference",
+    "subtitle": "Parameters and usage examples for every tool.",
+    "items": {
+      "http":  { "title": "HTTP / HTTPS probes", "description": "Reachability, latency, and status codes", "href": "/docs/tools/http" },
+      "ping":  { "title": "Multi-region Ping",   "description": "Latency and packet loss",                   "href": "/docs/tools/ping" },
+      "dns":   { "title": "DNS lookups",          "description": "Cross-region DNS resolution comparison",   "href": "/docs/tools/dns" },
+      "ssl":   { "title": "SSL certificates",     "description": "Certificate validity and config checks",   "href": "/docs/tools/ssl" },
+      "whois": { "title": "WHOIS lookup",         "description": "Query domain registration info",           "href": "/docs/tools/whois" }
+    }
+  },
+  "sidebar": {
+    "intro": {
+      "heading": "Intro",
+      "items": {
+        "home": "Docs home",
+        "gettingStarted": "Getting started"
+      }
+    },
+    "tools": {
+      "heading": "Tool reference",
+      "items": {
+        "http": "HTTP probe",
+        "ping": "Multi-region Ping",
+        "dns": "DNS lookup",
+        "ssl": "SSL certificate",
+        "whois": "WHOIS"
+      }
+    },
+    "mcp": {
+      "heading": "MCP Server",
+      "items": {
+        "intro": "MCP overview",
+        "quickstart": "Quickstart",
+        "authentication": "Authentication",
+        "tools": "Tool list",
+        "claudeCode": "Claude Code",
+        "cursor": "Cursor IDE",
+        "python": "Python SDK"
+      }
+    }
+  },
+  "notFound": {
+    "title": "Docs failed to load",
+    "description": "Content for this language is unavailable. Try again later or head back to the docs home.",
+    "backHome": "Back to docs home"
+  },
+  "toolFunctions": {
+    "errors": {
+      "invalidCodePoint": "Invalid code point",
+      "invalidJwtFormat": "Invalid JWT format — expected three parts (Header.Payload.Signature)",
+      "cannotDecodeJwtHeader": "Cannot decode JWT header",
+      "cannotDecodeJwtPayload": "Cannot decode JWT payload",
+      "cidrFormat": "Format must be IP/prefix, e.g. 192.168.1.0/24",
+      "cidrPrefixRange": "Prefix length must be between 0 and 32",
+      "invalidIPv4": "Invalid IPv4 address",
+      "ipv6MultipleDoubleColon": "Invalid IPv6: cannot contain more than one ::",
+      "ipv6TooManyGroups": "IPv6 has too many groups",
+      "ipv6Need8Groups": "IPv6 must have eight groups",
+      "ipv6InvalidChars": "Invalid IPv6 characters",
+      "inputRequired": "Input cannot be empty",
+      "invalidBaseNumber": "\"{value}\" is not a valid base-{base} number",
+      "invalidNumber": "Invalid number",
+      "invalidDateFormat": "Invalid date format",
+      "invalidOctalPermission": "Invalid octal permission"
+    }
+  }
+}

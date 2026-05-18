@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   Card, CardContent, CardHeader, CardTitle,
   Button, Badge, Label, Input, Textarea,
@@ -14,9 +15,11 @@ import {
   dateDiff, addDays,
   parseCSV,
 } from '@/lib/tool-functions'
+import { translateToolError } from '@/lib/tool-error'
 
 // ── 正则表达式测试 ────────────────────────────────────────────────────────────
 export function RegexClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [pattern, setPattern] = useState('(\\w+)@(\\w+\\.\\w+)')
   const [flags, setFlags] = useState('g')
   const [testStr, setTestStr] = useState('联系我们：hello@example.com 或 support@idcd.com')
@@ -36,7 +39,7 @@ export function RegexClient() {
     }
     if (error) setError('')
   } catch (e) {
-    if (!error) setError(e instanceof Error ? e.message : '无效的正则表达式')
+    if (!error) setError(translateToolError(e, tErr, '无效的正则表达式'))
   }
 
   const flagOptions = ['g', 'i', 'm', 's', 'u']
@@ -130,6 +133,7 @@ export function RegexClient() {
 
 // ── Cron 可视化 ───────────────────────────────────────────────────────────────
 export function CronVizClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [expr, setExpr] = useState('*/5 * * * *')
   const [error, setError] = useState('')
   const [nextTimes, setNextTimes] = useState<string[]>([])
@@ -149,7 +153,7 @@ export function CronVizClient() {
       setNextTimes(times)
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '无效的 Cron 表达式')
+      setError(translateToolError(e, tErr, '无效的 Cron 表达式'))
       setNextTimes([])
     }
   }
@@ -217,6 +221,7 @@ export function CronVizClient() {
 
 // ── CIDR 计算器 ───────────────────────────────────────────────────────────────
 export function CidrCalcClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('192.168.1.0/24')
   const [result, setResult] = useState<ReturnType<typeof parseCIDR> | null>(null)
   const [error, setError] = useState('')
@@ -226,7 +231,7 @@ export function CidrCalcClient() {
       setResult(parseCIDR(input))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '计算失败')
+      setError(translateToolError(e, tErr, '计算失败'))
       setResult(null)
     }
   }
@@ -461,6 +466,7 @@ export function TimezoneClient() {
 
 // ── 日期计算 ─────────────────────────────────────────────────────────────────
 export function DateCalcClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const today = new Date().toISOString().split('T')[0]!
   const [date1, setDate1] = useState(today)
   const [date2, setDate2] = useState(today)
@@ -475,7 +481,7 @@ export function DateCalcClient() {
       setDiffResult(dateDiff(date1, date2))
       setErrors(prev => ({ ...prev, diff: '' }))
     } catch (e) {
-      setErrors(prev => ({ ...prev, diff: e instanceof Error ? e.message : '错误' }))
+      setErrors(prev => ({ ...prev, diff: translateToolError(e, tErr, '错误') }))
     }
   }
 
@@ -484,7 +490,7 @@ export function DateCalcClient() {
       setAddResult(addDays(addInput, days))
       setErrors(prev => ({ ...prev, add: '' }))
     } catch (e) {
-      setErrors(prev => ({ ...prev, add: e instanceof Error ? e.message : '错误' }))
+      setErrors(prev => ({ ...prev, add: translateToolError(e, tErr, '错误') }))
     }
   }
 
@@ -545,6 +551,7 @@ export function DateCalcClient() {
 
 // ── CSV 格式化 ─────────────────────────────────────────────────────────────────
 export function CsvFormatterClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('姓名,年龄,城市\n张三,25,北京\n李四,30,上海\n王五,28,广州')
   const [delimiter, setDelimiter] = useState(',')
   const [table, setTable] = useState<string[][] | null>(null)
@@ -555,7 +562,7 @@ export function CsvFormatterClient() {
       setTable(parseCSV(input, delimiter || ','))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : '解析失败')
+      setError(translateToolError(e, tErr, '解析失败'))
       setTable(null)
     }
   }

@@ -1,0 +1,56 @@
+export const meta = {
+  title: 'MCP 工具列表 | idcd 文档',
+  description: 'idcd MCP Server 提供的全部工具：ping、http、dns、traceroute、ssl、ip、whois、diagnose 的参数说明。',
+}
+
+# MCP 工具列表
+
+以下工具可通过 MCP Server 在 Claude、Cursor 等 AI 工具中直接调用。
+
+## `ping`
+
+多节点 ICMP Ping 检测
+
+**参数：** target (域名/IP), nodes (可选), count (可选)
+
+## `http`
+
+HTTP/HTTPS 连通性检测
+
+**参数：** url, method (可选), nodes (可选)
+
+## `dns`
+
+DNS 解析查询
+
+**参数：** domain, type (A/AAAA/MX/TXT 等)
+
+## `traceroute`
+
+路由追踪
+
+**参数：** target, nodes (可选)
+
+## `ssl`
+
+SSL 证书检测
+
+**参数：** domain
+
+## `ip`
+
+IP 归属与 ASN 查询
+
+**参数：** ip
+
+## `whois`
+
+WHOIS 查询
+
+**参数：** domain
+
+## `diagnose`
+
+一键全面诊断（并发多项检测）
+
+**参数：** target

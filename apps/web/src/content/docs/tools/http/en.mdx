@@ -1,0 +1,65 @@
+export const meta = {
+  title: 'HTTP/HTTPS probe | idcd Tool Docs',
+  description: 'idcd HTTP/HTTPS probe API: parameters, response fields, example calls — supports GET/POST, custom headers, redirects.',
+}
+
+# HTTP / HTTPS probe
+
+Probe HTTP/HTTPS endpoints from globally distributed nodes — reachability, latency, status codes.
+
+## Capabilities
+
+- GET / POST / HEAD methods
+- Captures status code, response time, body size
+- Custom request headers and body
+- HTTPS certificate verification (optionally skipped)
+- Follows redirects
+
+## Parameters
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `url` | string | yes | Target URL (including protocol) |
+| `method` | string | no | HTTP method, defaults to GET |
+| `nodes` | string[] | no | Specific probe nodes; auto-selected when omitted |
+| `headers` | object | no | Custom request headers |
+| `body` | string | no | Request body (for POST) |
+| `timeout` | number | no | Timeout in seconds, default 10 |
+| `follow_redirects` | boolean | no | Follow redirects, default true |
+
+## Response
+
+| Field | Description |
+|-------|-------------|
+| `status_code` | HTTP status code |
+| `response_time_ms` | Latency in milliseconds |
+| `response_size` | Body size in bytes |
+| `node` | Probe node info |
+| `error` | Error message (on connection failure) |
+
+## Examples
+
+### Basic probe
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/http \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+### Selected nodes + custom headers
+
+```json
+{
+  "url": "https://api.example.com/health",
+  "nodes": ["tokyo", "singapore", "us-east"],
+  "headers": {
+    "Accept": "application/json"
+  }
+}
+```
+
+## Online tool
+
+Use the [online HTTP tool](/tools/http) — no API key required.

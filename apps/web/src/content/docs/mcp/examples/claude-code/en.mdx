@@ -1,0 +1,99 @@
+export const meta = {
+  title: 'Claude Code integration | idcd MCP Docs',
+  description: 'Wire the idcd MCP Server into Claude Code so Claude can run global network probes: install, configure, troubleshoot.',
+}
+
+# Claude Code integration
+
+Wire idcd MCP into Claude Code and Claude gains the ability to probe networks from around the world.
+
+## Prerequisites
+
+- [Claude Code](https://claude.ai/code) installed
+- API key generated in the [idcd dashboard](/app/settings/api-keys)
+- Go 1.21+ (used to build the MCP server)
+
+## Install the MCP server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+After install, the `mcp` binary is in `$GOPATH/bin`.
+
+## Register with Claude Code
+
+### Option A: CLI (recommended)
+
+```bash
+# Set the API key
+export IDCD_API_KEY=sk_live_your_key_here
+
+# Register the MCP server
+claude mcp add idcd -- $(which mcp)
+```
+
+### Option B: config file
+
+Edit `~/.claude.json`:
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+## Example usage
+
+After the server is registered, just describe what you need in chat:
+
+```
+You: Ping google.com from major global nodes
+Claude: [calls the ping tool]
+Result:
+Node: Tokyo JP     — 28ms ✓
+Node: Singapore SG — 45ms ✓
+Node: US East      — 98ms ✓
+Average: 57ms | Loss: 0%
+
+You: Can my site https://example.com be reached from mainland China?
+Claude: [calls http with mainland China nodes]
+HTTP probe (Beijing):
+Status: 200 OK
+Response time: 342ms
+Verdict: reachable
+```
+
+## Available tools
+
+Once integrated, Claude can use the following tools (see [tool reference](/docs/mcp/tools)):
+
+- `ping` — multi-node ICMP ping
+- `http` — HTTP / HTTPS reachability
+- `dns` — DNS resolution
+- `traceroute` — route tracing
+- `ssl` — SSL certificate inspection
+- `ip` — IP ownership lookup
+- `whois` — WHOIS lookup
+- `diagnose` — one-shot full diagnostic
+
+## Troubleshooting
+
+### "command `mcp` not found"
+
+Make sure `$GOPATH/bin` is on your PATH:
+
+```bash
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+### Invalid API key
+
+Open the [dashboard](/app/settings/api-keys) and check expiry — Personal keys are valid for 24 hours only.

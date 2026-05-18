@@ -1,0 +1,54 @@
+export const meta = {
+  title: 'DNS 解析 | idcd 工具文档',
+  description: 'idcd DNS 多地查询工具，支持 A/AAAA/MX/TXT/CNAME 记录，比对各地解析结果定位污染或劫持。',
+}
+
+# DNS 解析
+
+从多个地区查询 DNS 解析结果，检测 DNS 污染、劫持或解析不一致问题。
+
+## 功能说明
+
+- 支持 A、AAAA、MX、TXT、CNAME、NS、SOA 等记录类型
+- 从多个地区的 DNS 服务器同时查询
+- 对比不同地区的解析结果，定位污染或劫持
+- 显示 TTL 值
+
+## API 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `domain` | string | 是 | 查询的域名 |
+| `type` | string | 否 | 记录类型，默认 A |
+| `nodes` | string[] | 否 | 指定查询节点 |
+
+## 示例
+
+### 查询 A 记录
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/dns \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"domain": "example.com", "type": "A"}'
+```
+
+### 查询 MX 记录
+
+```json
+{
+  "domain": "gmail.com",
+  "type": "MX",
+  "nodes": ["beijing", "tokyo", "us-east"]
+}
+```
+
+## 典型使用场景
+
+- 验证 DNS 记录是否在全球生效（新域名解析传播）
+- 检测国内外解析结果是否一致（CDN 分流）
+- 排查邮件发送问题（MX/SPF/DKIM 记录）
+
+## 在线工具
+
+无需 API Key，直接在 [在线工具](/tools/dns) 中试用。

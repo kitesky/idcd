@@ -1,0 +1,103 @@
+export const meta = {
+  title: 'Python SDK integration | idcd MCP Docs',
+  description: 'Call the idcd REST API or MCP Server from Python — requests examples, mcp client, env-based auth.',
+}
+
+# Python SDK integration
+
+Drive idcd probes from Python — handy for automation scripts and data analysis pipelines.
+
+## Option A: REST API (recommended)
+
+No special SDK required — `requests` will do:
+
+```bash
+pip install requests
+```
+
+```python
+import requests
+
+API_KEY = "sk_live_your_key_here"
+BASE_URL = "https://api.idcd.com/v1"
+
+headers = {"Authorization": f"Bearer {API_KEY}"}
+
+# Ping probe
+resp = requests.post(f"{BASE_URL}/tools/ping", headers=headers, json={
+    "target": "google.com",
+    "nodes": ["tokyo", "singapore", "us-east"],
+    "count": 5,
+})
+result = resp.json()
+print(result)
+
+# HTTP probe
+resp = requests.post(f"{BASE_URL}/tools/http", headers=headers, json={
+    "url": "https://example.com",
+    "nodes": ["beijing", "shanghai"],
+})
+print(resp.json())
+
+# Full diagnose
+resp = requests.post(f"{BASE_URL}/tools/diagnose", headers=headers, json={
+    "target": "example.com",
+})
+print(resp.json())
+```
+
+## Option B: MCP Python client
+
+Best for Claude API apps that want probe tools as MCP capabilities:
+
+```bash
+pip install anthropic mcp
+```
+
+```python
+import subprocess
+import anthropic
+from mcp import ClientSession, StdioServerParameters
+from mcp.client.stdio import stdio_client
+
+async def run():
+    server_params = StdioServerParameters(
+        command="mcp",
+        env={"IDCD_API_KEY": "sk_live_your_key_here"},
+    )
+
+    async with stdio_client(server_params) as (read, write):
+        async with ClientSession(read, write) as session:
+            await session.initialize()
+
+            # List available tools
+            tools = await session.list_tools()
+            print([t.name for t in tools.tools])
+
+            # Call ping
+            result = await session.call_tool("ping", {
+                "target": "google.com",
+                "nodes": ["tokyo", "singapore"],
+            })
+            print(result)
+
+import asyncio
+asyncio.run(run())
+```
+
+## Auth
+
+Pass the API key through an environment variable — never hard-code:
+
+```python
+import os
+API_KEY = os.environ["IDCD_API_KEY"]
+```
+
+## Recipe ideas
+
+- Use `diagnose` on a cron to sweep your domains
+- Persist `http` probe results to a database and chart uptime
+- Combine `ssl` with a notifier to alert before certificate expiry
+
+Full API reference: [tool list](/docs/mcp/tools) and the OpenAPI spec.

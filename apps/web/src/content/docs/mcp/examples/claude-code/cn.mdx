@@ -1,0 +1,99 @@
+export const meta = {
+  title: 'Claude Code 集成 | idcd MCP 文档',
+  description: '在 Claude Code 中接入 idcd MCP Server，让 Claude 直接调用全球网络拨测工具：安装、配置、常见问题。',
+}
+
+# Claude Code 集成
+
+在 Claude Code 中集成 idcd MCP Server，让 Claude 直接调用全球网络拨测能力。
+
+## 前置条件
+
+- 已安装 [Claude Code](https://claude.ai/code)
+- 已在 [idcd 控制台](/app/settings/api-keys) 创建 API Key
+- 已安装 Go 1.21+（用于编译 MCP server）
+
+## 安装 MCP Server
+
+```bash
+go install github.com/kite365/idcd/apps/mcp/cmd/mcp@latest
+```
+
+安装后 `mcp` 命令将在 `$GOPATH/bin` 中可用。
+
+## 添加到 Claude Code
+
+### 方式一：命令行直接添加（推荐）
+
+```bash
+# 设置 API Key 环境变量
+export IDCD_API_KEY=sk_live_your_key_here
+
+# 添加 MCP server
+claude mcp add idcd -- $(which mcp)
+```
+
+### 方式二：通过配置文件
+
+编辑 `~/.claude.json`：
+
+```json
+{
+  "mcpServers": {
+    "idcd": {
+      "command": "/path/to/mcp",
+      "env": {
+        "IDCD_API_KEY": "sk_live_your_key_here"
+      }
+    }
+  }
+}
+```
+
+## 使用示例
+
+添加成功后，在 Claude Code 对话中直接描述网络检测需求：
+
+```
+你: 检测一下 google.com 从全球主要节点的 Ping 延迟
+Claude: [调用 ping tool]
+检测结果：
+节点: Tokyo JP     — 28ms ✓
+节点: Singapore SG — 45ms ✓
+节点: US East      — 98ms ✓
+平均延迟: 57ms | 丢包率: 0%
+
+你: 我的网站 https://example.com 在中国大陆可以访问吗？
+Claude: [调用 http tool，选择中国大陆节点]
+HTTP 检测结果（北京节点）：
+状态码: 200 OK
+响应时间: 342ms
+结论：可以正常访问
+```
+
+## 可用工具
+
+集成后 Claude 可以使用以下工具，详见 [工具列表](/docs/mcp/tools)：
+
+- `ping` — 多节点 ICMP Ping
+- `http` — HTTP/HTTPS 连通性检测
+- `dns` — DNS 解析查询
+- `traceroute` — 路由追踪
+- `ssl` — SSL 证书检测
+- `ip` — IP 归属查询
+- `whois` — WHOIS 查询
+- `diagnose` — 一键全面诊断
+
+## 常见问题
+
+### 提示"找不到 mcp 命令"
+
+确认 `$GOPATH/bin` 在 PATH 中：
+
+```bash
+export PATH="$PATH:$(go env GOPATH)/bin"
+```
+
+### API Key 无效
+
+前往 [控制台](/app/settings/api-keys) 检查 Key 是否过期，Personal Key 有效期为 24 小时。

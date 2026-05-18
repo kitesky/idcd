@@ -1,0 +1,56 @@
+export const meta = {
+  title: 'MCP Tools | idcd Docs',
+  description: 'Every tool exposed by the idcd MCP Server: ping, http, dns, traceroute, ssl, ip, whois, diagnose — parameters in one place.',
+}
+
+# MCP tool reference
+
+The tools below are callable from any MCP-compatible client (Claude, Cursor, etc.).
+
+## `ping`
+
+Multi-node ICMP ping.
+
+**Parameters:** target (domain/IP), nodes (optional), count (optional)
+
+## `http`
+
+HTTP / HTTPS reachability probe.
+
+**Parameters:** url, method (optional), nodes (optional)
+
+## `dns`
+
+DNS resolution.
+
+**Parameters:** domain, type (A / AAAA / MX / TXT / …)
+
+## `traceroute`
+
+Route tracing.
+
+**Parameters:** target, nodes (optional)
+
+## `ssl`
+
+SSL certificate inspection.
+
+**Parameters:** domain
+
+## `ip`
+
+IP ownership and ASN lookup.
+
+**Parameters:** ip
+
+## `whois`
+
+WHOIS lookup.
+
+**Parameters:** domain
+
+## `diagnose`
+
+One-shot full diagnostic (runs multiple probes in parallel).
+
+**Parameters:** target

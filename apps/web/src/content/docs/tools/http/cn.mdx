@@ -1,0 +1,65 @@
+export const meta = {
+  title: 'HTTP/HTTPS 拨测 | idcd 工具文档',
+  description: 'idcd HTTP/HTTPS 拨测工具的 API 参数、响应字段与使用示例，支持 GET/POST、自定义头、重定向。',
+}
+
+# HTTP/HTTPS 拨测
+
+从全球多个节点检测 HTTP/HTTPS 接口的连通性、响应时间和状态码。
+
+## 功能说明
+
+- 支持 GET、POST、HEAD 等请求方法
+- 检测响应状态码、响应时间、响应体大小
+- 支持自定义请求头和请求体
+- 支持 HTTPS 证书验证（可选跳过）
+- 支持重定向跟踪
+
+## API 参数
+
+| 参数 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `url` | string | 是 | 目标 URL（含协议） |
+| `method` | string | 否 | 请求方法，默认 GET |
+| `nodes` | string[] | 否 | 指定检测节点列表，不填则自动选择 |
+| `headers` | object | 否 | 自定义请求头 |
+| `body` | string | 否 | 请求体（POST 时使用） |
+| `timeout` | number | 否 | 超时秒数，默认 10 |
+| `follow_redirects` | boolean | 否 | 是否跟随重定向，默认 true |
+
+## 响应字段
+
+| 字段 | 说明 |
+|------|------|
+| `status_code` | HTTP 状态码 |
+| `response_time_ms` | 响应时间（毫秒） |
+| `response_size` | 响应体大小（字节） |
+| `node` | 检测节点信息 |
+| `error` | 错误信息（连接失败时） |
+
+## 示例
+
+### 基本检测
+
+```bash
+curl -X POST https://api.idcd.com/v1/tools/http \
+  -H "Authorization: Bearer sk_live_xxx" \
+  -H "Content-Type: application/json" \
+  -d '{"url": "https://example.com"}'
+```
+
+### 指定节点 + 自定义头
+
+```json
+{
+  "url": "https://api.example.com/health",
+  "nodes": ["tokyo", "singapore", "us-east"],
+  "headers": {
+    "Accept": "application/json"
+  }
+}
+```
+
+## 在线工具
+
+无需 API Key，直接在 [在线工具](/tools/http) 中试用。

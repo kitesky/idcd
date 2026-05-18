@@ -1,3 +1,5 @@
+import { ToolError } from './tool-error'
+
 // ── URL 编解码 ───────────────────────────────────────────────────────────────
 
 export function urlEncode(str: string): string {
@@ -24,7 +26,7 @@ export function charToCodePoint(char: string): string {
 export function codePointToChar(codePoint: string): string {
   const hex = codePoint.trim().replace(/^U\+/i, '').replace(/^0x/i, '')
   const cp = parseInt(hex, 16)
-  if (isNaN(cp) || cp < 0 || cp > 0x10ffff) throw new Error('无效的码点')
+  if (isNaN(cp) || cp < 0 || cp > 0x10ffff) throw new ToolError('invalidCodePoint')
   return String.fromCodePoint(cp)
 }
 
@@ -59,7 +61,7 @@ export interface JWTDecoded {
 
 export function decodeJWT(token: string): JWTDecoded {
   const parts = token.trim().split('.')
-  if (parts.length !== 3) throw new Error('无效的 JWT 格式，需要 3 个部分（Header.Payload.Signature）')
+  if (parts.length !== 3) throw new ToolError('invalidJwtFormat')
 
   const [headerB64, payloadB64, signature] = parts as [string, string, string]
 
@@ -69,13 +71,13 @@ export function decodeJWT(token: string): JWTDecoded {
   try {
     header = JSON.parse(decodeBase64Url(headerB64))
   } catch {
-    throw new Error('无法解码 JWT Header')
+    throw new ToolError('cannotDecodeJwtHeader')
   }
 
   try {
     payload = JSON.parse(decodeBase64Url(payloadB64))
   } catch {
-    throw new Error('无法解码 JWT Payload')
+    throw new ToolError('cannotDecodeJwtPayload')
   }
 
   return { header, payload, signature }
@@ -97,18 +99,18 @@ export interface CIDRInfo {
 
 export function parseCIDR(cidr: string): CIDRInfo {
   const parts = cidr.trim().split('/')
-  if (parts.length !== 2) throw new Error('格式应为 IP/前缀，如 192.168.1.0/24')
+  if (parts.length !== 2) throw new ToolError('cidrFormat')
 
   const [ip, prefixStr] = parts as [string, string]
   const prefix = parseInt(prefixStr, 10)
 
   if (isNaN(prefix) || prefix < 0 || prefix > 32) {
-    throw new Error('前缀长度必须在 0-32 之间')
+    throw new ToolError('cidrPrefixRange')
   }
 
   const octets = ip.split('.').map(Number)
   if (octets.length !== 4 || octets.some(o => isNaN(o) || o < 0 || o > 255)) {
-    throw new Error('无效的 IPv4 地址')
+    throw new ToolError('invalidIPv4')
   }
 
   const ipInt = octets.reduce((acc, val) => ((acc << 8) | val) >>> 0, 0)
@@ -202,9 +204,9 @@ export function checkIPv6(input: string): IPv6CheckResult {
 
 export function ipv4ToIPv6Mapped(ipv4: string): string {
   const parts = ipv4.trim().split('.')
-  if (parts.length !== 4) throw new Error('无效的 IPv4 地址')
+  if (parts.length !== 4) throw new ToolError('invalidIPv4')
   if (parts.some(p => isNaN(Number(p)) || Number(p) < 0 || Number(p) > 255)) {
-    throw new Error('无效的 IPv4 地址')
+    throw new ToolError('invalidIPv4')
   }
   return `::ffff:${ipv4.trim()}`
 }
@@ -220,7 +222,7 @@ export function normalizeIPv6(address: string): string {
   const addr = zoneIdx >= 0 ? address.slice(0, zoneIdx) : address
 
   const colonPairs = addr.split('::')
-  if (colonPairs.length > 2) throw new Error('无效的 IPv6：不能有多个 ::')
+  if (colonPairs.length > 2) throw new ToolError('ipv6MultipleDoubleColon')
 
   let groups: string[]
 
@@ -228,15 +230,15 @@ export function normalizeIPv6(address: string): string {
     const left = colonPairs[0] ? colonPairs[0].split(':') : []
     const right = colonPairs[1] ? colonPairs[1].split(':') : []
     const missing = 8 - left.length - right.length
-    if (missing < 0) throw new Error('IPv6 组数太多')
+    if (missing < 0) throw new ToolError('ipv6TooManyGroups')
     const middle = Array(missing).fill('0')
     groups = [...left, ...middle, ...right]
   } else {
     groups = addr.split(':')
   }
 
-  if (groups.length !== 8) throw new Error('IPv6 必须有 8 组')
-  if (groups.some(g => !/^[0-9a-fA-F]{0,4}$/.test(g))) throw new Error('无效的 IPv6 字符')
+  if (groups.length !== 8) throw new ToolError('ipv6Need8Groups')
+  if (groups.some(g => !/^[0-9a-fA-F]{0,4}$/.test(g))) throw new ToolError('ipv6InvalidChars')
 
   return groups.map(g => g.padStart(4, '0')).join(':')
 }
@@ -399,15 +401,15 @@ export function decodeHTML(str: string): string {
 
 export function convertBase(num: string, fromBase: number, toBase: number): string {
   const trimmed = num.trim()
-  if (!trimmed) throw new Error('输入不能为空')
+  if (!trimmed) throw new ToolError('inputRequired')
   const decimal = parseInt(trimmed, fromBase)
-  if (isNaN(decimal)) throw new Error(`"${trimmed}" 不是有效的 ${fromBase} 进制数`)
+  if (isNaN(decimal)) throw new ToolError('invalidBaseNumber', { value: trimmed, base: fromBase })
   return decimal.toString(toBase).toUpperCase()
 }
 
 export function numberToAllBases(num: string, fromBase: number): Record<string, string> {
   const decimal = parseInt(num.trim(), fromBase)
-  if (isNaN(decimal)) throw new Error('无效数字')
+  if (isNaN(decimal)) throw new ToolError('invalidNumber')
   return {
     二进制: decimal.toString(2),
     八进制: decimal.toString(8),
@@ -455,13 +457,13 @@ export function toConstantCase(str: string): string {
 export function dateDiff(date1: string, date2: string): number {
   const d1 = new Date(date1)
   const d2 = new Date(date2)
-  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) throw new Error('无效的日期格式')
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) throw new ToolError('invalidDateFormat')
   return Math.round((d2.getTime() - d1.getTime()) / 86400000)
 }
 
 export function addDays(date: string, days: number): string {
   const d = new Date(date)
-  if (isNaN(d.getTime())) throw new Error('无效的日期格式')
+  if (isNaN(d.getTime())) throw new ToolError('invalidDateFormat')
   d.setDate(d.getDate() + days)
   return d.toISOString().split('T')[0]!
 }
@@ -563,7 +565,7 @@ export function calculateChmod(perms: ChmodPerms): string {
 
 export function parseChmod(octal: string): ChmodPerms {
   const digits = octal.replace(/^0/, '').padStart(3, '0').split('').map(Number)
-  if (digits.some(d => isNaN(d) || d > 7)) throw new Error('无效的八进制权限')
+  if (digits.some(d => isNaN(d) || d > 7)) throw new ToolError('invalidOctalPermission')
 
   const toBool = (n: number): PermGroup => ({
     r: !!(n & 4),

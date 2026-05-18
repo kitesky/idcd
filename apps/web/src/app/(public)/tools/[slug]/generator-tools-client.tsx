@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef } from 'react'
+import { useTranslations } from 'next-intl'
 import {
   Card, CardContent, CardHeader, CardTitle,
   Button, Badge, Label, Input, Textarea,
@@ -14,6 +15,7 @@ import {
   hexToRgb, rgbToHex, rgbToHsl,
 } from '@/lib/tool-functions'
 import type { ChmodPerms } from '@/lib/tool-functions'
+import { translateToolError } from '@/lib/tool-error'
 
 // ── 密码生成器 ───────────────────────────────────────────────────────────────
 export function PasswordGenClient() {
@@ -350,6 +352,7 @@ export function ChmodCalcClient() {
 
 // ── JSON 键排序 ───────────────────────────────────────────────────────────────
 export function SortJsonClient() {
+  const tErr = useTranslations('docs.toolFunctions.errors')
   const [input, setInput] = useState('')
   const [output, setOutput] = useState('')
   const [error, setError] = useState('')
@@ -361,7 +364,7 @@ export function SortJsonClient() {
       setOutput(JSON.stringify(sortJSON(obj), null, indent))
       setError('')
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'JSON 解析失败')
+      setError(translateToolError(e, tErr, 'JSON 解析失败'))
       setOutput('')
     }
   }

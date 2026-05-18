@@ -320,7 +320,7 @@ func verifyCommonCORSHeaders(t *testing.T, rr *httptest.ResponseRecorder) {
 	t.Helper()
 	expectedHeaders := map[string]string{
 		"Access-Control-Allow-Methods":  "GET, POST, PUT, PATCH, DELETE, OPTIONS",
-		"Access-Control-Allow-Headers":  "Accept, Authorization, Content-Type, X-API-Key, X-Request-ID, X-CSRF-Token",
+		"Access-Control-Allow-Headers":  "Accept, Authorization, Content-Type, X-API-Key, X-Request-ID, X-CSRF-Token, X-Locale",
 		"Access-Control-Expose-Headers": "X-Request-ID",
 		"Access-Control-Max-Age":        "86400",
 	}

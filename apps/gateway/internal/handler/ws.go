@@ -499,9 +499,12 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		return nil
 	}
 
-	// Bounded — even a 10-result batch should finish within ~3s; a runaway
-	// publish would block the per-connection reader.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Bounded — even a 10-result batch should finish within ~3s on a healthy
+	// LAN Redis. Bumped to 30s after the local-stack real-flow E2E hit
+	// "context deadline exceeded" against an authenticated remote Redis
+	// (RTT-sensitive). A runaway publish is still bounded — just not so tight
+	// it fires on legitimate network blips.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	for _, result := range results {
 		if result.TaskID == "" {

@@ -40,6 +40,7 @@ interface LocaleEntry {
   dir: 'ltr' | 'rtl'
   fontStack: string
   fallback: string[]
+  currency: string
 }
 
 interface Registry {
@@ -81,6 +82,7 @@ function validate(r: Registry): void {
       'dir',
       'fontStack',
       'fallback',
+      'currency',
     ]
     for (const k of required) {
       if (l[k] === undefined || l[k] === null) {
@@ -99,6 +101,9 @@ function validate(r: Registry): void {
     }
     if (l.dir !== 'ltr' && l.dir !== 'rtl') {
       fail(1, `[i18n] locale "${l.code}" dir must be ltr or rtl`)
+    }
+    if (!/^[A-Z]{3}$/.test(l.currency)) {
+      fail(1, `[i18n] locale "${l.code}" currency "${l.currency}" must be ISO 4217 (3 uppercase letters)`)
     }
   }
   if (!codes.has(r.default)) {

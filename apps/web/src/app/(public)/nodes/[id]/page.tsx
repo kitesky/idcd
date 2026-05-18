@@ -3,6 +3,7 @@ import Link from "next/link"
 import { ArrowLeft, Activity, Clock, Wifi } from "lucide-react"
 import { getT } from "@/i18n/getT"
 import { getLocale } from "@/i18n/locale"
+import { bcp47Of } from "@/i18n/registry"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -149,7 +150,7 @@ export default async function NodeDetailPage({ params }: Props) {
 
   const formatDate = (iso: string) => {
     try {
-      return new Date(iso).toLocaleString(locale === "en" ? "en-US" : "zh-CN", {
+      return new Date(iso).toLocaleString(bcp47Of(locale), {
         timeZone: "Asia/Shanghai",
         year: "numeric",
         month: "2-digit",
@@ -279,7 +280,7 @@ export default async function NodeDetailPage({ params }: Props) {
                       <div
                         key={i}
                         className="flex-1 flex flex-col items-center justify-end"
-                        title={`${new Date(pt.hour).toLocaleString(locale === "en" ? "en-US" : "zh-CN", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" })} — ${pt.success_rate.toFixed(1)}% · ${pt.avg_latency} ms`}
+                        title={`${new Date(pt.hour).toLocaleString(bcp47Of(locale), { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Shanghai" })} — ${pt.success_rate.toFixed(1)}% · ${pt.avg_latency} ms`}
                       >
                         <div
                           className={`w-full rounded-sm ${isDown ? "bg-destructive/70" : "bg-primary/60"}`}

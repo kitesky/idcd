@@ -22,7 +22,8 @@
           "acceptLanguageAliases",
           "dir",
           "fontStack",
-          "fallback"
+          "fallback",
+          "currency"
         ],
         "properties": {
           "code": {
@@ -51,6 +52,11 @@
             "type": "array",
             "items": { "type": "string" },
             "description": "Extra fallback chain entries (default + baseLanguage auto-appended)"
+          },
+          "currency": {
+            "type": "string",
+            "pattern": "^[A-Z]{3}$",
+            "description": "ISO 4217 currency code used for pricing display and JSON-LD"
           }
         },
         "additionalProperties": false

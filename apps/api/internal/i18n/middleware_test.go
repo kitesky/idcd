@@ -17,8 +17,8 @@ func testRegistry(t *testing.T) *shared.Registry {
 	raw := []byte(`{
         "default": "cn",
         "locales": [
-          {"code": "cn", "bcp47": "zh-CN", "label": "中文", "nativeLabel": "中文", "baseLanguage": "zh", "acceptLanguageAliases": ["zh", "zh-CN", "zh-Hans"], "dir": "ltr", "fontStack": "cjk", "fallback": []},
-          {"code": "en", "bcp47": "en-US", "label": "English", "nativeLabel": "English", "baseLanguage": "en", "acceptLanguageAliases": ["en", "en-US"], "dir": "ltr", "fontStack": "latin", "fallback": []}
+          {"code": "cn", "bcp47": "zh-CN", "label": "中文", "nativeLabel": "中文", "baseLanguage": "zh", "acceptLanguageAliases": ["zh", "zh-CN", "zh-Hans"], "dir": "ltr", "fontStack": "cjk", "fallback": [], "currency": "CNY"},
+          {"code": "en", "bcp47": "en-US", "label": "English", "nativeLabel": "English", "baseLanguage": "en", "acceptLanguageAliases": ["en", "en-US"], "dir": "ltr", "fontStack": "latin", "fallback": [], "currency": "USD"}
         ]
     }`)
 	r, err := shared.LoadFromBytesForTesting(raw)

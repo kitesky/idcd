@@ -11,7 +11,8 @@
       "acceptLanguageAliases": ["zh", "zh-CN", "zh-Hans", "zh-SG", "zh-Hans-CN"],
       "dir": "ltr",
       "fontStack": "cjk",
-      "fallback": []
+      "fallback": [],
+      "currency": "CNY"
     },
     {
       "code": "en",
@@ -22,7 +23,8 @@
       "acceptLanguageAliases": ["en", "en-US", "en-GB", "en-AU", "en-CA"],
       "dir": "ltr",
       "fontStack": "latin",
-      "fallback": []
+      "fallback": [],
+      "currency": "USD"
     }
   ]
 }

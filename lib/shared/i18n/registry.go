@@ -25,6 +25,7 @@ type LocaleEntry struct {
 	Dir                   string   `json:"dir"`
 	FontStack             string   `json:"fontStack"`
 	Fallback              []string `json:"fallback"`
+	Currency              string   `json:"currency"`
 }
 
 // Registry is the in-memory representation of config/locales.json.
@@ -123,7 +124,7 @@ func (r *Registry) validate() error {
 	}
 	defaultSeen := false
 	for _, l := range r.Locales {
-		if l.Code == "" || l.BCP47 == "" || l.BaseLanguage == "" || l.Dir == "" {
+		if l.Code == "" || l.BCP47 == "" || l.BaseLanguage == "" || l.Dir == "" || l.Currency == "" {
 			return fmt.Errorf("i18n: locale entry %+v missing required field", l)
 		}
 		if l.Code == r.Default {
@@ -172,6 +173,15 @@ func (r *Registry) BCP47Of(code string) string {
 		return e.BCP47
 	}
 	return r.byCode[r.Default].BCP47
+}
+
+// CurrencyOf returns the ISO 4217 currency code configured for the locale,
+// falling back to the default locale's currency for unknown codes.
+func (r *Registry) CurrencyOf(code string) string {
+	if e, ok := r.byCode[code]; ok {
+		return e.Currency
+	}
+	return r.byCode[r.Default].Currency
 }
 
 // FallbackChain returns the lookup order for a code: itself, explicit

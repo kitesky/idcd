@@ -4,7 +4,7 @@ import { getT } from '@/i18n/getT'
 import { getLocale } from '@/i18n/locale'
 import { ALL_TOOLS, getToolBySlug } from '@/app/(public)/tools/tools-config'
 import { generateAlternates, localizedUrl } from '@/lib/seo'
-import { bcp47Of } from '@/i18n/registry'
+import { bcp47Of, currencyOf } from '@/i18n/registry'
 import ToolRenderer from './tool-renderer'
 
 type Props = {
@@ -65,7 +65,7 @@ export default async function ToolSlugPage({ params }: Props) {
     offers: {
       '@type': 'Offer',
       price: '0',
-      priceCurrency: locale === 'cn' ? 'CNY' : 'USD',
+      priceCurrency: currencyOf(locale),
     },
     publisher: {
       '@type': 'Organization',

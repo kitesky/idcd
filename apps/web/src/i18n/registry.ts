@@ -10,6 +10,7 @@ export interface LocaleEntry {
   dir: 'ltr' | 'rtl'
   fontStack: string
   fallback: string[]
+  currency: string
 }
 
 export interface Registry {
@@ -61,6 +62,10 @@ export function fontStackOf(code: string): string {
 
 export function nativeLabelOf(code: string): string {
   return entryOf(code).nativeLabel
+}
+
+export function currencyOf(code: string): string {
+  return entryOf(code).currency
 }
 
 export function fallbackChain(code: string): string[] {

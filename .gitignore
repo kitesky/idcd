@@ -71,6 +71,11 @@ dist-agent/
 .turbo
 .vercel
 
+# Playwright artifacts (E2E test outputs, not source)
+apps/web/test-results/
+apps/web/playwright-report/
+apps/web/tests/e2e/.auth/
+
 .devfleet-worktrees/
 .gstack/
 .claude/worktrees/

@@ -108,16 +108,11 @@
     "planStatusPagesDefault": "Free plan: up to 1"
   },
   "referral": {
-    "title": "Refer a Friend",
-    "description": "Invite friends to sign up and both parties earn rewards",
     "programTitle": "Referral Program",
     "programDesc": "Earn ¥10 account credit for every successfully referred paying user",
-    "link": "Referral Link",
     "copy": "Copy Link",
     "copyAriaLabel": "Copy referral link",
     "copied": "Copied!",
-    "earned": "Earned",
-    "invited": "Invited",
     "yourCode": "Your Referral Code",
     "totalReferrals": "Total Referrals",
     "pending": "Pending",
@@ -125,6 +120,11 @@
     "rewardHistory": "Reward History",
     "referredUser": "Referred User",
     "registeredAt": "Registered",
+    "statusLabel": "Status",
+    "status": {
+      "pending": "Pending",
+      "credited": "Credited"
+    },
     "amount": "Amount",
     "noRewards": "No rewards yet",
     "loadFailed": "Failed to load, please try again",

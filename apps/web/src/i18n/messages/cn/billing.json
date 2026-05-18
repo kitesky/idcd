@@ -108,16 +108,11 @@
     "planStatusPagesDefault": "Free 档上限 1 个"
   },
   "referral": {
-    "title": "邀请好友",
-    "description": "邀请好友注册，双方均可获得奖励",
     "programTitle": "推荐计划",
     "programDesc": "每推荐一位成功付费用户，获得 ¥10 账户余额",
-    "link": "邀请链接",
     "copy": "复制链接",
     "copyAriaLabel": "复制推荐链接",
     "copied": "已复制!",
-    "earned": "已获奖励",
-    "invited": "已邀请人数",
     "yourCode": "你的推荐码",
     "totalReferrals": "已推荐人数",
     "pending": "待结算",
@@ -125,6 +120,11 @@
     "rewardHistory": "奖励记录",
     "referredUser": "被推荐用户",
     "registeredAt": "注册时间",
+    "statusLabel": "状态",
+    "status": {
+      "pending": "待结算",
+      "credited": "已结算"
+    },
     "amount": "金额",
     "noRewards": "暂无奖励记录",
     "loadFailed": "加载失败，请稍后重试",

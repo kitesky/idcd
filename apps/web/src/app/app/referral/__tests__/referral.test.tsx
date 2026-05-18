@@ -77,14 +77,14 @@ describe("ReferralPage — 推荐计划", () => {
   it("渲染不崩溃，显示推荐计划标题", async () => {
     setupSuccessMocks()
     render(<ReferralPage />)
-    expect(screen.getByText("推荐计划")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "programTitle" })).toBeInTheDocument()
   })
 
   it("加载中显示 Skeleton（API pending 状态）", () => {
     mockApiRequest.mockImplementation(() => new Promise(() => {}))
     render(<ReferralPage />)
     // Page container still renders during loading
-    expect(screen.getByText("推荐计划")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "programTitle" })).toBeInTheDocument()
   })
 
   it("成功加载后显示推荐码 IDCD-XYZ789", async () => {
@@ -95,13 +95,13 @@ describe("ReferralPage — 推荐计划", () => {
     })
   })
 
-  it("复制按钮存在，aria-label 包含复制字样", async () => {
+  it("复制按钮存在，aria-label 来自 i18n key copyAriaLabel", async () => {
     setupSuccessMocks()
     render(<ReferralPage />)
     await waitFor(() => {
       const copyBtn = screen.getByTestId("copy-button")
       expect(copyBtn).toBeInTheDocument()
-      expect(copyBtn.getAttribute("aria-label")).toContain("复制")
+      expect(copyBtn.getAttribute("aria-label")).toBe("copyAriaLabel")
     })
   })
 
@@ -122,7 +122,7 @@ describe("ReferralPage — 推荐计划", () => {
     render(<ReferralPage />)
     await waitFor(() => {
       expect(screen.getByTestId("status-badge-rwd-001")).toBeInTheDocument()
-      expect(screen.getByTestId("status-badge-rwd-001")).toHaveTextContent("credited")
+      expect(screen.getByTestId("status-badge-rwd-001")).toHaveTextContent("status.credited")
     })
   })
 
@@ -130,8 +130,8 @@ describe("ReferralPage — 推荐计划", () => {
     setupSuccessMocks()
     render(<ReferralPage />)
     await waitFor(() => {
-      expect(screen.getByTestId("status-badge-rwd-002")).toHaveTextContent("pending")
-      expect(screen.getByTestId("status-badge-rwd-003")).toHaveTextContent("pending")
+      expect(screen.getByTestId("status-badge-rwd-002")).toHaveTextContent("status.pending")
+      expect(screen.getByTestId("status-badge-rwd-003")).toHaveTextContent("status.pending")
     })
   })
 

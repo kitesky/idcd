@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react"
 import { Gift } from "lucide-react"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -34,9 +36,30 @@ interface Reward {
   created_at: string
 }
 
+type ReferralT = ReturnType<typeof useTranslations<"billing.referral">>
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function statusBadge(status: Reward["status"], id: string, t: ReferralT) {
+  if (status === "credited") {
+    return (
+      <Badge variant="success" data-testid={`status-badge-${id}`}>
+        {t("status.credited")}
+      </Badge>
+    )
+  }
+  return (
+    <Badge variant="default" data-testid={`status-badge-${id}`}>
+      {t("status.pending")}
+    </Badge>
+  )
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function ReferralPage() {
+  const t = useTranslations("billing.referral")
+  const locale = useLocale()
   const [codeData, setCodeData] = useState<ReferralCode | null>(null)
   const [rewards, setRewards] = useState<Reward[]>([])
   const [loading, setLoading] = useState(true)
@@ -45,6 +68,7 @@ export default function ReferralPage() {
 
   useEffect(() => {
     async function fetchAll() {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- 进入页面时重置 loading，随后异步 fetch
       setLoading(true)
       setError(null)
       try {
@@ -56,7 +80,7 @@ export default function ReferralPage() {
         setRewards(rewardsRes.data.rewards)
       } catch (err: unknown) {
         setError(
-          err instanceof Error ? err.message : "加载失败，请稍后重试"
+          err instanceof Error ? err.message : t("loadFailed")
         )
       } finally {
         setLoading(false)
@@ -64,6 +88,7 @@ export default function ReferralPage() {
     }
 
     fetchAll()
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定但 lint 不识别
   }, [])
 
   function handleCopy() {
@@ -92,11 +117,9 @@ export default function ReferralPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Gift className="h-5 w-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">推荐计划</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("programTitle")}</h1>
           </div>
-          <p className="text-sm text-muted-foreground">
-            每推荐一位成功付费用户，获得 ¥10 账户余额
-          </p>
+          <p className="text-sm text-muted-foreground">{t("programDesc")}</p>
         </div>
         <Card>
           <CardHeader>
@@ -137,11 +160,11 @@ export default function ReferralPage() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Gift className="h-5 w-5 text-primary" />
-            <h1 className="text-2xl font-semibold tracking-tight">推荐计划</h1>
+            <h1 className="text-2xl font-semibold tracking-tight">{t("programTitle")}</h1>
           </div>
         </div>
         <Alert variant="destructive" data-testid="referral-error">
-          <AlertTitle>加载失败</AlertTitle>
+          <AlertTitle>{t("loadError")}</AlertTitle>
           <AlertDescription>{error}</AlertDescription>
         </Alert>
       </div>
@@ -154,17 +177,15 @@ export default function ReferralPage() {
       <div>
         <div className="flex items-center gap-2 mb-1">
           <Gift className="h-5 w-5 text-primary" />
-          <h1 className="text-2xl font-semibold tracking-tight">推荐计划</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">{t("programTitle")}</h1>
         </div>
-        <p className="text-sm text-muted-foreground">
-          每推荐一位成功付费用户，获得 ¥10 账户余额
-        </p>
+        <p className="text-sm text-muted-foreground">{t("programDesc")}</p>
       </div>
 
       {/* Referral code card */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">你的推荐码</CardTitle>
+          <CardTitle className="text-base">{t("yourCode")}</CardTitle>
         </CardHeader>
         <CardContent className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <span
@@ -175,12 +196,12 @@ export default function ReferralPage() {
           </span>
           <Button
             variant="outline"
-            aria-label="复制推荐链接"
+            aria-label={t("copyAriaLabel")}
             onClick={handleCopy}
             data-testid="copy-button"
             disabled={!codeData}
           >
-            {copied ? "已复制!" : "复制链接"}
+            {copied ? t("copied") : t("copy")}
           </Button>
         </CardContent>
       </Card>
@@ -190,7 +211,7 @@ export default function ReferralPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              已推荐人数
+              {t("totalReferrals")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -202,7 +223,7 @@ export default function ReferralPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              待结算
+              {t("pending")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -214,7 +235,7 @@ export default function ReferralPage() {
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium text-muted-foreground">
-              已结算
+              {t("credited")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -228,21 +249,21 @@ export default function ReferralPage() {
       {/* Rewards table */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">奖励记录</CardTitle>
+          <CardTitle className="text-base">{t("rewardHistory")}</CardTitle>
         </CardHeader>
         <CardContent className="p-0 overflow-x-auto">
           {rewards.length === 0 ? (
             <p className="px-6 py-4 text-sm text-muted-foreground" data-testid="no-rewards">
-              暂无奖励记录
+              {t("noRewards")}
             </p>
           ) : (
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>被推荐用户</TableHead>
-                  <TableHead>注册时间</TableHead>
-                  <TableHead>状态</TableHead>
-                  <TableHead className="text-right">金额</TableHead>
+                  <TableHead>{t("referredUser")}</TableHead>
+                  <TableHead>{t("registeredAt")}</TableHead>
+                  <TableHead>{t("statusLabel")}</TableHead>
+                  <TableHead className="text-right">{t("amount")}</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -252,16 +273,9 @@ export default function ReferralPage() {
                       {reward.referred_user_id}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {new Date(reward.created_at).toLocaleDateString("zh-CN")}
+                      {new Date(reward.created_at).toLocaleDateString(bcp47Of(locale))}
                     </TableCell>
-                    <TableCell>
-                      <Badge
-                        variant={reward.status === "credited" ? "success" : "default"}
-                        data-testid={`status-badge-${reward.id}`}
-                      >
-                        {reward.status}
-                      </Badge>
-                    </TableCell>
+                    <TableCell>{statusBadge(reward.status, reward.id, t)}</TableCell>
                     <TableCell className="text-right font-medium">
                       ¥{reward.amount}
                     </TableCell>

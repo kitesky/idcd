@@ -1,6 +1,7 @@
 import { getRequestConfig } from 'next-intl/server'
 import { headers } from 'next/headers'
 import { defaultLocale, fallbackChain, isSupported } from './registry'
+import { onError, getMessageFallback } from './error-handlers'
 
 // Stable list of namespaces — must mirror messages/cn/*.json 1:1. Adding a new
 // namespace = append one entry here + drop the JSON in every messages/{locale}/
@@ -91,5 +92,7 @@ export default getRequestConfig(async ({ requestLocale }) => {
   return {
     locale,
     messages: await loadMessages(locale),
+    onError,
+    getMessageFallback,
   }
 })

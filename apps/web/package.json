@@ -14,6 +14,8 @@
     "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint",
     "lint:i18n": "tsx ../../scripts/lint-i18n.ts",
     "i18n:coverage": "tsx ../../scripts/i18n-coverage.ts",
+    "i18n:stub": "tsx ../../scripts/i18n-stub.ts",
+    "i18n:dead-keys": "tsx ../../scripts/lint-i18n.ts --check-dead",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

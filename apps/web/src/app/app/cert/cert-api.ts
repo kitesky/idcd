@@ -34,8 +34,8 @@ import { API_CREDENTIALS_POLICY } from "@/lib/api"
 const API_BASE =
   (typeof process !== "undefined" &&
     (process.env.NEXT_PUBLIC_API_URL as string | undefined)) ||
-  ""
-const API_PREFIX = "/api/v1/cert"
+  "http://localhost:8080"
+const API_PREFIX = "/v1/cert"
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"])

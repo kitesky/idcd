@@ -510,6 +510,28 @@ func (s *Server) setupRouter() {
 				r.Get("/reports/{id}", verdictReportH.Get)
 			})
 
+			// Cert module endpoints (minimal stubs — list endpoints return empty,
+			// mutations return 501. Frontend at apps/web/src/app/app/cert/* renders
+			// against this contract; full ACME issuance pipeline lives elsewhere.)
+			certH := handler.NewCertHandler()
+			r.Route("/cert", func(r chi.Router) {
+				r.Use(authnMW)
+				r.Get("/orders", certH.ListOrders)
+				r.Post("/orders", certH.CreateOrder)
+				r.Get("/orders/{id}", certH.GetOrder)
+				r.Post("/orders/{id}/retry", certH.RetryOrder)
+				r.Post("/orders/{id}/manual-ready", certH.ManualReady)
+				r.Get("/certs", certH.ListCerts)
+				r.Get("/certs/{id}", certH.GetCert)
+				r.Post("/certs/{id}/download", certH.DownloadCert)
+				r.Post("/certs/{id}/revoke", certH.RevokeCert)
+				r.Get("/dns-credentials", certH.ListDnsCredentials)
+				r.Post("/dns-credentials", certH.CreateDnsCredential)
+				r.Delete("/dns-credentials/{id}", certH.DeleteDnsCredential)
+				r.Post("/dns-credentials/{id}/health-check", certH.HealthCheckDnsCredential)
+				r.Get("/quota", certH.Quota)
+			})
+
 			// Quota status endpoint
 			quotaH := handler.NewQuotaHandler(s.pgxPool, apiRateLimiter)
 			r.Route("/account/quota", func(r chi.Router) {

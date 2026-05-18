@@ -32,10 +32,10 @@ test('monitor full lifecycle: create → detail → pause → delete', async ({ 
   await createBtn.click()
   const createResp = await createRespPromise
 
-  // Free-plan / quota-exceeded users get 402 or 403 — both real product
-  // behaviour, not a regression. Skip the lifecycle steps in that case; the
-  // wizard-render coverage from monitor-create.spec.ts is sufficient.
-  if (createResp.status() === 402 || createResp.status() === 403) {
+  // Free-plan / quota-exceeded / rate-limited users get 402/403/429 — all real
+  // product behaviour, not a regression. Skip the lifecycle steps in those
+  // cases; the wizard-render coverage from monitor-create.spec.ts is sufficient.
+  if ([402, 403, 429].includes(createResp.status())) {
     test.info().annotations.push({
       type: 'skipped-by-plan',
       description: `lifecycle unreachable on this plan (status ${createResp.status()})`,

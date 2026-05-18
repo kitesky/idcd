@@ -83,12 +83,10 @@
   "oncall": {
     "title": "On-Call Schedules",
     "noSchedule": "No schedules",
-    "schedule": "Schedule",
     "scheduleTab": "Schedule Management",
-    "onCall": "Current On-Call",
     "onCallCard": "Current On-Call",
     "preview": "Next 7 Days",
-    "addMember": "Add Member",
+    "noPreviewData": "No schedule data",
     "noMembers": "No members yet, click \"Add Member\" to start",
     "noParticipants": "No on-call personnel",
     "noSchedulePrompt": "No schedules yet, click \"Create Schedule\" in the top right",
@@ -96,6 +94,7 @@
     "alertsTab": "Alert History",
     "noAlerts": "No alert events",
     "loadFailed": "Failed to load schedule data",
+    "loadAlertsFailed": "Failed to load",
     "overrides": "Active Overrides",
     "stats": "On-Call Statistics",
     "timesPerMonth": "~{count} times/month",
@@ -103,14 +102,27 @@
       "weekly": "Weekly Rotation",
       "daily": "Daily Rotation"
     },
+    "duration": {
+      "inProgress": "In progress",
+      "minutes": "{minutes} min",
+      "hoursMinutes": "{hours}h {minutes}m"
+    },
+    "relativeTime": {
+      "justNow": "Just now",
+      "minutesAgo": "{minutes} min ago",
+      "hoursAgo": "{hours}h ago",
+      "daysAgo": "{days}d ago"
+    },
+    "alertStatus": {
+      "firing": "FIRING",
+      "resolved": "RESOLVED"
+    },
     "create": {
       "trigger": "Create Schedule",
       "title": "Create New Schedule",
       "name": "Schedule Name",
       "namePlaceholder": "e.g. Engineering On-Call",
       "rotationType": "Rotation Type",
-      "daily": "Daily Rotation",
-      "weekly": "Weekly Rotation",
       "cancel": "Cancel",
       "creating": "Creating…",
       "submit": "Create",

@@ -83,12 +83,10 @@
   "oncall": {
     "title": "On-Call 排班",
     "noSchedule": "暂无排班",
-    "schedule": "排班",
     "scheduleTab": "排班管理",
-    "onCall": "当前值班",
     "onCallCard": "当前值班",
     "preview": "未来 7 天排班",
-    "addMember": "添加成员",
+    "noPreviewData": "暂无排班数据",
     "noMembers": "暂无成员，点击「添加成员」开始",
     "noParticipants": "暂无值班人员",
     "noSchedulePrompt": "暂无排班，点击右上角「创建排班」开始",
@@ -96,6 +94,7 @@
     "alertsTab": "告警记录",
     "noAlerts": "暂无告警记录",
     "loadFailed": "加载排班数据失败",
+    "loadAlertsFailed": "加载失败",
     "overrides": "当前覆盖规则",
     "stats": "值班统计",
     "timesPerMonth": "约 {count} 次/月",
@@ -103,14 +102,27 @@
       "weekly": "每周轮换",
       "daily": "每日轮换"
     },
+    "duration": {
+      "inProgress": "进行中",
+      "minutes": "{minutes} 分钟",
+      "hoursMinutes": "{hours} 小时 {minutes} 分钟"
+    },
+    "relativeTime": {
+      "justNow": "刚刚",
+      "minutesAgo": "{minutes} 分钟前",
+      "hoursAgo": "{hours} 小时前",
+      "daysAgo": "{days} 天前"
+    },
+    "alertStatus": {
+      "firing": "FIRING",
+      "resolved": "RESOLVED"
+    },
     "create": {
       "trigger": "创建排班",
       "title": "创建新排班",
       "name": "排班名称",
       "namePlaceholder": "例：工程师值班",
       "rotationType": "轮换方式",
-      "daily": "每日轮换",
-      "weekly": "每周轮换",
       "cancel": "取消",
       "creating": "创建中…",
       "submit": "创建",

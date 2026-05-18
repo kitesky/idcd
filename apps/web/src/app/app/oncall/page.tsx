@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useTranslations, useLocale } from "next-intl"
+import { bcp47Of } from "@/i18n/registry"
 import {
   UserCheck,
   Clock,
@@ -41,6 +43,10 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { apiRequest } from "@/lib/api"
+
+// ── Typed translator alias ─────────────────────────────────────────────────
+
+type OncallT = ReturnType<typeof useTranslations<"status.oncall">>
 
 // ── API types ──────────────────────────────────────────────────────────────
 
@@ -127,34 +133,38 @@ function get7DayPreview(
   return days
 }
 
-function formatDate(d: Date): string {
-  return d.toLocaleDateString("zh-CN", { month: "short", day: "numeric", weekday: "short" })
+function formatDate(d: Date, locale: string): string {
+  return d.toLocaleDateString(bcp47Of(locale), {
+    month: "short",
+    day: "numeric",
+    weekday: "short",
+  })
 }
 
 // ── Relative time helper ──────────────────────────────────────────────────
 
-function formatRelativeTime(isoString: string): string {
+function formatRelativeTime(isoString: string, t: OncallT): string {
   const now = Date.now()
   const then = new Date(isoString).getTime()
   const diffMs = now - then
   const diffMinutes = Math.floor(diffMs / (60 * 1000))
   const diffHours = Math.floor(diffMs / (60 * 60 * 1000))
   const diffDays = Math.floor(diffMs / (24 * 60 * 60 * 1000))
-  if (diffMinutes < 1) return "刚刚"
-  if (diffMinutes < 60) return `${diffMinutes} 分钟前`
-  if (diffHours < 24) return `${diffHours} 小时前`
-  return `${diffDays} 天前`
+  if (diffMinutes < 1) return t("relativeTime.justNow")
+  if (diffMinutes < 60) return t("relativeTime.minutesAgo", { minutes: diffMinutes })
+  if (diffHours < 24) return t("relativeTime.hoursAgo", { hours: diffHours })
+  return t("relativeTime.daysAgo", { days: diffDays })
 }
 
-function formatDuration(firedAt: string, resolvedAt?: string): string {
-  if (!resolvedAt) return "进行中"
+function formatDuration(firedAt: string, resolvedAt: string | undefined, t: OncallT): string {
+  if (!resolvedAt) return t("duration.inProgress")
   const start = new Date(firedAt).getTime()
   const end = new Date(resolvedAt).getTime()
   const diffMs = end - start
   const diffMinutes = Math.floor(diffMs / (60 * 1000))
   const diffHours = Math.floor(diffMs / (60 * 60 * 1000))
-  if (diffMinutes < 60) return `${diffMinutes} 分钟`
-  return `${diffHours} 小时 ${diffMinutes % 60} 分钟`
+  if (diffMinutes < 60) return t("duration.minutes", { minutes: diffMinutes })
+  return t("duration.hoursMinutes", { hours: diffHours, minutes: diffMinutes % 60 })
 }
 
 // ── Create Schedule Dialog ─────────────────────────────────────────────────
@@ -164,6 +174,7 @@ interface CreateScheduleDialogProps {
 }
 
 function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
+  const t = useTranslations("status.oncall")
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
   const [rotationType, setRotationType] = useState("weekly")
@@ -188,7 +199,7 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
       setRotationType("weekly")
       onCreated()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "创建失败")
+      setError(err instanceof Error ? err.message : t("create.failed"))
     } finally {
       setSubmitting(false)
     }
@@ -199,12 +210,12 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
       <DialogTrigger asChild>
         <Button size="sm" data-testid="create-schedule-button">
           <Plus className="mr-2 h-4 w-4" />
-          创建排班
+          {t("create.trigger")}
         </Button>
       </DialogTrigger>
       <DialogContent data-testid="create-schedule-dialog">
         <DialogHeader>
-          <DialogTitle>创建新排班</DialogTitle>
+          <DialogTitle>{t("create.title")}</DialogTitle>
         </DialogHeader>
         {error && (
           <Alert variant="destructive">
@@ -213,38 +224,38 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
         )}
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="schedule-name">排班名称</Label>
+            <Label htmlFor="schedule-name">{t("create.name")}</Label>
             <Input
               id="schedule-name"
-              placeholder="例：工程师值班"
+              placeholder={t("create.namePlaceholder")}
               value={name}
               onChange={(e) => setName(e.target.value)}
               data-testid="schedule-name-input"
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="rotation-type">轮换方式</Label>
+            <Label htmlFor="rotation-type">{t("create.rotationType")}</Label>
             <Select value={rotationType} onValueChange={setRotationType}>
               <SelectTrigger id="rotation-type" data-testid="rotation-type-select">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="daily">每日轮换</SelectItem>
-                <SelectItem value="weekly">每周轮换</SelectItem>
+                <SelectItem value="daily">{t("rotation.daily")}</SelectItem>
+                <SelectItem value="weekly">{t("rotation.weekly")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>
-            取消
+            {t("create.cancel")}
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={!name.trim() || submitting}
             data-testid="create-schedule-submit"
           >
-            {submitting ? "创建中…" : "创建"}
+            {submitting ? t("create.creating") : t("create.submit")}
           </Button>
         </div>
       </DialogContent>
@@ -261,6 +272,7 @@ interface OverrideDialogProps {
 }
 
 function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogProps) {
+  const t = useTranslations("status.oncall")
   const [open, setOpen] = useState(false)
   const [startDate, setStartDate] = useState("")
   const [endDate, setEndDate] = useState("")
@@ -287,7 +299,7 @@ function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogP
       setSelectedUser("")
       onCreated?.()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "换班失败")
+      setError(err instanceof Error ? err.message : t("override.failed"))
     } finally {
       setSubmitting(false)
     }
@@ -298,12 +310,12 @@ function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogP
       <DialogTrigger asChild>
         <Button variant="outline" size="sm" data-testid="override-button">
           <RefreshCw className="mr-2 h-4 w-4" />
-          临时换班
+          {t("override.trigger")}
         </Button>
       </DialogTrigger>
       <DialogContent data-testid="override-dialog">
         <DialogHeader>
-          <DialogTitle>临时换班</DialogTitle>
+          <DialogTitle>{t("override.title")}</DialogTitle>
         </DialogHeader>
         {error && (
           <Alert variant="destructive">
@@ -312,10 +324,10 @@ function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogP
         )}
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="override-user">替换为</Label>
+            <Label htmlFor="override-user">{t("override.replaceWith")}</Label>
             <Select value={selectedUser} onValueChange={setSelectedUser}>
               <SelectTrigger id="override-user" data-testid="override-user-select">
-                <SelectValue placeholder="选择值班人员" />
+                <SelectValue placeholder={t("override.selectPerson")} />
               </SelectTrigger>
               <SelectContent>
                 {participants.map((p) => (
@@ -327,7 +339,7 @@ function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogP
             </Select>
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="override-start">开始时间</Label>
+            <Label htmlFor="override-start">{t("override.startTime")}</Label>
             <Input
               id="override-start"
               type="datetime-local"
@@ -337,7 +349,7 @@ function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogP
             />
           </div>
           <div className="grid gap-2">
-            <Label htmlFor="override-end">结束时间</Label>
+            <Label htmlFor="override-end">{t("override.endTime")}</Label>
             <Input
               id="override-end"
               type="datetime-local"
@@ -349,14 +361,14 @@ function OverrideDialog({ scheduleId, participants, onCreated }: OverrideDialogP
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>
-            取消
+            {t("override.cancel")}
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={!selectedUser || !startDate || !endDate || submitting}
             data-testid="override-submit"
           >
-            {submitting ? "提交中…" : "确认换班"}
+            {submitting ? t("override.submitting") : t("override.confirm")}
           </Button>
         </div>
       </DialogContent>
@@ -412,6 +424,7 @@ interface AddParticipantDialogProps {
 }
 
 function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticipantDialogProps) {
+  const t = useTranslations("status.oncall")
   const [open, setOpen] = useState(false)
   const [userId, setUserId] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -433,7 +446,7 @@ function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticip
       setUserId("")
       onAdded()
     } catch (err) {
-      setError(err instanceof Error ? err.message : "添加失败")
+      setError(err instanceof Error ? err.message : t("addParticipant.failed"))
     } finally {
       setSubmitting(false)
     }
@@ -444,12 +457,12 @@ function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticip
       <DialogTrigger asChild>
         <Button size="sm" variant="outline" data-testid="add-participant-button">
           <UserPlus className="mr-2 h-4 w-4" />
-          添加成员
+          {t("addParticipant.trigger")}
         </Button>
       </DialogTrigger>
       <DialogContent data-testid="add-participant-dialog">
         <DialogHeader>
-          <DialogTitle>添加排班成员</DialogTitle>
+          <DialogTitle>{t("addParticipant.title")}</DialogTitle>
         </DialogHeader>
         {error && (
           <Alert variant="destructive">
@@ -458,10 +471,10 @@ function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticip
         )}
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
-            <Label htmlFor="participant-user-id">用户 ID</Label>
+            <Label htmlFor="participant-user-id">{t("addParticipant.userId")}</Label>
             <Input
               id="participant-user-id"
-              placeholder="输入用户 ID"
+              placeholder={t("addParticipant.userIdPlaceholder")}
               value={userId}
               onChange={(e) => setUserId(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && handleSubmit()}
@@ -471,14 +484,14 @@ function AddParticipantDialog({ scheduleId, currentCount, onAdded }: AddParticip
         </div>
         <div className="flex justify-end gap-2">
           <Button variant="outline" onClick={() => setOpen(false)}>
-            取消
+            {t("addParticipant.cancel")}
           </Button>
           <Button
             onClick={handleSubmit}
             disabled={!userId.trim() || submitting}
             data-testid="add-participant-submit"
           >
-            {submitting ? "添加中…" : "添加"}
+            {submitting ? t("addParticipant.adding") : t("addParticipant.submit")}
           </Button>
         </div>
       </DialogContent>
@@ -494,6 +507,8 @@ interface ActiveOverridesListProps {
 }
 
 function ActiveOverridesList({ scheduleId, refreshToken }: ActiveOverridesListProps) {
+  const t = useTranslations("status.oncall")
+  const locale = useLocale()
   const [overrides, setOverrides] = useState<Override[]>([])
   const [loading, setLoading] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
@@ -544,7 +559,7 @@ function ActiveOverridesList({ scheduleId, refreshToken }: ActiveOverridesListPr
   return (
     <Card className="mt-4" data-testid="active-overrides-card">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">当前覆盖规则</CardTitle>
+        <CardTitle className="text-base">{t("overrides")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-1">
@@ -559,14 +574,14 @@ function ActiveOverridesList({ scheduleId, refreshToken }: ActiveOverridesListPr
               </div>
               <span className="flex-1 font-medium truncate">{o.user_id}</span>
               <span className="text-muted-foreground text-xs shrink-0">
-                {new Date(o.start_at).toLocaleString("zh-CN", {
+                {new Date(o.start_at).toLocaleString(bcp47Of(locale), {
                   month: "numeric",
                   day: "numeric",
                   hour: "2-digit",
                   minute: "2-digit",
                 })}{" "}
                 –{" "}
-                {new Date(o.end_at).toLocaleString("zh-CN", {
+                {new Date(o.end_at).toLocaleString(bcp47Of(locale), {
                   month: "numeric",
                   day: "numeric",
                   hour: "2-digit",
@@ -599,6 +614,7 @@ interface OncallStatsCardProps {
 }
 
 function OncallStatsCard({ schedule, participants }: OncallStatsCardProps) {
+  const t = useTranslations("status.oncall")
   if (participants.length === 0) return null
 
   const rotationDays = schedule.rotation_days ?? (schedule.rotation_type === "weekly" ? 7 : 1)
@@ -606,7 +622,7 @@ function OncallStatsCard({ schedule, participants }: OncallStatsCardProps) {
   return (
     <Card className="mt-6" data-testid="oncall-stats-card">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">值班统计</CardTitle>
+        <CardTitle className="text-base">{t("stats")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-2">
@@ -622,7 +638,7 @@ function OncallStatsCard({ schedule, participants }: OncallStatsCardProps) {
               >
                 <span className="text-muted-foreground">{p.email}</span>
                 <Badge variant="outline" className="text-xs">
-                  约 {timesPerMonth} 次/月
+                  {t("timesPerMonth", { count: timesPerMonth })}
                 </Badge>
               </div>
             )
@@ -636,6 +652,7 @@ function OncallStatsCard({ schedule, participants }: OncallStatsCardProps) {
 // ── Alert Events Tab ───────────────────────────────────────────────────────
 
 function AlertEventsTab() {
+  const t = useTranslations("status.oncall")
   const [events, setEvents] = useState<AlertEvent[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -652,12 +669,12 @@ function AlertEventsTab() {
         setEvents(res?.data?.items ?? [])
       })
       .catch((err) => {
-        setError(err instanceof Error ? err.message : "加载失败")
+        setError(err instanceof Error ? err.message : t("loadAlertsFailed"))
       })
       .finally(() => {
         setLoading(false)
       })
-  }, [loaded])
+  }, [loaded, t])
 
   if (loading) {
     return (
@@ -683,7 +700,7 @@ function AlertEventsTab() {
         className="py-8 text-center text-sm text-muted-foreground"
         data-testid="no-alert-events"
       >
-        暂无告警记录
+        {t("noAlerts")}
       </p>
     )
   }
@@ -692,10 +709,10 @@ function AlertEventsTab() {
     <Table data-testid="alert-events-table">
       <TableHeader>
         <TableRow>
-          <TableHead>监控名</TableHead>
-          <TableHead>状态</TableHead>
-          <TableHead>触发时间</TableHead>
-          <TableHead>持续时长</TableHead>
+          <TableHead>{t("alertsTable.monitor")}</TableHead>
+          <TableHead>{t("alertsTable.status")}</TableHead>
+          <TableHead>{t("alertsTable.firedAt")}</TableHead>
+          <TableHead>{t("alertsTable.duration")}</TableHead>
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -704,16 +721,16 @@ function AlertEventsTab() {
             <TableCell className="font-medium">{event.monitor_name}</TableCell>
             <TableCell>
               {event.status === "firing" ? (
-                <Badge variant="destructive">FIRING</Badge>
+                <Badge variant="destructive">{t("alertStatus.firing")}</Badge>
               ) : (
-                <Badge variant="success">RESOLVED</Badge>
+                <Badge variant="success">{t("alertStatus.resolved")}</Badge>
               )}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {formatRelativeTime(event.fired_at)}
+              {formatRelativeTime(event.fired_at, t)}
             </TableCell>
             <TableCell className="text-muted-foreground">
-              {formatDuration(event.fired_at, event.resolved_at)}
+              {formatDuration(event.fired_at, event.resolved_at, t)}
             </TableCell>
           </TableRow>
         ))}
@@ -725,6 +742,8 @@ function AlertEventsTab() {
 // ── Main page ──────────────────────────────────────────────────────────────
 
 export default function OncallPage() {
+  const t = useTranslations("status.oncall")
+  const locale = useLocale()
   const [schedule, setSchedule] = useState<Schedule | null>(null)
   const [participants, setParticipants] = useState<Participant[]>([])
   const [loading, setLoading] = useState(true)
@@ -732,7 +751,7 @@ export default function OncallPage() {
   const [overrideRefreshToken, setOverrideRefreshToken] = useState(0)
 
   function refreshOverrides() {
-    setOverrideRefreshToken((t) => t + 1)
+    setOverrideRefreshToken((tok) => tok + 1)
   }
 
   async function loadData() {
@@ -758,7 +777,7 @@ export default function OncallPage() {
       const sorted = [...parts].sort((a, b) => a.order_index - b.order_index)
       setParticipants(sorted)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "加载排班数据失败")
+      setError(err instanceof Error ? err.message : t("loadFailed"))
     } finally {
       setLoading(false)
     }
@@ -767,6 +786,7 @@ export default function OncallPage() {
   useEffect(() => {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loadData 内部 await 后 setState；初次挂载触发
     void loadData()
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- t 来自 i18n hook，引用稳定但 lint 不识别
   }, [])
 
   // Derived values
@@ -785,16 +805,19 @@ export default function OncallPage() {
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight" data-testid="oncall-title">
-            On-Call 排班
+            {t("title")}
           </h1>
           {loading ? (
             <Skeleton className="mt-1 h-4 w-48" />
           ) : schedule ? (
             <p className="mt-1 text-sm text-muted-foreground">
-              {schedule.name} · {schedule.rotation_type === "weekly" ? "每周轮换" : "每日轮换"}
+              {schedule.name} ·{" "}
+              {schedule.rotation_type === "weekly"
+                ? t("rotation.weekly")
+                : t("rotation.daily")}
             </p>
           ) : (
-            <p className="mt-1 text-sm text-muted-foreground">暂无排班</p>
+            <p className="mt-1 text-sm text-muted-foreground">{t("noSchedule")}</p>
           )}
         </div>
         <div className="flex gap-2">
@@ -814,7 +837,7 @@ export default function OncallPage() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <UserCheck className="h-4 w-4 text-primary" />
-              当前值班
+              {t("onCallCard")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -841,7 +864,7 @@ export default function OncallPage() {
                     <div className="mt-2 flex items-center gap-1.5 text-sm text-muted-foreground">
                       <Clock className="h-3.5 w-3.5" />
                       <span data-testid="hours-until-handoff">
-                        距下次交班还有 {hoursUntilHandoff} 小时
+                        {t("hoursUntilHandoff", { hours: hoursUntilHandoff })}
                       </span>
                     </div>
                   </div>
@@ -860,7 +883,7 @@ export default function OncallPage() {
                 </div>
               </>
             ) : (
-              <p className="text-sm text-muted-foreground">暂无值班人员</p>
+              <p className="text-sm text-muted-foreground">{t("noParticipants")}</p>
             )}
           </CardContent>
         </Card>
@@ -869,7 +892,7 @@ export default function OncallPage() {
           <CardHeader className="pb-3">
             <CardTitle className="flex items-center gap-2 text-base">
               <ChevronRight className="h-4 w-4 text-primary" />
-              未来 7 天排班
+              {t("preview")}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -888,7 +911,7 @@ export default function OncallPage() {
                     data-testid={`preview-day-${i}`}
                   >
                     <span className="text-muted-foreground w-28 shrink-0">
-                      {formatDate(date)}
+                      {formatDate(date, locale)}
                     </span>
                     <div className="flex items-center gap-2">
                       <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 text-xs text-primary">
@@ -900,7 +923,7 @@ export default function OncallPage() {
                 ))}
               </div>
             ) : (
-              <p className="text-sm text-muted-foreground">暂无排班数据</p>
+              <p className="text-sm text-muted-foreground">{t("noPreviewData")}</p>
             )}
           </CardContent>
         </Card>
@@ -908,8 +931,8 @@ export default function OncallPage() {
 
       <Tabs defaultValue="schedules">
         <TabsList>
-          <TabsTrigger value="schedules">排班管理</TabsTrigger>
-          <TabsTrigger value="alerts" data-testid="alerts-tab-trigger">告警记录</TabsTrigger>
+          <TabsTrigger value="schedules">{t("scheduleTab")}</TabsTrigger>
+          <TabsTrigger value="alerts" data-testid="alerts-tab-trigger">{t("alertsTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="schedules" className="mt-4">
@@ -926,7 +949,9 @@ export default function OncallPage() {
                   <div className="flex items-center gap-3">
                     <span>{schedule.name}</span>
                     <Badge variant="secondary">
-                      {schedule.rotation_type === "weekly" ? "每周轮换" : "每日轮换"}
+                      {schedule.rotation_type === "weekly"
+                        ? t("rotation.weekly")
+                        : t("rotation.daily")}
                     </Badge>
                   </div>
                   <AddParticipantDialog
@@ -940,7 +965,7 @@ export default function OncallPage() {
                 <div className="space-y-1">
                   {participants.length === 0 ? (
                     <p className="py-4 text-center text-sm text-muted-foreground">
-                      暂无成员，点击「添加成员」开始
+                      {t("noMembers")}
                     </p>
                   ) : (
                     participants.map((p, i) => (
@@ -971,7 +996,7 @@ export default function OncallPage() {
             </Card>
           ) : (
             <p className="py-8 text-center text-sm text-muted-foreground">
-              暂无排班，点击右上角「创建排班」开始
+              {t("noSchedulePrompt")}
             </p>
           )}
 

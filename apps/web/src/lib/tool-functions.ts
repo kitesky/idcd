@@ -407,16 +407,23 @@ export function convertBase(num: string, fromBase: number, toBase: number): stri
   return decimal.toString(toBase).toUpperCase()
 }
 
-export function numberToAllBases(num: string, fromBase: number): Record<string, string> {
+/**
+ * 把数字转成 4 种进制。返回值用英文 key（binary/octal/decimal/hex），
+ * 调用方按 `docs.toolFunctions.numberBases.{key}` 翻译显示标签。
+ */
+export function numberToAllBases(num: string, fromBase: number): Record<NumberBaseKey, string> {
   const decimal = parseInt(num.trim(), fromBase)
   if (isNaN(decimal)) throw new ToolError('invalidNumber')
   return {
-    二进制: decimal.toString(2),
-    八进制: decimal.toString(8),
-    十进制: decimal.toString(10),
-    十六进制: decimal.toString(16).toUpperCase(),
+    binary: decimal.toString(2),
+    octal: decimal.toString(8),
+    decimal: decimal.toString(10),
+    hex: decimal.toString(16).toUpperCase(),
   }
 }
+
+export type NumberBaseKey = 'binary' | 'octal' | 'decimal' | 'hex'
+export const NUMBER_BASE_KEYS: readonly NumberBaseKey[] = ['binary', 'octal', 'decimal', 'hex']
 
 // ── 文本大小写转换 ────────────────────────────────────────────────────────────
 

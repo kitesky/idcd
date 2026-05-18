@@ -102,6 +102,12 @@
     "backHome": "Back to docs home"
   },
   "toolFunctions": {
+    "numberBases": {
+      "binary": "Binary",
+      "octal": "Octal",
+      "decimal": "Decimal",
+      "hex": "Hexadecimal"
+    },
     "errors": {
       "invalidCodePoint": "Invalid code point",
       "invalidJwtFormat": "Invalid JWT format — expected three parts (Header.Payload.Signature)",

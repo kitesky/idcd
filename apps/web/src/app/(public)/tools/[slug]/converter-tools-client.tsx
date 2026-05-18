@@ -10,12 +10,13 @@ import {
   urlEncode, urlDecode,
   charToCodePoint, codePointToChar, stringToUnicode, unicodeToString,
   decodeJWT,
-  numberToAllBases,
+  numberToAllBases, NUMBER_BASE_KEYS,
   jsonToYaml, formatYAML, formatXML,
   parseURL,
   parseUserAgent,
   formatNumber, formatCurrency,
 } from '@/lib/tool-functions'
+import type { NumberBaseKey } from '@/lib/tool-functions'
 import { translateToolError } from '@/lib/tool-error'
 
 // ── URL 编解码 ───────────────────────────────────────────────────────────────
@@ -278,16 +279,17 @@ export function JwtDecodeClient() {
 // ── 进制转换 ─────────────────────────────────────────────────────────────────
 export function NumberConvertClient() {
   const tErr = useTranslations('docs.toolFunctions.errors')
+  const tBase = useTranslations('docs.toolFunctions.numberBases')
   const [input, setInput] = useState('')
   const [fromBase, setFromBase] = useState(10)
-  const [result, setResult] = useState<Record<string, string> | null>(null)
+  const [result, setResult] = useState<Record<NumberBaseKey, string> | null>(null)
   const [error, setError] = useState('')
 
-  const bases = [
-    { label: '十进制 (10)', value: 10 },
-    { label: '十六进制 (16)', value: 16 },
-    { label: '二进制 (2)', value: 2 },
-    { label: '八进制 (8)', value: 8 },
+  const bases: { key: NumberBaseKey; value: number }[] = [
+    { key: 'decimal', value: 10 },
+    { key: 'hex', value: 16 },
+    { key: 'binary', value: 2 },
+    { key: 'octal', value: 8 },
   ]
 
   const handleConvert = () => {
@@ -318,7 +320,7 @@ export function NumberConvertClient() {
                 variant={fromBase === b.value ? 'default' : 'outline'}
                 onClick={() => setFromBase(b.value)}
               >
-                {b.label}
+                {tBase(b.key)} ({b.value})
               </Button>
             ))}
           </div>
@@ -338,11 +340,11 @@ export function NumberConvertClient() {
         <Card>
           <CardHeader><CardTitle>转换结果</CardTitle></CardHeader>
           <CardContent className="space-y-2">
-            {Object.entries(result).map(([label, value]) => (
-              <div key={label} className="flex items-center gap-4 py-2 border-b last:border-0">
-                <span className="text-muted-foreground text-sm w-24 shrink-0">{label}</span>
-                <code className="flex-1 font-mono text-sm">{value}</code>
-                <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(value)}>复制</Button>
+            {NUMBER_BASE_KEYS.map(key => (
+              <div key={key} className="flex items-center gap-4 py-2 border-b last:border-0">
+                <span className="text-muted-foreground text-sm w-24 shrink-0">{tBase(key)}</span>
+                <code className="flex-1 font-mono text-sm">{result[key]}</code>
+                <Button variant="outline" size="sm" onClick={() => navigator.clipboard.writeText(result[key])}>复制</Button>
               </div>
             ))}
           </CardContent>

@@ -102,6 +102,12 @@
     "backHome": "返回文档首页"
   },
   "toolFunctions": {
+    "numberBases": {
+      "binary": "二进制",
+      "octal": "八进制",
+      "decimal": "十进制",
+      "hex": "十六进制"
+    },
     "errors": {
       "invalidCodePoint": "无效的码点",
       "invalidJwtFormat": "无效的 JWT 格式，需要 3 个部分（Header.Payload.Signature）",

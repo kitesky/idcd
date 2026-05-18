@@ -303,10 +303,10 @@ describe('进制转换', () => {
 
   it('numberToAllBases', () => {
     const r = numberToAllBases('255', 10)
-    expect(r['二进制']).toBe('11111111')
-    expect(r['十六进制']).toBe('FF')
-    expect(r['十进制']).toBe('255')
-    expect(r['八进制']).toBe('377')
+    expect(r.binary).toBe('11111111')
+    expect(r.hex).toBe('FF')
+    expect(r.decimal).toBe('255')
+    expect(r.octal).toBe('377')
   })
 })
 

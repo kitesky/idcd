@@ -155,7 +155,7 @@ function CreateGroupDialog({ onCreated }: CreateGroupDialogProps) {
     } catch (err: unknown) {
       const msg =
         err instanceof ApiError
-          ? translateApiError(err, tErr)
+          ? translateApiError(err, tErr as never)
           : err instanceof Error
             ? err.message
             : t("createFailed")
@@ -314,7 +314,7 @@ export default function AlertGroupsPage() {
     } catch (err: unknown) {
       const msg =
         err instanceof ApiError
-          ? translateApiError(err, tErr)
+          ? translateApiError(err, tErr as never)
           : err instanceof Error
             ? err.message
             : t("deleteFailed")
@@ -324,7 +324,7 @@ export default function AlertGroupsPage() {
 
   function groupByLabel(key: string): string {
     const known = ["monitor_prefix", "tag", "type"]
-    if (known.includes(key)) return t(`groupByLabels.${key}`)
+    if (known.includes(key)) return t(`groupByLabels.${key}` as never)
     return key
   }
 

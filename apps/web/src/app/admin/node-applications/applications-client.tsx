@@ -71,7 +71,7 @@ function ReviewDialog({ app, onDone }: ReviewDialogProps) {
     startTransition(async () => {
       const res = await reviewApplicationAction(app.id, action, note.trim())
       if (!res.ok) {
-        const msg = res.messageKey ? t(res.messageKey) : res.message
+        const msg = res.messageKey ? t(res.messageKey as never) : res.message
         toast.error(msg ?? t("nodeApplications.errors.reviewFailed"))
       } else {
         toast.success(action === "approve" ? t("nodeApplications.toast.approved") : t("nodeApplications.toast.rejected"))

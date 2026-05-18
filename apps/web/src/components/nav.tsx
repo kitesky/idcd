@@ -477,7 +477,7 @@ function NavSearch() {
   const lowerQuery = query.trim().toLowerCase()
   const results = lowerQuery
     ? ALL_TOOLS.filter(tool => {
-        const title = String(tTools(`${tool.slug}.title`) ?? "").toLowerCase()
+        const title = String(tTools(`${tool.slug}.title` as never) ?? "").toLowerCase()
         return title.includes(lowerQuery) || tool.slug.includes(lowerQuery)
       }).slice(0, 8)
     : []
@@ -526,7 +526,7 @@ function NavSearch() {
               onMouseDown={() => setOpen(false)}
               className="block px-4 py-2 text-sm text-foreground hover:bg-muted transition-colors"
             >
-              {tTools(`${tool.slug}.title`)}
+              {tTools(`${tool.slug}.title` as never)}
             </a>
           ))}
         </div>

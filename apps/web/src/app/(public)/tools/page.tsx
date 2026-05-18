@@ -30,8 +30,8 @@ export default function ToolsPage() {
     const q = query.trim().toLowerCase()
     if (!q) return null
     return ALL_TOOLS.filter((tool) => {
-      const title = String(t(`${tool.slug}.title`) ?? '').toLowerCase()
-      const description = String(t(`${tool.slug}.description`) ?? '').toLowerCase()
+      const title = String(t(`${tool.slug}.title` as never) ?? '').toLowerCase()
+      const description = String(t(`${tool.slug}.description` as never) ?? '').toLowerCase()
       return title.includes(q) || description.includes(q) || tool.slug.includes(q)
     })
   }, [query, t])
@@ -108,15 +108,15 @@ export default function ToolsPage() {
                   >
                     <CardHeader className="pb-2">
                       <div className="flex items-start justify-between gap-2">
-                        <CardTitle className="text-base">{t(`${tool.slug}.title`)}</CardTitle>
+                        <CardTitle className="text-base">{t(`${tool.slug}.title` as never)}</CardTitle>
                         <Badge variant="outline" className="shrink-0 text-xs">
-                          {t(`_page.categories.${tool.category}.label`)}
+                          {t(`_page.categories.${tool.category}.label` as never)}
                         </Badge>
                       </div>
                     </CardHeader>
                     <CardContent>
                       <p className="mb-4 text-sm text-muted-foreground">
-                        {t(`${tool.slug}.description`)}
+                        {t(`${tool.slug}.description` as never)}
                       </p>
                       <Button asChild variant="outline" size="sm" className="w-full">
                         <Link href={`/tools/${tool.slug}`}>{t('_page.useNow')}</Link>
@@ -134,10 +134,10 @@ export default function ToolsPage() {
             <section key={cat} id={`cat-${cat}`}>
               <div className="mb-6">
                 <h2 className="text-2xl font-bold tracking-tight">
-                  {t(`_page.categories.${cat}.label`)}
+                  {t(`_page.categories.${cat}.label` as never)}
                 </h2>
                 <p className="mt-1 text-muted-foreground">
-                  {t(`_page.categories.${cat}.description`)}
+                  {t(`_page.categories.${cat}.description` as never)}
                 </p>
               </div>
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
@@ -147,11 +147,11 @@ export default function ToolsPage() {
                     className="hover:shadow-md transition-shadow"
                   >
                     <CardHeader className="pb-2">
-                      <CardTitle className="text-base">{t(`${tool.slug}.title`)}</CardTitle>
+                      <CardTitle className="text-base">{t(`${tool.slug}.title` as never)}</CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="mb-4 text-sm text-muted-foreground">
-                        {t(`${tool.slug}.description`)}
+                        {t(`${tool.slug}.description` as never)}
                       </p>
                       <Button asChild variant="outline" size="sm" className="w-full">
                         <Link href={`/tools/${tool.slug}`}>{t('_page.useNow')}</Link>

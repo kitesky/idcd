@@ -410,7 +410,7 @@ export default function DashboardPage() {
                             <Badge variant="destructive">DOWN</Badge>
                           </TableCell>
                           <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                            {formatRelative(mon.last_check_at, t)}
+                            {formatRelative(mon.last_check_at, t as never)}
                           </TableCell>
                         </TableRow>
                       ))
@@ -461,7 +461,7 @@ export default function DashboardPage() {
                           )}
                         </TableCell>
                         <TableCell className="text-muted-foreground text-sm hidden sm:table-cell">
-                          {formatRelative(evt.startedAt, t)}
+                          {formatRelative(evt.startedAt, t as never)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -499,12 +499,12 @@ export default function DashboardPage() {
                     <CardHeader className="pb-2">
                       <CardTitle className="flex items-center justify-between text-sm font-medium">
                         <span className="truncate">{mon.name}</span>
-                        {monitorStatusBadge(mon.status, t)}
+                        {monitorStatusBadge(mon.status, t as never)}
                       </CardTitle>
                     </CardHeader>
                     <CardContent>
                       <p className="text-xs text-muted-foreground">
-                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at, t) })}
+                        {t("pinnedMonitors.lastCheck", { time: formatRelative(mon.last_check_at, t as never) })}
                       </p>
                     </CardContent>
                   </Card>
@@ -536,7 +536,7 @@ export default function DashboardPage() {
                     className="flex flex-1 cursor-pointer items-center justify-between text-sm"
                   >
                     <span>{mon.name}</span>
-                    {monitorStatusBadge(mon.status, t)}
+                    {monitorStatusBadge(mon.status, t as never)}
                   </label>
                 </div>
               ))

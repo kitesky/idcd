@@ -107,7 +107,7 @@ interface PointsBalanceCardProps {
 
 function PointsBalanceCard({ balance, loading, onRedeemed }: PointsBalanceCardProps) {
   const t = useTranslations("billing.usage")
-  const REDEEM_OPTIONS = getRedeemOptions(t)
+  const REDEEM_OPTIONS = getRedeemOptions(t as never)
   const [redeemType, setRedeemType] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [redeeming, setRedeeming] = useState(false)
@@ -304,7 +304,7 @@ export function UsageClient() {
                 />
                 {data && (
                   <p className="text-xs text-muted-foreground">
-                    {t("resetTimeLabel", { time: formatResetTime(data.api_calls.reset_at, t) })}
+                    {t("resetTimeLabel", { time: formatResetTime(data.api_calls.reset_at, t as never) })}
                   </p>
                 )}
               </>
@@ -484,7 +484,7 @@ export function UsageClient() {
               {(data?.api_calls_trend ?? []).map((d, i, arr) => {
                 const max = Math.max(...arr.map((x) => x.count), 1)
                 const heightPct = (d.count / max) * 100
-                const label = formatTrendLabel(d.date, i === arr.length - 1, t)
+                const label = formatTrendLabel(d.date, i === arr.length - 1, t as never)
                 return (
                   <div key={d.date} className="flex flex-1 flex-col items-center gap-1">
                     <span className="text-xs text-muted-foreground tabular-nums">

@@ -217,7 +217,7 @@ export default function PricingPage() {
                 >
                   {plan.hasBadge && (
                     <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-                      <Badge className="px-3 py-1">{t(`plans.${plan.id}.badge`)}</Badge>
+                      <Badge className="px-3 py-1">{t(`plans.${plan.id}.badge` as never)}</Badge>
                     </div>
                   )}
                   <CardHeader className="pb-0">
@@ -225,11 +225,11 @@ export default function PricingPage() {
                       <div className="flex h-8 w-8 items-center justify-center rounded-md bg-primary/10">
                         <Icon className="h-4 w-4 text-primary" />
                       </div>
-                      <span className="font-semibold">{t(`plans.${plan.id}.name`)}</span>
+                      <span className="font-semibold">{t(`plans.${plan.id}.name` as never)}</span>
                     </div>
                     <PriceDisplay plan={plan} cycle={cycle} t={t} />
                     <p className="mt-2 text-sm text-muted-foreground">
-                      {t(`plans.${plan.id}.description`)}
+                      {t(`plans.${plan.id}.description` as never)}
                     </p>
                   </CardHeader>
 
@@ -243,7 +243,7 @@ export default function PricingPage() {
                           <div className="flex shrink-0 items-center gap-1.5">
                             <Check className="h-4 w-4 text-primary" />
                             <span className="whitespace-nowrap text-muted-foreground">
-                              {t(`features.${feature.featureKey}`)}
+                              {t(`features.${feature.featureKey}` as never)}
                             </span>
                           </div>
                           <Badge
@@ -263,7 +263,7 @@ export default function PricingPage() {
                       className="w-full"
                       asChild
                     >
-                      <Link href={plan.ctaHref}>{t(`plans.${plan.id}.cta`)}</Link>
+                      <Link href={plan.ctaHref}>{t(`plans.${plan.id}.cta` as never)}</Link>
                     </Button>
                   </CardFooter>
                 </Card>

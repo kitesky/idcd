@@ -42,20 +42,20 @@ export default function ProbeToolClient({ slug }: ProbeClientProps) {
 
   // Resolve translated probe metadata via lookups — fall back to generic keys
   // if a particular slug doesn't ship its probe-specific labels.
-  const title = String(t(`${slug}.title`) ?? slug)
-  const description = String(t(`${slug}.description`) ?? '')
+  const title = String(t(`${slug}.title` as never) ?? slug)
+  const description = String(t(`${slug}.description` as never) ?? '')
   const probeLabel = isProbeSlug(slug)
-    ? String(t(`${slug}.probe.label`) ?? t('_probe.defaults.label'))
+    ? String(t(`${slug}.probe.label` as never) ?? t('_probe.defaults.label'))
     : String(t('_probe.defaults.label'))
   const probePlaceholder = isProbeSlug(slug)
-    ? String(t(`${slug}.probe.placeholder`) ?? '')
+    ? String(t(`${slug}.probe.placeholder` as never) ?? '')
     : ''
   const probeExtraHint = isProbeSlug(slug)
-    ? String(t(`${slug}.probe.extraHint`) ?? '')
+    ? String(t(`${slug}.probe.extraHint` as never) ?? '')
     : ''
   const showExtraField = slug === 'tcp' || slug === 'dkim'
   const extraFieldLabel = showExtraField
-    ? String(t(`${slug}.probe.extraFieldLabel`) ?? '')
+    ? String(t(`${slug}.probe.extraFieldLabel` as never) ?? '')
     : ''
   const extraFieldPlaceholder = showExtraField
     ? String(t(`${slug}.probe.extraFieldPlaceholder`) ?? '')

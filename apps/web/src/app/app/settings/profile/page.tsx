@@ -126,7 +126,7 @@ export default function ProfilePage() {
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const profileSchema = buildProfileSchema(t)
+  const profileSchema = buildProfileSchema(t as never)
   const form = useForm<ProfileFormValues>({
     resolver: zodResolver(profileSchema),
     defaultValues: {

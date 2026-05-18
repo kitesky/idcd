@@ -299,10 +299,10 @@ export function SessionsClient() {
                       className="text-xs text-muted-foreground"
                       title={formatDateTime(sess.created_at, bcp47)}
                     >
-                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at, t)}
+                      {t("sessions.loginAt")} {formatRelativeTime(sess.created_at, t as never)}
                       {sess.last_seen_at && sess.last_seen_at !== sess.created_at && (
                         <span className="ml-2 text-muted-foreground/70">
-                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at, t)}
+                          {t("sessions.lastSeen")} {formatRelativeTime(sess.last_seen_at, t as never)}
                         </span>
                       )}
                     </p>

@@ -347,7 +347,7 @@ export function HeroSearch() {
                     : "text-muted-foreground hover:text-foreground"
                 )}
               >
-                {t(c.labelKey)}
+                {t(c.labelKey as never)}
               </button>
             ))}
           </div>
@@ -358,9 +358,9 @@ export function HeroSearch() {
       <div className="mx-auto max-w-screen-xl px-4 md:px-6 py-6 md:py-10">
         {/* 标题区 */}
         <div className="text-center mb-6 md:mb-8">
-          <h2 className="text-xl md:text-2xl font-bold text-foreground">{t(catConfig.titleKey)}</h2>
-          <p className="mt-2 text-sm text-primary font-medium">{t(catConfig.subtitleKey)}</p>
-          <p className="mt-1.5 text-sm text-muted-foreground max-w-xl mx-auto hidden md:block">{t(catConfig.descKey)}</p>
+          <h2 className="text-xl md:text-2xl font-bold text-foreground">{t(catConfig.titleKey as never)}</h2>
+          <p className="mt-2 text-sm text-primary font-medium">{t(catConfig.subtitleKey as never)}</p>
+          <p className="mt-1.5 text-sm text-muted-foreground max-w-xl mx-auto hidden md:block">{t(catConfig.descKey as never)}</p>
         </div>
 
         {/* 工具子 tabs */}
@@ -403,7 +403,7 @@ export function HeroSearch() {
               value={query}
               onChange={e => setQuery(e.target.value)}
               onKeyDown={e => e.key === "Enter" && handleGo()}
-              placeholder={t(catConfig.placeholderKey)}
+              placeholder={t(catConfig.placeholderKey as never)}
               className="flex-1 h-11 border-0 bg-transparent text-sm shadow-none focus-visible:ring-0 placeholder:text-muted-foreground"
             />
           </div>

@@ -60,7 +60,7 @@ export default async function DocsLayout({ children }: { children: React.ReactNo
                     href={item.href}
                     className="block rounded px-2 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
                   >
-                    {t(`${section.group}.items.${item.key}`)}
+                    {t(`${section.group}.items.${item.key}` as never)}
                   </Link>
                 ))}
               </div>

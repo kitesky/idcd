@@ -60,7 +60,7 @@ export function AppShell({ email, displayName, avatarUrl, plan = "Free", childre
     ROUTE_TITLE_KEYS[pathname] ??
     Object.entries(ROUTE_TITLE_KEYS).find(([k]) => pathname.startsWith(k + "/"))?.[1] ??
     null
-  const pageTitle = titleKey ? tItems(titleKey) : tSidebar("defaultPageTitle")
+  const pageTitle = titleKey ? tItems(titleKey as never) : tSidebar("defaultPageTitle")
   const isSettings = pathname.startsWith("/app/settings")
 
   return (

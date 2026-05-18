@@ -201,8 +201,8 @@ export function BillingClient() {
   const t = useTranslations("billing")
   const locale = useLocale()
   const bcp47 = bcp47Of(locale)
-  const PLANS = getPlans(t)
-  const STATUS_LABELS = getStatusLabels(t)
+  const PLANS = getPlans(t as never)
+  const STATUS_LABELS = getStatusLabels(t as never)
 
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [invoices, setInvoices] = useState<Invoice[]>([])

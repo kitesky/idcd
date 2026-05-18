@@ -39,7 +39,7 @@ export function NavGroup({ title, items }: NavGroup) {
 
   return (
     <SidebarGroup>
-      <SidebarGroupLabel>{t(title)}</SidebarGroupLabel>
+      <SidebarGroupLabel>{t(title as never)}</SidebarGroupLabel>
       <SidebarMenu>
         {items.map((item) => {
           if (!item.items) {
@@ -58,7 +58,7 @@ export function NavGroup({ title, items }: NavGroup) {
 function NavMenuLink({ item, pathname, t }: { item: NavLink; pathname: string; t: T }) {
   const { setOpenMobile } = useSidebar()
   const isActive = pathname === item.url || pathname.startsWith(item.url + "/")
-  const label = t(item.title)
+  const label = t(item.title as never)
   return (
     <SidebarMenuItem>
       <SidebarMenuButton asChild isActive={isActive} tooltip={label}>
@@ -75,7 +75,7 @@ function NavMenuLink({ item, pathname, t }: { item: NavLink; pathname: string; t
 function NavMenuCollapsible({ item, pathname, t }: { item: NavCollapsible; pathname: string; t: T }) {
   const { setOpenMobile } = useSidebar()
   const isChildActive = item.items.some((sub) => pathname === sub.url || pathname.startsWith(sub.url + "/"))
-  const label = t(item.title)
+  const label = t(item.title as never)
 
   return (
     <Collapsible asChild defaultOpen={isChildActive} className="group/collapsible">
@@ -97,7 +97,7 @@ function NavMenuCollapsible({ item, pathname, t }: { item: NavCollapsible; pathn
                   <SidebarMenuSubButton asChild isActive={isActive}>
                     <Link href={sub.url as never} onClick={() => setOpenMobile(false)}>
                       {sub.icon && <sub.icon />}
-                      <span>{t(sub.title)}</span>
+                      <span>{t(sub.title as never)}</span>
                       {sub.badge && <Badge className="ml-auto rounded-full px-1 py-0 text-xs">{sub.badge}</Badge>}
                     </Link>
                   </SidebarMenuSubButton>
@@ -113,7 +113,7 @@ function NavMenuCollapsible({ item, pathname, t }: { item: NavCollapsible; pathn
 
 function NavMenuCollapsedDropdown({ item, pathname, t }: { item: NavCollapsible; pathname: string; t: T }) {
   const isActive = item.items.some((sub) => pathname === sub.url || pathname.startsWith(sub.url + "/"))
-  const label = t(item.title)
+  const label = t(item.title as never)
   return (
     <SidebarMenuItem>
       <DropdownMenu>
@@ -131,7 +131,7 @@ function NavMenuCollapsedDropdown({ item, pathname, t }: { item: NavCollapsible;
             <DropdownMenuItem key={sub.title} asChild>
               <Link href={sub.url as never}>
                 {sub.icon && <sub.icon />}
-                <span>{t(sub.title)}</span>
+                <span>{t(sub.title as never)}</span>
               </Link>
             </DropdownMenuItem>
           ))}

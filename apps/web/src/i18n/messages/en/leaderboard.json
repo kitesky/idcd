@@ -2,39 +2,43 @@
   "meta": {
     "title": "Global CDN & Network Performance Leaderboard — idcd",
     "description": "Real-probe-node CDN performance leaderboard covering Cloudflare, Akamai, Tencent Cloud, Aliyun, and more — global latency, China latency, and availability data, updated monthly.",
-    "keywords": "CDN speed test, global latency, network performance ranking, CDN leaderboard, Cloudflare latency, Aliyun CDN, Tencent Cloud CDN, P50 latency, network diagnostics, TTFB"
+    "keywords": "CDN speed test, global latency, network performance ranking, CDN leaderboard, Cloudflare latency, Aliyun CDN, Tencent Cloud CDN, P50 latency, network diagnostics, TTFB",
+    "ogDescription": "Monthly CDN performance leaderboard based on real probe nodes, covering major CDN providers in China and overseas."
   },
   "title": "Global CDN & Network Performance Leaderboard",
-  "subtitle": "real probe nodes, updated monthly",
-  "dataCycle": "Data period",
-  "updateFreq": "Probed every 5 minutes, aggregated monthly",
+  "subtitle": "Based on {nodeCount} real probe nodes, updated monthly",
+  "monthLabel": "{month}/{year}",
+  "dataCycleLine": "Data period: {monthLabel}  ·  Update frequency: probed every 5 minutes, aggregated monthly",
   "tabs": {
     "cdn": "CDN Response Speed",
     "regions": "Global Node Latency",
     "availability": "Availability Stats"
   },
   "table": {
-    "rank": "Rank",
     "provider": "Provider",
     "globalP50": "Global P50",
     "chinaP50": "China P50",
     "overseasP50": "Overseas P50",
     "trend": "24h Trend",
-    "change": "Change",
-    "isp": "ISP / Carrier",
-    "region": "Region",
-    "availability30d": "30-Day Uptime",
-    "sla": "SLA Target",
-    "datacenterCount": "PoPs"
+    "change": "Change"
   },
   "info": {
     "cdn": "Data collected across all probes in month {month}, sorted by global P50 ascending. P50 is the median response time — lower is better.",
     "regions": "Average latency for top 5 countries per continent, sourced from distributed real-node probe data, updated monthly.",
     "availability": "30-day availability statistics per ISP/carrier, based on health checks running every 5 minutes."
   },
+  "rankHeader": "Rank",
   "flat": "Unchanged",
+  "sampleCount": "Sample count: {count}",
+  "loadFailedTitle": "Load Failed",
+  "loadFailedDesc": "Failed to load data, please try again later",
+  "emptyTitle": "Data collection in progress",
+  "emptyCdn": "CDN leaderboard will be displayed once enough node data is collected, expected within 30 days",
+  "emptyRegions": "Global node latency data will be displayed once enough probe records are collected, expected within 30 days",
+  "emptyAvailability": "Availability statistics will be displayed once enough probe records are collected, expected within 30 days",
   "disclaimer": {
     "title": "Data Disclosure",
+    "methodologyLabel": "Methodology: ",
     "methodology": "All latency data is collected from idcd's global real probe nodes using HTTP GET requests to each CDN's standard benchmark endpoint, measuring TCP-handshake-to-first-byte time (TTFB). Each node probes every 5 minutes; monthly figures use P50 (median) to eliminate jitter. Availability is derived from DNS resolution success rate and TCP reachability.",
     "notice": "This leaderboard reflects network performance measured from idcd probe nodes to CDN points of presence. It does not constitute a commercial recommendation nor imply any partnership with CDN vendors. Actual performance may vary by region and workload."
   }

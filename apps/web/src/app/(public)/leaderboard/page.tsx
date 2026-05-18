@@ -1,35 +1,36 @@
-import { Metadata } from "next"
+import type { Metadata } from "next"
 import { LeaderboardClient } from "./leaderboard-client"
 import { NODE_COUNT, getCurrentMonthLabel } from "./leaderboard-data"
-import { generateAlternates } from "@/lib/seo"
+import { getT } from "@/i18n/getT"
+import { getLocale } from "@/i18n/locale"
+import { generateAlternates, localizedUrl } from "@/lib/seo"
 
-export const metadata: Metadata = {
-  title: "全球 CDN & 网络性能排行榜 - idcd",
-  description:
-    "基于真实探测节点的 CDN 测速排行榜，涵盖 Cloudflare、Akamai、腾讯云、阿里云等主流 CDN 全球延迟、中国大陆延迟及可用性数据，每月更新。",
-  keywords: [
-    "CDN 测速",
-    "全球延迟",
-    "网络性能排行",
-    "CDN 排行榜",
-    "Cloudflare 延迟",
-    "阿里云 CDN",
-    "腾讯云 CDN",
-    "P50 延迟",
-    "网络诊断",
-    "TTFB",
-  ],
-  alternates: generateAlternates('/leaderboard'),
-  openGraph: {
-    title: "全球 CDN & 网络性能排行榜 - idcd",
-    description:
-      "基于真实探测节点的月度 CDN 性能排行榜，覆盖中国大陆与海外主流 CDN 提供商。",
-    url: "https://idcd.com/leaderboard",
-  },
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale()
+  const t = await getT("leaderboard", locale)
+  const title = t("meta.title")
+  const description = t("meta.description")
+  const keywords = t("meta.keywords")
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean)
+  return {
+    title,
+    description,
+    keywords,
+    alternates: generateAlternates("/leaderboard", locale),
+    openGraph: {
+      title,
+      description: t("meta.ogDescription"),
+      url: localizedUrl("/leaderboard", locale),
+    },
+  }
 }
 
-export default function LeaderboardPage() {
-  const monthLabel = getCurrentMonthLabel()
+export default async function LeaderboardPage() {
+  const locale = await getLocale()
+  const t = await getT("leaderboard", locale)
+  const monthLabel = getCurrentMonthLabel(locale, t("monthLabel"))
 
   return (
     <main className="min-h-screen bg-background">
@@ -37,15 +38,13 @@ export default function LeaderboardPage() {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold tracking-tight">
-            全球 CDN &amp; 网络性能排行榜
+            {t("title")}
           </h1>
           <p className="mt-2 text-muted-foreground">
-            基于{" "}
-            <span className="font-medium text-foreground">{NODE_COUNT}</span>{" "}
-            个真实探测节点，月度更新
+            {t("subtitle", { nodeCount: NODE_COUNT })}
           </p>
           <p className="mt-1 text-sm text-muted-foreground">
-            数据周期：{monthLabel} &nbsp;·&nbsp; 更新频率：每 5 分钟探测一次，月底汇总
+            {t("dataCycleLine", { monthLabel })}
           </p>
         </div>
 

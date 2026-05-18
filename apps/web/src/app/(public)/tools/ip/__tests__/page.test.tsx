@@ -5,6 +5,6 @@ import IpPage from "../page"
 describe("IpPage", () => {
   it("renders IP tool heading", () => {
     render(<IpPage />)
-    expect(screen.getByText("IP 地址查询")).toBeTruthy()
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy()
   })
 })

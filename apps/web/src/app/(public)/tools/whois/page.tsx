@@ -1,9 +1,18 @@
 import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
+import { getLocale } from "@/i18n/locale"
+import { buildLocalizedMetadata } from "@/lib/seo"
 import WhoisInfoClient from "./whois-info-client"
 
-export const metadata: Metadata = {
-  title: "WHOIS 查询 | idcd 工具",
-  description: "查询域名的注册信息、注册商、注册日期、到期日期和名称服务器",
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale()
+  const t = await getT("tools", locale)
+  return buildLocalizedMetadata({
+    path: "/tools/whois",
+    locale,
+    title: t("whois.meta.title"),
+    description: t("whois.meta.description"),
+  })
 }
 
 export default function WhoisPage() {

@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, type KeyboardEvent, type ReactNode } from "react"
+import { useTranslations } from "next-intl"
 import {
   Card,
   CardContent,
@@ -44,13 +45,17 @@ export function ToolQueryLayout<T>({
   inputLabel,
   inputPlaceholder,
   inputId,
-  actionLabel = "查询",
-  loadingLabel = "查询中...",
+  actionLabel,
+  loadingLabel,
   onQuery,
   renderResult,
   tips,
   extraFields,
 }: ToolQueryLayoutProps<T>) {
+  const t = useTranslations("tools._probe")
+  const actionText = actionLabel ?? t("query")
+  const loadingText = loadingLabel ?? t("querying")
+
   const [query, setQuery] = useState("")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<T | null>(null)
@@ -66,11 +71,11 @@ export function ToolQueryLayout<T>({
       const data = await onQuery(q)
       setResult(data)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "查询失败")
+      setError(err instanceof Error ? err.message : t("queryFailed"))
     } finally {
       setLoading(false)
     }
-  }, [query, loading, onQuery])
+  }, [query, loading, onQuery, t])
 
   const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter" && !loading) handleSubmit()
@@ -85,7 +90,7 @@ export function ToolQueryLayout<T>({
 
       <Card>
         <CardHeader>
-          <CardTitle>查询配置</CardTitle>
+          <CardTitle>{t("queryParams")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-2">
@@ -105,7 +110,7 @@ export function ToolQueryLayout<T>({
                   disabled={!query.trim() || loading}
                   className="min-w-[100px]"
                 >
-                  {loading ? loadingLabel : actionLabel}
+                  {loading ? loadingText : actionText}
                 </Button>
               )}
             </div>
@@ -117,7 +122,7 @@ export function ToolQueryLayout<T>({
               disabled={!query.trim() || loading}
               className="w-full"
             >
-              {loading ? loadingLabel : actionLabel}
+              {loading ? loadingText : actionText}
             </Button>
           )}
         </CardContent>
@@ -133,7 +138,7 @@ export function ToolQueryLayout<T>({
 
       <Card>
         <CardHeader>
-          <CardTitle>使用说明</CardTitle>
+          <CardTitle>{t("usage")}</CardTitle>
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           {tips}

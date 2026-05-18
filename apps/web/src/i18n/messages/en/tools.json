@@ -41,17 +41,29 @@
     "probe": {
       "label": "Domain",
       "placeholder": "example.com",
-      "placeholderRows": [
-        { "label": "Domain", "value": "{target}" },
-        { "label": "Cert status", "value": "Valid" },
-        { "label": "Issuer", "value": "Let's Encrypt" },
-        { "label": "Protocol", "value": "TLS 1.3" }
-      ],
+      "actionLabel": "Check",
+      "loadingLabel": "Checking...",
       "helpTips": [
-        "Check HTTPS certificate validity and security configuration",
-        "Supports IPv4 and IPv6 dual stack",
-        "Displays certificate chain integrity"
-      ]
+        "Domain: enter a bare domain without https:// (e.g. example.com)",
+        "Checks HTTPS certificate validity and expiry",
+        "Shows certificate issuer and validity period"
+      ],
+      "result": {
+        "title": "Certificate info",
+        "expiresInDays": "Expires in {days} days",
+        "expired": "Expired",
+        "rows": {
+          "domain": "Domain",
+          "issuer": "Issuer",
+          "validFrom": "Valid from",
+          "validTo": "Valid to",
+          "certStatus": "Cert status"
+        },
+        "status": {
+          "valid": "Valid",
+          "invalid": "Invalid"
+        }
+      }
     }
   },
   "ip": {
@@ -62,20 +74,27 @@
       "description": "Look up any IP address for geolocation, ASN, ISP, and organization data. Supports IPv4 and IPv6."
     },
     "probe": {
-      "label": "IP address",
-      "placeholder": "1.1.1.1 or 2606:4700:4700::1111",
-      "placeholderRows": [
-        { "label": "IP", "value": "{target}" },
-        { "label": "Country/Region", "value": "United States" },
-        { "label": "City", "value": "San Francisco" },
-        { "label": "ISP", "value": "Cloudflare, Inc." },
-        { "label": "ASN", "value": "AS13335" }
-      ],
+      "label": "IP address or domain",
+      "placeholder": "1.1.1.1 or example.com",
       "helpTips": [
-        "Enter an IPv4 or IPv6 address",
-        "Shows geolocation and ISP information",
-        "Detects private IP addresses"
-      ]
+        "Supported formats: IPv4 (1.1.1.1), IPv6 (2606::1), domain (example.com)",
+        "Shows geolocation, ASN, and ISP information",
+        "Flags datacenter IPs and proxy/VPN exits"
+      ],
+      "result": {
+        "title": "Lookup result",
+        "rows": {
+          "ip": "IP",
+          "country": "Country/Region",
+          "city": "City",
+          "asn": "ASN",
+          "isp": "ISP"
+        },
+        "badge": {
+          "datacenter": "Datacenter",
+          "proxy": "Proxy/VPN"
+        }
+      }
     }
   },
   "whois": {
@@ -88,19 +107,22 @@
     "probe": {
       "label": "Domain",
       "placeholder": "example.com",
-      "placeholderRows": [
-        { "label": "Domain", "value": "{target}" },
-        { "label": "Registrar", "value": "Cloudflare, Inc." },
-        { "label": "Registered", "value": "2010-01-01" },
-        { "label": "Expires", "value": "2026-01-01" },
-        { "label": "Name servers", "value": "ns1.cloudflare.com" },
-        { "label": "Status", "value": "clientTransferProhibited" }
-      ],
       "helpTips": [
-        "Query domain registrar and registrant information",
-        "Shows registration and expiry dates",
-        "Data sourced from ICANN WHOIS"
-      ]
+        "Domain: enter a bare domain without https:// (e.g. example.com)",
+        "Shows registrar, registration date, expiry date, and NS records",
+        "WHOIS data for some TLDs may be limited"
+      ],
+      "result": {
+        "title": "WHOIS info",
+        "rows": {
+          "domain": "Domain",
+          "registrar": "Registrar",
+          "createdAt": "Registered",
+          "expiresAt": "Expires",
+          "nameServers": "Name servers",
+          "note": "Note"
+        }
+      }
     }
   },
   "icp": {
@@ -112,19 +134,24 @@
     },
     "probe": {
       "label": "Domain",
-      "placeholder": "example.com.cn",
-      "placeholderRows": [
-        { "label": "Domain", "value": "{target}" },
-        { "label": "Filing No.", "value": "京ICP备XXXXXXXX号" },
-        { "label": "Filing type", "value": "Enterprise" },
-        { "label": "Sponsor", "value": "Sample Tech Co., Ltd." },
-        { "label": "Status", "value": "Active" }
-      ],
+      "placeholder": "baidu.com",
       "helpTips": [
-        "Query China ICP filing information for a domain",
-        "Supports .cn / .com / .net domains",
-        "Data sourced from MIIT"
-      ]
+        "Domain: enter a bare domain without https:// (e.g. baidu.com)",
+        "Queries the MIIT ICP/IP Address/Domain Information Filing System",
+        "Websites providing Internet services in mainland China must complete ICP filing"
+      ],
+      "result": {
+        "title": "ICP filing info",
+        "noFiling": "Not filed",
+        "rows": {
+          "domain": "Domain",
+          "icpNumber": "Filing No.",
+          "company": "Sponsor",
+          "type": "Filing type",
+          "filedAt": "Filed on",
+          "note": "Note"
+        }
+      }
     }
   },
   "diagnose": {
@@ -642,7 +669,9 @@
     "results": "Results",
     "sampleData": "Sample data",
     "runQuery": "Run query",
+    "query": "Query",
     "querying": "Querying…",
+    "queryFailed": "Query failed",
     "copyLink": "Copy link",
     "usage": "Usage",
     "status": "Status",
@@ -653,29 +682,14 @@
     "fallbackTip1": "Probe requests run on globally distributed nodes",
     "fallbackTip2": "Results are for reference only",
     "defaults": {
-      "label": "Target",
-      "placeholder": "example.com"
+      "label": "Target"
     }
   },
   "_ui": {
-    "run": "Run Check",
-    "result": "Results",
     "loading": "Checking...",
-    "copy": "Copy",
     "copied": "Copied",
-    "export": "Export",
-    "share": "Share",
-    "refresh": "Refresh",
-    "clear": "Clear",
     "input": "Input",
-    "output": "Output",
     "submit": "Submit",
-    "selectNode": "Select Node",
-    "allNodes": "All Nodes",
-    "globalAvg": "Global Avg",
-    "nodeCount": "nodes",
-    "latency": "Latency",
-    "packetLoss": "Packet Loss",
     "status": "Status",
     "online": "Online",
     "offline": "Offline",
@@ -683,15 +697,8 @@
     "error": "Error",
     "success": "Success",
     "noData": "No data",
-    "probeFrom": "Probe from",
     "target": "Target",
-    "protocol": "Protocol",
     "port": "Port",
-    "ttl": "TTL",
-    "hops": "Hops",
-    "responseTime": "Response Time",
-    "statusCode": "Status Code",
-    "encoding": "Encoding",
     "decode": "Decode",
     "encode": "Encode"
   }

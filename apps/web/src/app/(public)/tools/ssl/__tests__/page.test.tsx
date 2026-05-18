@@ -5,6 +5,6 @@ import SslPage from "../page"
 describe("SslPage", () => {
   it("renders SSL tool heading", () => {
     render(<SslPage />)
-    expect(screen.getByText("SSL 证书检测")).toBeTruthy()
+    expect(screen.getByRole("heading", { level: 1 })).toBeTruthy()
   })
 })

@@ -22,22 +22,52 @@ import cnDashboard from '@/i18n/messages/cn/dashboard.json'
 import cnStatus from '@/i18n/messages/cn/status.json'
 import cnAdmin from '@/i18n/messages/cn/admin.json'
 
-type NestedRecord = { [key: string]: string | NestedRecord }
+type NestedValue = string | NestedRecord | NestedValue[]
+type NestedRecord = { [key: string]: NestedValue }
 
-function makeTranslator(messages: NestedRecord) {
-  return function t(key: string, params?: Record<string, string | number>): string {
-    const parts = key.split('.')
-    let value: string | NestedRecord | undefined = messages
-    for (const part of parts) {
-      if (typeof value !== 'object' || value === null) return key
-      value = (value as NestedRecord)[part]
+function lookupPath(messages: NestedRecord, key: string): NestedValue | undefined {
+  const parts = key.split('.')
+  let value: NestedValue | undefined = messages
+  for (const part of parts) {
+    if (value === null || value === undefined) return undefined
+    if (Array.isArray(value)) {
+      const idx = Number(part)
+      if (!Number.isInteger(idx)) return undefined
+      value = value[idx]
+      continue
     }
+    if (typeof value !== 'object') return undefined
+    value = (value as NestedRecord)[part]
+  }
+  return value
+}
+
+interface TranslatorFn {
+  (key: string, params?: Record<string, string | number>): string
+  raw: (key: string) => NestedValue | undefined
+}
+
+function makeTranslator(messages: NestedRecord): TranslatorFn {
+  const t = function (key: string, params?: Record<string, string | number>): string {
+    const value = lookupPath(messages, key)
     if (typeof value !== 'string') return key
     if (params) {
       return value.replace(/\{(\w+)\}/g, (_, k) => String(params[k] ?? `{${k}}`))
     }
     return value
-  }
+  } as TranslatorFn
+  t.raw = (key: string) => lookupPath(messages, key)
+  return t
+}
+
+function resolveNamespace(namespace?: string): NestedRecord {
+  if (!namespace) return {}
+  const [top, ...rest] = namespace.split('.')
+  const root = top && ALL_MESSAGES[top]
+  if (!root) return {}
+  if (rest.length === 0) return root
+  const sub = lookupPath(root, rest.join('.'))
+  return sub && typeof sub === 'object' && !Array.isArray(sub) ? (sub as NestedRecord) : {}
 }
 
 const ALL_MESSAGES: Record<string, NestedRecord> = {
@@ -60,10 +90,7 @@ const ALL_MESSAGES: Record<string, NestedRecord> = {
 }
 
 vi.mock('next-intl', () => ({
-  useTranslations: (namespace?: string) => {
-    const ns = namespace && ALL_MESSAGES[namespace] ? ALL_MESSAGES[namespace] : {}
-    return makeTranslator(ns as NestedRecord)
-  },
+  useTranslations: (namespace?: string) => makeTranslator(resolveNamespace(namespace)),
   useLocale: () => 'cn',
   useNow: () => new Date(),
   useTimeZone: () => 'Asia/Shanghai',
@@ -71,10 +98,8 @@ vi.mock('next-intl', () => ({
 }))
 
 vi.mock('next-intl/server', () => ({
-  getTranslations: async ({ namespace }: { locale?: string; namespace?: string } = {}) => {
-    const ns = namespace && ALL_MESSAGES[namespace] ? ALL_MESSAGES[namespace] : {}
-    return makeTranslator(ns as NestedRecord)
-  },
+  getTranslations: async ({ namespace }: { locale?: string; namespace?: string } = {}) =>
+    makeTranslator(resolveNamespace(namespace)),
   getLocale: async () => 'cn',
   getMessages: async () => ALL_MESSAGES,
   getRequestConfig: (fn: unknown) => fn,

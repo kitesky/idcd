@@ -1,59 +1,71 @@
 "use client"
 
+import { useTranslations } from "next-intl"
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
 import { ToolQueryLayout } from "@/components/tools/ToolQueryLayout"
 import { getSSLInfo, type SSLInfo } from "@/lib/api"
 
-function SslResult({ result }: { result: SSLInfo }) {
-  const rows: [string, string][] = [
-    ["域名", result.domain],
-    ["颁发机构", result.issuer],
-    ["有效期起", result.valid_from],
-    ["有效期至", result.valid_to],
-    ["证书状态", result.is_valid ? "有效" : "无效"],
-  ]
-
-  return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <CardTitle>证书信息</CardTitle>
-          <Badge variant={result.days_remaining > 30 ? "default" : "destructive"}>
-            {result.days_remaining > 0
-              ? `${result.days_remaining} 天后到期`
-              : "已过期"}
-          </Badge>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3 text-sm">
-        {rows.map(([k, v]) => (
-          <div key={k} className="flex gap-2">
-            <span className="text-muted-foreground w-24 shrink-0 font-medium">{k}</span>
-            <span className="font-mono break-all">{v ?? "-"}</span>
-          </div>
-        ))}
-      </CardContent>
-    </Card>
-  )
-}
-
 export default function SslInfoClient() {
+  const t = useTranslations("tools.ssl")
+  const helpTips = t.raw("probe.helpTips") as string[]
+
   return (
     <ToolQueryLayout<SSLInfo>
-      title="SSL 证书检测"
-      description="检查域名的 SSL 证书有效性、颁发机构、到期日期和 SAN 域名列表"
-      inputLabel="域名"
-      inputPlaceholder="example.com"
+      title={t("title")}
+      description={t("description")}
+      inputLabel={t("probe.label")}
+      inputPlaceholder={t("probe.placeholder")}
       inputId="ssl-query"
-      actionLabel="检测"
-      loadingLabel="检测中..."
+      actionLabel={t("probe.actionLabel")}
+      loadingLabel={t("probe.loadingLabel")}
       onQuery={getSSLInfo}
-      renderResult={(r) => <SslResult result={r} />}
+      renderResult={(result) => {
+        const rows: [string, string][] = [
+          [t("probe.result.rows.domain"), result.domain],
+          [t("probe.result.rows.issuer"), result.issuer],
+          [t("probe.result.rows.validFrom"), result.valid_from],
+          [t("probe.result.rows.validTo"), result.valid_to],
+          [
+            t("probe.result.rows.certStatus"),
+            result.is_valid
+              ? t("probe.result.status.valid")
+              : t("probe.result.status.invalid"),
+          ],
+        ]
+        return (
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle>{t("probe.result.title")}</CardTitle>
+                <Badge
+                  variant={result.days_remaining > 30 ? "default" : "destructive"}
+                >
+                  {result.days_remaining > 0
+                    ? t("probe.result.expiresInDays", {
+                        days: result.days_remaining,
+                      })
+                    : t("probe.result.expired")}
+                </Badge>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm">
+              {rows.map(([k, v]) => (
+                <div key={k} className="flex gap-2">
+                  <span className="text-muted-foreground w-24 shrink-0 font-medium">
+                    {k}
+                  </span>
+                  <span className="font-mono break-all">{v ?? "-"}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )
+      }}
       tips={
         <>
-          <p>• <strong>域名</strong>：输入不含 https:// 的裸域名（如 example.com）</p>
-          <p>• 检测 HTTPS 证书有效性和到期时间</p>
-          <p>• 显示证书颁发机构和有效期信息</p>
+          {helpTips.map((tip, i) => (
+            <p key={i}>• {tip}</p>
+          ))}
         </>
       }
     />

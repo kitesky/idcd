@@ -135,9 +135,14 @@ function templateToRegex(tpl: string): string {
 }
 
 /**
- * Scan template-literal calls with `${}` interpolation. Same scope rules as
- * `scanFile`: events are sorted by position and binding state is tracked.
- * Adds dynamic regex patterns to `out`.
+ * Scan template-literal calls with `${}` interpolation, plus `t.raw(...)` calls
+ * (which return whole sub-trees, so they cover every descendant key). Same
+ * scope rules as `scanFile`: events are sorted by source position and binding
+ * state is tracked. Adds dynamic regex patterns to `out`.
+ *
+ * For `t.raw('foo.bar')` or `t.raw(\`foo.${x}\`)`, the resulting regex matches
+ * the key itself **and** any descendant key — `t.raw` returns the entire JSON
+ * sub-tree, so every key under that prefix is implicitly referenced.
  */
 export function scanDynamicFile(
   content: string,
@@ -145,7 +150,7 @@ export function scanDynamicFile(
 ): void {
   type Event =
     | { type: 'bind'; pos: number; varName: string; nsPath: string[] }
-    | { type: 'tpl'; pos: number; varName: string; tpl: string }
+    | { type: 'tpl'; pos: number; varName: string; tpl: string; coversChildren: boolean }
   const events: Event[] = []
   const candidateNames = new Set<string>()
 
@@ -160,12 +165,23 @@ export function scanDynamicFile(
   }
 
   for (const name of candidateNames) {
-    // Template-literal calls only; require at least one `${...}` interpolation.
+    // Template-literal `t(`...`)` — only with `${...}` interpolation.
     const tplRe = new RegExp(`\\b${name}\\(\\s*\`([^\`]+)\``, 'g')
     for (const m of content.matchAll(tplRe)) {
       const tpl = m[1]!
       if (!tpl.includes('${')) continue
-      events.push({ type: 'tpl', pos: m.index ?? 0, varName: name, tpl })
+      events.push({ type: 'tpl', pos: m.index ?? 0, varName: name, tpl, coversChildren: false })
+    }
+    // `t.raw('lit')` or `t.raw(\`tpl\`)` — covers every descendant key.
+    const rawRe = new RegExp(`\\b${name}\\.raw\\(\\s*(['"\`])([^'"\`]+?)\\1`, 'g')
+    for (const m of content.matchAll(rawRe)) {
+      events.push({
+        type: 'tpl',
+        pos: m.index ?? 0,
+        varName: name,
+        tpl: m[2]!,
+        coversChildren: true,
+      })
     }
   }
 
@@ -197,7 +213,8 @@ export function scanDynamicFile(
       topNs = prefix
       innerPattern = tplRegex.slice(firstDot + 2)
     }
-    out.push({ topNs, regex: new RegExp(`^${innerPattern}$`) })
+    const childrenSuffix = ev.coversChildren ? '(?:\\.[^.]+)*' : ''
+    out.push({ topNs, regex: new RegExp(`^${innerPattern}${childrenSuffix}$`) })
   }
 }
 

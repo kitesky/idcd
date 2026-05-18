@@ -57,12 +57,12 @@ describe('tools namespace', () => {
     }
   })
 
-  it('_ui.run is correct in cn', () => {
-    expect((cnTools as unknown as Record<string, Record<string, string>>)._ui?.run).toBe('开始检测')
+  it('_ui.loading is correct in cn', () => {
+    expect((cnTools as unknown as Record<string, Record<string, string>>)._ui?.loading).toBe('检测中...')
   })
 
-  it('_ui.run is correct in en', () => {
-    expect((enTools as unknown as Record<string, Record<string, string>>)._ui?.run).toBe('Run Check')
+  it('_ui.loading is correct in en', () => {
+    expect((enTools as unknown as Record<string, Record<string, string>>)._ui?.loading).toBe('Checking...')
   })
 })
 

@@ -4,8 +4,6 @@
     "description": "创建和管理对外公开的服务状态页",
     "create": "新建状态页",
     "list": "状态页列表",
-    "public": "公开",
-    "private": "私有",
     "domain": "自定义域名",
     "monitors": "关联监控",
     "empty": "暂无状态页",

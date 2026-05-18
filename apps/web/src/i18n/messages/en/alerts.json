@@ -110,7 +110,6 @@
     },
     "condition": {
       "down": "Node down",
-      "latency": "Latency exceeds threshold",
       "recovery": "Recovery"
     },
     "form": {
@@ -191,15 +190,11 @@
     }
   },
   "confirm": {
-    "deletePolicy": "Confirm delete policy",
-    "deleteChannel": "Confirm delete channel",
     "delete": "Delete",
     "cancel": "Cancel"
   },
   "ack": {
     "label": "Acknowledge Alert",
-    "ackNow": "Acknowledge Now",
-    "ackNote": "Acknowledgement note (optional)",
     "success": "Alert acknowledged",
     "failed": "Acknowledge failed, please retry"
   },

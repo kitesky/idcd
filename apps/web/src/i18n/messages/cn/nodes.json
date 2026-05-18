@@ -13,9 +13,18 @@
     "pageDesc": "将您的服务器加入 idcd 全球监控网络，每次心跳获得积分，可兑换 API 调用额度和监控套餐。",
     "badge": "社区节点计划",
     "steps": {
-      "1": { "title": "提交申请", "desc": "填写服务器信息和申请理由" },
-      "2": { "title": "14 天观察期", "desc": "系统自动检测节点稳定性" },
-      "3": { "title": "加入全球节点池", "desc": "通过审核后正式成为节点" }
+      "1": {
+        "title": "提交申请",
+        "desc": "填写服务器信息和申请理由"
+      },
+      "2": {
+        "title": "14 天观察期",
+        "desc": "系统自动检测节点稳定性"
+      },
+      "3": {
+        "title": "加入全球节点池",
+        "desc": "通过审核后正式成为节点"
+      }
     },
     "form": {
       "title": "提交节点申请",
@@ -52,12 +61,8 @@
   },
   "detail": {
     "title": "节点详情",
-    "location": "位置",
     "isp": "运营商",
     "status": "状态",
-    "latency": "延迟",
-    "uptime": "可用率",
-    "since": "加入时间",
     "backToList": "返回节点列表",
     "notFound": "节点 {id} 不存在或已下线。",
     "loadError": "暂时无法加载节点诊断数据，请稍后重试。",
@@ -92,7 +97,6 @@
     "region": "地区",
     "isp": "运营商",
     "status": "状态",
-    "latency": "延迟",
     "nodeId": "节点 ID",
     "asn": "ASN",
     "carrier": "运营商",
@@ -113,10 +117,6 @@
     "allCountries": "所有国家/地区",
     "allCarriers": "所有运营商",
     "allStatus": "所有状态",
-    "asia": "亚洲",
-    "europe": "欧洲",
-    "americas": "美洲",
-    "oceania": "大洋洲",
     "search": "搜索节点、ASN、IP...",
     "selectCountry": "选择国家/地区",
     "selectCarrier": "选择运营商",
@@ -124,7 +124,6 @@
   },
   "map": {
     "title": "节点分布地图",
-    "zoom": "缩放",
     "onlineNodes": "在线节点",
     "offlineNodes": "离线节点"
   },

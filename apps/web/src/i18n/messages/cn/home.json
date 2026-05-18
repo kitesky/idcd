@@ -2,7 +2,6 @@
   "hero": {
     "title": "全球网络诊断平台",
     "subtitle": "100+ 真实探测节点，多地拨测、实时监控、一键诊断",
-    "searchPlaceholder": "输入域名、IP 或工具名...",
     "cta": "立即检测",
     "detecting": "检测中...",
     "advancedConfig": "高级配置",

@@ -78,7 +78,6 @@
   },
   "bulk": {
     "selected": "Selected",
-    "selectedCount": "{count}",
     "monitors": "monitors",
     "pause": "Pause",
     "resume": "Resume",
@@ -148,7 +147,6 @@
   "edit": {
     "title": "Edit Monitor",
     "name": "Name",
-    "targetUrl": "Target URL",
     "interval": "Check Interval (seconds)",
     "advancedConfig": "Advanced Options",
     "timeout": "Timeout (ms)",

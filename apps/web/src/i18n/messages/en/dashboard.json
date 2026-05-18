@@ -8,7 +8,6 @@
     "uptime7d": "7-day Avg Uptime",
     "activeAlerts": "Open Alerts",
     "statusPages": "Status Pages",
-    "uptime": "Overall Uptime",
     "incidents": "Incidents"
   },
   "quickLinks": {
@@ -42,7 +41,6 @@
   "recentAlerts": "Recent Alerts",
   "viewAll": "View all",
   "noAlerts": "No alerts in the last 7 days",
-  "allNormal": "All monitors are healthy",
   "pinnedMonitors": {
     "title": "Pinned Monitors",
     "add": "Add",
@@ -60,7 +58,6 @@
     "down": "Down",
     "paused": "Paused"
   },
-  "monitorStatusTitle": "Monitor Status",
   "incidents": {
     "title": "Incident Management",
     "create": "Create Incident",
@@ -70,15 +67,11 @@
       "startedAt": "Started At"
     },
     "status": {
-      "open": "In Progress",
       "resolved": "Resolved",
-      "monitoring": "Monitoring",
       "firing": "Firing",
       "acknowledged": "Acknowledged"
     },
     "severity": {
-      "critical": "Critical",
-      "high": "High",
       "medium": "Medium",
       "low": "Low"
     }

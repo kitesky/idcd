@@ -2,7 +2,6 @@
   "hero": {
     "title": "Global Network Diagnostics Platform",
     "subtitle": "100+ real probe nodes — multi-region checks, real-time monitoring, one-click diagnostics",
-    "searchPlaceholder": "Enter domain, IP or tool name...",
     "cta": "Run Check",
     "detecting": "Checking...",
     "advancedConfig": "Advanced config",

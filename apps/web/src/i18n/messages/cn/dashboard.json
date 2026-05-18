@@ -8,7 +8,6 @@
     "uptime7d": "7 日平均可用率",
     "activeAlerts": "未解决告警",
     "statusPages": "状态页数量",
-    "uptime": "整体可用率",
     "incidents": "事件数"
   },
   "quickLinks": {
@@ -42,7 +41,6 @@
   "recentAlerts": "近期告警",
   "viewAll": "查看全部",
   "noAlerts": "最近 7 天无告警",
-  "allNormal": "所有监控正常",
   "pinnedMonitors": {
     "title": "置顶监控",
     "add": "添加",
@@ -60,7 +58,6 @@
     "down": "离线",
     "paused": "暂停"
   },
-  "monitorStatusTitle": "监控状态",
   "incidents": {
     "title": "事件管理",
     "create": "创建事件",
@@ -70,15 +67,11 @@
       "startedAt": "开始时间"
     },
     "status": {
-      "open": "处理中",
       "resolved": "已解决",
-      "monitoring": "观察中",
       "firing": "告警中",
       "acknowledged": "已确认"
     },
     "severity": {
-      "critical": "严重",
-      "high": "高",
       "medium": "中",
       "low": "低"
     }

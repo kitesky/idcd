@@ -110,7 +110,6 @@
     },
     "condition": {
       "down": "节点下线",
-      "latency": "延迟超阈值",
       "recovery": "恢复正常"
     },
     "form": {
@@ -191,15 +190,11 @@
     }
   },
   "confirm": {
-    "deletePolicy": "确认删除策略",
-    "deleteChannel": "确认删除渠道",
     "delete": "删除",
     "cancel": "取消"
   },
   "ack": {
     "label": "确认告警",
-    "ackNow": "立即确认",
-    "ackNote": "确认备注（可选）",
     "success": "告警已确认",
     "failed": "确认失败，请重试"
   },

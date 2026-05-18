@@ -4,8 +4,6 @@
     "description": "Create and manage publicly visible service status pages",
     "create": "New Status Page",
     "list": "Status Page List",
-    "public": "Public",
-    "private": "Private",
     "domain": "Custom Domain",
     "monitors": "Linked Monitors",
     "empty": "No status pages yet",

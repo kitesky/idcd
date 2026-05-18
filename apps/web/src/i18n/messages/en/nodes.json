@@ -13,9 +13,18 @@
     "pageDesc": "Add your server to the idcd global monitoring network — earn points with every heartbeat, redeemable for API quota and monitoring plans.",
     "badge": "Community Node Program",
     "steps": {
-      "1": { "title": "Submit Application", "desc": "Fill in server info and your motivation" },
-      "2": { "title": "14-Day Trial Period", "desc": "System automatically checks node stability" },
-      "3": { "title": "Join Global Node Pool", "desc": "Become an official node after approval" }
+      "1": {
+        "title": "Submit Application",
+        "desc": "Fill in server info and your motivation"
+      },
+      "2": {
+        "title": "14-Day Trial Period",
+        "desc": "System automatically checks node stability"
+      },
+      "3": {
+        "title": "Join Global Node Pool",
+        "desc": "Become an official node after approval"
+      }
     },
     "form": {
       "title": "Submit Node Application",
@@ -52,12 +61,8 @@
   },
   "detail": {
     "title": "Node Details",
-    "location": "Location",
     "isp": "ISP",
     "status": "Status",
-    "latency": "Latency",
-    "uptime": "Uptime",
-    "since": "Joined",
     "backToList": "Back to Node List",
     "notFound": "Node {id} does not exist or is offline.",
     "loadError": "Unable to load node diagnostics, please try again later.",
@@ -92,7 +97,6 @@
     "region": "Region",
     "isp": "ISP",
     "status": "Status",
-    "latency": "Latency",
     "nodeId": "Node ID",
     "asn": "ASN",
     "carrier": "Carrier",
@@ -113,10 +117,6 @@
     "allCountries": "All Countries/Regions",
     "allCarriers": "All Carriers",
     "allStatus": "All Status",
-    "asia": "Asia",
-    "europe": "Europe",
-    "americas": "Americas",
-    "oceania": "Oceania",
     "search": "Search nodes, ASN, IP...",
     "selectCountry": "Select country/region",
     "selectCarrier": "Select carrier",
@@ -124,7 +124,6 @@
   },
   "map": {
     "title": "Node Distribution Map",
-    "zoom": "Zoom",
     "onlineNodes": "Online Nodes",
     "offlineNodes": "Offline Nodes"
   },

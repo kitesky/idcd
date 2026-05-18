@@ -78,7 +78,6 @@
   },
   "bulk": {
     "selected": "已选择",
-    "selectedCount": "{count}",
     "monitors": "个监控",
     "pause": "暂停",
     "resume": "恢复",
@@ -148,7 +147,6 @@
   "edit": {
     "title": "编辑监控",
     "name": "名称",
-    "targetUrl": "目标 URL",
     "interval": "检测间隔（秒）",
     "advancedConfig": "配置选项",
     "timeout": "超时（ms）",

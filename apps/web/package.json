@@ -13,6 +13,7 @@
     "lint": "eslint . --max-warnings 0 --cache --cache-location node_modules/.cache/eslint",
     "lint:fix": "eslint . --fix --cache --cache-location node_modules/.cache/eslint",
     "lint:i18n": "tsx ../../scripts/lint-i18n.ts",
+    "i18n:coverage": "tsx ../../scripts/i18n-coverage.ts",
     "type-check": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

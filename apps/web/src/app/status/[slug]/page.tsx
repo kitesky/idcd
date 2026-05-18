@@ -1,6 +1,7 @@
 import { cache } from "react"
 import type { Metadata } from "next"
 import { notFound } from "next/navigation"
+import { getTranslations } from "next-intl/server"
 import { StatusClient } from "./status-client"
 import type { StatusPageData } from "./types"
 
@@ -39,11 +40,14 @@ export async function generateMetadata({ params, searchParams }: Props): Promise
   let slug = rawSlug
   if (customDomain) { const r = await resolveSlugFromCustomDomain(customDomain); if (r) slug = r }
   const data = await fetchStatusPage(slug)
-  if (!data) return { title: "状态页未找到" }
+  const t = await getTranslations("status.page.meta")
+  if (!data) return { title: t("notFoundTitle") }
+  const title = t("titleSuffix", { title: data.title })
+  const description = t("description", { title: data.title })
   return {
-    title: `${data.title} — 状态页`,
-    description: `查看 ${data.title} 的实时服务可用性状态`,
-    openGraph: { title: `${data.title} — 状态页`, description: `查看 ${data.title} 的实时服务可用性状态`, type: "website" },
+    title,
+    description,
+    openGraph: { title, description, type: "website" },
   }
 }
 

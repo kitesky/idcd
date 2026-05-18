@@ -1,6 +1,7 @@
 "use client"
 
 import { useMemo, useState } from "react"
+import { useTranslations } from "next-intl"
 import { CheckCircle2, AlertTriangle, XCircle, ChevronDown, ChevronRight, ExternalLink } from "lucide-react"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -12,26 +13,24 @@ import type { StatusPageData, ServiceStatus, MonitorHistory } from "./types"
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
-const STATUS_LABEL_ZH: Record<ServiceStatus, string> = {
-  operational: "正常", degraded: "降级", outage: "中断", maintenance: "维护中",
-}
+type PageT = ReturnType<typeof useTranslations<"status.page">>
 
 type OverallVariant = "success" | "warning" | "destructive" | "secondary"
 
-function overallStatusConfig(status: ServiceStatus): { label: string; variant: OverallVariant; icon: React.ReactNode; bg: string } {
+function overallStatusConfig(status: ServiceStatus, t: PageT): { label: string; variant: OverallVariant; icon: React.ReactNode; bg: string } {
   switch (status) {
-    case "operational": return { label: "全部服务正常",  variant: "success",     icon: <CheckCircle2 className="h-6 w-6 text-success" />,    bg: "bg-success/15 border-success/30" }
-    case "degraded":    return { label: "部分服务降级",  variant: "warning",     icon: <AlertTriangle className="h-6 w-6 text-warning" />,   bg: "bg-warning/15 border-warning/30" }
-    case "outage":      return { label: "严重服务中断",  variant: "destructive", icon: <XCircle className="h-6 w-6 text-destructive" />,    bg: "bg-destructive/15 border-destructive/30" }
-    case "maintenance": return { label: "计划维护中",    variant: "secondary",   icon: <AlertTriangle className="h-6 w-6 text-info" />,     bg: "bg-info/15 border-info/30" }
+    case "operational": return { label: t("overall.operational"), variant: "success",     icon: <CheckCircle2 className="h-6 w-6 text-success" />,    bg: "bg-success/15 border-success/30" }
+    case "degraded":    return { label: t("overall.degraded"),    variant: "warning",     icon: <AlertTriangle className="h-6 w-6 text-warning" />,   bg: "bg-warning/15 border-warning/30" }
+    case "outage":      return { label: t("overall.outage"),      variant: "destructive", icon: <XCircle className="h-6 w-6 text-destructive" />,    bg: "bg-destructive/15 border-destructive/30" }
+    case "maintenance": return { label: t("overall.maintenance"), variant: "secondary",   icon: <AlertTriangle className="h-6 w-6 text-info" />,     bg: "bg-info/15 border-info/30" }
   }
 }
 
-function monitorDot(status: ServiceStatus) {
+function monitorDot(status: ServiceStatus, statusLabel: string) {
   const colors: Record<ServiceStatus, string> = {
     operational: "bg-success", degraded: "bg-warning", outage: "bg-destructive", maintenance: "bg-info",
   }
-  return <span aria-label={STATUS_LABEL_ZH[status]} role="img" className={cn("inline-block h-2.5 w-2.5 rounded-full", colors[status])} />
+  return <span aria-label={statusLabel} role="img" className={cn("inline-block h-2.5 w-2.5 rounded-full", colors[status])} />
 }
 
 function uptimeDayColor(status: ServiceStatus) {
@@ -67,13 +66,16 @@ function buildAggregateHistory(groups: StatusPageData["groups"]): MonitorHistory
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export function StatusClient({ data }: { data: StatusPageData }) {
+  const t = useTranslations("status.page")
   const [expandedGroups, setExpandedGroups] = useState(() => new Set(data.groups.map(g => g.id)))
   const [email,          setEmail]           = useState("")
   const [subStatus,      setSubStatus]       = useState<"idle" | "loading" | "success" | "error">("idle")
   const [subError,       setSubError]        = useState("")
 
-  const statusCfg = overallStatusConfig(data.overall_status)
+  const statusCfg = overallStatusConfig(data.overall_status, t)
   const aggregateHistory = useMemo(() => buildAggregateHistory(data.groups), [data.groups])
+
+  const statusLabel = (s: ServiceStatus) => t(`statusLabel.${s}`)
 
   function toggleGroup(id: string) {
     setExpandedGroups(prev => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n })
@@ -88,9 +90,9 @@ export function StatusClient({ data }: { data: StatusPageData }) {
         method: "POST", headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ channel_type: "email", endpoint: email.trim(), events: ["incident", "recovery"] }),
       })
-      if (!res.ok) { const j = await res.json().catch(() => ({})); setSubError((j as { error?: { message?: string } })?.error?.message ?? "订阅失败"); setSubStatus("error"); return }
+      if (!res.ok) { const j = await res.json().catch(() => ({})); setSubError((j as { error?: { message?: string } })?.error?.message ?? t("subscribe.failed")); setSubStatus("error"); return }
       setSubStatus("success"); setEmail("")
-    } catch { setSubError("网络错误，请重试"); setSubStatus("error") }
+    } catch { setSubError(t("subscribe.networkError")); setSubStatus("error") }
   }
 
   return (
@@ -124,7 +126,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
                         <span className="text-sm">{monitor.name}</span>
                         <div className="flex items-center gap-2">
                           <span className="text-xs text-muted-foreground">{monitor.uptime_percent.toFixed(2)}%</span>
-                          {monitorDot(monitor.status)}
+                          {monitorDot(monitor.status, statusLabel(monitor.status))}
                         </div>
                       </div>
                     ))}
@@ -137,55 +139,59 @@ export function StatusClient({ data }: { data: StatusPageData }) {
 
         {/* 30-Day Uptime */}
         <div className="mb-10" data-testid="uptime-history">
-          <h2 className="mb-4 text-lg font-semibold">历史可用率（过去 30 天）</h2>
+          <h2 className="mb-4 text-lg font-semibold">{t("uptime.title")}</h2>
           <Card className="p-5">
-            <div className="grid gap-0.5" style={{ gridTemplateColumns: "repeat(30, 1fr)" }} aria-label="30天可用率方块图" data-testid="uptime-grid">
+            <div className="grid gap-0.5" style={{ gridTemplateColumns: "repeat(30, 1fr)" }} aria-label={t("uptime.gridAriaLabel")} data-testid="uptime-grid">
               {aggregateHistory.map((day, i) => (
                 <div key={i} title={`${day.date}: ${day.uptime.toFixed(1)}%`}
-                  aria-label={`${day.date} 可用率 ${day.uptime.toFixed(1)}%，状态：${STATUS_LABEL_ZH[day.status]}`}
+                  aria-label={t("uptime.dayAriaLabel", { date: day.date, uptime: day.uptime.toFixed(1), label: statusLabel(day.status) })}
                   className={cn("h-5 w-full rounded-sm", uptimeDayColor(day.status))} />
               ))}
             </div>
             <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-              <span>30 天前</span>
+              <span>{t("uptime.axisLeft")}</span>
               <div className="flex items-center gap-3">
-                {[{ cls: "bg-success", label: "正常" }, { cls: "bg-warning", label: "降级" }, { cls: "bg-destructive", label: "中断" }].map(({ cls, label }) => (
+                {[
+                  { cls: "bg-success", label: t("uptime.legendOperational") },
+                  { cls: "bg-warning", label: t("uptime.legendDegraded") },
+                  { cls: "bg-destructive", label: t("uptime.legendOutage") },
+                ].map(({ cls, label }) => (
                   <span key={label} className="flex items-center gap-1">
                     <span className={cn("inline-block h-2.5 w-2.5 rounded-sm", cls)} />{label}
                   </span>
                 ))}
               </div>
-              <span>今天</span>
+              <span>{t("uptime.axisRight")}</span>
             </div>
           </Card>
         </div>
 
         {/* Recent Events */}
         <div className="mb-10" data-testid="recent-events">
-          <h2 className="mb-4 text-lg font-semibold">最近事件公告</h2>
-          <Card className="px-5 py-8 text-center text-sm text-muted-foreground">最近 30 天内无事件记录</Card>
+          <h2 className="mb-4 text-lg font-semibold">{t("recentEvents.title")}</h2>
+          <Card className="px-5 py-8 text-center text-sm text-muted-foreground">{t("recentEvents.empty")}</Card>
         </div>
 
         {/* Subscribe */}
         <div className="mb-10" data-testid="subscribe-section">
-          <h2 className="mb-4 text-lg font-semibold">订阅状态更新</h2>
+          <h2 className="mb-4 text-lg font-semibold">{t("subscribe.title")}</h2>
           <Card className="px-5 py-5">
             {subStatus === "success" ? (
               <Alert className="border-success/30 bg-success/10 text-success">
-                <AlertDescription>验证邮件已发送，请查收并点击链接完成订阅。</AlertDescription>
+                <AlertDescription>{t("subscribe.successDesc")}</AlertDescription>
               </Alert>
             ) : (
               <form onSubmit={handleSubscribe} className="flex gap-2">
                 <Input
                   type="email"
-                  placeholder="your@email.com"
+                  placeholder={t("subscribe.emailPlaceholder")}
                   value={email}
                   onChange={e => setEmail(e.target.value)}
                   required
                   className="h-9"
                 />
                 <Button type="submit" disabled={subStatus === "loading"} size="sm">
-                  {subStatus === "loading" ? "发送中…" : "订阅"}
+                  {subStatus === "loading" ? t("subscribe.submitting") : t("subscribe.submit")}
                 </Button>
               </form>
             )}
@@ -198,7 +204,7 @@ export function StatusClient({ data }: { data: StatusPageData }) {
           <footer className="text-center" data-testid="powered-by">
             <a href="https://idcd.com" target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1.5 text-xs text-muted-foreground transition-colors hover:text-foreground">
-              Powered by idcd <ExternalLink className="h-3 w-3" />
+              {t("footer.poweredBy")} <ExternalLink className="h-3 w-3" />
             </a>
           </footer>
         )}

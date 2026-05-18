@@ -214,11 +214,48 @@
     }
   },
   "page": {
-    "operational": "All Systems Operational",
-    "degraded": "Partial Service Degradation",
-    "outage": "Service Outage",
-    "components": "System Components",
-    "incidents": "Recent Incidents",
-    "noIncidents": "No incidents recently"
+    "meta": {
+      "notFoundTitle": "Status page not found",
+      "titleSuffix": "{title} — Status",
+      "description": "Real-time service availability for {title}"
+    },
+    "overall": {
+      "operational": "All Systems Operational",
+      "degraded": "Partial Service Degradation",
+      "outage": "Major Service Outage",
+      "maintenance": "Scheduled Maintenance"
+    },
+    "statusLabel": {
+      "operational": "Operational",
+      "degraded": "Degraded",
+      "outage": "Outage",
+      "maintenance": "Maintenance"
+    },
+    "uptime": {
+      "title": "Uptime History (Past 30 Days)",
+      "gridAriaLabel": "30-day uptime grid",
+      "dayAriaLabel": "{date} uptime {uptime}%, status: {label}",
+      "axisLeft": "30 days ago",
+      "axisRight": "Today",
+      "legendOperational": "Operational",
+      "legendDegraded": "Degraded",
+      "legendOutage": "Outage"
+    },
+    "recentEvents": {
+      "title": "Recent Incidents",
+      "empty": "No incidents recorded in the past 30 days"
+    },
+    "subscribe": {
+      "title": "Subscribe to Updates",
+      "emailPlaceholder": "your@email.com",
+      "submit": "Subscribe",
+      "submitting": "Sending…",
+      "successDesc": "A verification email has been sent. Please check your inbox and click the link to confirm.",
+      "failed": "Subscription failed",
+      "networkError": "Network error, please try again"
+    },
+    "footer": {
+      "poweredBy": "Powered by idcd"
+    }
   }
 }

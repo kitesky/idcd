@@ -214,11 +214,48 @@
     }
   },
   "page": {
-    "operational": "所有系统正常",
-    "degraded": "部分服务降级",
-    "outage": "服务故障",
-    "components": "系统组件",
-    "incidents": "近期事件",
-    "noIncidents": "近期无事件"
+    "meta": {
+      "notFoundTitle": "状态页未找到",
+      "titleSuffix": "{title} — 状态页",
+      "description": "查看 {title} 的实时服务可用性状态"
+    },
+    "overall": {
+      "operational": "全部服务正常",
+      "degraded": "部分服务降级",
+      "outage": "严重服务中断",
+      "maintenance": "计划维护中"
+    },
+    "statusLabel": {
+      "operational": "正常",
+      "degraded": "降级",
+      "outage": "中断",
+      "maintenance": "维护中"
+    },
+    "uptime": {
+      "title": "历史可用率（过去 30 天）",
+      "gridAriaLabel": "30 天可用率方块图",
+      "dayAriaLabel": "{date} 可用率 {uptime}%，状态：{label}",
+      "axisLeft": "30 天前",
+      "axisRight": "今天",
+      "legendOperational": "正常",
+      "legendDegraded": "降级",
+      "legendOutage": "中断"
+    },
+    "recentEvents": {
+      "title": "最近事件公告",
+      "empty": "最近 30 天内无事件记录"
+    },
+    "subscribe": {
+      "title": "订阅状态更新",
+      "emailPlaceholder": "your@email.com",
+      "submit": "订阅",
+      "submitting": "发送中…",
+      "successDesc": "验证邮件已发送，请查收并点击链接完成订阅。",
+      "failed": "订阅失败",
+      "networkError": "网络错误，请重试"
+    },
+    "footer": {
+      "poweredBy": "Powered by idcd"
+    }
   }
 }

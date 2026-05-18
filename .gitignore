@@ -44,6 +44,8 @@ vendor/
 config/*.env.yaml
 !config/*.env.example.yaml
 config/*.local.yaml
+config/aggregator.yaml
+!config/aggregator.example.yaml
 
 # Secrets / certs (never commit)
 *.pem

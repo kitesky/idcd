@@ -61,9 +61,12 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Redis client
+	// Redis client. Read password from the shared Redis section so authenticated
+	// remote dev Redis (e.g. 8.163.70.123:6379 with AUTH) works out of the box.
 	rdb := redis.NewClient(&redis.Options{
-		Addr: cfg.Aggregator.RedisAddr,
+		Addr:     cfg.Aggregator.RedisAddr,
+		Password: cfg.Redis.Password,
+		DB:       cfg.Redis.DB,
 	})
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		logger.Error("failed to connect to Redis", "err", err)

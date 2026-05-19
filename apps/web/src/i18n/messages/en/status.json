@@ -124,7 +124,8 @@
       "cancel": "Cancel",
       "creating": "Creating…",
       "submit": "Create",
-      "failed": "Failed to create"
+      "failed": "Failed to create",
+      "noTeam": "Please create a team in Settings → Team before using on-call schedules"
     },
     "override": {
       "trigger": "Temporary Override",

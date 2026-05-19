@@ -31,7 +31,7 @@ import {
   AlertDescription,
   Skeleton,
 } from "@/components/ui"
-import { Key, Plus, UserPlus, Users } from "lucide-react"
+import { CheckCircle2, Copy, Key, Plus, UserPlus, Users } from "lucide-react"
 import { apiRequest } from "@/lib/api"
 
 interface TeamAPIKey {
@@ -180,6 +180,8 @@ export function TeamClient() {
   const [inviting, setInviting] = useState(false)
 
   const [showAddKeyDialog, setShowAddKeyDialog] = useState(false)
+  const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null)
+  const [copiedKey, setCopiedKey] = useState(false)
   const [newKeyName, setNewKeyName] = useState("")
   const [newKeyType, setNewKeyType] = useState<"production" | "test">("production")
   const [addingKey, setAddingKey] = useState(false)
@@ -276,7 +278,7 @@ export function TeamClient() {
     if (!newKeyName.trim() || !team) return
     setAddingKey(true)
     try {
-      const json = await apiRequest<{ data: { api_key: TeamAPIKey } }>(
+      const json = await apiRequest<{ data: { api_key: TeamAPIKey & { key: string } } }>(
         `/v1/teams/${team.id}/api-keys`,
         {
           method: "POST",
@@ -286,10 +288,8 @@ export function TeamClient() {
       const key = json.data?.api_key
       if (key) {
         setTeamKeys((prev) => [...prev, key])
+        setCreatedKeyValue(key.key)
       }
-      setNewKeyName("")
-      setNewKeyType("production")
-      setShowAddKeyDialog(false)
     } catch (err: any) {
       setError(err.message ?? t("team.addKeyFailed"))
     } finally {
@@ -612,39 +612,97 @@ export function TeamClient() {
         </CardContent>
       </Card>
 
-      <Dialog open={showAddKeyDialog} onOpenChange={setShowAddKeyDialog}>
+      <Dialog
+        open={showAddKeyDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowAddKeyDialog(false)
+            setCreatedKeyValue(null)
+            setCopiedKey(false)
+            setNewKeyName("")
+            setNewKeyType("production")
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("team.addKeyTitle")}</DialogTitle>
-            <DialogDescription>{t("team.addKeyDesc")}</DialogDescription>
+            {!createdKeyValue && (
+              <DialogDescription>{t("team.addKeyDesc")}</DialogDescription>
+            )}
           </DialogHeader>
-          <div className="flex flex-col gap-3 mt-2">
-            <Input
-              placeholder={t("team.keyNamePlaceholder")}
-              value={newKeyName}
-              onChange={(e) => setNewKeyName(e.target.value)}
-              data-testid="input-key-name"
-            />
-            <Select
-              value={newKeyType}
-              onValueChange={(v) => setNewKeyType(v as "production" | "test")}
-            >
-              <SelectTrigger data-testid="select-key-type">
-                <SelectValue placeholder={t("team.selectType")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="production">production</SelectItem>
-                <SelectItem value="test">test</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={handleAddKey}
-              disabled={addingKey}
-              data-testid="btn-confirm-add-key"
-            >
-              {addingKey ? t("team.creatingKey") : t("team.createKey")}
-            </Button>
-          </div>
+
+          {createdKeyValue ? (
+            <div className="flex flex-col gap-3 mt-2">
+              <Alert data-testid="new-team-key-reveal">
+                <AlertDescription className="space-y-2">
+                  <p className="text-amber-600 dark:text-amber-400 font-medium text-sm">
+                    {t("team.keyOnceWarning")}
+                  </p>
+                  <code className="block bg-muted p-2 rounded text-xs break-all" data-testid="new-team-key-value">
+                    {createdKeyValue}
+                  </code>
+                </AlertDescription>
+              </Alert>
+              <div className="flex justify-end gap-2">
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(createdKeyValue)
+                    setCopiedKey(true)
+                    setTimeout(() => setCopiedKey(false), 2000)
+                  }}
+                  data-testid="btn-copy-team-key"
+                >
+                  {copiedKey ? (
+                    <><CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />{t("team.copied")}</>
+                  ) : (
+                    <><Copy className="mr-2 h-4 w-4" />{t("team.copyKey")}</>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowAddKeyDialog(false)
+                    setCreatedKeyValue(null)
+                    setCopiedKey(false)
+                    setNewKeyName("")
+                    setNewKeyType("production")
+                  }}
+                  data-testid="btn-done-team-key"
+                >
+                  {t("team.done")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 mt-2">
+              <Input
+                placeholder={t("team.keyNamePlaceholder")}
+                value={newKeyName}
+                onChange={(e) => setNewKeyName(e.target.value)}
+                data-testid="input-key-name"
+              />
+              <Select
+                value={newKeyType}
+                onValueChange={(v) => setNewKeyType(v as "production" | "test")}
+              >
+                <SelectTrigger data-testid="select-key-type">
+                  <SelectValue placeholder={t("team.selectType")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="production">production</SelectItem>
+                  <SelectItem value="test">test</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleAddKey}
+                disabled={addingKey || !newKeyName.trim()}
+                data-testid="btn-confirm-add-key"
+              >
+                {addingKey ? t("team.creatingKey") : t("team.createKey")}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

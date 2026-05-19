@@ -124,7 +124,8 @@
       "cancel": "取消",
       "creating": "创建中…",
       "submit": "创建",
-      "failed": "创建失败"
+      "failed": "创建失败",
+      "noTeam": "请先在「设置 → 团队」创建团队，才能使用排班功能"
     },
     "override": {
       "trigger": "临时换班",

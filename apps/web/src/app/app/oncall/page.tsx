@@ -170,10 +170,11 @@ function formatDuration(firedAt: string, resolvedAt: string | undefined, t: Onca
 // ── Create Schedule Dialog ─────────────────────────────────────────────────
 
 interface CreateScheduleDialogProps {
+  teamId: string | null
   onCreated: () => void
 }
 
-function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
+function CreateScheduleDialog({ teamId, onCreated }: CreateScheduleDialogProps) {
   const t = useTranslations("status.oncall")
   const [open, setOpen] = useState(false)
   const [name, setName] = useState("")
@@ -182,16 +183,16 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
   const [error, setError] = useState<string | null>(null)
 
   async function handleSubmit() {
-    if (!name.trim()) return
+    if (!name.trim() || !teamId) return
     setSubmitting(true)
     setError(null)
     try {
       await apiRequest("/v1/oncall/schedules", {
         method: "POST",
         body: JSON.stringify({
+          team_id: teamId,
           name: name.trim(),
           rotation_type: rotationType,
-          start_date: new Date().toISOString(),
         }),
       })
       setOpen(false)
@@ -217,6 +218,11 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
         <DialogHeader>
           <DialogTitle>{t("create.title")}</DialogTitle>
         </DialogHeader>
+        {!teamId && (
+          <Alert variant="destructive">
+            <AlertDescription>{t("create.noTeam")}</AlertDescription>
+          </Alert>
+        )}
         {error && (
           <Alert variant="destructive">
             <AlertDescription>{error}</AlertDescription>
@@ -252,7 +258,7 @@ function CreateScheduleDialog({ onCreated }: CreateScheduleDialogProps) {
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={!name.trim() || submitting}
+            disabled={!name.trim() || submitting || !teamId}
             data-testid="create-schedule-submit"
           >
             {submitting ? t("create.creating") : t("create.submit")}
@@ -749,6 +755,7 @@ export default function OncallPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [overrideRefreshToken, setOverrideRefreshToken] = useState(0)
+  const [teamId, setTeamId] = useState<string | null>(null)
 
   function refreshOverrides() {
     setOverrideRefreshToken((tok) => tok + 1)
@@ -758,9 +765,12 @@ export default function OncallPage() {
     setLoading(true)
     setError(null)
     try {
-      const listRes = await apiRequest<{ data: { schedules: Schedule[] } }>(
-        "/v1/oncall/schedules",
-      )
+      const [listRes, teamsRes] = await Promise.all([
+        apiRequest<{ data: { schedules: Schedule[] } }>("/v1/oncall/schedules"),
+        apiRequest<{ data: { teams: { id: string }[] } }>("/v1/teams").catch(() => null),
+      ])
+      const firstTeam = teamsRes?.data?.teams?.[0]
+      setTeamId(firstTeam?.id ?? null)
       const schedules = listRes?.data?.schedules ?? []
       if (schedules.length === 0) {
         setSchedule(null)
@@ -822,7 +832,7 @@ export default function OncallPage() {
         </div>
         <div className="flex gap-2">
           <OverrideDialog scheduleId={schedule?.id ?? ""} participants={participants} onCreated={refreshOverrides} />
-          <CreateScheduleDialog onCreated={loadData} />
+          <CreateScheduleDialog teamId={teamId} onCreated={loadData} />
         </div>
       </div>
 

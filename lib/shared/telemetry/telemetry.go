@@ -10,11 +10,14 @@ import (
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	"go.opentelemetry.io/otel/trace"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 )
 
 // Config holds OpenTelemetry configuration.
@@ -49,10 +52,27 @@ func Init(cfg Config) (shutdown func(context.Context) error, err error) {
 		return noop, fmt.Errorf("telemetry: failed to create resource: %w", err)
 	}
 
-	// Create exporter (S1: stdout for now, no OTLP Collector dependency)
-	exporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		return noop, fmt.Errorf("telemetry: failed to create stdout exporter: %w", err)
+	// When OTLPEndpoint is set, send traces to an OTLP Collector over gRPC.
+	// Otherwise fall back to stdout (dev / no-collector environments).
+	var exporter sdktrace.SpanExporter
+	if cfg.OTLPEndpoint != "" {
+		conn, err := grpc.NewClient(cfg.OTLPEndpoint,
+			grpc.WithTransportCredentials(insecure.NewCredentials()),
+		)
+		if err != nil {
+			return noop, fmt.Errorf("telemetry: grpc dial %s: %w", cfg.OTLPEndpoint, err)
+		}
+		exporter, err = otlptracegrpc.New(context.Background(), otlptracegrpc.WithGRPCConn(conn))
+		if err != nil {
+			return noop, fmt.Errorf("telemetry: OTLP exporter: %w", err)
+		}
+		log.Printf("[telemetry] OTLP exporter → %s", cfg.OTLPEndpoint)
+	} else {
+		exporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
+		if err != nil {
+			return noop, fmt.Errorf("telemetry: stdout exporter: %w", err)
+		}
+		log.Println("[telemetry] stdout exporter (no OTLPEndpoint configured)")
 	}
 
 	// Create sampler (default 0.1 = 10% sampling)

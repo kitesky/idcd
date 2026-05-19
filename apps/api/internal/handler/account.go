@@ -159,6 +159,15 @@ func (h *AccountHandler) UpdateProfile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Track which fields actually moved so the audit trail says more than
+	// "profile was poked". The aggregator pivots on these flags to flag
+	// suspicious bursts (e.g. attacker swapping locale to mask phishing).
+	auditLog(r, "audit.profile.updated",
+		"display_name_changed", req.DisplayName != nil,
+		"bio_changed", req.Bio != nil,
+		"locale_changed", req.Locale != nil,
+		"timezone_changed", req.Timezone != nil,
+	)
 	response.JSON(w, r, http.StatusOK, toProfileResponse(updated))
 }
 
@@ -268,6 +277,13 @@ func (h *AccountHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Audit the change but not the bytes — the data URI is sensitive in bulk
+	// and noisy in a log line; record content type + size so reviewers can
+	// distinguish a normal upload from a wave of bot-driven 256KB uploads.
+	auditLog(r, "audit.avatar.uploaded",
+		"content_type", contentType,
+		"bytes", len(imgBytes),
+	)
 	response.JSON(w, r, http.StatusOK, uploadAvatarResponse{AvatarURL: dataURI})
 }
 
@@ -284,6 +300,13 @@ func (h *AccountHandler) DeleteAccount(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Highest-severity audit event in this handler — account deletion is
+	// irreversible after the 30-day grace window. Surface it explicitly so
+	// SIEM dashboards can alert on unusual deletion bursts (e.g. compromised
+	// session walking a customer list).
+	auditLog(r, "audit.account.deletion_scheduled",
+		"grace_days", 30,
+	)
 	response.JSON(w, r, http.StatusOK, map[string]string{
 		"message": "account scheduled for deletion in 30 days",
 	})

@@ -91,7 +91,7 @@ const ordersLookupIdempotencySQL = `
 	WHERE account_id = $1 AND idempotency_key = $2
 `
 
-func (r *OrdersRepo) lookupByIdempotencyKey(ctx context.Context, accountID int64, key string) (int64, error) {
+func (r *OrdersRepo) lookupByIdempotencyKey(ctx context.Context, accountID string, key string) (int64, error) {
 	var id int64
 	err := r.pool.QueryRow(ctx, ordersLookupIdempotencySQL, accountID, key).Scan(&id)
 	if err != nil {
@@ -130,7 +130,7 @@ const ordersCountByAccountSinceSQL = `
 
 // CountByAccountSince returns the number of orders an account has created
 // since the supplied cutoff, scoped to a single COUNT(*) query.
-func (r *OrdersRepo) CountByAccountSince(ctx context.Context, accountID int64, since time.Time) (int, error) {
+func (r *OrdersRepo) CountByAccountSince(ctx context.Context, accountID string, since time.Time) (int, error) {
 	var n int
 	if err := r.pool.QueryRow(ctx, ordersCountByAccountSinceSQL, accountID, since).Scan(&n); err != nil {
 		return 0, fmt.Errorf("orders count by account since: %w", err)
@@ -157,7 +157,7 @@ const ordersListByAccountStatusSQL = `
 // ListByAccount returns orders for one account, optionally filtered by a
 // single status. Pass status == nil to list all statuses. Ordered by
 // created_at DESC (newest first).
-func (r *OrdersRepo) ListByAccount(ctx context.Context, accountID int64, status *OrderStatus, limit, offset int) ([]*Order, error) {
+func (r *OrdersRepo) ListByAccount(ctx context.Context, accountID string, status *OrderStatus, limit, offset int) ([]*Order, error) {
 	var (
 		rows pgx.Rows
 		err  error
@@ -350,7 +350,7 @@ func scanOrder(r rowScanner) (*Order, error) {
 // applied by the caller via Limit / Offset.
 type AdminOrderFilter struct {
 	Status    *OrderStatus
-	AccountID *int64
+	AccountID  *string
 	CA        *string
 	Limit     int
 	Offset    int

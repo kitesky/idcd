@@ -50,7 +50,11 @@ func main() {
 	}
 	defer pool.Close()
 
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
 	defer func() { _ = rdb.Close() }()
 
 	repos := repo.New(pool)

@@ -64,10 +64,10 @@ type AdminQuotaSource interface {
 type AdminAbuseGate interface {
 	// Ban records a permanent ban for accountID. reason is a free-text
 	// note surfaced in audit_logs.payload and admin tooling.
-	Ban(ctx context.Context, accountID int64, reason string) error
+	Ban(ctx context.Context, accountID string, reason string) error
 	// Unban lifts an active ban. Returns ErrNotBanned semantics when
 	// the account has no active row (handlers translate to 404).
-	Unban(ctx context.Context, accountID int64, reason string) error
+	Unban(ctx context.Context, accountID string, reason string) error
 }
 
 // caaCAList is the canonical set of CAs the platform routes to. Kept in
@@ -110,7 +110,7 @@ func rejectAllAdminUnauthenticated(_ http.Handler) http.Handler {
 
 type adminOrderResponse struct {
 	ID              int64    `json:"id"`
-	AccountID       int64    `json:"account_id"`
+	AccountID  string    `json:"account_id"`
 	SANs            []string `json:"sans"`
 	SANsUnicode     []string `json:"sans_unicode"`
 	Status          string   `json:"status"`
@@ -150,13 +150,7 @@ func adminListOrders(deps Deps) http.HandlerFunc {
 			f.Status = &st
 		}
 		if a := strings.TrimSpace(q.Get("account_id")); a != "" {
-			v, err := strconv.ParseInt(a, 10, 64)
-			if err != nil || v <= 0 {
-				writeErr(w, http.StatusBadRequest, codeBadRequest,
-					"invalid account_id", nil)
-				return
-			}
-			f.AccountID = &v
+			f.AccountID = &a
 		}
 		if c := strings.TrimSpace(q.Get("ca")); c != "" {
 			f.CA = &c
@@ -449,7 +443,7 @@ type adminBanRequest struct {
 }
 
 type adminBanResponse struct {
-	AccountID int64  `json:"account_id"`
+	AccountID  string  `json:"account_id"`
 	Status    string `json:"status"`
 }
 
@@ -464,6 +458,7 @@ func adminBanAccount(deps Deps) http.HandlerFunc {
 				"abuse gate not configured", nil)
 			return
 		}
+		accountID := strconv.FormatInt(id, 10)
 		var req adminBanRequest
 		if r.ContentLength > 0 || r.Header.Get("Content-Type") != "" {
 			if !readJSON(w, r, &req) {
@@ -473,7 +468,7 @@ func adminBanAccount(deps Deps) http.HandlerFunc {
 		if strings.TrimSpace(req.Reason) == "" {
 			req.Reason = "admin ban"
 		}
-		if err := deps.AdminAbuse.Ban(r.Context(), id, req.Reason); err != nil {
+		if err := deps.AdminAbuse.Ban(r.Context(), accountID, req.Reason); err != nil {
 			writeErr(w, http.StatusInternalServerError, codeInternal,
 				"ban failed", nil)
 			return
@@ -488,7 +483,7 @@ func adminBanAccount(deps Deps) http.HandlerFunc {
 			})
 			tk := "account"
 			_ = deps.Repos.AuditLogs.Append(r.Context(), &repo.AuditLog{
-				AccountID:  &id,
+				AccountID:  &accountID,
 				Actor:      "admin",
 				Action:     "admin.account_ban",
 				TargetKind: &tk,
@@ -497,7 +492,7 @@ func adminBanAccount(deps Deps) http.HandlerFunc {
 			})
 		}
 		writeJSON(w, http.StatusOK, adminBanResponse{
-			AccountID: id, Status: "banned",
+			AccountID: accountID, Status: "banned",
 		})
 	}
 }
@@ -522,7 +517,8 @@ func adminUnbanAccount(deps Deps) http.HandlerFunc {
 		if strings.TrimSpace(req.Reason) == "" {
 			req.Reason = "admin unban"
 		}
-		if err := deps.AdminAbuse.Unban(r.Context(), id, req.Reason); err != nil {
+		accountID := strconv.FormatInt(id, 10)
+		if err := deps.AdminAbuse.Unban(r.Context(), accountID, req.Reason); err != nil {
 			if errors.Is(err, repo.ErrNotBanned) {
 				writeErr(w, http.StatusNotFound, codeNotFound,
 					"no active ban for account", nil)
@@ -539,7 +535,7 @@ func adminUnbanAccount(deps Deps) http.HandlerFunc {
 			})
 			tk := "account"
 			_ = deps.Repos.AuditLogs.Append(r.Context(), &repo.AuditLog{
-				AccountID:  &id,
+				AccountID:  &accountID,
 				Actor:      "admin",
 				Action:     "admin.account_unban",
 				TargetKind: &tk,
@@ -548,7 +544,7 @@ func adminUnbanAccount(deps Deps) http.HandlerFunc {
 			})
 		}
 		writeJSON(w, http.StatusOK, adminBanResponse{
-			AccountID: id, Status: "unbanned",
+			AccountID: accountID, Status: "unbanned",
 		})
 	}
 }

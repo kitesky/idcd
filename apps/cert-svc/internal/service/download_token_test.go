@@ -25,7 +25,7 @@ func newDownloadHarness(t *testing.T, opts ...DownloadOption) (*DownloadTokenMan
 func TestDownloadToken_IssueConsumeRoundTrip(t *testing.T) {
 	m, _ := newDownloadHarness(t)
 	ctx := context.Background()
-	want := DownloadTokenPayload{CertID: 9, AccountID: 42, Format: "pem"}
+	want := DownloadTokenPayload{CertID: 9, AccountID: "42", Format: "pem"}
 
 	token, expiresAt, err := m.Issue(ctx, want)
 	require.NoError(t, err)
@@ -45,7 +45,7 @@ func TestDownloadToken_IssueConsumeRoundTrip(t *testing.T) {
 func TestDownloadToken_DoubleConsumeFails(t *testing.T) {
 	m, _ := newDownloadHarness(t)
 	ctx := context.Background()
-	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: 42, Format: "pem"})
+	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: "42", Format: "pem"})
 	require.NoError(t, err)
 
 	_, err = m.Consume(ctx, token)
@@ -58,7 +58,7 @@ func TestDownloadToken_DoubleConsumeFails(t *testing.T) {
 func TestDownloadToken_BadHMACFails(t *testing.T) {
 	m, _ := newDownloadHarness(t)
 	ctx := context.Background()
-	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: 42, Format: "pem"})
+	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: "42", Format: "pem"})
 	require.NoError(t, err)
 
 	// Flip the signature segment.
@@ -74,7 +74,7 @@ func TestDownloadToken_TamperedPayloadFails(t *testing.T) {
 	// hmacSign is over the (now-changed) payload bytes.
 	m, _ := newDownloadHarness(t)
 	ctx := context.Background()
-	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: 42, Format: "pem"})
+	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: "42", Format: "pem"})
 	require.NoError(t, err)
 
 	parts := strings.SplitN(token, ".", 2)
@@ -90,7 +90,7 @@ func TestDownloadToken_TamperedPayloadFails(t *testing.T) {
 func TestDownloadToken_ExpiredFails(t *testing.T) {
 	m, mr := newDownloadHarness(t, WithDownloadTTL(2*time.Second))
 	ctx := context.Background()
-	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: 42, Format: "pem"})
+	token, _, err := m.Issue(ctx, DownloadTokenPayload{CertID: 9, AccountID: "42", Format: "pem"})
 	require.NoError(t, err)
 
 	// miniredis FastForward expires TTL'd keys without sleeping.
@@ -127,7 +127,7 @@ func TestDownloadToken_DefaultTTL(t *testing.T) {
 
 func TestDownloadToken_Issue_NoRedisFails(t *testing.T) {
 	m := NewDownloadTokenManager(nil, []byte("x"))
-	_, _, err := m.Issue(context.Background(), DownloadTokenPayload{CertID: 1, AccountID: 1, Format: "pem"})
+	_, _, err := m.Issue(context.Background(), DownloadTokenPayload{CertID: 1, AccountID: "1", Format: "pem"})
 	require.Error(t, err)
 }
 
@@ -136,14 +136,14 @@ func TestDownloadToken_Issue_EmptySecretFails(t *testing.T) {
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
 	m := NewDownloadTokenManager(rdb, nil)
-	_, _, err := m.Issue(context.Background(), DownloadTokenPayload{CertID: 1, AccountID: 1, Format: "pem"})
+	_, _, err := m.Issue(context.Background(), DownloadTokenPayload{CertID: 1, AccountID: "1", Format: "pem"})
 	require.Error(t, err)
 }
 
 func TestDownloadToken_Issue_RandFailureFails(t *testing.T) {
 	m, _ := newDownloadHarness(t)
 	m.randRead = func(_ []byte) (int, error) { return 0, errors.New("boom") }
-	_, _, err := m.Issue(context.Background(), DownloadTokenPayload{CertID: 1, AccountID: 1, Format: "pem"})
+	_, _, err := m.Issue(context.Background(), DownloadTokenPayload{CertID: 1, AccountID: "1", Format: "pem"})
 	require.Error(t, err)
 }
 

@@ -21,7 +21,7 @@ func TestListOrders_RepoError(t *testing.T) {
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 20, 0).
+		WithArgs("42", 20, 0).
 		WillReturnError(errors.New("boom"))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/orders", nil, "42")
@@ -43,7 +43,7 @@ func TestListCerts_RepoError(t *testing.T) {
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs`).
-		WithArgs(int64(42), 20, 0).
+		WithArgs("42", 20, 0).
 		WillReturnError(errors.New("boom"))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/certs", nil, "42")
@@ -100,7 +100,7 @@ func TestHealthCheckDNSCredential_RevokedConflict(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(dnsCredFullColumns()).
-			AddRow(int64(7), int64(42), "manual", "creds",
+			AddRow(int64(7), "42", "manual", "creds",
 				[]byte("{}"), []byte(nil), "kek-1",
 				"valid", (*time.Time)(nil), time.Now().UTC(), &rev))
 
@@ -147,7 +147,7 @@ func TestManualReady_Forbidden(t *testing.T) {
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 999, "validating")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "999", "validating")...))
 
 	body := manualReadyRequest{FQDN: "_acme-challenge.example.com.", Value: "abc"}
 	req := authedRequest(t, http.MethodPost, "/v1/cert/orders/101/manual-ready", body, "42")
@@ -197,7 +197,7 @@ func TestListCerts_PathRespectsLimitClamp(t *testing.T) {
 	// limit > MaxPageSize (100) → clamped down to MaxPageSize (was: re-default to 20).
 	// 契约迁移到 lib/shared/pagination.Clamp：超过上限给上限，不静默退回默认值。
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE account_id`).
-		WithArgs(int64(42), 100, 0).
+		WithArgs("42", 100, 0).
 		WillReturnRows(pgxmock.NewRows(certColumns()))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/certs?limit=99999", nil, "42")

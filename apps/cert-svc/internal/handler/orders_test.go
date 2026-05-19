@@ -74,7 +74,7 @@ func orderRowColumns() []string {
 	}
 }
 
-func sampleOrderRow(id int64, accountID int64, status string) []any {
+func sampleOrderRow(id int64, accountID string, status string) []any {
 	now := time.Now().UTC()
 	return []any{
 		id, accountID, []string{"example.com"}, []string{"example.com"}, (*string)(nil),
@@ -94,7 +94,7 @@ func TestCreateOrder_HappyPath(t *testing.T) {
 
 	// Daily quota: COUNT returns 0.
 	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
-		WithArgs(int64(42), pgxmock.AnyArg()).
+		WithArgs("42", pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 
 	// Insert returns id=101.
@@ -194,7 +194,7 @@ func TestCreateOrder_AcceptsWildcardAndIDN(t *testing.T) {
 	deps := Deps{Repos: repos, Service: newTestService(t, pool, rdb)}
 
 	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
-		WithArgs(int64(42), pgxmock.AnyArg()).
+		WithArgs("42", pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	insertArgs := make([]any, 16)
 	for i := range insertArgs {
@@ -220,7 +220,7 @@ func TestGetOrder_HappyPath(t *testing.T) {
 
 	pool.ExpectQuery(`SELECT .* FROM cert\.orders\s+WHERE id = `).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 42, "draft")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "42", "draft")...))
 	pool.ExpectQuery(`SELECT .* FROM cert\.order_events`).
 		WithArgs(int64(101)).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "order_id", "action_seq", "action", "payload_jsonb", "occurred_at"}))
@@ -240,7 +240,7 @@ func TestGetOrder_Forbidden(t *testing.T) {
 
 	pool.ExpectQuery(`SELECT .* FROM cert\.orders\s+WHERE id = `).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 999, "draft")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "999", "draft")...))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/orders/101", nil, "42")
 	rec := httptest.NewRecorder()
@@ -274,7 +274,7 @@ func TestRetryOrder_RejectsNonFailedStatus(t *testing.T) {
 
 	pool.ExpectQuery(`SELECT .* FROM cert\.orders\s+WHERE id = `).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 42, "draft")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "42", "draft")...))
 
 	req := authedRequest(t, http.MethodPost, "/v1/cert/orders/101/retry", nil, "42")
 	rec := httptest.NewRecorder()
@@ -289,8 +289,8 @@ func TestListOrders_HappyPath(t *testing.T) {
 	deps := Deps{Repos: repos}
 
 	pool.ExpectQuery(`SELECT .* FROM cert\.orders\s+WHERE account_id = `).
-		WithArgs(int64(42), 20, 0).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(1, 42, "draft")...))
+		WithArgs("42", 20, 0).
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(1, "42", "draft")...))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/orders", nil, "42")
 	rec := httptest.NewRecorder()
@@ -309,7 +309,7 @@ func TestManualReady_PublishesToRedis(t *testing.T) {
 
 	pool.ExpectQuery(`SELECT .* FROM cert\.orders\s+WHERE id = `).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 42, "validating")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "42", "validating")...))
 
 	body := manualReadyRequest{FQDN: "_acme-challenge.example.com.", Value: "abc"}
 	req := authedRequest(t, http.MethodPost, "/v1/cert/orders/101/manual-ready", body, "42")
@@ -385,7 +385,7 @@ func TestCreateOrder_CAALookupFail_Continues(t *testing.T) {
 	// Quota query + insert must still happen — transient CAA failures
 	// don't block order creation.
 	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
-		WithArgs(int64(42), pgxmock.AnyArg()).
+		WithArgs("42", pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(0))
 	insertArgs := make([]any, 16)
 	for i := range insertArgs {

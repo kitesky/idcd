@@ -83,7 +83,7 @@ func certColumns() []string {
 
 func sampleCertRow(id, orderID int64, notAfter time.Time) []any {
 	return []any{
-		id, orderID, int64(7), []string{"example.com"}, "letsencrypt", "01",
+		id, orderID, "7", []string{"example.com"}, "letsencrypt", "01",
 		"fp", "leaf", "chain", "kms://k",
 		notAfter.Add(-90 * 24 * time.Hour), notAfter,
 		"issued", (*time.Time)(nil), (*string)(nil), notAfter.Add(-90 * 24 * time.Hour),
@@ -99,7 +99,7 @@ func renewalJobColumns() []string {
 
 func orderRowForRenew(id int64) []any {
 	return []any{
-		id, int64(7), []string{"example.com"}, []string(nil), (*string)(nil),
+		id, "7", []string{"example.com"}, []string(nil), (*string)(nil),
 		"free-dv", "lets-encrypt",
 		(*string)(nil), (*string)(nil), (*int64)(nil), 90,
 		"dns-01", (*int64)(nil), "issued", (*string)(nil), (*int64)(nil),

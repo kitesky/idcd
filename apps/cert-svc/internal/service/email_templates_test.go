@@ -12,7 +12,7 @@ import (
 func sampleNotificationData() NotificationData {
 	notAfter := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
 	return NotificationData{
-		AccountID:    42,
+		AccountID:    "42",
 		CertID:       7,
 		OrderID:      99,
 		SANs:         []string{"example.com", "www.example.com"},
@@ -42,7 +42,7 @@ func TestRenderIssued_ContainsAllFields(t *testing.T) {
 
 func TestRenderIssued_HandlesMissingOptionals(t *testing.T) {
 	d := NotificationData{
-		AccountID: 1,
+		AccountID: "1",
 		SANs:      []string{"a.test"},
 	}
 	subj, body := RenderIssued(d)
@@ -94,7 +94,7 @@ func TestRenderRenewalFailed_ContainsError(t *testing.T) {
 
 func TestRenderRenewalFailed_NoErrorMsg(t *testing.T) {
 	d := NotificationData{
-		AccountID: 1,
+		AccountID: "1",
 		CertID:    5,
 		SANs:      []string{"a.test"},
 	}

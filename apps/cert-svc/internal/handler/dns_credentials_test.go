@@ -105,9 +105,9 @@ func TestListDNSCredentials_OK(t *testing.T) {
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials\s+WHERE account_id`).
-		WithArgs(int64(42)).
+		WithArgs("42").
 		WillReturnRows(pgxmock.NewRows(dnsCredColumns()).
-			AddRow(int64(1), int64(42), "manual", "creds", "kek-1",
+			AddRow(int64(1), "42", "manual", "creds", "kek-1",
 				"valid", (*time.Time)(nil), time.Now().UTC(), (*time.Time)(nil)))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/dns-credentials", nil, "42")
@@ -123,7 +123,7 @@ func TestDeleteDNSCredential_OK(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(dnsCredFullColumns()).
-			AddRow(int64(7), int64(42), "manual", "creds",
+			AddRow(int64(7), "42", "manual", "creds",
 				[]byte("{}"), []byte(nil), "kek-1",
 				"valid", (*time.Time)(nil), time.Now().UTC(), (*time.Time)(nil)))
 	pool.ExpectExec(`UPDATE cert\.dns_credentials\s+SET revoked_at`).
@@ -144,7 +144,7 @@ func TestDeleteDNSCredential_Forbidden(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(dnsCredFullColumns()).
-			AddRow(int64(7), int64(999), "manual", "creds",
+			AddRow(int64(7), "999", "manual", "creds",
 				[]byte("{}"), []byte(nil), "kek-1",
 				"valid", (*time.Time)(nil), time.Now().UTC(), (*time.Time)(nil)))
 
@@ -169,7 +169,7 @@ func TestHealthCheckDNSCredential_Manual(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(dnsCredFullColumns()).
-			AddRow(int64(7), int64(42), "manual", "creds",
+			AddRow(int64(7), "42", "manual", "creds",
 				encJSON, []byte(nil), v.KeyID(),
 				"unknown", (*time.Time)(nil), time.Now().UTC(), (*time.Time)(nil)))
 	pool.ExpectExec(`UPDATE cert\.dns_credentials\s+SET health_status`).

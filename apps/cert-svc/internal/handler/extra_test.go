@@ -65,7 +65,7 @@ func TestCreateOrder_DNSCredentialRevoked(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials\s+WHERE id`).
 		WithArgs(int64(99)).
 		WillReturnRows(pgxmock.NewRows(dnsCredFullColumns()).
-			AddRow(int64(99), int64(42), "manual", "x",
+			AddRow(int64(99), "42", "manual", "x",
 				[]byte("{}"), []byte(nil), "kek",
 				"valid", (*time.Time)(nil), time.Now().UTC(), &rev))
 
@@ -84,7 +84,7 @@ func TestCreateOrder_QuotaExceeded(t *testing.T) {
 
 	// COUNT returns dailyOrderQuota to trip the quota.
 	pool.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
-		WithArgs(int64(42), pgxmock.AnyArg()).
+		WithArgs("42", pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(dailyOrderQuota))
 
 	body := createOrderRequest{SANs: []string{"example.com"}}
@@ -128,10 +128,10 @@ func TestRetryOrder_HappyPath(t *testing.T) {
 	// Handler reads the order once; service.RetryOrder reads it again.
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 42, "failed")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "42", "failed")...))
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, 42, "failed")...))
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(101, "42", "failed")...))
 	// Service.RetryOrder transitions status failed → validating.
 	pool.ExpectExec(`UPDATE cert\.orders\s+SET status`).
 		WithArgs("validating", pgxmock.AnyArg(), int64(101), "failed").
@@ -176,10 +176,10 @@ func TestListCerts_WithStatusFilter(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 	v := newTestVault(t)
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE account_id = \$1 AND status`).
-		WithArgs(int64(42), "issued", 20, 0).
+		WithArgs("42", "issued", 20, 0).
 		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(row...))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/certs?status=issued", nil, "42")
@@ -192,7 +192,7 @@ func TestGetCert_Forbidden(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 	v := newTestVault(t)
-	row, _ := sampleCertRow(t, 9, 999, "issued", v)
+	row, _ := sampleCertRow(t, 9, "999", "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
@@ -209,7 +209,7 @@ func TestDownloadCert_NginxFormat(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
@@ -234,7 +234,7 @@ func TestDownloadCert_RevokedRejected(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "revoked", v)
+	row, _ := sampleCertRow(t, 9, "42", "revoked", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
@@ -253,8 +253,8 @@ func TestListOrders_WithFilters(t *testing.T) {
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE account_id = \$1 AND status`).
-		WithArgs(int64(42), "issued", 50, 10).
-		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(1, 42, "issued")...))
+		WithArgs("42", "issued", 50, 10).
+		WillReturnRows(pgxmock.NewRows(orderRowColumns()).AddRow(sampleOrderRow(1, "42", "issued")...))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/orders?status=issued&limit=50&offset=10", nil, "42")
 	rec := httptest.NewRecorder()
@@ -276,14 +276,10 @@ func TestPathInt64_InvalidReturns404(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, rec.Code)
 }
 
-func TestRequireUser_InvalidUserIDReturns401(t *testing.T) {
-	rec := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/x", nil)
-	req = req.WithContext(authContextWith(req, "not-a-number"))
-	_, ok := requireUser(rec, req)
-	require.False(t, ok)
-	require.Equal(t, http.StatusUnauthorized, rec.Code)
-}
+// TestRequireUser_InvalidUserIDReturns401 was removed when accountID
+// became a TEXT column — requireUser no longer rejects non-numeric
+// strings (every value is now a syntactically valid id). Re-add a guard
+// here only after the wire-layer format check is in place.
 
 func TestQueryIntDefault_HandlesCases(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/x?a=10&b=oops", nil)
@@ -302,7 +298,7 @@ func TestProjectOrder_WithFinalizedAt(t *testing.T) {
 	ts := time.Now().UTC()
 	o := &repo.Order{
 		ID:          1,
-		AccountID:   42,
+		AccountID:   "42",
 		SANs:        []string{"a.com"},
 		Status:      "issued",
 		Tier:        "free-dv",

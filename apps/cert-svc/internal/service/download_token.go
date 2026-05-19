@@ -47,7 +47,7 @@ var ErrTokenInvalid = errors.New("download token invalid or expired")
 // is informational; Nonce is the Redis-key suffix.
 type DownloadTokenPayload struct {
 	CertID    int64  `json:"cert_id"`
-	AccountID int64  `json:"account_id"`
+	AccountID  string  `json:"account_id"`
 	Format    string `json:"format"`
 	Password  string `json:"password,omitempty"`
 	IssuedAt  int64  `json:"issued_at"`
@@ -175,7 +175,7 @@ func (m *DownloadTokenManager) Consume(ctx context.Context, token string) (Downl
 	if err := json.Unmarshal(raw, &p); err != nil {
 		return DownloadTokenPayload{}, ErrTokenInvalid
 	}
-	if p.Nonce == "" || p.CertID <= 0 || p.AccountID <= 0 {
+	if p.Nonce == "" || p.CertID <= 0 || p.AccountID == "" {
 		return DownloadTokenPayload{}, ErrTokenInvalid
 	}
 

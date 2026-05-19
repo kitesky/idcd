@@ -70,20 +70,20 @@ func TestAdminBearerAuth_Rejects(t *testing.T) {
 
 func TestAuditAbuseGate_NilRepo(t *testing.T) {
 	g := newAuditAbuseGate(nil, nil, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	if err := g.Ban(context.Background(), 7, "spam"); err == nil {
+	if err := g.Ban(context.Background(), "7", "spam"); err == nil {
 		t.Fatalf("nil repo should error")
 	}
-	if err := g.Unban(context.Background(), 7, "x"); err == nil {
+	if err := g.Unban(context.Background(), "7", "x"); err == nil {
 		t.Fatalf("nil repo unban should error")
 	}
 }
 
 func TestAuditAbuseGate_NilReceiver(t *testing.T) {
 	var g *auditAbuseGate
-	if err := g.Ban(context.Background(), 7, "spam"); err == nil {
+	if err := g.Ban(context.Background(), "7", "spam"); err == nil {
 		t.Fatalf("nil receiver should error")
 	}
-	if err := g.Unban(context.Background(), 7, "x"); err == nil {
+	if err := g.Unban(context.Background(), "7", "x"); err == nil {
 		t.Fatalf("nil receiver unban should error")
 	}
 }
@@ -93,8 +93,8 @@ func TestAuditAbuseGate_NilReceiver(t *testing.T) {
 // circular dep at link time for cmd/), but verify the method set
 // directly.
 type abuseGateAPI interface {
-	Ban(ctx context.Context, accountID int64, reason string) error
-	Unban(ctx context.Context, accountID int64, reason string) error
+	Ban(ctx context.Context, accountID string, reason string) error
+	Unban(ctx context.Context, accountID string, reason string) error
 }
 
 var _ abuseGateAPI = (*auditAbuseGate)(nil)

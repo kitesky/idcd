@@ -269,7 +269,7 @@ type orderEventRow struct {
 	Action     string
 	Payload    []byte
 	OccurredAt time.Time
-	AccountID  int64
+	AccountID  string
 	SANs       []string
 	CA         string
 	CertID     *int64
@@ -422,7 +422,7 @@ func (w *NotificationWatcher) xaddNotification(ctx context.Context, eventType st
 
 	values := map[string]any{
 		"event":      eventType,
-		"account_id": strconv.FormatInt(data.AccountID, 10),
+		"account_id": data.AccountID,
 		"cert_id":    strconv.FormatInt(data.CertID, 10),
 		"order_id":   strconv.FormatInt(data.OrderID, 10),
 		"payload":    string(raw),
@@ -440,7 +440,7 @@ func (w *NotificationWatcher) xaddNotification(ctx context.Context, eventType st
 // expiringCertRow projects cert.certs JOIN cert.orders for the expiring pass.
 type expiringCertRow struct {
 	CertID    int64
-	AccountID int64
+	AccountID  string
 	SANs      []string
 	NotAfter  time.Time
 	OrderID   int64
@@ -552,7 +552,7 @@ type renewalFailedRow struct {
 	CertID    int64
 	Attempts  int
 	LastError *string
-	AccountID int64
+	AccountID  string
 	SANs      []string
 	NotAfter  time.Time
 	OrderID   int64

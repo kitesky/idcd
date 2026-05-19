@@ -13,6 +13,7 @@ import (
 	"errors"
 	"os"
 	"os/signal"
+	"slices"
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -58,7 +59,11 @@ func main() {
 	}
 	defer pool.Close()
 
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
 	defer func() { _ = rdb.Close() }()
 
 	vlt, err := buildVault(cfg)
@@ -172,10 +177,8 @@ func main() {
 func pickSecondaryCA(r *service.Router) string {
 	names := r.Names()
 	for _, want := range []string{"zerossl", "buypass"} {
-		for _, n := range names {
-			if n == want {
-				return want
-			}
+		if slices.Contains(names, want) {
+			return want
 		}
 	}
 	return ""

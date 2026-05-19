@@ -75,7 +75,7 @@ func reasonString(r ca.RevokeReason) string {
 //
 // Idempotency: a cert that is already revoked surfaces ErrInvalidStatus —
 // the handler maps that to 409 so a repeat client sees a stable contract.
-func (s *Service) RevokeCert(ctx context.Context, accountID, certID int64, reason ca.RevokeReason) error {
+func (s *Service) RevokeCert(ctx context.Context, accountID string, certID int64, reason ca.RevokeReason) error {
 	if s.repos() == nil {
 		return ErrNotConfigured
 	}
@@ -165,7 +165,7 @@ func (s *Service) RevokeCert(ctx context.Context, accountID, certID int64, reaso
 // failure in audit_logs. All failures are swallowed — the caller is
 // already returning an error to the user, and a noisy rollback path
 // would just compound the problem.
-func (s *Service) rollbackRevoke(ctx context.Context, certID, accountID int64, reason string, caErr error) {
+func (s *Service) rollbackRevoke(ctx context.Context, certID int64, accountID string, reason string, caErr error) {
 	_ = s.repos().Certs.UpdateStatus(ctx, certID, certStatusRevoking, repo.CertStatusIssued, nil, nil)
 	payload, _ := json.Marshal(map[string]any{
 		"reason": reason,
@@ -196,11 +196,11 @@ func (s *Service) cancelRenewalJobs(ctx context.Context, certID int64) {
 // appendRevokeAudit writes one row to cert.audit_logs. Failures are
 // returned to the caller (the public RevokeCert always discards the
 // error — audit failure must not block the revoke itself).
-func (s *Service) appendRevokeAudit(ctx context.Context, accountID, certID int64, action string, payload []byte) error {
+func (s *Service) appendRevokeAudit(ctx context.Context, accountID string, certID int64, action string, payload []byte) error {
 	if s.repos() == nil || s.repos().AuditLogs == nil {
 		return nil
 	}
-	actor := fmt.Sprintf("user:%d", accountID)
+	actor := fmt.Sprintf("user:%s", accountID)
 	target := "cert"
 	tid := certID
 	acc := accountID

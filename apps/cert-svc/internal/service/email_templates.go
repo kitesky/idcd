@@ -15,7 +15,7 @@ type NotificationData struct {
 	EventType string
 	// AccountID owns the cert / order in question. Used to scope follow-up
 	// links if downstream notifier wants to deep-link by account.
-	AccountID int64
+	AccountID  string
 	// CertID is the cert.certs row id (zero when not applicable).
 	CertID int64
 	// OrderID is the cert.orders row id (zero when not applicable).

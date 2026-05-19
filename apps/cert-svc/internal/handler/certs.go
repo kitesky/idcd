@@ -32,7 +32,7 @@ func mountCerts(r chi.Router, deps Deps) {
 type certResponse struct {
 	ID                int64    `json:"id"`
 	OrderID           int64    `json:"order_id"`
-	AccountID         int64    `json:"account_id"`
+	AccountID  string    `json:"account_id"`
 	SANs              []string `json:"sans"`
 	Issuer            string   `json:"issuer"`
 	SerialHex         string   `json:"serial_hex"`

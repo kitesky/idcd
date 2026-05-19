@@ -14,7 +14,7 @@ import (
 // is nil; lifted = both LiftedAt / LiftedBy populated.
 type AbuseBan struct {
 	ID           int64
-	AccountID    int64
+	AccountID    string
 	Reason       string
 	BannedBy     string
 	BannedAt     time.Time
@@ -47,7 +47,7 @@ const banInsertSQL = `
 
 // Ban inserts a new active ban row. Trips ErrAlreadyBanned when the
 // partial-unique index (account_id) WHERE lifted_at IS NULL collides.
-func (r *AbuseBansRepo) Ban(ctx context.Context, accountID int64, reason, by string) (*AbuseBan, error) {
+func (r *AbuseBansRepo) Ban(ctx context.Context, accountID string, reason, by string) (*AbuseBan, error) {
 	if by == "" {
 		by = "admin"
 	}
@@ -78,7 +78,7 @@ const banActiveLookupSQL = `
 
 // IsBanned returns true when an active ban exists for accountID. The
 // returned ban is nil when no active row is found.
-func (r *AbuseBansRepo) IsBanned(ctx context.Context, accountID int64) (bool, *AbuseBan, error) {
+func (r *AbuseBansRepo) IsBanned(ctx context.Context, accountID string) (bool, *AbuseBan, error) {
 	var b AbuseBan
 	err := r.pool.QueryRow(ctx, banActiveLookupSQL, accountID).Scan(
 		&b.ID, &b.AccountID, &b.Reason, &b.BannedBy, &b.BannedAt,
@@ -101,7 +101,7 @@ const banLiftSQL = `
 
 // Lift marks the account's active ban as lifted. Returns ErrNotBanned
 // when no active row exists.
-func (r *AbuseBansRepo) Lift(ctx context.Context, accountID int64, by, reason string) error {
+func (r *AbuseBansRepo) Lift(ctx context.Context, accountID string, by, reason string) error {
 	if by == "" {
 		by = "admin"
 	}

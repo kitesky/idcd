@@ -23,7 +23,7 @@ func sampleCert() *Cert {
 	now := time.Now().UTC()
 	return &Cert{
 		OrderID:           101,
-		AccountID:         42,
+		AccountID:         "42",
 		SANs:              []string{"example.com"},
 		Issuer:            "Let's Encrypt R3",
 		SerialHex:         "deadbeef",
@@ -48,7 +48,7 @@ func certColumns() []string {
 func sampleCertRow(id int64) []any {
 	now := time.Now().UTC()
 	return []any{
-		id, int64(101), int64(42), []string{"example.com"}, "Let's Encrypt R3", "deadbeef",
+		id, int64(101), "42", []string{"example.com"}, "Let's Encrypt R3", "deadbeef",
 		"fp", "leaf", "chain", "kms://k/v1",
 		now, now.Add(90 * 24 * time.Hour), "issued", (*time.Time)(nil), (*string)(nil), now,
 	}
@@ -123,18 +123,18 @@ func TestCertsRepo_ListByAccount(t *testing.T) {
 	r, mock := newCertsRepo(t)
 
 	mock.ExpectQuery(`WHERE account_id = \$1\s+ORDER BY`).
-		WithArgs(int64(42), 5, 0).
+		WithArgs("42", 5, 0).
 		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(sampleCertRow(1)...))
 
-	out, err := r.ListByAccount(context.Background(), 42, nil, 5, 0)
+	out, err := r.ListByAccount(context.Background(), "42", nil, 5, 0)
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 
 	st := CertStatusIssued
 	mock.ExpectQuery(`WHERE account_id = \$1 AND status = \$2`).
-		WithArgs(int64(42), "issued", 5, 0).
+		WithArgs("42", "issued", 5, 0).
 		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(sampleCertRow(2)...))
-	out, err = r.ListByAccount(context.Background(), 42, &st, 5, 0)
+	out, err = r.ListByAccount(context.Background(), "42", &st, 5, 0)
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 }
@@ -142,9 +142,9 @@ func TestCertsRepo_ListByAccount(t *testing.T) {
 func TestCertsRepo_ListByAccount_DBError(t *testing.T) {
 	r, mock := newCertsRepo(t)
 	mock.ExpectQuery(`SELECT .+ FROM cert\.certs`).
-		WithArgs(int64(1), 10, 0).
+		WithArgs("1", 10, 0).
 		WillReturnError(errors.New("io"))
-	_, err := r.ListByAccount(context.Background(), 1, nil, 10, 0)
+	_, err := r.ListByAccount(context.Background(), "1", nil, 10, 0)
 	require.Error(t, err)
 }
 

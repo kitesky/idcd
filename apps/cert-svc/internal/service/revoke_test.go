@@ -48,7 +48,7 @@ func revokeTestCertColumns() []string {
 	}
 }
 
-func revokeTestCertRow(id, accountID int64, status string) []any {
+func revokeTestCertRow(id int64, accountID string, status string) []any {
 	now := time.Now().UTC()
 	return []any{
 		id, int64(1), accountID, []string{"example.com"}, "lets-encrypt", "abc",
@@ -80,7 +80,7 @@ func TestRevokeCert_HappyPath(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(revokeTestCertColumns()).
-			AddRow(revokeTestCertRow(7, 42, "issued")...))
+			AddRow(revokeTestCertRow(7, "42", "issued")...))
 
 	// 2. UpdateStatus issued → revoking
 	mock.ExpectExec(`UPDATE cert\.certs\s+SET status`).
@@ -110,7 +110,7 @@ func TestRevokeCert_HappyPath(t *testing.T) {
 	// 7. audit_logs append (completed)
 	expectAuditAppend(mock)
 
-	err := svc.RevokeCert(context.Background(), 42, 7, ca.RevokeUnspecified)
+	err := svc.RevokeCert(context.Background(), "42", 7, ca.RevokeUnspecified)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 	assert.Equal(t, 1, fake.revokeCalls)
@@ -126,7 +126,7 @@ func TestRevokeCert_CancelsActiveRenewalJobs(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(revokeTestCertColumns()).
-			AddRow(revokeTestCertRow(7, 42, "issued")...))
+			AddRow(revokeTestCertRow(7, "42", "issued")...))
 	mock.ExpectExec(`UPDATE cert\.certs\s+SET status`).
 		WithArgs("revoking", pgxmock.AnyArg(), pgxmock.AnyArg(),
 			int64(7), "issued").
@@ -155,7 +155,7 @@ func TestRevokeCert_CancelsActiveRenewalJobs(t *testing.T) {
 
 	expectAuditAppend(mock)
 
-	err := svc.RevokeCert(context.Background(), 42, 7, ca.RevokeKeyCompromise)
+	err := svc.RevokeCert(context.Background(), "42", 7, ca.RevokeKeyCompromise)
 	require.NoError(t, err)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -169,9 +169,9 @@ func TestRevokeCert_NotOwned(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(revokeTestCertColumns()).
-			AddRow(revokeTestCertRow(7, 999, "issued")...))
+			AddRow(revokeTestCertRow(7, "999", "issued")...))
 
-	err := svc.RevokeCert(context.Background(), 42, 7, ca.RevokeUnspecified)
+	err := svc.RevokeCert(context.Background(), "42", 7, ca.RevokeUnspecified)
 	assert.ErrorIs(t, err, ErrForbidden)
 	require.NoError(t, mock.ExpectationsWereMet())
 	assert.Equal(t, 0, fake.revokeCalls)
@@ -186,9 +186,9 @@ func TestRevokeCert_NotIssued(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(revokeTestCertColumns()).
-			AddRow(revokeTestCertRow(7, 42, "revoked")...))
+			AddRow(revokeTestCertRow(7, "42", "revoked")...))
 
-	err := svc.RevokeCert(context.Background(), 42, 7, ca.RevokeUnspecified)
+	err := svc.RevokeCert(context.Background(), "42", 7, ca.RevokeUnspecified)
 	assert.ErrorIs(t, err, ErrInvalidStatus)
 	require.NoError(t, mock.ExpectationsWereMet())
 }
@@ -203,7 +203,7 @@ func TestRevokeCert_CAFailureRollsBack(t *testing.T) {
 	mock.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(7)).
 		WillReturnRows(pgxmock.NewRows(revokeTestCertColumns()).
-			AddRow(revokeTestCertRow(7, 42, "issued")...))
+			AddRow(revokeTestCertRow(7, "42", "issued")...))
 	mock.ExpectExec(`UPDATE cert\.certs\s+SET status`).
 		WithArgs("revoking", pgxmock.AnyArg(), pgxmock.AnyArg(),
 			int64(7), "issued").
@@ -217,7 +217,7 @@ func TestRevokeCert_CAFailureRollsBack(t *testing.T) {
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
 	expectAuditAppend(mock) // failed
 
-	err := svc.RevokeCert(context.Background(), 42, 7, ca.RevokeUnspecified)
+	err := svc.RevokeCert(context.Background(), "42", 7, ca.RevokeUnspecified)
 	require.Error(t, err)
 	assert.True(t, errors.Is(err, ca.ErrNetwork),
 		"caller must be able to branch on ca.ErrNetwork (got %v)", err)
@@ -234,7 +234,7 @@ func TestRevokeCert_NotFound(t *testing.T) {
 		WithArgs(int64(99)).
 		WillReturnRows(pgxmock.NewRows(revokeTestCertColumns()))
 
-	err := svc.RevokeCert(context.Background(), 42, 99, ca.RevokeUnspecified)
+	err := svc.RevokeCert(context.Background(), "42", 99, ca.RevokeUnspecified)
 	assert.ErrorIs(t, err, ErrNotFound)
 }
 
@@ -251,7 +251,7 @@ func TestRevokeCert_NotConfigured(t *testing.T) {
 		// AccountKey omitted on purpose.
 	})
 
-	err = svc.RevokeCert(context.Background(), 42, 7, ca.RevokeUnspecified)
+	err = svc.RevokeCert(context.Background(), "42", 7, ca.RevokeUnspecified)
 	assert.ErrorIs(t, err, ErrNotConfigured)
 }
 
@@ -259,7 +259,7 @@ func TestRevokeCert_NotConfigured(t *testing.T) {
 // service refuses to operate without repos wired.
 func TestRevokeCert_NoReposReturnsNotConfigured(t *testing.T) {
 	svc := New(Config{})
-	err := svc.RevokeCert(context.Background(), 42, 7, ca.RevokeUnspecified)
+	err := svc.RevokeCert(context.Background(), "42", 7, ca.RevokeUnspecified)
 	assert.ErrorIs(t, err, ErrNotConfigured)
 }
 

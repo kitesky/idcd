@@ -97,7 +97,11 @@ func main() {
 
 	// Redis. Used for the JWT session store AND for the order stream
 	// publisher inside Service. Same instance, two consumer surfaces.
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	rdb := redis.NewClient(&redis.Options{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	})
 	defer func() { _ = rdb.Close() }()
 
 	vlt, err := buildVault(cfg)
@@ -384,7 +388,7 @@ func newAuditAbuseGate(bans *repo.AbuseBansRepo, audit *repo.AuditLogsRepo, l *s
 	return &auditAbuseGate{bans: bans, audit: audit, logger: l}
 }
 
-func (g *auditAbuseGate) Ban(ctx context.Context, accountID int64, reason string) error {
+func (g *auditAbuseGate) Ban(ctx context.Context, accountID string, reason string) error {
 	if g == nil || g.bans == nil {
 		return errors.New("audit gate not configured")
 	}
@@ -409,12 +413,14 @@ func (g *auditAbuseGate) Ban(ctx context.Context, accountID int64, reason string
 	if g.audit != nil {
 		tk := "account"
 		payload, _ := json.Marshal(map[string]string{"reason": reason})
+		// TargetID is BIGINT in cert.audit_logs and cannot carry our TEXT
+		// account_id; leave it nil — AccountID + TargetKind together identify
+		// the target without the numeric id.
 		entry := &repo.AuditLog{
 			AccountID:  &accountID,
 			Actor:      "admin",
 			Action:     "abuse.ban",
 			TargetKind: &tk,
-			TargetID:   &accountID,
 			Payload:    payload,
 		}
 		if appendErr := g.audit.Append(ctx, entry); appendErr != nil && g.logger != nil {
@@ -431,7 +437,7 @@ func (g *auditAbuseGate) Ban(ctx context.Context, accountID int64, reason string
 	return nil
 }
 
-func (g *auditAbuseGate) Unban(ctx context.Context, accountID int64, reason string) error {
+func (g *auditAbuseGate) Unban(ctx context.Context, accountID string, reason string) error {
 	if g == nil || g.bans == nil {
 		return errors.New("audit gate not configured")
 	}
@@ -445,12 +451,12 @@ func (g *auditAbuseGate) Unban(ctx context.Context, accountID int64, reason stri
 	if g.audit != nil {
 		tk := "account"
 		payload, _ := json.Marshal(map[string]string{"reason": reason})
+		// TargetID is BIGINT; cannot carry our TEXT account_id (see Ban).
 		_ = g.audit.Append(ctx, &repo.AuditLog{
 			AccountID:  &accountID,
 			Actor:      "admin",
 			Action:     "abuse.unban",
 			TargetKind: &tk,
-			TargetID:   &accountID,
 			Payload:    payload,
 		})
 	}

@@ -36,7 +36,21 @@ const (
 	actionRenewalEnqueued     = "renewal_job_enqueued"
 	actionRevokeStarted       = "revoke_started"
 	actionRevokeCompleted     = "revoke_completed"
+	// actionManualChallengeReady carries the dns-01 manual challenge
+	// (fqdn, value) the worker computed during solver.Present so the
+	// server-side GET /orders/{id} can surface real values to the user
+	// instead of an opaque placeholder. The payload shape is
+	// {"fqdn": "...", "value": "..."}. Multiple events of this type per
+	// order are expected for multi-SAN orders — readers should take the
+	// last one. Not consumed by replayEvents; it's an out-of-band hint.
+	actionManualChallengeReady = "manual_challenge_ready"
 )
+
+// ActionManualChallengeReady is the public form of
+// actionManualChallengeReady so the HTTP handler in another package can
+// filter events without re-declaring the string. Keep in sync with the
+// private constant.
+const ActionManualChallengeReady = actionManualChallengeReady
 
 // driveState captures the in-memory replay of an order's event log. The
 // boolean "needs" flags drive the state machine — every step is a no-op
@@ -154,7 +168,16 @@ func (s *Service) driveIssue(ctx context.Context, order *repo.Order) error {
 		if err != nil {
 			return fmt.Errorf("build csr: %w", err)
 		}
-		if err := s.appendEvent(ctx, order.ID, &state, actionCSRBuilt, csrPEM); err != nil {
+		// cert.order_events.payload_jsonb is JSONB, so the raw PEM
+		// cannot go in as-is — wrap it in a tagged JSON envelope. The
+		// replay path knows to decode the same shape.
+		csrPayload, err := json.Marshal(struct {
+			CSRPEM string `json:"csr_pem"`
+		}{string(csrPEM)})
+		if err != nil {
+			return fmt.Errorf("marshal csr payload: %w", err)
+		}
+		if err := s.appendEvent(ctx, order.ID, &state, actionCSRBuilt, csrPayload); err != nil {
 			return err
 		}
 		state.CSRPEM = csrPEM
@@ -507,7 +530,17 @@ func (s *Service) replayEvents(ctx context.Context, order *repo.Order) (driveSta
 			state.PrivKey = priv
 			state.NeedsKey = false
 		case actionCSRBuilt:
-			state.CSRPEM = append([]byte(nil), ev.Payload...)
+			var p struct {
+				CSRPEM string `json:"csr_pem"`
+			}
+			if err := json.Unmarshal(ev.Payload, &p); err == nil && p.CSRPEM != "" {
+				state.CSRPEM = []byte(p.CSRPEM)
+			} else {
+				// Backwards-compat for the brief window we wrote raw PEM
+				// into payload_jsonb before discovering the type mismatch.
+				// No prod data ever shipped in that shape, but defensive.
+				state.CSRPEM = append([]byte(nil), ev.Payload...)
+			}
 			state.NeedsCSR = false
 		case actionDNSSolverBuilt:
 			state.SolverReady = true
@@ -606,7 +639,12 @@ func (s *Service) buildSolver(ctx context.Context, order *repo.Order) (ca.DnsSol
 		if _, regErr := s.dnsReg().Get(dns.KindManual); regErr != nil {
 			return nil, fmt.Errorf("manual provider not registered: %w", regErr)
 		}
-		return solver, nil
+		// Wrap the solver so the (fqdn, value) lego passes into
+		// Present is recorded as an out-of-band order_events row. The
+		// HTTP server (a separate process) reads that row to answer
+		// GET /orders/{id} with real challenge data — without this
+		// wire-up the user can never learn the TXT value to install.
+		return &manualSolverWithEvent{inner: solver, svc: s, orderID: order.ID}, nil
 	}
 
 	cred, err := s.repos().DNSCredentials.GetByID(ctx, *order.DNSCredentialID)
@@ -681,6 +719,75 @@ func parsePrivateKey(pemBytes []byte) (crypto.Signer, error) {
 		return nil, fmt.Errorf("parse key: not a signer")
 	}
 	return signer, nil
+}
+
+// appendEventStandalone writes one event without a caller-supplied
+// driveState. It's the path used by out-of-band hooks (e.g. manual
+// challenge wrap solver) that need to land a hint in cert.order_events
+// for the server-side reader. Conflicts on action_seq trigger one retry
+// with a freshly computed seq; persistent conflicts bubble up.
+func (s *Service) appendEventStandalone(ctx context.Context, orderID int64, action string, payload []byte) error {
+	next, err := s.repos().OrderEvents.NextActionSeq(ctx, orderID)
+	if err != nil {
+		return fmt.Errorf("standalone append %s: next seq: %w", action, err)
+	}
+	ev := &repo.OrderEvent{
+		OrderID:   orderID,
+		ActionSeq: next,
+		Action:    action,
+		Payload:   payload,
+	}
+	if err := s.repos().OrderEvents.Append(ctx, ev); err != nil {
+		if errors.Is(err, repo.ErrConflict) {
+			next2, nerr := s.repos().OrderEvents.NextActionSeq(ctx, orderID)
+			if nerr != nil {
+				return fmt.Errorf("standalone append %s: retry next seq: %w", action, nerr)
+			}
+			ev.ActionSeq = next2
+			if err2 := s.repos().OrderEvents.Append(ctx, ev); err2 != nil {
+				return fmt.Errorf("standalone append %s retry: %w", action, err2)
+			}
+			return nil
+		}
+		return fmt.Errorf("standalone append %s: %w", action, err)
+	}
+	return nil
+}
+
+// manualSolverWithEvent wraps a manual ca.DnsSolver so the (fqdn, value)
+// passed to Present is mirrored into a cert.order_events row. The
+// out-of-band event is the only way the HTTP server process — which
+// does not share memory with the worker — can answer GET /orders/{id}
+// with real challenge data. Event-write failures degrade gracefully:
+// they're logged but never block the underlying ACME flow, because
+// failing to land a hint shouldn't void an in-flight issuance.
+type manualSolverWithEvent struct {
+	inner   ca.DnsSolver
+	svc     *Service
+	orderID int64
+}
+
+func (m *manualSolverWithEvent) Timeout() time.Duration { return m.inner.Timeout() }
+
+func (m *manualSolverWithEvent) Present(ctx context.Context, fqdn, value string) error {
+	payload, perr := json.Marshal(struct {
+		FQDN  string `json:"fqdn"`
+		Value string `json:"value"`
+	}{fqdn, value})
+	if perr == nil {
+		if err := m.svc.appendEventStandalone(ctx, m.orderID, actionManualChallengeReady, payload); err != nil {
+			m.svc.cfg.Logger.Warn("manual challenge event append failed",
+				"order_id", m.orderID, "fqdn", fqdn, "err", err)
+		}
+	} else {
+		m.svc.cfg.Logger.Warn("manual challenge event marshal failed",
+			"order_id", m.orderID, "err", perr)
+	}
+	return m.inner.Present(ctx, fqdn, value)
+}
+
+func (m *manualSolverWithEvent) CleanUp(ctx context.Context, fqdn, value string) error {
+	return m.inner.CleanUp(ctx, fqdn, value)
 }
 
 // sha256Fingerprint computes the SHA-256 fingerprint of the DER-encoded

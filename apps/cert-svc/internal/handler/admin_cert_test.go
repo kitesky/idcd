@@ -102,7 +102,7 @@ func TestAdminListOrders_HappyPath(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders ORDER BY created_at DESC LIMIT \$1 OFFSET \$2`).
 		WithArgs(50, 0).
 		WillReturnRows(pgxmock.NewRows(orderRowColumns()).
-			AddRow(sampleOrderRow(7, 42, "issued")...))
+			AddRow(sampleOrderRow(7, "42", "issued")...))
 
 	req := adminRequest(t, http.MethodGet, "/v1/admin/cert/orders", nil)
 	rec := httptest.NewRecorder()
@@ -121,7 +121,7 @@ func TestAdminListOrders_WithFilters(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders WHERE status = \$1 AND account_id = \$2 AND ca = \$3 ORDER BY created_at DESC LIMIT \$4 OFFSET \$5`).
-		WithArgs("issued", int64(42), "lets-encrypt", 25, 5).
+		WithArgs("issued", "42", "lets-encrypt", 25, 5).
 		WillReturnRows(pgxmock.NewRows(orderRowColumns()))
 
 	req := adminRequest(t, http.MethodGet,
@@ -135,21 +135,13 @@ func TestAdminListOrders_WithFilters(t *testing.T) {
 	require.Equal(t, 5, body.Offset)
 }
 
-func TestAdminListOrders_InvalidAccountID_400(t *testing.T) {
-	deps := Deps{Repos: repo.NewWithPool(newMockPool(t))}
-	req := adminRequest(t, http.MethodGet, "/v1/admin/cert/orders?account_id=zero", nil)
-	rec := httptest.NewRecorder()
-	adminListOrders(deps).ServeHTTP(rec, req)
-	require.Equal(t, http.StatusBadRequest, rec.Code, rec.Body.String())
-}
-
-func TestAdminListOrders_NegativeAccountID_400(t *testing.T) {
-	deps := Deps{Repos: repo.NewWithPool(newMockPool(t))}
-	req := adminRequest(t, http.MethodGet, "/v1/admin/cert/orders?account_id=-1", nil)
-	rec := httptest.NewRecorder()
-	adminListOrders(deps).ServeHTTP(rec, req)
-	require.Equal(t, http.StatusBadRequest, rec.Code)
-}
+// The pre-migration Invalid/Negative AccountID test cases targeted the
+// strconv.ParseInt guard adminListOrders ran on its account_id query
+// param. Once cert.* moved account_id to TEXT the handler stopped
+// rejecting non-numeric / negative inputs (they're now legal strings to
+// look up), so the tests no longer correspond to any production
+// behavior. Re-introducing them requires first deciding on a positive
+// format check (e.g. usr-prefix, length cap) on the wire layer.
 
 func TestAdminListOrders_DBError_500(t *testing.T) {
 	pool := newMockPool(t)
@@ -166,7 +158,7 @@ func TestAdminListOrders_IncludesFinalizedAt(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 	finalized := time.Now().UTC()
-	row := sampleOrderRow(7, 42, "issued")
+	row := sampleOrderRow(7, "42", "issued")
 	// Replace last column (finalized_at) with a non-nil time pointer.
 	row[len(row)-1] = &finalized
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
@@ -214,7 +206,7 @@ func TestAdminForceFail_HappyPath(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
 		WillReturnRows(pgxmock.NewRows(orderRowColumns()).
-			AddRow(sampleOrderRow(101, 42, "validating")...))
+			AddRow(sampleOrderRow(101, "42", "validating")...))
 	// UpdateStatus
 	pool.ExpectExec(`UPDATE cert\.orders\s+SET status`).
 		WithArgs("failed", pgxmock.AnyArg(), int64(101), "validating").
@@ -276,7 +268,7 @@ func TestAdminForceFail_AlreadyTerminal_409(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
 		WillReturnRows(pgxmock.NewRows(orderRowColumns()).
-			AddRow(sampleOrderRow(101, 42, "issued")...))
+			AddRow(sampleOrderRow(101, "42", "issued")...))
 	r := chiAdminRouter(Deps{Repos: repo.NewWithPool(pool)})
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, adminRequest(t, http.MethodPost, "/v1/admin/cert/orders/101/force-fail", nil))
@@ -288,7 +280,7 @@ func TestAdminForceFail_UpdateConflict_409(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
 		WillReturnRows(pgxmock.NewRows(orderRowColumns()).
-			AddRow(sampleOrderRow(101, 42, "validating")...))
+			AddRow(sampleOrderRow(101, "42", "validating")...))
 	pool.ExpectExec(`UPDATE cert\.orders\s+SET status`).
 		WithArgs("failed", pgxmock.AnyArg(), int64(101), "validating").
 		WillReturnResult(pgxmock.NewResult("UPDATE", 0)) // optimistic lock miss
@@ -303,7 +295,7 @@ func TestAdminForceFail_UpdateDBError_500(t *testing.T) {
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE id`).
 		WithArgs(int64(101)).
 		WillReturnRows(pgxmock.NewRows(orderRowColumns()).
-			AddRow(sampleOrderRow(101, 42, "validating")...))
+			AddRow(sampleOrderRow(101, "42", "validating")...))
 	pool.ExpectExec(`UPDATE cert\.orders\s+SET status`).
 		WillReturnError(errors.New("io"))
 	r := chiAdminRouter(Deps{Repos: repo.NewWithPool(pool)})
@@ -451,29 +443,29 @@ func TestAdminDNSHealth_DBError_500(t *testing.T) {
 // --- Ban -------------------------------------------------------------------
 
 type fakeAbuseGate struct {
-	banned    map[int64]string
+	banned    map[string]string
 	err       error
 	unbanErr  error
-	unbanned  map[int64]string
+	unbanned  map[string]string
 }
 
-func (f *fakeAbuseGate) Ban(_ context.Context, id int64, reason string) error {
+func (f *fakeAbuseGate) Ban(_ context.Context, id string, reason string) error {
 	if f.err != nil {
 		return f.err
 	}
 	if f.banned == nil {
-		f.banned = map[int64]string{}
+		f.banned = map[string]string{}
 	}
 	f.banned[id] = reason
 	return nil
 }
 
-func (f *fakeAbuseGate) Unban(_ context.Context, id int64, reason string) error {
+func (f *fakeAbuseGate) Unban(_ context.Context, id string, reason string) error {
 	if f.unbanErr != nil {
 		return f.unbanErr
 	}
 	if f.unbanned == nil {
-		f.unbanned = map[int64]string{}
+		f.unbanned = map[string]string{}
 	}
 	f.unbanned[id] = reason
 	delete(f.banned, id)
@@ -494,11 +486,11 @@ func TestAdminBan_HappyPath_NoAuditRepo(t *testing.T) {
 	r.ServeHTTP(rec, adminRequest(t, http.MethodPost, "/v1/admin/cert/accounts/42/ban",
 		adminBanRequest{Reason: "fraud"}))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, "fraud", gate.banned[42])
+	require.Equal(t, "fraud", gate.banned["42"])
 	var resp adminBanResponse
 	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
 	require.Equal(t, "banned", resp.Status)
-	require.Equal(t, int64(42), resp.AccountID)
+	require.Equal(t, "42", resp.AccountID)
 }
 
 func TestAdminBan_DefaultsReason_WhenEmpty(t *testing.T) {
@@ -507,7 +499,7 @@ func TestAdminBan_DefaultsReason_WhenEmpty(t *testing.T) {
 	rec := httptest.NewRecorder()
 	r.ServeHTTP(rec, adminRequest(t, http.MethodPost, "/v1/admin/cert/accounts/42/ban", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "admin ban", gate.banned[42])
+	require.Equal(t, "admin ban", gate.banned["42"])
 }
 
 func TestAdminBan_GateError_500(t *testing.T) {
@@ -602,7 +594,7 @@ func TestAdminUnban_Success(t *testing.T) {
 		"/v1/admin/cert/accounts/42/unban",
 		adminBanRequest{Reason: "false positive"}))
 	require.Equal(t, http.StatusOK, rec.Code, rec.Body.String())
-	require.Equal(t, "false positive", gate.unbanned[42])
+	require.Equal(t, "false positive", gate.unbanned["42"])
 }
 
 func TestAdminUnban_DefaultReason(t *testing.T) {
@@ -612,7 +604,7 @@ func TestAdminUnban_DefaultReason(t *testing.T) {
 	r.ServeHTTP(rec, adminRequest(t, http.MethodPost,
 		"/v1/admin/cert/accounts/42/unban", nil))
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Equal(t, "admin unban", gate.unbanned[42])
+	require.Equal(t, "admin unban", gate.unbanned["42"])
 }
 
 func TestAdminUnban_InternalError_500(t *testing.T) {

@@ -67,7 +67,7 @@ func certColumns() []string {
 	}
 }
 
-func sampleCertRow(t *testing.T, id, accountID int64, status string, v vault.Vault) ([]any, []byte) {
+func sampleCertRow(t *testing.T, id int64, accountID string, status string, v vault.Vault) ([]any, []byte) {
 	t.Helper()
 	plainPEM, ek, err := v.GenerateKey(context.Background(), vault.KeyAlgECDSAP256)
 	require.NoError(t, err)
@@ -87,10 +87,10 @@ func TestListCerts_OK(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 	v := newTestVault(t)
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE account_id`).
-		WithArgs(int64(42), 20, 0).
+		WithArgs("42", 20, 0).
 		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(row...))
 
 	req := authedRequest(t, http.MethodGet, "/v1/cert/certs", nil, "42")
@@ -103,7 +103,7 @@ func TestGetCert_OK(t *testing.T) {
 	pool := newMockPool(t)
 	deps := Deps{Repos: repo.NewWithPool(pool)}
 	v := newTestVault(t)
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
@@ -139,7 +139,7 @@ func TestDownloadCert_IssuesToken(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
@@ -260,7 +260,7 @@ func TestDownloadCert_PFX_IssuesToken(t *testing.T) {
 	handle := base64.StdEncoding.EncodeToString(ekBytes)
 	now := time.Now().UTC()
 	row := []any{
-		int64(9), int64(1), int64(42), []string{"pfx.example.com"},
+		int64(9), int64(1), "42", []string{"pfx.example.com"},
 		"lets-encrypt", "abc", "fp", leafPEM, chainPEM, handle,
 		now.Add(-time.Hour), now.Add(time.Hour * 24 * 90), "issued",
 		(*time.Time)(nil), (*string)(nil), now,
@@ -329,7 +329,7 @@ func TestRevokeCert_ForbiddenViaService(t *testing.T) {
 	svc := newRevokeHandlerService(t, pool)
 	deps := Deps{Repos: repo.NewWithPool(pool), Service: svc, Vault: v}
 
-	row, _ := sampleCertRow(t, 9, 999, "issued", v)
+	row, _ := sampleCertRow(t, 9, "999", "issued", v)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
 		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(row...))
@@ -369,7 +369,7 @@ func TestRevokeCert_AlreadyRevokedViaService(t *testing.T) {
 	svc := newRevokeHandlerService(t, pool)
 	deps := Deps{Repos: repo.NewWithPool(pool), Service: svc, Vault: v}
 
-	row, _ := sampleCertRow(t, 9, 42, "revoked", v)
+	row, _ := sampleCertRow(t, 9, "42", "revoked", v)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
 		WillReturnRows(pgxmock.NewRows(certColumns()).AddRow(row...))

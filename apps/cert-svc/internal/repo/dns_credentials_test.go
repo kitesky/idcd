@@ -21,7 +21,7 @@ func newDNSCredentialsRepo(t *testing.T) (*DNSCredentialsRepo, pgxmock.PgxPoolIf
 
 func sampleDNSCred() *DNSCredential {
 	return &DNSCredential{
-		AccountID:     42,
+		AccountID:     "42",
 		Provider:      "cloudflare",
 		DisplayName:   "primary",
 		EncryptedBlob: []byte("enc"),
@@ -36,7 +36,7 @@ func TestDNSCredentialsRepo_Insert_Success(t *testing.T) {
 	now := time.Now().UTC()
 
 	mock.ExpectQuery(`INSERT INTO cert\.dns_credentials`).
-		WithArgs(int64(42), "cloudflare", "primary", []byte("enc"), []byte("dek"), "kek-1", "unknown").
+		WithArgs("42", "cloudflare", "primary", []byte("enc"), []byte("dek"), "kek-1", "unknown").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created_at"}).AddRow(int64(13), now))
 
 	id, err := r.Insert(context.Background(), c)
@@ -51,7 +51,7 @@ func TestDNSCredentialsRepo_Insert_PreservesHealthStatus(t *testing.T) {
 	c.HealthStatus = "ok"
 
 	mock.ExpectQuery(`INSERT INTO cert\.dns_credentials`).
-		WithArgs(int64(42), "cloudflare", "primary", []byte("enc"), []byte("dek"), "kek-1", "ok").
+		WithArgs("42", "cloudflare", "primary", []byte("enc"), []byte("dek"), "kek-1", "ok").
 		WillReturnRows(pgxmock.NewRows([]string{"id", "created_at"}).AddRow(int64(1), time.Now()))
 	_, err := r.Insert(context.Background(), c)
 	require.NoError(t, err)
@@ -85,7 +85,7 @@ func TestDNSCredentialsRepo_GetByID_Success(t *testing.T) {
 			"id", "account_id", "provider", "display_name",
 			"encrypted_blob", "dek_wrapped", "kek_key_id",
 			"health_status", "health_checked_at", "created_at", "revoked_at",
-		}).AddRow(int64(13), int64(42), "cloudflare", "primary",
+		}).AddRow(int64(13), "42", "cloudflare", "primary",
 			[]byte("enc"), []byte("dek"), "kek-1",
 			"ok", &now, now, (*time.Time)(nil)))
 
@@ -117,14 +117,14 @@ func TestDNSCredentialsRepo_ListByAccount_OmitsBlobs(t *testing.T) {
 	now := time.Now().UTC()
 
 	mock.ExpectQuery(`SELECT id, account_id, provider, display_name, kek_key_id`).
-		WithArgs(int64(42)).
+		WithArgs("42").
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "account_id", "provider", "display_name", "kek_key_id",
 			"health_status", "health_checked_at", "created_at", "revoked_at",
-		}).AddRow(int64(1), int64(42), "cloudflare", "primary", "kek-1",
+		}).AddRow(int64(1), "42", "cloudflare", "primary", "kek-1",
 			"ok", &now, now, (*time.Time)(nil)))
 
-	out, err := r.ListByAccount(context.Background(), 42)
+	out, err := r.ListByAccount(context.Background(), "42")
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 	assert.Nil(t, out[0].EncryptedBlob)
@@ -134,9 +134,9 @@ func TestDNSCredentialsRepo_ListByAccount_OmitsBlobs(t *testing.T) {
 func TestDNSCredentialsRepo_ListByAccount_DBError(t *testing.T) {
 	r, mock := newDNSCredentialsRepo(t)
 	mock.ExpectQuery(`SELECT .+ FROM cert\.dns_credentials`).
-		WithArgs(int64(1)).
+		WithArgs("1").
 		WillReturnError(errors.New("io"))
-	_, err := r.ListByAccount(context.Background(), 1)
+	_, err := r.ListByAccount(context.Background(), "1")
 	require.Error(t, err)
 }
 

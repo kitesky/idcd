@@ -115,7 +115,7 @@ const (
 // Order is the in-memory projection of one cert.orders row.
 type Order struct {
 	ID               int64
-	AccountID        int64
+	AccountID        string
 	SANs             []string
 	SANsUnicode      []string
 	CommonName       *string
@@ -154,7 +154,7 @@ type OrderEvent struct {
 type Cert struct {
 	ID                int64
 	OrderID           int64
-	AccountID         int64
+	AccountID         string
 	SANs              []string
 	Issuer            string
 	SerialHex         string
@@ -176,7 +176,7 @@ type Cert struct {
 // surface in account-listing API responses.
 type DNSCredential struct {
 	ID              int64
-	AccountID       int64
+	AccountID       string
 	Provider        string
 	DisplayName     string
 	EncryptedBlob   []byte // nil on list queries
@@ -215,7 +215,7 @@ type RenewalJob struct {
 // AuditLog is one append-only entry on the cert.audit_logs table.
 type AuditLog struct {
 	ID         int64
-	AccountID  *int64
+	AccountID  *string
 	Actor      string
 	Action     string
 	TargetKind *string
@@ -227,7 +227,7 @@ type AuditLog struct {
 // Domain is one cert.domains row — per-account FQDN registry + CAA cache.
 type Domain struct {
 	ID           int64
-	AccountID    int64
+	AccountID    string
 	FQDN         string
 	CAAStatus    *string
 	CAACheckedAt *time.Time

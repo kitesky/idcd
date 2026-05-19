@@ -25,7 +25,7 @@ func abuseOrderRowColumns() []string {
 
 func abuseHistoryRow(id int64, sans []string, createdAt time.Time) []any {
 	return []any{
-		id, int64(42), sans, sans, (*string)(nil),
+		id, "42", sans, sans, (*string)(nil),
 		"free-dv", "letsencrypt",
 		(*string)(nil), (*string)(nil), (*int64)(nil), 90,
 		"dns-01", (*int64)(nil), "issued", (*string)(nil), (*int64)(nil),
@@ -45,19 +45,19 @@ func newAbuseDetectorWithMock(t *testing.T, opts ...AbuseOption) (*AbuseDetector
 
 func TestAbuse_Blocklist_RootMatch(t *testing.T) {
 	a := NewAbuseDetector(nil)
-	err := a.Check(context.Background(), 42, []string{"taobao.com"})
+	err := a.Check(context.Background(), "42", []string{"taobao.com"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 }
 
 func TestAbuse_Blocklist_SubdomainMatch(t *testing.T) {
 	a := NewAbuseDetector(nil)
-	err := a.Check(context.Background(), 42, []string{"shop.tmall.com"})
+	err := a.Check(context.Background(), "42", []string{"shop.tmall.com"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 }
 
 func TestAbuse_Blocklist_GovCNMatchesGovCNRoot(t *testing.T) {
 	a := NewAbuseDetector(nil)
-	err := a.Check(context.Background(), 42, []string{"moe.gov.cn"})
+	err := a.Check(context.Background(), "42", []string{"moe.gov.cn"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 }
 
@@ -65,15 +65,15 @@ func TestAbuse_Blocklist_NoFalsePositive(t *testing.T) {
 	// "notbaidu.com" must NOT match the "baidu.com" blocklist entry.
 	a, pool := newAbuseDetectorWithMock(t)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnRows(pgxmock.NewRows(abuseOrderRowColumns()))
-	require.NoError(t, a.Check(context.Background(), 42, []string{"shop.notbaidu.com"}))
+	require.NoError(t, a.Check(context.Background(), "42", []string{"shop.notbaidu.com"}))
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
 func TestAbuse_Blocklist_Wildcard(t *testing.T) {
 	a := NewAbuseDetector(nil)
-	err := a.Check(context.Background(), 42, []string{"*.alipay.com"})
+	err := a.Check(context.Background(), "42", []string{"*.alipay.com"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 }
 
@@ -88,11 +88,11 @@ func TestAbuse_Burst_FiveDistinctRootsIn1h(t *testing.T) {
 		rows.AddRow(abuseHistoryRow(int64(100+i), []string{d}, clock.Add(-30*time.Minute))...)
 	}
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnRows(rows)
 
 	// The new order adds a 6th distinct root.
-	err := a.Check(context.Background(), 42, []string{"f.com"})
+	err := a.Check(context.Background(), "42", []string{"f.com"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 	require.NoError(t, pool.ExpectationsWereMet())
 }
@@ -108,10 +108,10 @@ func TestAbuse_Burst_HistoryOutsideWindowIsIgnored(t *testing.T) {
 		rows.AddRow(abuseHistoryRow(int64(100+i), []string{d}, clock.Add(-2*time.Hour))...)
 	}
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnRows(rows)
 
-	require.NoError(t, a.Check(context.Background(), 42, []string{"f.com"}))
+	require.NoError(t, a.Check(context.Background(), "42", []string{"f.com"}))
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
@@ -125,10 +125,10 @@ func TestAbuse_Sustained_TenOrdersInWeek(t *testing.T) {
 		rows.AddRow(abuseHistoryRow(int64(100+i), []string{"target.com"}, clock.Add(-time.Duration(i+1)*time.Hour))...)
 	}
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnRows(rows)
 
-	err := a.Check(context.Background(), 42, []string{"foo.target.com"})
+	err := a.Check(context.Background(), "42", []string{"foo.target.com"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 	require.NoError(t, pool.ExpectationsWereMet())
 }
@@ -139,10 +139,10 @@ func TestAbuse_Allow_QuietAccount(t *testing.T) {
 		WithAbuseClock(func() time.Time { return clock }),
 	)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnRows(pgxmock.NewRows(abuseOrderRowColumns()))
 
-	require.NoError(t, a.Check(context.Background(), 42, []string{"new.example.com"}))
+	require.NoError(t, a.Check(context.Background(), "42", []string{"new.example.com"}))
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
@@ -152,27 +152,27 @@ func TestAbuse_Allow_HistoryFetchFailsOpens(t *testing.T) {
 		WithAbuseClock(func() time.Time { return clock }),
 	)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnError(context.DeadlineExceeded)
-	require.NoError(t, a.Check(context.Background(), 42, []string{"example.com"}))
+	require.NoError(t, a.Check(context.Background(), "42", []string{"example.com"}))
 	require.NoError(t, pool.ExpectationsWereMet())
 }
 
 func TestAbuse_NilDetector_Safe(t *testing.T) {
 	var a *AbuseDetector
-	require.NoError(t, a.Check(context.Background(), 42, []string{"example.com"}))
+	require.NoError(t, a.Check(context.Background(), "42", []string{"example.com"}))
 }
 
 func TestAbuse_EmptySANs(t *testing.T) {
 	a := NewAbuseDetector(nil)
-	require.NoError(t, a.Check(context.Background(), 42, nil))
+	require.NoError(t, a.Check(context.Background(), "42", nil))
 }
 
 func TestAbuse_CustomBlocklist(t *testing.T) {
 	a := NewAbuseDetector(nil, WithAbuseBlocklist([]string{"forbidden.test"}))
-	require.NoError(t, a.Check(context.Background(), 42, []string{"taobao.com"}),
+	require.NoError(t, a.Check(context.Background(), "42", []string{"taobao.com"}),
 		"default blocklist must be replaced, not augmented")
-	require.ErrorIs(t, a.Check(context.Background(), 42, []string{"sub.forbidden.test"}), ErrAbuseBlocked)
+	require.ErrorIs(t, a.Check(context.Background(), "42", []string{"sub.forbidden.test"}), ErrAbuseBlocked)
 }
 
 func TestAbuse_CustomBurstThreshold(t *testing.T) {
@@ -185,9 +185,9 @@ func TestAbuse_CustomBurstThreshold(t *testing.T) {
 	rows.AddRow(abuseHistoryRow(1, []string{"a.com"}, clock.Add(-5*time.Minute))...)
 	rows.AddRow(abuseHistoryRow(2, []string{"b.com"}, clock.Add(-5*time.Minute))...)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 500, 0).
+		WithArgs("42", 500, 0).
 		WillReturnRows(rows)
-	err := a.Check(context.Background(), 42, []string{"c.com"})
+	err := a.Check(context.Background(), "42", []string{"c.com"})
 	require.ErrorIs(t, err, ErrAbuseBlocked)
 }
 
@@ -214,7 +214,7 @@ type stubBanLookup struct {
 	calls  int
 }
 
-func (s *stubBanLookup) IsBanned(_ context.Context, _ int64) (bool, *repo.AbuseBan, error) {
+func (s *stubBanLookup) IsBanned(_ context.Context, _ string) (bool, *repo.AbuseBan, error) {
 	s.calls++
 	return s.banned, s.ban, s.err
 }
@@ -222,7 +222,7 @@ func (s *stubBanLookup) IsBanned(_ context.Context, _ int64) (bool, *repo.AbuseB
 func TestAbuse_BanShortCircuitsCheck(t *testing.T) {
 	stub := &stubBanLookup{banned: true, ban: &repo.AbuseBan{Reason: "phishing"}}
 	a := NewAbuseDetector(nil, WithAbuseBans(stub))
-	err := a.Check(context.Background(), 7, []string{"example.com"})
+	err := a.Check(context.Background(), "7", []string{"example.com"})
 	require.ErrorIs(t, err, ErrAccountBanned)
 	require.Contains(t, err.Error(), "phishing")
 	require.Equal(t, 1, stub.calls)
@@ -233,7 +233,7 @@ func TestAbuse_BanLookupErrorFailsOpen(t *testing.T) {
 	a := NewAbuseDetector(nil, WithAbuseBans(stub))
 	// No active ban → falls through to blocklist (which is empty for
 	// example.com), so the call should succeed.
-	err := a.Check(context.Background(), 7, []string{"example.com"})
+	err := a.Check(context.Background(), "7", []string{"example.com"})
 	require.NoError(t, err)
 	require.Equal(t, 1, stub.calls)
 }
@@ -241,21 +241,21 @@ func TestAbuse_BanLookupErrorFailsOpen(t *testing.T) {
 func TestAbuse_BanLookupNotConfigured(t *testing.T) {
 	// Without WithAbuseBans, the detector skips the ban lookup entirely.
 	a := NewAbuseDetector(nil)
-	err := a.Check(context.Background(), 7, []string{"example.com"})
+	err := a.Check(context.Background(), "7", []string{"example.com"})
 	require.NoError(t, err)
 }
 
 func TestAbuse_BanNotActive_FallsThrough(t *testing.T) {
 	stub := &stubBanLookup{banned: false}
 	a := NewAbuseDetector(nil, WithAbuseBans(stub))
-	err := a.Check(context.Background(), 7, []string{"example.com"})
+	err := a.Check(context.Background(), "7", []string{"example.com"})
 	require.NoError(t, err)
 	require.Equal(t, 1, stub.calls)
 }
 
 func TestAbuse_BanNilDetector_NoOp(t *testing.T) {
 	var a *AbuseDetector
-	require.NoError(t, a.Check(context.Background(), 7, []string{"example.com"}))
+	require.NoError(t, a.Check(context.Background(), "7", []string{"example.com"}))
 }
 
 // banStubErr is a tiny one-shot error helper local to this test file so

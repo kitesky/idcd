@@ -68,24 +68,17 @@ func readJSON(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-// requireUser pulls the authenticated user id out of context and parses
-// it as the int64 account id used by the cert.* tables. Returns false
-// (and writes 401) on any failure so handlers can early-return.
-func requireUser(w http.ResponseWriter, r *http.Request) (int64, bool) {
+// requireUser pulls the authenticated user id out of context. cert.*
+// account_id columns are TEXT (stripe-style ids matching apps/api's
+// public."user".id), so we hand the string straight through. Returns
+// false (and writes 401) when no auth ran.
+func requireUser(w http.ResponseWriter, r *http.Request) (string, bool) {
 	uid, err := certmw.UserIDFromContext(r.Context())
-	if err != nil {
+	if err != nil || uid == "" {
 		writeErr(w, http.StatusUnauthorized, codeUnauthorized, "authentication required", nil)
-		return 0, false
+		return "", false
 	}
-	id, perr := strconv.ParseInt(uid, 10, 64)
-	if perr != nil || id <= 0 {
-		// cert.* tables key on int64 account ids; non-numeric user ids
-		// mean the caller authed via a path we cannot map. Surface as
-		// 401 rather than 500 to keep the error surface uniform.
-		writeErr(w, http.StatusUnauthorized, codeUnauthorized, "invalid user id", nil)
-		return 0, false
-	}
-	return id, true
+	return uid, true
 }
 
 // pathInt64 extracts a numeric path parameter, writing 404 on parse fail.

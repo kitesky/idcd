@@ -23,7 +23,7 @@ func sampleOrder() *Order {
 	key := "idem-123"
 	csr := "-----BEGIN CERTIFICATE REQUEST-----\nMI...\n-----END CERTIFICATE REQUEST-----"
 	return &Order{
-		AccountID:      42,
+		AccountID:      "42",
 		SANs:           []string{"example.com"},
 		Tier:           "free-dv",
 		CA:             "lets-encrypt",
@@ -47,7 +47,7 @@ func orderColumns() []string {
 
 func sampleOrderRow(id int64) []any {
 	return []any{
-		id, int64(42), []string{"example.com"}, []string(nil), (*string)(nil), "free-dv", "lets-encrypt",
+		id, "42", []string{"example.com"}, []string(nil), (*string)(nil), "free-dv", "lets-encrypt",
 		(*string)(nil), (*string)(nil), (*int64)(nil), 90,
 		"dns-01", (*int64)(nil), "draft", (*string)(nil), (*int64)(nil),
 		(*string)(nil), 0, (*string)(nil), (*string)(nil),
@@ -166,10 +166,10 @@ func TestOrdersRepo_CountByAccountSince(t *testing.T) {
 
 	since := time.Now().UTC().Add(-24 * time.Hour)
 	mock.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders\s+WHERE account_id = \$1 AND created_at >= \$2`).
-		WithArgs(int64(42), since).
+		WithArgs("42", since).
 		WillReturnRows(pgxmock.NewRows([]string{"count"}).AddRow(7))
 
-	got, err := r.CountByAccountSince(context.Background(), 42, since)
+	got, err := r.CountByAccountSince(context.Background(), "42", since)
 	require.NoError(t, err)
 	assert.Equal(t, 7, got)
 }
@@ -179,10 +179,10 @@ func TestOrdersRepo_CountByAccountSince_DBError(t *testing.T) {
 
 	since := time.Now().UTC().Add(-24 * time.Hour)
 	mock.ExpectQuery(`SELECT COUNT\(\*\)::int\s+FROM cert\.orders`).
-		WithArgs(int64(42), since).
+		WithArgs("42", since).
 		WillReturnError(errors.New("boom"))
 
-	_, err := r.CountByAccountSince(context.Background(), 42, since)
+	_, err := r.CountByAccountSince(context.Background(), "42", since)
 	require.Error(t, err)
 }
 
@@ -190,12 +190,12 @@ func TestOrdersRepo_ListByAccount_NoStatus(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 
 	mock.ExpectQuery(`SELECT .+ FROM cert\.orders\s+WHERE account_id = \$1\s+ORDER BY`).
-		WithArgs(int64(42), 10, 0).
+		WithArgs("42", 10, 0).
 		WillReturnRows(pgxmock.NewRows(orderColumns()).
 			AddRow(sampleOrderRow(1)...).
 			AddRow(sampleOrderRow(2)...))
 
-	out, err := r.ListByAccount(context.Background(), 42, nil, 10, 0)
+	out, err := r.ListByAccount(context.Background(), "42", nil, 10, 0)
 	require.NoError(t, err)
 	require.Len(t, out, 2)
 	assert.Equal(t, int64(1), out[0].ID)
@@ -206,10 +206,10 @@ func TestOrdersRepo_ListByAccount_WithStatus(t *testing.T) {
 	st := OrderStatusIssued
 
 	mock.ExpectQuery(`WHERE account_id = \$1 AND status = \$2`).
-		WithArgs(int64(42), "issued", 5, 0).
+		WithArgs("42", "issued", 5, 0).
 		WillReturnRows(pgxmock.NewRows(orderColumns()).AddRow(sampleOrderRow(7)...))
 
-	out, err := r.ListByAccount(context.Background(), 42, &st, 5, 0)
+	out, err := r.ListByAccount(context.Background(), "42", &st, 5, 0)
 	require.NoError(t, err)
 	require.Len(t, out, 1)
 }
@@ -217,10 +217,10 @@ func TestOrdersRepo_ListByAccount_WithStatus(t *testing.T) {
 func TestOrdersRepo_ListByAccount_DBError(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 	mock.ExpectQuery(`SELECT .+ FROM cert\.orders`).
-		WithArgs(int64(42), 10, 0).
+		WithArgs("42", 10, 0).
 		WillReturnError(errors.New("timeout"))
 
-	_, err := r.ListByAccount(context.Background(), 42, nil, 10, 0)
+	_, err := r.ListByAccount(context.Background(), "42", nil, 10, 0)
 	require.Error(t, err)
 }
 
@@ -365,11 +365,11 @@ func TestOrdersRepo_AdminListOrders_NoFilters(t *testing.T) {
 func TestOrdersRepo_AdminListOrders_AllFilters(t *testing.T) {
 	r, mock := newOrdersRepo(t)
 	st := OrderStatusIssued
-	acct := int64(42)
+	acct := "42"
 	ca := "lets-encrypt"
 
 	mock.ExpectQuery(`SELECT .+ FROM cert\.orders WHERE status = \$1 AND account_id = \$2 AND ca = \$3 ORDER BY created_at DESC LIMIT \$4 OFFSET \$5`).
-		WithArgs("issued", int64(42), "lets-encrypt", 25, 10).
+		WithArgs("issued", "42", "lets-encrypt", 25, 10).
 		WillReturnRows(pgxmock.NewRows(orderColumns()).AddRow(sampleOrderRow(7)...))
 
 	out, err := r.AdminListOrders(context.Background(), AdminOrderFilter{

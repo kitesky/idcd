@@ -69,7 +69,7 @@ func TestDownloadByToken_PEM_EndToEnd(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 	expectCertGetByID(t, pool, row)
 	// GET side fetches the cert again — second expectation.
 	expectCertGetByID(t, pool, row)
@@ -101,7 +101,7 @@ func TestDownloadByToken_Nginx_EndToEnd(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 	expectCertGetByID(t, pool, row)
 	expectCertGetByID(t, pool, row)
 
@@ -136,7 +136,7 @@ func TestDownloadByToken_PFX_Success(t *testing.T) {
 	handle := base64.StdEncoding.EncodeToString(ekBytes)
 	now := time.Now().UTC()
 	row := []any{
-		int64(9), int64(1), int64(42), []string{"pfx.example.com"},
+		int64(9), int64(1), "42", []string{"pfx.example.com"},
 		"lets-encrypt", "abc", "fp", leafPEM, chainPEM, handle,
 		now.Add(-time.Hour), now.Add(time.Hour * 24 * 90), "issued",
 		(*time.Time)(nil), (*string)(nil), now,
@@ -160,7 +160,7 @@ func TestDownloadByToken_SingleUse(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 	expectCertGetByID(t, pool, row) // POST
 	expectCertGetByID(t, pool, row) // first GET succeeds
 
@@ -223,8 +223,8 @@ func TestDownloadByToken_CertOwnershipDrift(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	rowIssue, _ := sampleCertRow(t, 9, 42, "issued", v)
-	rowDrift, _ := sampleCertRow(t, 9, 999, "issued", v) // owner swapped
+	rowIssue, _ := sampleCertRow(t, 9, "42", "issued", v)
+	rowDrift, _ := sampleCertRow(t, 9, "999", "issued", v) // owner swapped
 	expectCertGetByID(t, pool, rowIssue)
 	expectCertGetByID(t, pool, rowDrift)
 
@@ -240,7 +240,7 @@ func TestDownloadByToken_CertGoneOnConsume(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	row, _ := sampleCertRow(t, 9, 42, "issued", v)
+	row, _ := sampleCertRow(t, 9, "42", "issued", v)
 	expectCertGetByID(t, pool, row)
 	pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
 		WithArgs(int64(9)).
@@ -259,8 +259,8 @@ func TestDownloadByToken_RevokedAfterIssue(t *testing.T) {
 	pool := newMockPool(t)
 	v := newTestVault(t)
 	deps := Deps{Repos: repo.NewWithPool(pool), Vault: v, Service: newDownloadService(t, pool)}
-	rowIssue, _ := sampleCertRow(t, 9, 42, "issued", v)
-	rowRevoked, _ := sampleCertRow(t, 9, 42, "revoked", v)
+	rowIssue, _ := sampleCertRow(t, 9, "42", "issued", v)
+	rowRevoked, _ := sampleCertRow(t, 9, "42", "revoked", v)
 	expectCertGetByID(t, pool, rowIssue)
 	expectCertGetByID(t, pool, rowRevoked)
 

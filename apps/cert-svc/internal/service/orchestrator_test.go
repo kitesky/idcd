@@ -81,7 +81,7 @@ func makeLeafPEM(t *testing.T, sans []string) []byte {
 func orderRow(sans []string) []any {
 	return []any{
 		int64(1),         // id
-		int64(42),        // account_id
+		"42",             // account_id
 		sans,             // sans
 		sans,             // sans_unicode
 		nil,              // common_name
@@ -185,7 +185,7 @@ func TestDriveOrder_HappyPath_Manual(t *testing.T) {
 	mock.ExpectQuery(`INSERT INTO cert\.certs`).
 		WithArgs(
 			int64(1),
-			int64(42),
+			"42",
 			sans,
 			"lets-encrypt",
 			"abc123",
@@ -499,7 +499,7 @@ func TestDriveOrder_Revoke_HappyPath(t *testing.T) {
 			"fingerprint_sha256", "leaf_pem", "chain_pem", "key_kms_handle",
 			"not_before", "not_after", "status", "revoked_at", "revoke_reason", "created_at",
 		}).AddRow(
-			int64(7), int64(1), int64(42), sans, "lets-encrypt", "abc",
+			int64(7), int64(1), "42", sans, "lets-encrypt", "abc",
 			"fp", string(leaf), "chain", "handle",
 			now, now.Add(90*24*time.Hour), "issued", nil, nil, now,
 		))

@@ -102,7 +102,7 @@ const certsListByAccountStatusSQL = `
 
 // ListByAccount returns certs for one account, optionally filtered by
 // status. Pass status == nil to skip the filter.
-func (r *CertsRepo) ListByAccount(ctx context.Context, accountID int64, status *CertStatus, limit, offset int) ([]*Cert, error) {
+func (r *CertsRepo) ListByAccount(ctx context.Context, accountID string, status *CertStatus, limit, offset int) ([]*Cert, error) {
 	var (
 		rows pgx.Rows
 		err  error

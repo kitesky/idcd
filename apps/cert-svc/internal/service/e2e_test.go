@@ -225,7 +225,7 @@ func expectDriveIssueHappyPath(t *testing.T, mock pgxmock.PgxPoolIface, sans []s
 	mock.ExpectQuery(`INSERT INTO cert\.certs`).
 		WithArgs(
 			int64(1),     // order_id
-			int64(42),    // account_id
+			"42",         // account_id
 			sans,         // sans
 			"lets-encrypt",
 			"abc123",
@@ -317,7 +317,7 @@ func TestE2E_DriveOrder_HappyPath_AutoMode(t *testing.T) {
 			"id", "account_id", "provider", "display_name",
 			"encrypted_blob", "dek_wrapped", "kek_key_id",
 			"health_status", "health_checked_at", "created_at", "revoked_at",
-		}).AddRow(credID, int64(42), "cloudflare", "prod",
+		}).AddRow(credID, "42", "cloudflare", "prod",
 			ebBytes, []byte(nil), "kek", "ok", nil, time.Now(), nil))
 
 	// 5. dns_solver_built + status transitions + ACME bracket + persist.
@@ -330,7 +330,7 @@ func TestE2E_DriveOrder_HappyPath_AutoMode(t *testing.T) {
 	certID := int64(77)
 	mock.ExpectQuery(`INSERT INTO cert\.certs`).
 		WithArgs(
-			int64(1), int64(42), sans, "lets-encrypt", "abc123",
+			int64(1), "42", sans, "lets-encrypt", "abc123",
 			pgxmock.AnyArg(), string(leaf), "---chain---",
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			string(repo.CertStatusIssued),
@@ -477,7 +477,7 @@ func TestE2E_DriveOrder_Retry_AfterFailure(t *testing.T) {
 	certID := int64(77)
 	mock.ExpectQuery(`INSERT INTO cert\.certs`).
 		WithArgs(
-			int64(1), int64(42), sans, "lets-encrypt", "abc123",
+			int64(1), "42", sans, "lets-encrypt", "abc123",
 			pgxmock.AnyArg(), string(leaf), "---chain---",
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			string(repo.CertStatusIssued),
@@ -571,7 +571,7 @@ func TestE2E_DriveOrder_Idempotent(t *testing.T) {
 	certID := int64(77)
 	mock.ExpectQuery(`INSERT INTO cert\.certs`).
 		WithArgs(
-			int64(1), int64(42), sans, "lets-encrypt", "abc123",
+			int64(1), "42", sans, "lets-encrypt", "abc123",
 			pgxmock.AnyArg(), string(leaf), "---chain---",
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			string(repo.CertStatusIssued),

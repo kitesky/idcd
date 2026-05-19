@@ -75,7 +75,7 @@ func TestProcessOrderEvents_EmitsIssuedEvent(t *testing.T) {
 			"account_id", "sans", "ca", "cert_id",
 		}).AddRow(
 			int64(10), int64(100), 5, actionCertPersisted, payload, env.now,
-			int64(42), []string{"example.com"}, "lets-encrypt", ptrInt64(77),
+			"42", []string{"example.com"}, "lets-encrypt", ptrInt64(77),
 		))
 
 	// emitOrderEvent loads the cert to populate NotAfter — provide that.
@@ -87,7 +87,7 @@ func TestProcessOrderEvents_EmitsIssuedEvent(t *testing.T) {
 			"fingerprint_sha256", "leaf_pem", "chain_pem", "key_kms_handle",
 			"not_before", "not_after", "status", "revoked_at", "revoke_reason", "created_at",
 		}).AddRow(
-			int64(77), int64(100), int64(42), []string{"example.com"}, "lets-encrypt", "deadbeef",
+			int64(77), int64(100), "42", []string{"example.com"}, "lets-encrypt", "deadbeef",
 			"fp", "leaf", "chain", "kms-handle",
 			env.now, notAfter, "issued", nil, nil, env.now,
 		))
@@ -177,7 +177,7 @@ func TestProcessOrderEvents_CursorPersistsAcrossCalls(t *testing.T) {
 			"account_id", "sans", "ca", "cert_id",
 		}).AddRow(
 			int64(7), int64(100), 5, actionCertPersisted, payload, env.now,
-			int64(42), []string{"x.test"}, "le", ptrInt64(1),
+			"42", []string{"x.test"}, "le", ptrInt64(1),
 		))
 	// cert lookup for not_after
 	env.pool.ExpectQuery(`SELECT .+ FROM cert\.certs\s+WHERE id`).
@@ -245,7 +245,7 @@ func TestProcessExpiringCerts_EmitsAndDedupes(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "account_id", "sans", "not_after", "order_id", "ca",
 		}).AddRow(
-			int64(11), int64(42), []string{"a.test"}, notAfter, int64(1000), "le",
+			int64(11), "42", []string{"a.test"}, notAfter, int64(1000), "le",
 		))
 
 	require.NoError(t, env.w.processExpiringCerts(ctx))
@@ -268,7 +268,7 @@ func TestProcessExpiringCerts_EmitsAndDedupes(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "account_id", "sans", "not_after", "order_id", "ca",
 		}).AddRow(
-			int64(11), int64(42), []string{"a.test"}, notAfter, int64(1000), "le",
+			int64(11), "42", []string{"a.test"}, notAfter, int64(1000), "le",
 		))
 	require.NoError(t, env.w.processExpiringCerts(ctx))
 	assert.Len(t, env.readStream(t), 1, "expected no new entry on dedupe")
@@ -287,7 +287,7 @@ func TestProcessExpiringCerts_BetweenBucketsNoEmit(t *testing.T) {
 		WillReturnRows(pgxmock.NewRows([]string{
 			"id", "account_id", "sans", "not_after", "order_id", "ca",
 		}).AddRow(
-			int64(12), int64(42), []string{"b.test"}, notAfter, int64(1001), "le",
+			int64(12), "42", []string{"b.test"}, notAfter, int64(1001), "le",
 		))
 
 	require.NoError(t, env.w.processExpiringCerts(ctx))
@@ -308,7 +308,7 @@ func TestProcessRenewalFailures_EmitsAndDedupes(t *testing.T) {
 			"order_id", "ca",
 		}).AddRow(
 			int64(500), int64(77), 3, &lastErr,
-			int64(42), []string{"r.test"}, notAfter,
+			"42", []string{"r.test"}, notAfter,
 			int64(900), "le",
 		))
 
@@ -334,7 +334,7 @@ func TestProcessRenewalFailures_EmitsAndDedupes(t *testing.T) {
 			"order_id", "ca",
 		}).AddRow(
 			int64(500), int64(77), 3, &lastErr,
-			int64(42), []string{"r.test"}, notAfter,
+			"42", []string{"r.test"}, notAfter,
 			int64(900), "le",
 		))
 	require.NoError(t, env.w.processRenewalFailures(ctx))
@@ -453,7 +453,7 @@ func TestXAddNotification_FormatsCorrectly(t *testing.T) {
 	notAfter := env.now.Add(30 * 24 * time.Hour)
 	data := NotificationData{
 		EventType:    EventCertExpiring,
-		AccountID:    1,
+		AccountID:    "1",
 		CertID:       2,
 		OrderID:      3,
 		SANs:         []string{"x.test"},

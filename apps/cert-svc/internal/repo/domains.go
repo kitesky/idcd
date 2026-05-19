@@ -31,7 +31,7 @@ const domainsUpsertSQL = `
 // Upsert inserts a (account_id, fqdn) row, or refreshes its CAA cache
 // fields when one already exists. Pass caaStatus == nil to merely
 // register the domain without touching the cache.
-func (r *DomainsRepo) Upsert(ctx context.Context, accountID int64, fqdn string, caaStatus *string) (*Domain, error) {
+func (r *DomainsRepo) Upsert(ctx context.Context, accountID string, fqdn string, caaStatus *string) (*Domain, error) {
 	var checkedAt *time.Time
 	if caaStatus != nil {
 		now := time.Now().UTC()
@@ -52,7 +52,7 @@ const domainsGetSQL = `
 `
 
 // Get returns the cert.domains row for (accountID, fqdn), or ErrNotFound.
-func (r *DomainsRepo) Get(ctx context.Context, accountID int64, fqdn string) (*Domain, error) {
+func (r *DomainsRepo) Get(ctx context.Context, accountID string, fqdn string) (*Domain, error) {
 	row := r.pool.QueryRow(ctx, domainsGetSQL, accountID, fqdn)
 	d, err := scanDomain(row)
 	if err != nil {

@@ -102,7 +102,7 @@ const dnsCredentialsListByAccountSQL = `
 
 // ListByAccount returns every DNS credential for an account *without*
 // the encrypted blobs — safe to surface in list views.
-func (r *DNSCredentialsRepo) ListByAccount(ctx context.Context, accountID int64) ([]*DNSCredential, error) {
+func (r *DNSCredentialsRepo) ListByAccount(ctx context.Context, accountID string) ([]*DNSCredential, error) {
 	rows, err := r.pool.Query(ctx, dnsCredentialsListByAccountSQL, accountID)
 	if err != nil {
 		return nil, fmt.Errorf("dns_credentials list: %w", err)

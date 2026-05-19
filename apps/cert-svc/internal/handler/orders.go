@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -231,14 +232,14 @@ func createOrder(deps Deps) http.HandlerFunc {
 
 // dailyOrderCount returns the number of orders an account has created in
 // the last 24h.
-func dailyOrderCount(ctx context.Context, orders *repo.OrdersRepo, accountID int64) (int, error) {
+func dailyOrderCount(ctx context.Context, orders *repo.OrdersRepo, accountID string) (int, error) {
 	cutoff := time.Now().UTC().Add(-24 * time.Hour)
 	return orders.CountByAccountSince(ctx, accountID, cutoff)
 }
 
 type orderResponse struct {
 	ID              int64    `json:"id"`
-	AccountID       int64    `json:"account_id"`
+	AccountID  string    `json:"account_id"`
 	SANs            []string `json:"sans"`
 	SANsUnicode     []string `json:"sans_unicode"`
 	Status          string   `json:"status"`
@@ -354,14 +355,7 @@ func getOrder(deps Deps) http.HandlerFunc {
 				OccurredAt: ev.OccurredAt.UTC().Format(time.RFC3339),
 			})
 		}
-		var mc *manualChallenge
-		if order.Status == repo.OrderStatusValidating && order.DNSCredentialID == nil {
-			// S1 simplification — the worker logs the exact TXT value.
-			// W4 will surface fqdn + value from a dedicated event.
-			mc = &manualChallenge{
-				Message: "Please add TXT record _acme-challenge.<fqdn> with value shown in worker logs",
-			}
-		}
+		mc := manualChallengeFromEvents(order, events)
 		writeJSON(w, http.StatusOK, orderDetailResponse{
 			orderResponse:   projectOrder(order),
 			Events:          eventResp,
@@ -461,6 +455,44 @@ func manualReadyOrder(deps Deps) http.HandlerFunc {
 		}
 		writeJSON(w, http.StatusAccepted, map[string]any{"order_id": id, "status": "validating"})
 	}
+}
+
+// manualChallengeFromEvents extracts the most recent manual_challenge_ready
+// event (written by the worker's wrapped manual solver) and returns it as
+// the wire-level manualChallenge struct. Returns nil when the order isn't
+// in a manual-mode validating state — callers serialise nil as a null in
+// the JSON response so the frontend can branch on its presence.
+//
+// Multi-SAN orders write one event per Present call; we surface only the
+// last one. The frontend currently shows a single TXT record at a time;
+// once it learns to walk an array we can swap this to return all of them.
+func manualChallengeFromEvents(order *repo.Order, events []*repo.OrderEvent) *manualChallenge {
+	// Manual mode = no stored DNS credential. Once the order is issued
+	// or revoked the user can't act on the challenge anymore, so skip.
+	if order.DNSCredentialID != nil {
+		return nil
+	}
+	switch order.Status {
+	case repo.OrderStatusIssued, repo.OrderStatusRevoked, repo.OrderStatusRevoking:
+		return nil
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Action != service.ActionManualChallengeReady {
+			continue
+		}
+		var p struct {
+			FQDN  string `json:"fqdn"`
+			Value string `json:"value"`
+		}
+		if err := json.Unmarshal(events[i].Payload, &p); err != nil || p.FQDN == "" {
+			continue
+		}
+		return &manualChallenge{FQDN: p.FQDN, Value: p.Value}
+	}
+	// Worker hasn't reached Present yet (still keying / building CSR).
+	// Tell the user to retry shortly instead of leaking implementation
+	// detail.
+	return &manualChallenge{Message: "Challenge not ready yet, retry shortly"}
 }
 
 // projectOrder turns a repo.Order into the wire response.

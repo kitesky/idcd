@@ -53,7 +53,7 @@ var ErrAccountBanned = errors.New("service: account banned by admin")
 // abuse_bans repo. Kept narrow so tests can stub without pulling in
 // pgxmock + the full repo type.
 type BanLookup interface {
-	IsBanned(ctx context.Context, accountID int64) (bool, *repo.AbuseBan, error)
+	IsBanned(ctx context.Context, accountID string) (bool, *repo.AbuseBan, error)
 }
 
 // AbuseDetector applies the three S1 anti-abuse rules in front of order
@@ -179,7 +179,7 @@ func NewAbuseDetector(repos *repo.Repos, opts ...AbuseOption) *AbuseDetector {
 // a human-readable reason) otherwise. sans must already be canonicalised
 // to ASCII / Punycode; the detector lowercases defensively but does no
 // IDN normalisation.
-func (a *AbuseDetector) Check(ctx context.Context, accountID int64, sans []string) error {
+func (a *AbuseDetector) Check(ctx context.Context, accountID string, sans []string) error {
 	if a == nil || len(sans) == 0 {
 		return nil
 	}
@@ -287,7 +287,7 @@ func (a *AbuseDetector) isBlocked(root string) bool {
 
 // log emits a structured WARN line. The detector keeps this small + cheap
 // so callers can leave logging enabled in prod.
-func (a *AbuseDetector) log(msg string, accountID int64, detail string) {
+func (a *AbuseDetector) log(msg string, accountID string, detail string) {
 	if a.logger == nil {
 		return
 	}

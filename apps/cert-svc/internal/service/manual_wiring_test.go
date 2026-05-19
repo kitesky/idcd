@@ -89,7 +89,7 @@ func TestBuildSolver_ManualMode_WiringToPerOrderCoordinator(t *testing.T) {
 	expectAppendEvent(mock, 6, actionACMERequestComplete)
 
 	mock.ExpectQuery(`INSERT INTO cert\.certs`).
-		WithArgs(int64(1), int64(42), sans, "lets-encrypt", "wire-1",
+		WithArgs(int64(1), "42", sans, "lets-encrypt", "wire-1",
 			pgxmock.AnyArg(), string(leaf), "---chain---",
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
 			string(repo.CertStatusIssued)).

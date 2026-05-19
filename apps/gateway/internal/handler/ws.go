@@ -495,6 +495,7 @@ func queryPendingCommands(ctx context.Context, pool NodeAuthPool, nodeID string)
 type probeResultItem struct {
 	TaskID     string         `json:"task_id"`
 	NodeID     string         `json:"node_id"`
+	MonitorID  string         `json:"monitor_id,omitempty"` // echoed from agent for monitor-originated tasks; aggregator keys monitor_checks + schedule advance off this.
 	Type       string         `json:"type"`
 	Target     string         `json:"target"`
 	Success    bool           `json:"success"`
@@ -564,6 +565,13 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 			"success":     result.Success,
 			"error":       result.Error,
 			"signature":   result.Watermark,
+		}
+		// monitor_id is only set when the original task came from the scheduler's
+		// monitor poller. Aggregator branches on its presence to write monitor_checks
+		// and advance next_check_at — without this field, monitor pipelines silently
+		// hang at next_check_at == created_at and scheduler re-dispatches forever.
+		if result.MonitorID != "" {
+			streamPayload["monitor_id"] = result.MonitorID
 		}
 		streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, streamPayload)
 		if err != nil {

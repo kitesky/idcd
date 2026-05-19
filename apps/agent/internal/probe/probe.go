@@ -22,16 +22,17 @@ const (
 
 // Result represents the outcome of a probe execution.
 type Result struct {
-	TaskID     string            `json:"task_id"`
-	NodeID     string            `json:"node_id"`
-	Type       TaskType          `json:"type"`
-	Target     string            `json:"target"`
-	Success    bool              `json:"success"`
-	Data       map[string]any    `json:"data"`        // probe-specific results
-	Error      string            `json:"error,omitempty"`
-	Watermark  string            `json:"watermark"`   // HMAC-SHA256 signature
-	Timestamp  time.Time         `json:"timestamp"`
-	DurationMs int64             `json:"duration_ms"`
+	TaskID     string         `json:"task_id"`
+	NodeID     string         `json:"node_id"`
+	MonitorID  string         `json:"monitor_id,omitempty"` // copied from Task when result originates from a monitor; aggregator uses it to write monitor_checks + advance schedule.
+	Type       TaskType       `json:"type"`
+	Target     string         `json:"target"`
+	Success    bool           `json:"success"`
+	Data       map[string]any `json:"data"` // probe-specific results
+	Error      string         `json:"error,omitempty"`
+	Watermark  string         `json:"watermark"` // HMAC-SHA256 signature
+	Timestamp  time.Time      `json:"timestamp"`
+	DurationMs int64          `json:"duration_ms"`
 }
 
 // Probe defines the interface for executing network probes.

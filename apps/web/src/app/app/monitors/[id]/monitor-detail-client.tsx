@@ -409,6 +409,10 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
   const [hoveredBlock, setHoveredBlock] = useState<number | null>(null)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleting, setDeleting] = useState(false)
+  // Pause/resume confirm flow: stores the intended action so a single dialog
+  // can render both pause and resume copy.
+  const [pendingToggle, setPendingToggle] = useState<"pause" | "resume" | null>(null)
+  const [togglingStatus, setTogglingStatus] = useState(false)
   const [latestCheck, setLatestCheck] = useState<LatestCheck | null>(null)
   const [checkBuckets, setCheckBuckets] = useState<CheckBucket[] | null>(null)
   const [bucketLoading, setBucketLoading] = useState(true)
@@ -518,11 +522,38 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
     }
   }
 
-  function togglePause() {
-    setCurrentMonitor((prev) => {
-      if (!prev) return null
-      return { ...prev, status: prev.status === "PAUSED" ? "UP" : "PAUSED" }
-    })
+  function requestToggle() {
+    if (!currentMonitor) return
+    setPendingToggle(currentMonitor.status === "PAUSED" ? "resume" : "pause")
+  }
+
+  // Previously this function only mutated client state — the backend never
+  // received PATCH /v1/monitors/:id and the monitor kept ticking. Now it confirms
+  // first, calls the API, and only updates UI on success (with rollback on error).
+  async function confirmToggle() {
+    if (!currentMonitor || !pendingToggle) return
+    const action = pendingToggle
+    setPendingToggle(null)
+    setTogglingStatus(true)
+    const prevStatus = currentMonitor.status
+    const newApiStatus = action === "pause" ? "paused" : "active"
+    const newFrontendStatus: Monitor["status"] = action === "pause" ? "PAUSED" : "UP"
+    // Optimistic
+    setCurrentMonitor({ ...currentMonitor, status: newFrontendStatus })
+    try {
+      await apiRequest(`/v1/monitors/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ status: newApiStatus }),
+      })
+      toast.success(action === "pause" ? t("actions.pause") : t("actions.resume"))
+    } catch (err: unknown) {
+      // Roll back on failure
+      setCurrentMonitor((prev) => (prev ? { ...prev, status: prevStatus } : null))
+      const msg = err instanceof Error ? err.message : t("error.updateFailed")
+      toast.error(msg)
+    } finally {
+      setTogglingStatus(false)
+    }
   }
 
   if (!currentMonitor) {
@@ -555,7 +586,7 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
               {t("actions.alertPolicy")}
             </Link>
           </Button>
-          <Button variant="outline" size="sm" onClick={togglePause}>
+          <Button variant="outline" size="sm" onClick={requestToggle} disabled={togglingStatus}>
             {currentMonitor.status === "PAUSED" ? (
               <>
                 <Play className="mr-2 h-4 w-4" />
@@ -595,6 +626,35 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
               >
                 {deleting ? t("confirm.deleting") : t("confirm.confirmDelete")}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+
+        {/* Pause/Resume 确认 Dialog */}
+        <AlertDialog
+          open={pendingToggle !== null}
+          onOpenChange={(open) => {
+            if (!open) setPendingToggle(null)
+          }}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingToggle === "pause" ? t("confirm.pauseTitle") : t("confirm.resumeTitle")}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingToggle === "pause"
+                  ? t("confirm.pauseDesc", { name: currentMonitor.name })
+                  : t("confirm.resumeDesc", { name: currentMonitor.name })}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={togglingStatus}>{t("bulk.cancel")}</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmToggle} disabled={togglingStatus}>
+                {pendingToggle === "pause"
+                  ? t("confirm.confirmPause")
+                  : t("confirm.confirmResume")}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

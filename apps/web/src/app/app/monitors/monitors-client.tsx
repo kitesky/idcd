@@ -159,7 +159,13 @@ export function MonitorsClient() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
-  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  // Single-row pending action: pause / resume / delete (all destructive enough
+  // to warrant a confirm step). Stores the monitor so the dialog can show name.
+  const [pendingRowAction, setPendingRowAction] = useState<
+    { action: "pause" | "resume" | "delete"; monitor: Monitor } | null
+  >(null)
+  // Bulk pending action: pause / resume / delete. Unified so all three branches
+  // share one dialog component.
   const [pendingBulkAction, setPendingBulkAction] = useState<
     "pause" | "resume" | "delete" | null
   >(null)
@@ -305,11 +311,35 @@ export function MonitorsClient() {
   }
 
   function requestBulkAction(action: "pause" | "resume" | "delete") {
+    // All three bulk operations affect many monitors at once — always confirm.
+    // Previously pause/resume executed immediately; one misclick could mute
+    // alerts for an entire fleet. Resume is included for symmetry / cognitive
+    // consistency: same flow whether you're pausing or starting checks.
+    setPendingBulkAction(action)
+  }
+
+  // ── Single-row destructive ops always confirm ──────────────────────────────
+  // Same reasoning as bulk: pause silently muting alerts for a critical service
+  // is a foot-gun. Stage the action, render a per-action dialog, execute on
+  // explicit confirm.
+
+  function requestPause(monitor: Monitor) {
+    setPendingRowAction({ action: "pause", monitor })
+  }
+  function requestResume(monitor: Monitor) {
+    setPendingRowAction({ action: "resume", monitor })
+  }
+  function requestDelete(monitor: Monitor) {
+    setPendingRowAction({ action: "delete", monitor })
+  }
+  function confirmRowAction() {
+    if (!pendingRowAction) return
+    const { action, monitor } = pendingRowAction
+    setPendingRowAction(null)
     if (action === "delete") {
-      setPendingBulkAction("delete")
-      setBulkDeleteOpen(true)
+      void deleteMonitor(monitor.id)
     } else {
-      executeBulkAction(action)
+      void togglePause(monitor.id)
     }
   }
 
@@ -563,7 +593,11 @@ export function MonitorsClient() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8"
-                        onClick={() => togglePause(monitor.id)}
+                        onClick={() =>
+                          monitor.status === "PAUSED"
+                            ? requestResume(monitor)
+                            : requestPause(monitor)
+                        }
                         title={
                           monitor.status === "PAUSED" ? t("actions.resume") : t("actions.pause")
                         }
@@ -596,7 +630,7 @@ export function MonitorsClient() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={() => deleteMonitor(monitor.id)}
+                            onClick={() => requestDelete(monitor)}
                           >
                             <Trash2 className="h-4 w-4" />
                             {t("actions.delete")}
@@ -684,13 +718,27 @@ export function MonitorsClient() {
         </div>
       )}
 
-      {/* 批量删除确认 Dialog */}
-      <AlertDialog open={bulkDeleteOpen} onOpenChange={setBulkDeleteOpen}>
+      {/* 批量操作确认 Dialog — pause/resume/delete 共用，文案按 pendingBulkAction 切换 */}
+      <AlertDialog
+        open={pendingBulkAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingBulkAction(null)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>{t("confirm.bulkDeleteTitle")}</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingBulkAction === "delete" && t("confirm.bulkDeleteTitle")}
+              {pendingBulkAction === "pause" && t("confirm.bulkPauseTitle")}
+              {pendingBulkAction === "resume" && t("confirm.bulkResumeTitle")}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              {t("confirm.bulkDeleteDesc", { count: selectedIds.size })}
+              {pendingBulkAction === "delete" &&
+                t("confirm.bulkDeleteDesc", { count: selectedIds.size })}
+              {pendingBulkAction === "pause" &&
+                t("confirm.bulkPauseDesc", { count: selectedIds.size })}
+              {pendingBulkAction === "resume" &&
+                t("confirm.bulkResumeDesc", { count: selectedIds.size })}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -698,15 +746,60 @@ export function MonitorsClient() {
               {t("bulk.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className={
+                pendingBulkAction === "delete"
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined
+              }
               onClick={() => {
-                setBulkDeleteOpen(false)
-                if (pendingBulkAction) {
-                  executeBulkAction(pendingBulkAction)
-                }
+                const action = pendingBulkAction
+                if (action) executeBulkAction(action)
               }}
             >
-              {t("confirm.confirmDelete")}
+              {pendingBulkAction === "delete" && t("confirm.confirmDelete")}
+              {pendingBulkAction === "pause" && t("confirm.confirmBulkPause")}
+              {pendingBulkAction === "resume" && t("confirm.confirmBulkResume")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* 单行操作确认 Dialog — pause/resume/delete 共用 */}
+      <AlertDialog
+        open={pendingRowAction !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRowAction(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {pendingRowAction?.action === "delete" && t("confirm.deleteTitle")}
+              {pendingRowAction?.action === "pause" && t("confirm.pauseTitle")}
+              {pendingRowAction?.action === "resume" && t("confirm.resumeTitle")}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {pendingRowAction?.action === "delete" &&
+                t("confirm.deleteDesc", { name: pendingRowAction.monitor.name })}
+              {pendingRowAction?.action === "pause" &&
+                t("confirm.pauseDesc", { name: pendingRowAction.monitor.name })}
+              {pendingRowAction?.action === "resume" &&
+                t("confirm.resumeDesc", { name: pendingRowAction.monitor.name })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t("bulk.cancel")}</AlertDialogCancel>
+            <AlertDialogAction
+              className={
+                pendingRowAction?.action === "delete"
+                  ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  : undefined
+              }
+              onClick={confirmRowAction}
+            >
+              {pendingRowAction?.action === "delete" && t("confirm.confirmDelete")}
+              {pendingRowAction?.action === "pause" && t("confirm.confirmPause")}
+              {pendingRowAction?.action === "resume" && t("confirm.confirmResume")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -439,6 +439,10 @@ func (a *Agent) executeTask(t task.Task) {
 	}()
 	result := a.executor.Execute(t)
 	if result != nil {
+		// Echo monitor_id back so aggregator can write monitor_checks + advance
+		// schedule. probe.Execute doesn't know about monitors — task layer carries
+		// the binding from scheduler through gateway to result stream.
+		result.MonitorID = t.MonitorID
 		a.deliverResult(*result)
 	}
 }
@@ -549,6 +553,7 @@ func (a *Agent) failedTaskResult(t task.Task, errMsg string) probe.Result {
 	result := probe.Result{
 		TaskID:     t.ID,
 		NodeID:     t.NodeID,
+		MonitorID:  t.MonitorID,
 		Type:       t.Type,
 		Target:     t.Target,
 		Success:    false,

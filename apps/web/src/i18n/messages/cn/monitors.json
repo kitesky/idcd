@@ -91,7 +91,19 @@
     "deleteTitle": "确认删除监控？",
     "deleteDesc": "此操作不可撤销，将永久删除监控项「{name}」及其所有历史数据。",
     "confirmDelete": "确认删除",
-    "deleting": "删除中…"
+    "deleting": "删除中…",
+    "pauseTitle": "暂停检测？",
+    "pauseDesc": "暂停后将停止对「{name}」的所有节点检测，告警不会再触发。可随时恢复。",
+    "confirmPause": "确认暂停",
+    "resumeTitle": "恢复检测？",
+    "resumeDesc": "恢复后将立即重新开始对「{name}」的节点检测。",
+    "confirmResume": "确认恢复",
+    "bulkPauseTitle": "确认批量暂停",
+    "bulkPauseDesc": "即将暂停 {count} 个监控，期间不会再产生检测记录与告警。",
+    "confirmBulkPause": "确认暂停",
+    "bulkResumeTitle": "确认批量恢复",
+    "bulkResumeDesc": "即将恢复 {count} 个监控，将立即开始节点检测。",
+    "confirmBulkResume": "确认恢复"
   },
   "error": {
     "loadFailed": "加载失败",

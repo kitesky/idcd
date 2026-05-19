@@ -91,7 +91,19 @@
     "deleteTitle": "Delete monitor?",
     "deleteDesc": "This action cannot be undone. Monitor \"{name}\" and all its historical data will be permanently deleted.",
     "confirmDelete": "Confirm Delete",
-    "deleting": "Deleting…"
+    "deleting": "Deleting…",
+    "pauseTitle": "Pause monitoring?",
+    "pauseDesc": "Pausing will stop all node checks for \"{name}\" and suppress alerts. You can resume anytime.",
+    "confirmPause": "Confirm Pause",
+    "resumeTitle": "Resume monitoring?",
+    "resumeDesc": "Resuming will immediately restart node checks for \"{name}\".",
+    "confirmResume": "Confirm Resume",
+    "bulkPauseTitle": "Confirm bulk pause",
+    "bulkPauseDesc": "You are about to pause {count} monitors. No checks or alerts will fire while paused.",
+    "confirmBulkPause": "Confirm Pause",
+    "bulkResumeTitle": "Confirm bulk resume",
+    "bulkResumeDesc": "You are about to resume {count} monitors. Node checks will start immediately.",
+    "confirmBulkResume": "Confirm Resume"
   },
   "error": {
     "loadFailed": "Load failed",

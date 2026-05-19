@@ -9,12 +9,13 @@ import (
 
 // Task represents a probe task to be executed by the agent.
 type Task struct {
-	ID      string               `json:"task_id"`
-	Type    probe.TaskType       `json:"type"`
-	Target  string               `json:"target"`      // domain or IP
-	Options map[string]any       `json:"options"`     // type-specific opts
-	Timeout time.Duration        `json:"timeout_ms"`
-	NodeID  string               `json:"node_id"`     // injected to each task
+	ID        string         `json:"task_id"`
+	Type      probe.TaskType `json:"type"`
+	Target    string         `json:"target"`               // domain or IP
+	Options   map[string]any `json:"options"`              // type-specific opts
+	Timeout   time.Duration  `json:"timeout_ms"`
+	NodeID    string         `json:"node_id"`              // injected to each task
+	MonitorID string         `json:"monitor_id,omitempty"` // set when task originates from a monitor; empty for ad-hoc tool probes. Must be echoed back in Result so aggregator can write monitor_checks.
 }
 
 // Re-export types from probe package for convenience

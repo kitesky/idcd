@@ -1,4 +1,5 @@
 import type { Metadata } from "next"
+import { cookies } from "next/headers"
 import { getT } from "@/i18n/getT"
 import { MonitorDetailClient } from "./monitor-detail-client"
 import type { Monitor, MonitorType } from "../types"
@@ -55,9 +56,19 @@ function mapApiMonitor(raw: RawApiMonitor): Monitor {
 
 async function fetchMonitor(id: string): Promise<Monitor | null> {
   try {
+    // Server-side fetch runs in Node, not the browser — credentials:"include"
+    // alone doesn't pull cookies the way it does from a real browser. Forward
+    // the access_token cookie explicitly via Authorization: Bearer so the API
+    // sees an authenticated request. Without this the detail page always
+    // rendered "monitor not found" even when the monitor existed.
+    const store = await cookies()
+    const token = store.get("access_token")?.value
+    const headers: Record<string, string> = {}
+    if (token) headers["Authorization"] = `Bearer ${token}`
     const res = await fetch(`${API_BASE}/v1/monitors/${id}`, {
       next: { revalidate: 0 },
       credentials: API_CREDENTIALS_POLICY,
+      headers,
     })
     if (!res.ok) return null
     const body = await res.json()

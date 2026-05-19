@@ -4,30 +4,19 @@ import { useEffect, useMemo, useState } from "react"
 import dynamic from "next/dynamic"
 import { Loader2Icon, RadioTowerIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getNodes, type Node, type ProbeTaskResult, type TracerouteHop } from "@/lib/api"
+import { type Node, type ProbeTaskResult, type TracerouteHop } from "@/lib/api"
+import { fetchNodesOnce } from "@/lib/nodes-cache"
 import type { TraceOrigin } from "./TracerouteMap"
 
 // TracerouteMap pulls in d3-geo + topojson lazily. ssr:false dodges the async
 // fetch("/world-110m.json") inside the component during hydration.
 const TracerouteMap = dynamic(
   () => import("./TracerouteMap").then(m => ({ default: m.TracerouteMap })),
-  { ssr: false, loading: () => <div className="w-full h-80 bg-muted/30 animate-pulse rounded-lg" /> }
+  { ssr: false, loading: () => <Skeleton className="w-full h-80" /> }
 )
-
-// Module-level nodes cache — shared across panels so we don't stampede /v1/nodes.
-let nodesCache: Node[] | null = null
-let nodesPromise: Promise<Node[]> | null = null
-function fetchNodesOnce(): Promise<Node[]> {
-  if (nodesCache) return Promise.resolve(nodesCache)
-  if (!nodesPromise) {
-    nodesPromise = getNodes()
-      .then((n) => { nodesCache = n; return n })
-      .catch((err) => { nodesPromise = null; throw err })
-  }
-  return nodesPromise
-}
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -95,7 +84,22 @@ function extractHops(taskResult: ProbeTaskResult | null, variant: "traceroute" |
     return { hops, mtrHops, reached }
   }
 
-  const hops = (data["hops"] ?? []) as TracerouteHop[]
+  // Defensive: the backend SHOULD send rtt_ms on every traceroute hop but a
+  // missing field would crash the rttColor + toFixed call sites with
+  // "Cannot read properties of undefined". Mirror the MTR branch and
+  // explicitly default the numeric fields rather than trusting the cast.
+  const rawHops = (data["hops"] ?? []) as Array<Record<string, unknown>>
+  const hops: TracerouteHop[] = rawHops.map((h) => ({
+    hop: typeof h.hop === "number" ? h.hop : 0,
+    ip: typeof h.ip === "string" ? h.ip : "",
+    hostname: typeof h.hostname === "string" ? h.hostname : undefined,
+    rtt_ms: typeof h.rtt_ms === "number" ? h.rtt_ms : 0,
+    timeout: Boolean(h.timeout),
+    country: typeof h.country === "string" ? h.country : undefined,
+    city: typeof h.city === "string" ? h.city : undefined,
+    lat: typeof h.lat === "number" ? h.lat : undefined,
+    lng: typeof h.lng === "number" ? h.lng : undefined,
+  }))
   return { hops, mtrHops: [], reached }
 }
 
@@ -248,9 +252,7 @@ export function TracerouteResultPanel({
         </CardHeader>
         <CardContent>
           <div className="space-y-3">
-            {[1, 2, 3].map((i) => (
-              <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
-            ))}
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-12" />)}
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2Icon className="size-3.5 animate-spin" aria-hidden="true" />
               <span>正在等待节点返回每一跳...</span>
@@ -326,7 +328,7 @@ export function TracerouteResultPanel({
             {hops.length === 0 ? (
               <p className="text-sm text-muted-foreground">本次任务无可绘制的跳点</p>
             ) : (
-              <TracerouteMap hops={hops} origin={origin} />
+              <TracerouteMap hops={hops} origin={origin} reached={reached} />
             )}
           </TabsContent>
           <TabsContent value="list">

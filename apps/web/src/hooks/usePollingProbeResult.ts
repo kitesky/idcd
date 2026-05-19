@@ -1,23 +1,8 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { getNodes, type Node, type ProbeResult, type ProbeTaskResult } from "@/lib/api"
-
-// Module-level cache so every page that mounts useProbePolling + this hook
-// shares a single /v1/nodes fetch instead of stampeding it. Node names are
-// effectively static — stale data here just means a brand-new node shows its
-// raw id for a few minutes until the next page load.
-let nodesCache: Node[] | null = null
-let nodesPromise: Promise<Node[]> | null = null
-function fetchNodesOnce(): Promise<Node[]> {
-  if (nodesCache) return Promise.resolve(nodesCache)
-  if (!nodesPromise) {
-    nodesPromise = getNodes()
-      .then((n) => { nodesCache = n; return n })
-      .catch((err) => { nodesPromise = null; throw err })
-  }
-  return nodesPromise
-}
+import type { ProbeResult, ProbeTaskResult } from "@/lib/api"
+import { fetchNodesOnce } from "@/lib/nodes-cache"
 
 interface PollingState {
   taskResult: ProbeTaskResult | null

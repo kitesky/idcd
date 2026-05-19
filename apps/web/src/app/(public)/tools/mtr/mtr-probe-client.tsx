@@ -47,7 +47,7 @@ export default function MTRProbeClient() {
         <div>
           <TracerouteResultPanel
             polling={polling}
-            sourceNodeId={selectedNodes[0]}
+            sourceNodeId={selectedNodes[0] ?? undefined}
             variant="mtr"
             error={submitError}
           />

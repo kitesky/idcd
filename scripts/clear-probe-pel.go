@@ -3,25 +3,40 @@
 // One-shot dev script: clear the probe.tasks stream + its consumer group so
 // the agent stops grinding through a backlog of stale tasks.
 //
-//	go run scripts/clear-probe-pel.go
+// Reads credentials from env (matches the layout of config/dev.env.yaml so
+// no separate secret management is needed):
+//
+//	DEV_REDIS_ADDR     — e.g. 8.163.70.123:6379
+//	DEV_REDIS_PASSWORD — e.g. ${REDIS_PASSWORD from dev.env.yaml}
+//
+// Usage:
+//
+//	DEV_REDIS_ADDR=host:port DEV_REDIS_PASSWORD=xxx go run scripts/clear-probe-pel.go
 package main
 
 import (
 	"context"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/redis/go-redis/v9"
 )
 
 func main() {
+	addr := os.Getenv("DEV_REDIS_ADDR")
+	pw := os.Getenv("DEV_REDIS_PASSWORD")
+	if addr == "" || pw == "" {
+		log.Fatal("set DEV_REDIS_ADDR and DEV_REDIS_PASSWORD (see config/dev.env.yaml)")
+	}
+
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     "8.163.70.123:6379",
-		Password: "Year2025",
+		Addr:     addr,
+		Password: pw,
 		DB:       0,
 	})
 	defer rdb.Close()

@@ -2,7 +2,6 @@ package probe
 
 import (
 	"fmt"
-	"net"
 	"net/netip"
 
 	"github.com/oschwald/maxminddb-golang/v2"
@@ -73,15 +72,15 @@ func (g *MMDBGeoLookup) Lookup(ip string) (GeoLocation, bool) {
 		return GeoLocation{}, false
 	}
 	parsed, err := netip.ParseAddr(ip)
-	if err != nil {
-		// Fall back through net.ParseIP for forms maxmind/v2 doesn't accept.
-		nip := net.ParseIP(ip)
-		if nip == nil {
-			return GeoLocation{}, false
-		}
-		parsed, _ = netip.AddrFromSlice(nip.To16())
+	if err != nil || !parsed.IsValid() {
+		return GeoLocation{}, false
 	}
-	if !parsed.IsValid() || parsed.IsPrivate() || parsed.IsLoopback() || parsed.IsUnspecified() {
+	// Skip non-globally-routable addresses. stdlib's IsPrivate covers
+	// RFC1918 + RFC4193 only — link-local (169.254/16, fe80::/10) and
+	// multicast also have no geo meaning and should not be looked up.
+	// Aligns with lib/shared/netutil.IsPrivateIP's coverage.
+	if parsed.IsPrivate() || parsed.IsLoopback() || parsed.IsUnspecified() ||
+		parsed.IsLinkLocalUnicast() || parsed.IsLinkLocalMulticast() || parsed.IsMulticast() {
 		return GeoLocation{}, false
 	}
 

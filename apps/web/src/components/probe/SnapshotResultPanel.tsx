@@ -2,23 +2,10 @@
 
 import { useEffect, useState } from "react"
 import { ProbeResultPanel } from "@/components/probe/ProbeResultPanel"
-import { getNodes, type Node, type ProbeResult } from "@/lib/api"
+import { Card } from "@/components/ui/card"
+import type { ProbeResult } from "@/lib/api"
+import { fetchNodesOnce } from "@/lib/nodes-cache"
 import type { SingleProbeReport } from "@/lib/diagnose-store"
-
-// Mirrors usePollingProbeResult's cache — keeps a single /v1/nodes fetch
-// across this and the live tool pages so the saved-report view doesn't
-// re-stampede the endpoint when users open multiple snapshots.
-let nodesCache: Node[] | null = null
-let nodesPromise: Promise<Node[]> | null = null
-function fetchNodesOnce(): Promise<Node[]> {
-  if (nodesCache) return Promise.resolve(nodesCache)
-  if (!nodesPromise) {
-    nodesPromise = getNodes()
-      .then((n) => { nodesCache = n; return n })
-      .catch((err) => { nodesPromise = null; throw err })
-  }
-  return nodesPromise
-}
 
 interface SnapshotResultPanelProps {
   report: SingleProbeReport
@@ -68,12 +55,12 @@ export function SnapshotResultPanel({ report }: SnapshotResultPanelProps) {
   }
 
   return (
-    <div className="border rounded-lg bg-background overflow-hidden">
+    <Card className="overflow-hidden">
       <ProbeResultPanel
         result={probeResult}
         target={report.target}
         probeType={report.tool}
       />
-    </div>
+    </Card>
   )
 }

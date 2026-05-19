@@ -1,6 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useRef, useState } from "react"
+import { useTheme } from "next-themes"
 import type { Topology, Objects } from "topojson-specification"
 import type { GeoProjection, GeoPath } from "d3-geo"
 import type { FeatureCollection } from "geojson"
@@ -37,19 +38,21 @@ function hopColor(rtt?: number, timeout?: boolean) {
 
 // ── Legend ────────────────────────────────────────────────────────────────────
 
+const LEGEND_ITEMS = [
+  { c: "#22c55e", l: "<50ms" },
+  { c: "#84cc16", l: "<200ms" },
+  { c: "#f59e0b", l: "<500ms" },
+  { c: "#ef4444", l: "≥500ms" },
+  { c: "#94a3b8", l: "超时" },
+] as const
+
 function Legend({ hopCount, reached }: { hopCount: number; reached: boolean }) {
   return (
     <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground px-3 py-2 border-t bg-muted/30">
       <span className="font-medium text-foreground">{hopCount} 跳</span>
       <span>{reached ? "已到达目标" : "未到达目标"}</span>
       <span className="ml-auto flex items-center gap-3">
-        {[
-          { c: "#22c55e", l: "<50ms" },
-          { c: "#84cc16", l: "<200ms" },
-          { c: "#f59e0b", l: "<500ms" },
-          { c: "#ef4444", l: "≥500ms" },
-          { c: "#94a3b8", l: "超时" },
-        ].map(({ c, l }) => (
+        {LEGEND_ITEMS.map(({ c, l }) => (
           <span key={l} className="flex items-center gap-1">
             <span className="h-2 w-2 rounded-full" style={{ background: c }} />
             {l}
@@ -68,12 +71,31 @@ interface TracerouteMapProps {
   /** Hide the outer card chrome (rounded + border) so the map fits flush
    *  inside a tab panel that already provides its own container. */
   embedded?: boolean
+  /** Authoritative "did we reach the target?" from the backend
+   *  (target_reached on the task result). When omitted we fall back to
+   *  inferring from the last hop's timeout flag — that can disagree with
+   *  the backend when a TTL-exceeded came from the target but the last
+   *  ICMP probe still timed out, so prefer passing this explicitly. */
+  reached?: boolean
 }
 
-export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapProps) {
+export function TracerouteMap({ hops, origin, embedded = false, reached: reachedProp }: TracerouteMapProps) {
+  const { resolvedTheme } = useTheme()
+  const isDark = resolvedTheme === "dark"
+  // Aligned with NodesWorldMap's palette so both maps render consistently
+  // under each theme. SVG fill/stroke attributes can't read CSS variables
+  // reliably across browsers, so we resolve to hex per theme.
+  const palette = isDark ? {
+    ocean: "#0f172a", land: "#1e293b", border: "#334155",
+    route: "#60a5fa", labelText: "#e2e8f0", labelHalo: "#0f172a",
+  } : {
+    ocean: "#f1f5f9", land: "#e2e8f0", border: "#cbd5e1",
+    route: "#3b82f6", labelText: "#1e293b", labelHalo: "#ffffff",
+  }
   const [geoPaths, setGeoPaths] = useState<string[]>([])
   const [projectFn, setProjectFn] = useState<GeoProjection | null>(null)
   const [hoverHop, setHoverHop] = useState<PlottedPoint | null>(null)
+  const [loadFailed, setLoadFailed] = useState(false)
   const containerRef = useRef<HTMLDivElement>(null)
   const W = 720, H = 380
 
@@ -94,7 +116,11 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
       const pathGen: GeoPath = d3.geoPath(projection)
       setGeoPaths((countries as FeatureCollection).features.map(f => pathGen(f) ?? ""))
       setProjectFn(() => projection)
-    }).catch(console.error)
+    }).catch(() => {
+      // Topology fetch failure is a degraded experience, not an error worth
+      // dumping a stack to the user's console. The hop list tab still works.
+      if (!cancelled) setLoadFailed(true)
+    })
     return () => { cancelled = true }
   }, [])
 
@@ -148,11 +174,13 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
     return parts.join(" ")
   }, [points])
 
+  // Prefer the authoritative target_reached from the backend; fall back to
+  // inferring from the last hop's timeout when the caller didn't pass it in.
   const reached = useMemo(() => {
+    if (reachedProp !== undefined) return reachedProp
     if (hops.length === 0) return false
-    const last = hops[hops.length - 1]!
-    return !last.timeout
-  }, [hops])
+    return !hops[hops.length - 1]!.timeout
+  }, [hops, reachedProp])
 
   const wrapperClass = embedded
     ? "w-full overflow-hidden relative"
@@ -162,12 +190,12 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
     <div ref={containerRef} className={wrapperClass}>
       <svg
         viewBox={`0 0 ${W} ${H}`}
-        style={{ width: "100%", display: "block", background: "#f1f5f9" }}
+        style={{ width: "100%", display: "block", background: palette.ocean }}
         onMouseLeave={() => setHoverHop(null)}
       >
         {/* Country fills */}
         {geoPaths.map((d, i) => (
-          <path key={i} d={d} fill="#e2e8f0" stroke="#cbd5e1" strokeWidth={0.5} />
+          <path key={i} d={d} fill={palette.land} stroke={palette.border} strokeWidth={0.5} />
         ))}
 
         {/* Route path */}
@@ -175,7 +203,7 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
           <path
             d={pathD}
             fill="none"
-            stroke="#3b82f6"
+            stroke={palette.route}
             strokeWidth={2}
             strokeDasharray="4 3"
             strokeLinecap="round"
@@ -195,8 +223,8 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
               onMouseEnter={() => setHoverHop(p)}
               style={{ cursor: "pointer" }}
             >
-              <circle cx={p.x} cy={p.y} r={r + 2} fill="#fff" />
-              <circle cx={p.x} cy={p.y} r={r} fill={fill} stroke="#fff" strokeWidth={1.5} />
+              <circle cx={p.x} cy={p.y} r={r + 2} fill={palette.labelHalo} />
+              <circle cx={p.x} cy={p.y} r={r} fill={fill} stroke={palette.labelHalo} strokeWidth={1.5} />
               {(isOrigin || isTarget || p.hop % 3 === 0) && (
                 <text
                   x={p.x}
@@ -204,7 +232,7 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
                   textAnchor="middle"
                   fontSize={10}
                   fontWeight="600"
-                  fill="#1e293b"
+                  fill={palette.labelText}
                 >
                   {isOrigin ? "起点" : isTarget ? "目标" : `#${p.hop}`}
                 </text>
@@ -213,6 +241,12 @@ export function TracerouteMap({ hops, origin, embedded = false }: TracerouteMapP
           )
         })}
       </svg>
+
+      {loadFailed && (
+        <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm">
+          <p className="text-sm text-muted-foreground">地图加载失败，请切换到&ldquo;跳点列表&rdquo;</p>
+        </div>
+      )}
 
       {/* Hover tooltip — absolute-positioned overlay so it can extend past
           the svg viewBox without cropping. */}

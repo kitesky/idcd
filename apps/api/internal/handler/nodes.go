@@ -102,6 +102,12 @@ func (h *NodesHandler) List(w http.ResponseWriter, r *http.Request) {
 
 // queryNodes queries the database for enrolled nodes matching the given filters.
 func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]NodeInfo, error) {
+	// lat/lng guarded by a regex: a single malformed metadata row (e.g.
+	// "lat":"unknown" from an old agent or a manual DB edit) used to throw
+	// `invalid input syntax for type double precision` and 500 the entire
+	// /v1/nodes endpoint — bad enough that the public map went dark.
+	// NULLIF + regex returns NULL for non-numeric, which scans cleanly into
+	// the *float64 destination and is omitted from JSON via omitempty.
 	query := `
 		SELECT node_id, hostname, ip_address, status,
 		       metadata->>'country_code' AS country_code,
@@ -109,8 +115,10 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]Nod
 		       metadata->>'city'         AS city,
 		       metadata->>'asn'          AS asn,
 		       metadata->>'isp'          AS isp,
-		       (metadata->>'lat')::float8 AS lat,
-		       (metadata->>'lng')::float8 AS lng
+		       CASE WHEN metadata->>'lat' ~ '^-?[0-9]+(\.[0-9]+)?$'
+		            THEN (metadata->>'lat')::float8 END AS lat,
+		       CASE WHEN metadata->>'lng' ~ '^-?[0-9]+(\.[0-9]+)?$'
+		            THEN (metadata->>'lng')::float8 END AS lng
 		FROM enrolled_nodes
 		WHERE status = 'active'
 	`

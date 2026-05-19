@@ -54,6 +54,14 @@ type Agent struct {
 	taskCh   chan task.Task
 	shutdown chan struct{}
 	wg       sync.WaitGroup
+	// cancel cancels the context all worker goroutines listen on.
+	// Set by Run, invoked by Stop so wg.Wait() doesn't deadlock waiting
+	// for goroutines that only exit on ctx.Done().
+	cancel   context.CancelFunc
+	// geoCloser holds the open mmdb file handle (non-nil only when
+	// GeoIPDBPath loaded successfully). Closed in Stop so the process
+	// doesn't leak the fd until exit.
+	geoCloser io.Closer
 }
 
 func main() {
@@ -115,6 +123,7 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 	// running with hops that lack country/city/lat/lng. Missing geo is a
 	// degraded experience (no map path), not a probe failure.
 	var geo probe.GeoLookup
+	var geoCloser io.Closer
 	if cfg.GeoIPDBPath != "" {
 		g, err := probe.OpenMMDB(cfg.GeoIPDBPath)
 		if err != nil {
@@ -122,6 +131,7 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 				"path", cfg.GeoIPDBPath, "err", err)
 		} else {
 			geo = g
+			geoCloser = g
 			log.Info("geoip mmdb loaded", "path", cfg.GeoIPDBPath)
 		}
 	}
@@ -135,13 +145,14 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 	buf.SetLogger(log)
 
 	a := &Agent{
-		cfgPath:  cfgPath,
-		logger:   log,
-		executor: executor,
-		buffer:   buf,
-		client:   &http.Client{Timeout: 30 * time.Second},
-		taskCh:   make(chan task.Task, 128),
-		shutdown: make(chan struct{}),
+		cfgPath:   cfgPath,
+		logger:    log,
+		executor:  executor,
+		buffer:    buf,
+		client:    &http.Client{Timeout: 30 * time.Second},
+		taskCh:    make(chan task.Task, 128),
+		shutdown:  make(chan struct{}),
+		geoCloser: geoCloser,
 	}
 	a.cfg.Store(cfg)
 
@@ -166,8 +177,10 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 	return a, nil
 }
 
-// Run starts all agent goroutines.
+// Run starts all agent goroutines. Derives an internal context from ctx
+// so Stop() can cancel all workers without depending on the caller's defer.
 func (a *Agent) Run(ctx context.Context) {
+	ctx, a.cancel = context.WithCancel(ctx)
 	a.wg.Add(3)
 
 	// WebSocket connection loop (includes heartbeat)
@@ -193,9 +206,20 @@ func (a *Agent) Run(ctx context.Context) {
 }
 
 // Stop gracefully shuts down the agent.
+// Order: cancel ctx first so ws.Run and runTaskWorker exit, then close shutdown
+// so runMainLoop exits, then wait. Without the cancel, wg.Wait() blocks forever
+// because two of the three workers only listen on ctx.Done().
 func (a *Agent) Stop() {
+	if a.cancel != nil {
+		a.cancel()
+	}
 	close(a.shutdown)
 	a.wg.Wait()
+	if a.geoCloser != nil {
+		if err := a.geoCloser.Close(); err != nil {
+			a.logger.Warn("geoip close", "err", err)
+		}
+	}
 	if a.buffer != nil {
 		a.buffer.Cleanup(24 * time.Hour)
 		a.buffer.Close()
@@ -388,17 +412,34 @@ func (a *Agent) handleTask(payload json.RawMessage) error {
 // runTaskWorker pulls tasks off taskCh and executes them serially.
 // Exits when ctx is cancelled — taskCh is drained from upstream (no more
 // pushes once ws closes), so a partial drain on shutdown is acceptable.
+//
+// Each task is executed inside a deferred recover so one probe panicking
+// (nil-pointer, oob slice, etc.) doesn't kill the only worker. Without
+// the recover, the goroutine dies, taskCh fills to 128, every subsequent
+// task fails with "agent overloaded", and the agent stays in that broken
+// state until the process is restarted.
 func (a *Agent) runTaskWorker(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case t := <-a.taskCh:
-			result := a.executor.Execute(t)
-			if result != nil {
-				a.deliverResult(*result)
-			}
+			a.executeTask(t)
 		}
+	}
+}
+
+func (a *Agent) executeTask(t task.Task) {
+	defer func() {
+		if r := recover(); r != nil {
+			a.logger.Error("task: probe panicked",
+				"task_id", t.ID, "type", t.Type, "target", t.Target, "panic", r)
+			a.deliverResult(a.failedTaskResult(t, "internal error: probe panicked"))
+		}
+	}()
+	result := a.executor.Execute(t)
+	if result != nil {
+		a.deliverResult(*result)
 	}
 }
 

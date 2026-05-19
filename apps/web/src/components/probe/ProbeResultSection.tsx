@@ -2,6 +2,9 @@
 
 import { ProbeResultPanel } from "@/components/probe/ProbeResultPanel"
 import ShareResultButton from "@/components/probe/ShareResultButton"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Card } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import { usePollingProbeResult } from "@/hooks/usePollingProbeResult"
 import type { ProbeTaskResult } from "@/lib/api"
 import type { SingleProbeReport } from "@/lib/diagnose-store"
@@ -51,11 +54,17 @@ export function ProbeResultSection({
   // taskId is null on first paint and after a reset.
   if (!taskId && !error) return null
 
+  if (error) {
+    return (
+      <Alert variant="destructive">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    )
+  }
+
   return (
-    <div className="border rounded-lg bg-background overflow-hidden">
-      {error ? (
-        <div className="px-6 py-6 text-sm text-destructive">{error}</div>
-      ) : probeResult ? (
+    <Card className="overflow-hidden">
+      {probeResult ? (
         <>
           <ProbeResultPanel
             result={probeResult}
@@ -76,12 +85,10 @@ export function ProbeResultSection({
         </>
       ) : (
         <div className="px-6 py-8 space-y-3">
-          {[1, 2, 3].map(i => (
-            <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
-          ))}
+          {[1, 2, 3].map(i => <Skeleton key={i} className="h-12" />)}
           <p className="text-xs text-muted-foreground">等待节点返回结果...</p>
         </div>
       )}
-    </div>
+    </Card>
   )
 }

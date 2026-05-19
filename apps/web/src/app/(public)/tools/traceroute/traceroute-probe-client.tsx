@@ -55,7 +55,7 @@ export default function TracerouteProbeClient() {
         <div>
           <TracerouteResultPanel
             polling={polling}
-            sourceNodeId={selectedNodes[0]}
+            sourceNodeId={selectedNodes[0] ?? undefined}
             variant="traceroute"
             error={submitError}
             headerSlot={shareSlot}

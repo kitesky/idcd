@@ -3,7 +3,7 @@
 import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
-import ProbeResults from "@/components/probe/ProbeResults"
+import { ProbeResultSection } from "@/components/probe/ProbeResultSection"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import { probeTcp } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
@@ -11,15 +11,17 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 export default function TcpingProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
+  const [target, setTarget] = useState("")
   const [submitError, setSubmitError] = useState("")
   const polling = useProbePolling(taskId)
 
-  const handleSubmit = async (target: string, params: Record<string, unknown>) => {
+  const handleSubmit = async (probeTarget: string, params: Record<string, unknown>) => {
     try {
       setSubmitError("")
       setTaskId(null)
+      setTarget(probeTarget)
       const res = await probeTcp({
-        target,
+        target: probeTarget,
         node_ids: selectedNodes.length > 0 ? selectedNodes : undefined,
         ...params,
       })
@@ -39,15 +41,17 @@ export default function TcpingProbeClient() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
-          <ProbeForm type="tcp" onSubmit={handleSubmit} loading={polling.isPolling} />
-          <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
-        </div>
-
-        <div>
-          <ProbeResults taskId={taskId} polling={polling} error={submitError} />
-        </div>
+        <ProbeForm type="tcp" onSubmit={handleSubmit} loading={polling.isPolling} />
+        <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
       </div>
+
+      <ProbeResultSection
+        polling={polling}
+        target={target}
+        probeType="tcp"
+        submitError={submitError}
+        taskId={taskId}
+      />
 
       <Card>
         <CardHeader>

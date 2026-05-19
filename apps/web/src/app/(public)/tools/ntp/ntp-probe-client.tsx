@@ -2,34 +2,40 @@
 
 import { useState } from "react"
 import NodeSelector from "@/components/probe/NodeSelector"
-import ProbeResults from "@/components/probe/ProbeResults"
+import { ProbeResultSection } from "@/components/probe/ProbeResultSection"
+import { useProbePolling } from "@/hooks/useProbePolling"
 import { probeNtp } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle, Button, Input, Label } from "@/components/ui"
 
 export default function NtpProbeClient() {
   const [target, setTarget] = useState("")
+  const [submittedTarget, setSubmittedTarget] = useState("")
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState("")
-  const [loading, setLoading] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const polling = useProbePolling(taskId)
+  const busy = submitting || polling.isPolling
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!target.trim() || loading) return
+    if (!target.trim() || busy) return
 
     try {
       setSubmitError("")
       setTaskId(null)
-      setLoading(true)
+      setSubmitting(true)
+      const probeTarget = target.trim()
+      setSubmittedTarget(probeTarget)
       const res = await probeNtp({
-        target: target.trim(),
+        target: probeTarget,
         node_ids: selectedNodes.length > 0 ? selectedNodes : undefined,
       })
       setTaskId(res.task_id)
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "提交失败")
     } finally {
-      setLoading(false)
+      setSubmitting(false)
     }
   }
 
@@ -43,41 +49,43 @@ export default function NtpProbeClient() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>检测参数</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="ntp-target">NTP 服务器地址</Label>
-                  <Input
-                    id="ntp-target"
-                    value={target}
-                    onChange={(e) => setTarget(e.target.value)}
-                    placeholder="pool.ntp.org 或 time.cloudflare.com"
-                    required
-                  />
-                </div>
-                <Button
-                  type="submit"
-                  disabled={!target.trim() || loading}
-                  className="w-full"
-                >
-                  {loading ? "检测中..." : "开始检测"}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+        <Card>
+          <CardHeader>
+            <CardTitle>检测参数</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="ntp-target">NTP 服务器地址</Label>
+                <Input
+                  id="ntp-target"
+                  value={target}
+                  onChange={(e) => setTarget(e.target.value)}
+                  placeholder="pool.ntp.org 或 time.cloudflare.com"
+                  required
+                />
+              </div>
+              <Button
+                type="submit"
+                disabled={!target.trim() || busy}
+                className="w-full"
+              >
+                {busy ? "检测中..." : "开始检测"}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
 
-          <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
-        </div>
-
-        <div>
-          <ProbeResults taskId={taskId} error={submitError} />
-        </div>
+        <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
       </div>
+
+      <ProbeResultSection
+        polling={polling}
+        target={submittedTarget}
+        probeType="ntp"
+        submitError={submitError}
+        taskId={taskId}
+      />
 
       <Card>
         <CardHeader>

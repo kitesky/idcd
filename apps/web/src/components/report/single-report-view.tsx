@@ -1,10 +1,9 @@
 import Link from "next/link"
 import { ArrowLeft } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
-import ProbeResults from "@/components/probe/ProbeResults"
+import { SnapshotResultPanel } from "@/components/probe/SnapshotResultPanel"
 import ShareLinkButton from "./share-link-button"
 import type { SingleProbeReport } from "@/lib/diagnose-store"
-import type { ProbeResult } from "@/lib/api"
 
 const TOOL_LABEL: Record<SingleProbeReport["tool"], string> = {
   ping: "Ping 拨测",
@@ -20,34 +19,7 @@ const TOOL_BACK_HREF: Record<SingleProbeReport["tool"], string> = {
   traceroute: "/tools/traceroute",
 }
 
-// Reshape the saved snapshot into a ProbeResult so <ProbeResults> can render it without polling.
-function toLegacyProbeResult(report: SingleProbeReport): ProbeResult {
-  const r = report.result
-  if (!r) {
-    return { task_id: report.taskId, status: report.status, results: [] }
-  }
-  const knownKeys = new Set(["node_id", "success", "duration_ms", "error"])
-  const details: Record<string, unknown> = Object.fromEntries(
-    Object.entries(r).filter(([k]) => !knownKeys.has(k)),
-  )
-  return {
-    task_id: report.taskId,
-    status: report.status,
-    results: [
-      {
-        node_id: r.node_id ?? "unknown",
-        node_name: "",
-        success: r.success ?? false,
-        latency_ms: r.duration_ms,
-        error: r.error,
-        details: Object.keys(details).length > 0 ? details : undefined,
-      },
-    ],
-  }
-}
-
 export default function SingleReportView({ report }: { report: SingleProbeReport }) {
-  const probeResult = toLegacyProbeResult(report)
   const toolLabel = TOOL_LABEL[report.tool]
   const backHref = TOOL_BACK_HREF[report.tool]
 
@@ -71,7 +43,7 @@ export default function SingleReportView({ report }: { report: SingleProbeReport
           </p>
         </div>
 
-        <ProbeResults result={probeResult} />
+        <SnapshotResultPanel report={report} />
 
         {report.params && Object.keys(report.params).length > 0 && (
           <Card>

@@ -3,7 +3,7 @@
 import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
-import ProbeResults from "@/components/probe/ProbeResults"
+import { ProbeResultSection } from "@/components/probe/ProbeResultSection"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import { probeHttp } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
@@ -11,22 +11,24 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 export default function HttpProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
+  const [target, setTarget] = useState("")
   const [submitError, setSubmitError] = useState("")
   const [shareCtx, setShareCtx] = useState<{ target: string; params: Record<string, unknown> } | null>(null)
   const polling = useProbePolling(taskId)
 
-  const handleSubmit = async (target: string, params: Record<string, unknown>) => {
+  const handleSubmit = async (probeTarget: string, params: Record<string, unknown>) => {
     try {
       setSubmitError("")
       setTaskId(null)
       setShareCtx(null)
+      setTarget(probeTarget)
       const res = await probeHttp({
-        target,
+        target: probeTarget,
         node_ids: selectedNodes.length > 0 ? selectedNodes : undefined,
         ...params,
       })
       setTaskId(res.task_id)
-      setShareCtx({ target, params })
+      setShareCtx({ target: probeTarget, params })
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : "提交失败")
     }
@@ -42,20 +44,18 @@ export default function HttpProbeClient() {
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <div className="space-y-6">
-          <ProbeForm type="http" onSubmit={handleSubmit} loading={polling.isPolling} />
-          <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
-        </div>
-
-        <div>
-          <ProbeResults
-            taskId={taskId}
-            polling={polling}
-            error={submitError}
-            shareContext={shareCtx ? { tool: "http", ...shareCtx } : undefined}
-          />
-        </div>
+        <ProbeForm type="http" onSubmit={handleSubmit} loading={polling.isPolling} />
+        <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
       </div>
+
+      <ProbeResultSection
+        polling={polling}
+        target={target}
+        probeType="http"
+        submitError={submitError}
+        taskId={taskId}
+        shareContext={shareCtx ? { tool: "http", ...shareCtx } : undefined}
+      />
 
       <Card>
         <CardHeader>

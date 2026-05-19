@@ -47,10 +47,15 @@ func CSRF(exemptPaths ...string) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Exempt paths by prefix
+			// Exempt paths by prefix.
+			// /v1/diagnose/ matches the same threat model as /v1/probe/: unauth
+			// POSTs that write transient (7d TTL) data keyed by a client-supplied
+			// UUID. The Next.js one-click diagnose SSE route is server-side and
+			// has no CSRF cookie/header context, so it would otherwise be 403'd.
 			if strings.HasPrefix(path, "/v1/auth/") ||
 				strings.HasPrefix(path, "/v1/probe/") ||
 				strings.HasPrefix(path, "/v1/info/") ||
+				strings.HasPrefix(path, "/v1/diagnose/") ||
 				strings.HasPrefix(path, "/internal/") ||
 				strings.HasPrefix(path, "/v1/agent/") {
 				next.ServeHTTP(w, r)

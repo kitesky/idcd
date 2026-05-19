@@ -8,7 +8,9 @@ const BASE_URL = process.env.INTERNAL_API_URL ?? "http://localhost:8080"
 
 // Allow tests to override via env so polling doesn't slow down the test suite.
 const POLL_INTERVAL_MS = Number(process.env.PROBE_POLL_INTERVAL_MS ?? 2_000)
-const POLL_TIMEOUT_MS = Number(process.env.PROBE_POLL_TIMEOUT_MS ?? 15_000)
+// 45 s covers traceroute's typical 12–20 s real-world tail; the previous 15 s
+// often left traceroute stuck on "任务已提交" while every other check resolved.
+const POLL_TIMEOUT_MS = Number(process.env.PROBE_POLL_TIMEOUT_MS ?? 45_000)
 // Hard cap on total SSE stream lifetime (60 s); prevents dangling connections.
 const STREAM_TIMEOUT_MS = Number(process.env.DIAGNOSE_STREAM_TIMEOUT_MS ?? 60_000)
 
@@ -23,13 +25,23 @@ interface TaskResult {
   }
 }
 
+// Backend wraps every response in { data, request_id }. Unwrap so the caller
+// sees the inner payload (or the raw body if no envelope is present, for tests
+// that pre-date the envelope contract).
+function unwrap<T>(body: unknown): T {
+  if (body && typeof body === "object" && "data" in body) {
+    return (body as { data: T }).data
+  }
+  return body as T
+}
+
 async function pollTaskResult(taskId: string): Promise<TaskResult | null> {
   const deadline = Date.now() + POLL_TIMEOUT_MS
   while (Date.now() < deadline) {
     try {
       const res = await fetch(`${BASE_URL}/v1/probe/tasks/${taskId}`)
       if (res.ok) {
-        const data = (await res.json()) as TaskResult
+        const data = unwrap<TaskResult>(await res.json())
         if (
           data.status === "completed" ||
           data.status === "failed" ||
@@ -245,7 +257,7 @@ export async function GET(req: NextRequest) {
                 const text = await res.text().catch(() => res.statusText)
                 throw new Error(`HTTP ${res.status}: ${text}`)
               }
-              let detail = (await res.json()) as Record<string, unknown>
+              let detail = unwrap<Record<string, unknown>>(await res.json())
 
               // For probe tasks, poll until we have a real result.
               if (typeof detail.task_id === "string" && detail.status === "queued") {

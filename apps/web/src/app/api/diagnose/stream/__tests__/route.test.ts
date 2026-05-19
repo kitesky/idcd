@@ -15,12 +15,20 @@ const buildFetchResponse = (body: unknown, ok = true, status = 200) =>
     text: () => Promise.resolve(JSON.stringify(body)),
   } as Response)
 
+// Backend always wraps the payload in { data, request_id }. The mock mirrors
+// that contract so summarize() runs against the same shape the real backend
+// returns — defends against the envelope-unwrap regression we hit in dev.
+const envelope = (data: unknown) => ({ data, request_id: "req_test" })
+
+const buildEnvelopeResponse = (body: unknown, ok = true, status = 200) =>
+  buildFetchResponse(envelope(body), ok, status)
+
 const makeMockFetch = (overrides: Record<string, unknown> = {}) =>
   vi.fn((url: string, init?: RequestInit) => {
     const urlStr = typeof url === "string" ? url : String(url)
 
     if (urlStr.includes("/v1/info/dns"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.dns ?? {
           domain: "example.com",
           type: "A",
@@ -28,19 +36,19 @@ const makeMockFetch = (overrides: Record<string, unknown> = {}) =>
         }
       )
     if (urlStr.includes("/v1/probe/http"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.http ?? { task_id: "task-http-123", status: "queued" }
       )
     if (urlStr.includes("/v1/probe/ping"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.ping ?? { task_id: "task-ping-456", status: "queued" }
       )
     if (urlStr.includes("/v1/probe/traceroute"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.traceroute ?? { task_id: "task-tr-789", status: "queued" }
       )
     if (urlStr.includes("/v1/info/ssl"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.ssl ?? {
           domain: "example.com",
           issuer: "Let's Encrypt",
@@ -48,7 +56,7 @@ const makeMockFetch = (overrides: Record<string, unknown> = {}) =>
         }
       )
     if (urlStr.includes("/v1/info/icp"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.icp ?? {
           domain: "example.com",
           icp_number: "",
@@ -56,7 +64,7 @@ const makeMockFetch = (overrides: Record<string, unknown> = {}) =>
         }
       )
     if (urlStr.includes("/v1/info/whois"))
-      return buildFetchResponse(
+      return buildEnvelopeResponse(
         overrides.whois ?? {
           domain: "example.com",
           registrar: "GoDaddy LLC",
@@ -265,6 +273,51 @@ describe("GET /api/diagnose/stream", () => {
     const icpDone = events.find((e) => e.type === "check_done" && e.key === "icp")
     expect(icpDone?.summary).toContain("沪ICP备12345678号")
     expect(icpDone?.summary).toContain("示例公司")
+  })
+
+  it("polls probe tasks and summarizes the real result", async () => {
+    // Drive ping through the queued → completed path so we exercise pollTaskResult
+    // and the result-aware summarize branch (not the "任务已提交" fallback).
+    const fetchMock = makeMockFetch({
+      ping: { task_id: "ping-task-xyz", status: "queued" },
+    })
+    const originalImpl = fetchMock.getMockImplementation()!
+    fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+      const urlStr = typeof url === "string" ? url : String(url)
+      if (urlStr.includes("/v1/probe/tasks/ping-task-xyz")) {
+        return buildEnvelopeResponse({
+          task_id: "ping-task-xyz",
+          status: "completed",
+          result: { success: true, duration_ms: 42, node_id: "nd_test" },
+        })
+      }
+      return originalImpl(url, init)
+    })
+    global.fetch = fetchMock as typeof global.fetch
+    // Poll without delay so the test stays fast. resetModules is required so
+    // the route reads these env vars at module-load time on the next import.
+    const prevInterval = process.env.PROBE_POLL_INTERVAL_MS
+    const prevTimeout = process.env.PROBE_POLL_TIMEOUT_MS
+    process.env.PROBE_POLL_INTERVAL_MS = "0"
+    process.env.PROBE_POLL_TIMEOUT_MS = "500"
+    vi.resetModules()
+    try {
+      const { GET } = await import("../route")
+      const req = new NextRequest(
+        "http://localhost/api/diagnose/stream?domain=example.com"
+      )
+      const res = await GET(req)
+      const events = await collectSSEEvents(res)
+      const pingDone = events.find((e) => e.type === "check_done" && e.key === "ping")
+      expect(pingDone?.summary).toContain("42")
+      // Old broken path returned "任务已提交 (-)" — ensure we never regress to it.
+      expect(pingDone?.summary).not.toContain("任务已提交")
+    } finally {
+      if (prevInterval === undefined) delete process.env.PROBE_POLL_INTERVAL_MS
+      else process.env.PROBE_POLL_INTERVAL_MS = prevInterval
+      if (prevTimeout === undefined) delete process.env.PROBE_POLL_TIMEOUT_MS
+      else process.env.PROBE_POLL_TIMEOUT_MS = prevTimeout
+    }
   })
 
   it("whois summarize shows registrar and expiry", async () => {

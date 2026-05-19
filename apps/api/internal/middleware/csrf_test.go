@@ -112,6 +112,14 @@ func TestCSRF(t *testing.T) {
 			expectedStatus: http.StatusOK,
 		},
 		{
+			// The Next.js one-click diagnose SSE route POSTs reports server-side
+			// with no CSRF cookie/header context — must be exempt or saveReport 403s.
+			name:           "exempt path /v1/diagnose/reports - no CSRF check",
+			method:         "POST",
+			path:           "/v1/diagnose/reports",
+			expectedStatus: http.StatusOK,
+		},
+		{
 			name:           "Bearer token - no CSRF check",
 			method:         "POST",
 			path:           "/v1/account/profile",

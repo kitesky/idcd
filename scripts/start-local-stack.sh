@@ -30,12 +30,26 @@ for port in 3000 8080 8443 9091 9092 9099; do
   [[ -n "$pids" ]] && { log "clearing port $port"; echo "$pids" | xargs kill 2>/dev/null || true; sleep 0.3; }
 done
 
+# Also kill orphaned component binaries that aren't listening on a public port.
+# `go run` forks a build-cache binary as a child; killing the wrapper leaks the
+# child as an orphan. Agent has no public listener besides 9099, so if 9099
+# hadn't bound yet during the port sweep above the orphan survives, registers
+# on the gateway under the same node_id, and triggers a connection-replacement
+# storm that defers every probe result by up to wstimeouts.PingInterval (54 s).
+log "clearing orphaned component binaries"
+pkill -9 -f "go-build.*/(api|gateway|agent|aggregator)$" 2>/dev/null || true
+pkill -9 -f "exe/(api|gateway|agent|aggregator)$" 2>/dev/null || true
+sleep 0.3
+
 PIDS=()
 cleanup() {
   log "stopping stack…"
   for pid in "${PIDS[@]-}"; do kill "$pid" 2>/dev/null || true; done
   sleep 1
   for pid in "${PIDS[@]-}"; do kill -9 "$pid" 2>/dev/null || true; done
+  # Belt-and-suspenders: orphan go-build binaries don't share the wrapper pid.
+  pkill -9 -f "go-build.*/(api|gateway|agent|aggregator)$" 2>/dev/null || true
+  pkill -9 -f "exe/(api|gateway|agent|aggregator)$" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
 
@@ -45,8 +59,15 @@ IDCD_CONFIG=config/dev.env.yaml go run ./apps/api/cmd/api 2>&1 | sed 's/^/[api] 
 PIDS+=($!)
 
 # 2) Gateway (8443)
-log "starting Gateway"
-IDCD_CONFIG=config/dev.env.yaml go run ./apps/gateway/cmd/gateway 2>&1 | sed 's/^/[gateway]  /' &
+# Pin a per-host consumer group so this dev gateway gets its own copy of the
+# probe.tasks stream instead of sharing `gateway-dispatch` with whatever
+# prod/staging gateways are also pointed at the shared dev Redis. Without
+# this, redis load-balances each task between consumers — half of every
+# tool-page probe lands on a remote gateway that has no record of the local
+# agent's ws conn and stalls in PEL for 60s+ before XAutoClaim hands it back.
+GATEWAY_DISPATCH_GROUP="gateway-dispatch-dev-$(hostname -s)"
+log "starting Gateway (dispatch group=$GATEWAY_DISPATCH_GROUP)"
+IDCD_CONFIG=config/dev.env.yaml GATEWAY_DISPATCH_GROUP="$GATEWAY_DISPATCH_GROUP" go run ./apps/gateway/cmd/gateway 2>&1 | sed 's/^/[gateway]  /' &
 PIDS+=($!)
 
 # Wait for API + Gateway readiness.

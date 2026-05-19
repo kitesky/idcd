@@ -176,6 +176,22 @@ func (c *Client) connect(ctx context.Context) error {
 }
 
 // runSession runs the heartbeat sender and message reader until the connection dies.
+//
+// Session-level cancel propagation:
+// readLoop returning means the socket is dead; without an explicit signal the
+// heartbeat goroutine would only notice on its next ping tick (54 s) — and
+// sendHeartbeat swallows write errors, so a hb-tick alone won't unblock it.
+// Previously this left runSession stuck on <-hbDone for up to PingInterval
+// after the conn died: any probe result that completed in the dead window
+// landed in the on-disk buffer, then waited another 5 s upload-ticker cycle
+// once the next session came up. That gap showed up end-to-end as a 60–70 s
+// extra latency on top of the actual probe duration (see DB forensics:
+// traceroute probe_ms=26 s, completed_at-created_at=98 s).
+//
+// Fix: derive a session ctx from parent, cancel it as soon as readLoop
+// exits. Heartbeat goroutine listens on the session ctx and returns
+// immediately. Also close the conn proactively so any in-flight Send/ping
+// fails fast instead of blocking up to wsWriteDeadline (10 s).
 func (c *Client) runSession(ctx context.Context) {
 	conn := c.getConn()
 	if conn == nil {
@@ -187,6 +203,9 @@ func (c *Client) runSession(ctx context.Context) {
 		conn.SetReadDeadline(time.Now().Add(pongTimeout))
 		return nil
 	})
+
+	sessionCtx, sessionCancel := context.WithCancel(ctx)
+	defer sessionCancel()
 
 	// heartbeat + ping goroutine
 	hbDone := make(chan struct{})
@@ -202,7 +221,7 @@ func (c *Client) runSession(ctx context.Context) {
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-sessionCtx.Done():
 				return
 			case <-hbTick.C:
 				c.sendHeartbeat()
@@ -217,6 +236,12 @@ func (c *Client) runSession(ctx context.Context) {
 
 	// message reader (blocks)
 	c.readLoop(conn)
+	// Read loop just returned — the socket is dead or shutting down. Cancel
+	// the session ctx so the hb goroutine wakes up *now* instead of stalling
+	// until its next ping tick (up to 54 s), then close the conn so any
+	// concurrent Send call from the task worker fails fast.
+	sessionCancel()
+	c.closeConn()
 	<-hbDone
 }
 

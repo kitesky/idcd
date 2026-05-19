@@ -57,7 +57,8 @@ func CSRF(exemptPaths ...string) func(http.Handler) http.Handler {
 				strings.HasPrefix(path, "/v1/info/") ||
 				strings.HasPrefix(path, "/v1/diagnose/") ||
 				strings.HasPrefix(path, "/internal/") ||
-				strings.HasPrefix(path, "/v1/agent/") {
+				strings.HasPrefix(path, "/v1/agent/") ||
+				path == "/v1/billing/webhook" {
 				next.ServeHTTP(w, r)
 				return
 			}

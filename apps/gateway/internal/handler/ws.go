@@ -373,9 +373,16 @@ func (h *WSHandler) handleHeartbeat(c *hub.Connection, payload json.RawMessage) 
 // and logs a warning if it has changed unexpectedly.
 func (h *WSHandler) processFingerprint(ctx context.Context, nodeID string, fp *nodeFingerprint) {
 	if fp == nil {
-		// Still update last_seen_at even without fingerprint data.
+		// Heartbeat must self-heal status: cleanup may have flipped this
+		// node to 'offline' during a transient lull, but if we're seeing
+		// a heartbeat now it's by definition active. Leave 'disabled' /
+		// 'pending' alone — those are operator-set, not derived from
+		// liveness.
 		_, _ = h.pool.Exec(ctx,
-			`UPDATE enrolled_nodes SET last_seen_at = now() WHERE node_id = $1`, nodeID)
+			`UPDATE enrolled_nodes
+			   SET last_seen_at = now(),
+			       status = CASE WHEN status = 'offline' THEN 'active' ELSE status END
+			 WHERE node_id = $1`, nodeID)
 		return
 	}
 
@@ -407,7 +414,8 @@ func (h *WSHandler) processFingerprint(ctx context.Context, nodeID string, fp *n
 		UPDATE enrolled_nodes
 		SET last_seen_at           = now(),
 		    fingerprint            = $2::jsonb,
-		    fingerprint_updated_at = now()
+		    fingerprint_updated_at = now(),
+		    status                 = CASE WHEN status = 'offline' THEN 'active' ELSE status END
 		WHERE node_id = $1
 	`, nodeID, string(fpJSON))
 }

@@ -82,6 +82,9 @@ export function TokensClient() {
   // ── Revoke state ─────────────────────────────────────────────────────────
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
   const [revokeLoading, setRevokeLoading] = useState(false)
+  // Per-row revoke error so a failed delete is visible to the user instead of
+  // the confirm panel just stopping its spinner with no signal.
+  const [revokeError, setRevokeError] = useState<string | null>(null)
 
   // ── Load tokens ───────────────────────────────────────────────────────────
 
@@ -167,12 +170,13 @@ export function TokensClient() {
 
   async function handleRevoke(id: string) {
     setRevokeLoading(true)
+    setRevokeError(null)
     try {
       await apiRequest(`/v1/account/tokens/${id}`, { method: "DELETE" })
-      setTokens((prev) => prev.filter((t) => t.id !== id))
+      setTokens((prev) => prev.filter((tk) => tk.id !== id))
       setRevokeTarget(null)
-    } catch {
-      // keep confirm panel open on error; user can retry
+    } catch (err) {
+      setRevokeError(err instanceof Error ? err.message : t("tokens.revokeFailed"))
     } finally {
       setRevokeLoading(false)
     }
@@ -188,7 +192,7 @@ export function TokensClient() {
     }
     return (
       <span className="text-sm text-muted-foreground">
-        {new Date(expiresAt).toLocaleDateString("zh-CN")}
+        {new Date(expiresAt).toLocaleDateString(bcp47)}
       </span>
     )
   }
@@ -279,28 +283,41 @@ export function TokensClient() {
                     </TableCell>
                     <TableCell className="text-right">
                       {revokeTarget === tok.id ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {t("tokens.revokeConfirm")}
-                          </span>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={revokeLoading}
-                            data-testid={`btn-confirm-revoke-${tok.id}`}
-                            onClick={() => handleRevoke(tok.id)}
-                          >
-                            {revokeLoading ? t("tokens.revoking") : t("tokens.confirmRevoke")}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={revokeLoading}
-                            data-testid={`btn-cancel-revoke-${tok.id}`}
-                            onClick={() => setRevokeTarget(null)}
-                          >
-                            {t("tokens.cancelRevoke")}
-                          </Button>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {t("tokens.revokeConfirm")}
+                            </span>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={revokeLoading}
+                              data-testid={`btn-confirm-revoke-${tok.id}`}
+                              onClick={() => handleRevoke(tok.id)}
+                            >
+                              {revokeLoading ? t("tokens.revoking") : t("tokens.confirmRevoke")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={revokeLoading}
+                              data-testid={`btn-cancel-revoke-${tok.id}`}
+                              onClick={() => {
+                                setRevokeTarget(null)
+                                setRevokeError(null)
+                              }}
+                            >
+                              {t("tokens.cancelRevoke")}
+                            </Button>
+                          </div>
+                          {revokeError && (
+                            <span
+                              className="text-xs text-destructive"
+                              data-testid={`revoke-error-${tok.id}`}
+                            >
+                              {revokeError}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <Button

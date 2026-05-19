@@ -2,11 +2,17 @@ package oncall
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/jackc/pgx/v5"
 )
+
+// ErrScheduleNotFound is returned by CurrentOnCall when the schedule row is
+// missing. Callers must check with errors.Is(err, oncall.ErrScheduleNotFound)
+// to distinguish 404 from 500 — never compare error strings.
+var ErrScheduleNotFound = errors.New("oncall schedule not found")
 
 type QueryRow interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
@@ -46,7 +52,7 @@ func CurrentOnCall(ctx context.Context, db QueryRow, scheduleID string, at time.
 		SELECT id, rotation_type, handoff_hour FROM oncall_schedules WHERE id = $1
 	`, scheduleID).Scan(&s.ID, &s.RotationType, &s.HandoffHour)
 	if err == pgx.ErrNoRows {
-		return "", fmt.Errorf("schedule not found: %s", scheduleID)
+		return "", ErrScheduleNotFound
 	}
 	if err != nil {
 		return "", fmt.Errorf("query oncall_schedules: %w", err)

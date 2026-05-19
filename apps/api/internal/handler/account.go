@@ -27,11 +27,22 @@ type AccountQuerier interface {
 // AccountHandler implements account management endpoints.
 type AccountHandler struct {
 	q AccountQuerier
+	// sessions is optional. When wired, ChangePassword revokes every session
+	// other than the caller's current one so a leaked JWT can't outlive a
+	// password reset.
+	sessions SessionService
 }
 
 // NewAccountHandler creates an AccountHandler.
 func NewAccountHandler(q AccountQuerier) *AccountHandler {
 	return &AccountHandler{q: q}
+}
+
+// WithSessions wires the session service so ChangePassword can revoke peer
+// sessions after a successful password update.
+func (h *AccountHandler) WithSessions(svc SessionService) *AccountHandler {
+	h.sessions = svc
+	return h
 }
 
 // profileResponse is the public representation of a user.
@@ -306,6 +317,24 @@ func (h *AccountHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 	}); err != nil {
 		response.Error(w, r, apperr.Internal("failed to update password", err))
 		return
+	}
+
+	// Revoke every other session for this user so a stolen JWT can't outlive
+	// the password it was bound to. Keep the current session alive so the user
+	// stays logged in on the device they just used to change the password.
+	// Failures here are non-fatal: the password change itself succeeded; we
+	// surface a best-effort cleanup. The kicked devices will be force-logged
+	// out on their next request via the missing session lookup.
+	if h.sessions != nil {
+		currentSessionID := middleware.SessionIDFromContext(r.Context())
+		if ids, err := h.sessions.SessionIDsForUser(r.Context(), userID); err == nil {
+			for _, sid := range ids {
+				if sid == currentSessionID {
+					continue
+				}
+				_ = h.sessions.Delete(r.Context(), sid)
+			}
+		}
 	}
 
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "password updated"})

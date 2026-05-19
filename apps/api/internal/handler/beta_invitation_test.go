@@ -132,8 +132,10 @@ func TestRedeemBeta_Success(t *testing.T) {
 		WithArgs(code).
 		WillReturnRows(pgxmock.NewRows(betaColumns()).AddRow(betaRow(invID, code, "approved", nil)...))
 
+	// CAS-style claim now matches WHERE code = $3 (not id) and bakes the
+	// status/expiry checks into the UPDATE so the third arg is the code.
 	mockPool.ExpectQuery(`UPDATE beta_invitations`).
-		WithArgs(uid, pgxmock.AnyArg(), invID).
+		WithArgs(uid, pgxmock.AnyArg(), code).
 		WillReturnRows(pgxmock.NewRows(betaColumns()).AddRow(betaRow(invID, code, "used", nil)...))
 
 	body, _ := json.Marshal(map[string]string{"code": code})

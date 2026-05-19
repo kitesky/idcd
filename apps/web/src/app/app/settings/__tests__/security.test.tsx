@@ -270,7 +270,11 @@ describe("SecurityClient", () => {
   it("removes a passkey from list after successful DELETE API call", async () => {
     await act(async () => { render(<SecurityClient />) })
     await waitFor(() => expect(screen.getByTestId("btn-delete-passkey-pk_Test1")).toBeInTheDocument())
+    // Passkey delete is now gated behind an AlertDialog (P1 — passkey removal
+    // is irreversible). First click opens the dialog, second click confirms.
     await act(async () => { fireEvent.click(screen.getByTestId("btn-delete-passkey-pk_Test1")) })
+    await waitFor(() => expect(screen.getByTestId("btn-confirm-passkey-delete")).toBeInTheDocument())
+    await act(async () => { fireEvent.click(screen.getByTestId("btn-confirm-passkey-delete")) })
     await waitFor(() => {
       expect(screen.queryByText("MacBook Pro (Touch ID)")).not.toBeInTheDocument()
     })
@@ -299,7 +303,10 @@ describe("SecurityClient", () => {
     vi.stubGlobal("fetch", fetchMock)
     await act(async () => { render(<SecurityClient />) })
     await waitFor(() => expect(screen.getByTestId("btn-delete-passkey-pk_Test1")).toBeInTheDocument())
+    // Open the confirm dialog, then click confirm to actually fire the DELETE.
     await act(async () => { fireEvent.click(screen.getByTestId("btn-delete-passkey-pk_Test1")) })
+    await waitFor(() => expect(screen.getByTestId("btn-confirm-passkey-delete")).toBeInTheDocument())
+    await act(async () => { fireEvent.click(screen.getByTestId("btn-confirm-passkey-delete")) })
     await waitFor(() => {
       expect(screen.getByTestId("passkey-error")).toBeInTheDocument()
       expect(screen.getByText("MacBook Pro (Touch ID)")).toBeInTheDocument()

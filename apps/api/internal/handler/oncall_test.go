@@ -135,6 +135,11 @@ func TestOncallHandler_CreateSchedule_Unauthorized(t *testing.T) {
 func TestOncallHandler_CreateSchedule_Success(t *testing.T) {
 	pool := &mockOncallPool{
 		execResult: pgconn.NewCommandTag("INSERT 0 1"),
+		// CreateSchedule first checks that the caller is owner/admin of the
+		// target team via SELECT role FROM team_memberships.
+		queryRowQueue: []*mockOncallRow{
+			{values: []any{"owner"}},
+		},
 	}
 	h := NewOncallHandler(pool)
 
@@ -165,6 +170,10 @@ func TestOncallHandler_GetCurrentOnCall_NoParticipants(t *testing.T) {
 	now := time.Now().UTC()
 	pool := &mockOncallPool{
 		queryRowQueue: []*mockOncallRow{
+			// requireScheduleMember: schedule's team_id then membership role.
+			{values: []any{"t_test"}},
+			{values: []any{"member"}},
+			// CurrentOnCall path: override miss, then schedule lookup.
 			{err: pgx.ErrNoRows},
 			{values: []any{"sch_test", "weekly", 9}},
 		},
@@ -190,6 +199,10 @@ func TestOncallHandler_GetCurrentOnCall_NoParticipants(t *testing.T) {
 func TestOncallHandler_GetCurrentOnCall_WithParticipants(t *testing.T) {
 	pool := &mockOncallPool{
 		queryRowQueue: []*mockOncallRow{
+			// requireScheduleMember: schedule's team_id then membership role.
+			{values: []any{"t_test"}},
+			{values: []any{"member"}},
+			// CurrentOnCall path: override miss, then schedule lookup.
 			{err: pgx.ErrNoRows},
 			{values: []any{"sch_test", "weekly", 9}},
 		},
@@ -217,7 +230,9 @@ func TestOncallHandler_ListOverrides_Success(t *testing.T) {
 	now := time.Now().UTC()
 	pool := &mockOncallPool{
 		queryRowQueue: []*mockOncallRow{
-			{values: []any{true}}, // EXISTS check
+			// requireScheduleMember: schedule's team_id then membership role.
+			{values: []any{"t_test"}},
+			{values: []any{"member"}},
 		},
 		queryRowsData: &mockOncallRows{
 			rows: [][]any{
@@ -238,9 +253,8 @@ func TestOncallHandler_ListOverrides_Success(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	outer := resp["data"].(map[string]any)
-	inner := outer["data"].(map[string]any)
-	overrides := inner["overrides"].([]any)
+	data := resp["data"].(map[string]any)
+	overrides := data["overrides"].([]any)
 	assert.Len(t, overrides, 2)
 }
 
@@ -248,7 +262,9 @@ func TestOncallHandler_ListOverrides_ActiveFilter(t *testing.T) {
 	now := time.Now().UTC()
 	pool := &mockOncallPool{
 		queryRowQueue: []*mockOncallRow{
-			{values: []any{true}}, // EXISTS check
+			// requireScheduleMember: schedule's team_id then membership role.
+			{values: []any{"t_test"}},
+			{values: []any{"member"}},
 		},
 		queryRowsData: &mockOncallRows{
 			rows: [][]any{
@@ -268,9 +284,8 @@ func TestOncallHandler_ListOverrides_ActiveFilter(t *testing.T) {
 	require.Equal(t, http.StatusOK, rr.Code)
 	var resp map[string]any
 	require.NoError(t, json.NewDecoder(rr.Body).Decode(&resp))
-	outer := resp["data"].(map[string]any)
-	inner := outer["data"].(map[string]any)
-	overrides := inner["overrides"].([]any)
+	data := resp["data"].(map[string]any)
+	overrides := data["overrides"].([]any)
 	assert.Len(t, overrides, 1)
 	first := overrides[0].(map[string]any)
 	assert.Equal(t, "u_alice", first["user_id"])
@@ -279,6 +294,11 @@ func TestOncallHandler_ListOverrides_ActiveFilter(t *testing.T) {
 func TestOncallHandler_DeleteOverride_Success(t *testing.T) {
 	pool := &mockOncallPool{
 		execResult: pgconn.NewCommandTag("DELETE 1"),
+		queryRowQueue: []*mockOncallRow{
+			// requireScheduleAdmin: team_id then admin role.
+			{values: []any{"t_test"}},
+			{values: []any{"admin"}},
+		},
 	}
 	h := NewOncallHandler(pool)
 
@@ -298,6 +318,11 @@ func TestOncallHandler_DeleteOverride_Success(t *testing.T) {
 func TestOncallHandler_DeleteOverride_NotFound(t *testing.T) {
 	pool := &mockOncallPool{
 		execResult: pgconn.NewCommandTag("DELETE 0"),
+		queryRowQueue: []*mockOncallRow{
+			// requireScheduleAdmin: team_id then admin role.
+			{values: []any{"t_test"}},
+			{values: []any{"owner"}},
+		},
 	}
 	h := NewOncallHandler(pool)
 

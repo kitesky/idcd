@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -26,27 +27,50 @@ type TeamBillingPool interface {
 type TeamBillingHandler struct {
 	pool     TeamBillingPool
 	provider billing.Provider
+
+	// appBaseURL is the frontend origin used to build user-facing ReturnURL.
+	appBaseURL string
+	// publicAPIURL is the API service's externally-reachable origin used to
+	// build NotifyURL. MUST come from server config — never the Origin header,
+	// since trusting a client header lets a forged origin redirect refund /
+	// payment webhooks to an attacker-controlled URL.
+	publicAPIURL string
 }
 
 func NewTeamBillingHandler(pool TeamBillingPool, provider billing.Provider) *TeamBillingHandler {
 	return &TeamBillingHandler{pool: pool, provider: provider}
 }
 
+// WithURLs configures the trusted server-side base URLs used to construct
+// ReturnURL (user browser redirect after pay) and NotifyURL (server-to-server
+// webhook callback). Mirrors BillingHandler.WithURLs.
+func (h *TeamBillingHandler) WithURLs(appBase, publicAPI string) *TeamBillingHandler {
+	h.appBaseURL = appBase
+	h.publicAPIURL = publicAPI
+	return h
+}
+
 type teamSubscribeRequest struct {
 	Plan string `json:"plan"`
 }
 
-func (h *TeamBillingHandler) requireTeamAdmin(ctx context.Context, teamID, userID string) error {
+// requireTeamAdmin returns a typed application error when the caller is not
+// an owner/admin of the team. See TeamAPIKeyHandler.requireAdminRole for the
+// reason this no longer reuses pgx.ErrNoRows as a permission signal.
+func (h *TeamBillingHandler) requireTeamAdmin(ctx context.Context, teamID, userID string) *apperr.Error {
 	var role string
 	err := h.pool.QueryRow(ctx,
 		`SELECT role FROM team_memberships WHERE team_id = $1 AND user_id = $2`,
 		teamID, userID,
 	).Scan(&role)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.Forbidden("not a team member")
+		}
+		return apperr.Internal("failed to verify team role", err)
 	}
 	if role != "owner" && role != "admin" {
-		return pgx.ErrNoRows
+		return apperr.Forbidden("owner or admin required")
 	}
 	return nil
 }
@@ -69,8 +93,8 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	teamID := chi.URLParam(r, "id")
 
-	if err := h.requireTeamAdmin(r.Context(), teamID, userID); err != nil {
-		response.Error(w, r, apperr.Forbidden("owner or admin required"))
+	if appErr := h.requireTeamAdmin(r.Context(), teamID, userID); appErr != nil {
+		response.Error(w, r, appErr)
 		return
 	}
 
@@ -95,11 +119,23 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	// ReturnURL falls back to the request Origin only in non-production setups
+	// where app_base_url is unset; production deployments MUST configure it.
+	returnBase := h.appBaseURL
+	if returnBase == "" {
+		returnBase = r.Header.Get("Origin")
+	}
+	// NotifyURL: server-to-server webhook callback. MUST come from config.
+	if h.publicAPIURL == "" {
+		response.Error(w, r, apperr.Internal("team billing public_api_url is not configured", nil))
+		return
+	}
+
 	result, err := h.provider.Subscribe(ctx, billing.SubscribeRequest{
 		UserID:    ownerID,
 		Plan:      plan,
-		ReturnURL: r.Header.Get("Origin") + "/app/settings/team",
-		NotifyURL: r.Header.Get("Origin") + "/v1/billing/webhook",
+		ReturnURL: returnBase + "/app/settings/team",
+		NotifyURL: h.publicAPIURL + "/v1/billing/webhook",
 	})
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to initiate subscription", err))

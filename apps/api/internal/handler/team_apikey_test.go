@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"errors"
-
 	"github.com/go-chi/chi/v5"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/pashagolub/pgxmock/v4"
 	"github.com/stretchr/testify/assert"
@@ -47,9 +46,13 @@ func TestTeamAPIKey_Create_NonMember_403(t *testing.T) {
 	h, mockPool := newTeamAPIKeyHandler(t)
 	defer mockPool.Close()
 
+	// Use the real pgx.ErrNoRows sentinel — the handler now uses errors.Is to
+	// distinguish "not a member" (403) from any other DB error (500), so a
+	// generic errors.New("no rows...") would intentionally fall into the 500
+	// branch and the test would no longer prove the 403 path.
 	mockPool.ExpectQuery("SELECT role FROM team_memberships").
 		WithArgs("team_001", "u_stranger").
-		WillReturnError(errors.New("no rows in result set"))
+		WillReturnError(pgx.ErrNoRows)
 
 	body, _ := json.Marshal(map[string]string{"name": "CI Key", "type": "production"})
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader(body))

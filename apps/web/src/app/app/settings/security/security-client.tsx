@@ -1,7 +1,9 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useTranslations } from "next-intl"
+import { useTranslations, useLocale } from "next-intl"
+import QRCode from "qrcode"
+import { bcp47Of } from "@/i18n/registry"
 import {
   Button,
   Input,
@@ -20,8 +22,33 @@ import {
   DialogDescription,
   DialogFooter,
   Skeleton,
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
 } from "@/components/ui"
 import { apiRequest } from "@/lib/api"
+
+// detectPasskeyPlatform returns a short, human-friendly label for the current
+// device/browser so a newly registered passkey isn't named "My Passkey" for
+// every device. Pure best-effort UA sniff — we only use it as a default name
+// the server stores; the user can rename later.
+function detectPasskeyPlatform(): string {
+  if (typeof navigator === "undefined") return "Unknown"
+  const ua = navigator.userAgent
+  if (/iPad/.test(ua)) return "iPad"
+  if (/iPhone/.test(ua)) return "iPhone"
+  if (/Macintosh/.test(ua)) return "Mac"
+  if (/Android/.test(ua)) return "Android"
+  if (/Windows/.test(ua)) return "Windows"
+  if (/CrOS/.test(ua)) return "ChromeOS"
+  if (/Linux/.test(ua)) return "Linux"
+  return "Unknown"
+}
 
 type Step = "idle" | "scan" | "verify" | "backup"
 
@@ -34,7 +61,12 @@ type PasskeyItem = {
 
 export function SecurityClient() {
   const t = useTranslations("settings")
+  const locale = useLocale()
+  const bcp47 = bcp47Of(locale)
   const [enabled, setEnabled] = useState(false)
+  // Passkey delete is irreversible (no soft-delete), so gate behind a typed
+  // confirmation dialog instead of one-click. `null` means no pending delete.
+  const [passkeyDeleteTarget, setPasskeyDeleteTarget] = useState<string | null>(null)
   const [step, setStep] = useState<Step>("idle")
   const [code, setCode] = useState("")
   const [codeError, setCodeError] = useState<string | null>(null)
@@ -43,6 +75,11 @@ export function SecurityClient() {
   const [showDisableDialog, setShowDisableDialog] = useState(false)
 
   const [secretData, setSecretData] = useState<{ secret: string; otpauth_uri: string } | null>(null)
+  // qrDataURL holds a locally-rendered TOTP QR code (data: URL). Previously we
+  // shipped the otpauth:// secret to api.qrserver.com — a third-party origin —
+  // which is equivalent to leaking the TOTP private key. Rendering in-browser
+  // keeps the secret on-device.
+  const [qrDataURL, setQrDataURL] = useState<string>("")
   const [backupCodes, setBackupCodes] = useState<string[]>([])
   const [setupLoading, setSetupLoading] = useState(false)
   const [verifyLoading, setVerifyLoading] = useState(false)
@@ -77,12 +114,26 @@ export function SecurityClient() {
     setCode("")
     setCodeError(null)
     setSecretData(null)
+    setQrDataURL("")
     setSetupLoading(true)
     try {
       const res = await apiRequest<{ data: { secret: string; otpauth_uri: string } }>("/v1/account/2fa/setup", {
         method: "POST",
       })
       setSecretData(res.data)
+      // Render QR locally so the otpauth_uri (containing the TOTP secret) never
+      // leaves the browser. errorCorrectionLevel: 'M' keeps the QR readable
+      // even when the secret string is long.
+      try {
+        const dataURL = await QRCode.toDataURL(res.data.otpauth_uri, {
+          errorCorrectionLevel: "M",
+          margin: 1,
+          width: 200,
+        })
+        setQrDataURL(dataURL)
+      } catch {
+        // QR rendering failed; user can still type the secret manually.
+      }
     } catch (err) {
       setCodeError(err instanceof Error ? err.message : t("security.setupFailed"))
     } finally {
@@ -181,7 +232,7 @@ export function SecurityClient() {
               attestationObject: btoa(String.fromCharCode(...new Uint8Array(response.attestationObject))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
             },
           },
-          device_name: "My Passkey",
+          device_name: t("security.passkeyDefaultName", { platform: detectPasskeyPlatform() }),
         }),
       })
       setPasskeys(prev => [...prev, {
@@ -206,10 +257,6 @@ export function SecurityClient() {
       setPasskeyError(err instanceof Error ? err.message : t("security.passkeyDeleteFailed"))
     }
   }
-
-  const qrURL = secretData
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(secretData.otpauth_uri)}`
-    : ""
 
   return (
     <div data-testid="security-page" className="space-y-6">
@@ -302,14 +349,14 @@ export function SecurityClient() {
                     <div className="space-y-0.5">
                       <p className="text-sm font-medium">{pk.device_name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {t("security.addedAt")} {new Date(pk.created_at).toLocaleDateString("zh-CN")}
+                        {t("security.addedAt")} {new Date(pk.created_at).toLocaleDateString(bcp47)}
                       </p>
                     </div>
                     <Button
                       variant="ghost"
                       size="sm"
                       data-testid={`btn-delete-passkey-${pk.id}`}
-                      onClick={() => handleDeletePasskey(pk.id)}
+                      onClick={() => setPasskeyDeleteTarget(pk.id)}
                     >
                       {t("security.deletePasskey")}
                     </Button>
@@ -320,6 +367,37 @@ export function SecurityClient() {
           )}
         </CardContent>
       </Card>
+
+      {/* Passkey delete confirmation. Mirrors the AlertDialog used elsewhere
+          (sessions revoke-all etc.) — passkey deletion is irreversible. */}
+      <AlertDialog
+        open={passkeyDeleteTarget !== null}
+        onOpenChange={(open) => { if (!open) setPasskeyDeleteTarget(null) }}
+      >
+        <AlertDialogContent data-testid="passkey-delete-confirm-dialog">
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t("security.passkeyConfirmDeleteTitle")}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t("security.passkeyConfirmDeleteDesc")}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="btn-cancel-passkey-delete">
+              {t("security.passkeyCancelDelete")}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              data-testid="btn-confirm-passkey-delete"
+              onClick={() => {
+                const id = passkeyDeleteTarget
+                setPasskeyDeleteTarget(null)
+                if (id) void handleDeletePasskey(id)
+              }}
+            >
+              {t("security.passkeyConfirmDelete")}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Setup Dialog — 3 steps */}
       <Dialog open={step !== "idle"} onOpenChange={(open) => { if (!open) setStep("idle") }}>
@@ -333,14 +411,14 @@ export function SecurityClient() {
                 </DialogDescription>
               </DialogHeader>
               <div className="flex flex-col items-center gap-4 py-2">
-                {setupLoading ? (
+                {setupLoading || !qrDataURL ? (
                   <div className="flex items-center justify-center w-[200px] h-[200px] text-sm text-muted-foreground">
                     {t("security.step1Loading")}
                   </div>
                 ) : (
-                  // eslint-disable-next-line @next/next/no-img-element -- TOTP QR 是动态 data URL，next/image 优化不适用
+                  // eslint-disable-next-line @next/next/no-img-element -- 本地生成的 data: URL，不走 next/image 优化
                   <img
-                    src={qrURL}
+                    src={qrDataURL}
                     alt="TOTP QR code"
                     width={200}
                     height={200}

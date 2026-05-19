@@ -67,6 +67,14 @@ interface Team {
 }
 
 function RoleBadge({ role }: { role: string }) {
+  const t = useTranslations("settings")
+  // Map role to its translated label. Unknown roles fall back to the raw value
+  // so we surface unexpected data instead of silently rendering "member".
+  const labelKey =
+    role === "owner" || role === "admin" || role === "member"
+      ? (`team.roles.${role}` as const)
+      : null
+  const label = labelKey ? t(labelKey) : role
   if (role === "owner") {
     return (
       <Badge
@@ -74,7 +82,7 @@ function RoleBadge({ role }: { role: string }) {
         className="border-primary text-primary text-xs"
         data-testid={`role-badge-${role}`}
       >
-        owner
+        {label}
       </Badge>
     )
   }
@@ -85,7 +93,7 @@ function RoleBadge({ role }: { role: string }) {
         className="border-info text-info text-xs"
         data-testid={`role-badge-${role}`}
       >
-        admin
+        {label}
       </Badge>
     )
   }
@@ -95,7 +103,7 @@ function RoleBadge({ role }: { role: string }) {
       className="border-muted-foreground text-muted-foreground text-xs"
       data-testid={`role-badge-${role}`}
     >
-      member
+      {label}
     </Badge>
   )
 }
@@ -195,13 +203,16 @@ export function TeamClient() {
       .then((json) => {
         const teams = json.data?.teams ?? []
         if (teams.length > 0) {
-          const t = teams[0]!
-          setTeam(t)
-          setTeamPlan(t.plan)
-          loadTeamDetails(t.id)
+          // Don't shadow the outer `t` (useTranslations) — the .catch below
+          // reaches up the closure for it and a local `t = teams[0]` made
+          // the code path fragile to refactor.
+          const firstTeam = teams[0]!
+          setTeam(firstTeam)
+          setTeamPlan(firstTeam.plan)
+          loadTeamDetails(firstTeam.id)
         }
       })
-      .catch((err) => setError(err.message ?? t("team.loadFailed")))
+      .catch((err) => setError(err instanceof Error ? err.message : t("team.loadFailed")))
       .finally(() => setLoadingTeam(false))
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 仅初次挂载加载团队；t 用于 fallback 文案，不需要重跑 effect
   }, [])
@@ -228,6 +239,7 @@ export function TeamClient() {
 
   async function handleCreateTeam() {
     if (!newTeamName.trim() || !newTeamSlug.trim()) return
+    setError(null)
     setCreatingTeam(true)
     try {
       const json = await apiRequest<{ data: { team: Team } }>("/v1/teams", {
@@ -244,8 +256,8 @@ export function TeamClient() {
       setNewTeamName("")
       setNewTeamSlug("")
       setShowCreateTeamDialog(false)
-    } catch (err: any) {
-      const msg = err.message ?? t("team.createFailed")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("team.createFailed")
       setError(msg)
       toast.error(msg)
     } finally {
@@ -256,6 +268,7 @@ export function TeamClient() {
   async function handleInvite() {
     if (!inviteEmail.trim() || !team) return
     const targetEmail = inviteEmail.trim()
+    setError(null)
     setInviting(true)
     try {
       const json = await apiRequest<{ data: { invitation: PendingInvitation } }>(
@@ -273,8 +286,8 @@ export function TeamClient() {
       setInviteRole("member")
       setShowInviteDialog(false)
       toast.success(t("team.inviteSuccess", { email: targetEmail }))
-    } catch (err: any) {
-      const msg = err.message ?? t("team.inviteFailed")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("team.inviteFailed")
       setError(msg)
       toast.error(msg)
     } finally {
@@ -284,6 +297,7 @@ export function TeamClient() {
 
   async function handleAddKey() {
     if (!newKeyName.trim() || !team) return
+    setError(null)
     setAddingKey(true)
     try {
       const json = await apiRequest<{ data: { api_key: TeamAPIKey & { key: string } } }>(
@@ -299,8 +313,8 @@ export function TeamClient() {
         setCreatedKeyValue(key.key)
         toast.success(t("team.addKeySuccess"))
       }
-    } catch (err: any) {
-      const msg = err.message ?? t("team.addKeyFailed")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("team.addKeyFailed")
       setError(msg)
       toast.error(msg)
     } finally {
@@ -310,12 +324,13 @@ export function TeamClient() {
 
   async function handleRevokeKey(keyID: string) {
     if (!team) return
+    setError(null)
     try {
       await apiRequest(`/v1/teams/${team.id}/api-keys/${keyID}`, { method: "DELETE" })
       setTeamKeys((prev) => prev.filter((k) => k.id !== keyID))
       toast.success(t("team.revokeKeySuccess"))
-    } catch (err: any) {
-      const msg = err.message ?? t("team.revokeKeyFailed")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("team.revokeKeyFailed")
       setError(msg)
       toast.error(msg)
     }
@@ -323,13 +338,14 @@ export function TeamClient() {
 
   async function handleRemoveMember(userId: string) {
     if (!team) return
+    setError(null)
     try {
       await apiRequest(`/v1/teams/${team.id}/members/${userId}`, { method: "DELETE" })
       setMembers((prev) => prev.filter((m) => m.user_id !== userId))
       setTeam((prev) => prev ? { ...prev, member_count: prev.member_count - 1 } : prev)
       toast.success(t("team.removeMemberSuccess"))
-    } catch (err: any) {
-      const msg = err.message ?? t("team.removeMemberFailed")
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : t("team.removeMemberFailed")
       setError(msg)
       toast.error(msg)
     }
@@ -581,7 +597,9 @@ export function TeamClient() {
                         className="text-xs"
                         data-testid={`key-type-badge-${k.id}`}
                       >
-                        {k.key_type}
+                        {k.key_type === "production" || k.key_type === "test"
+                          ? t(`team.keyTypes.${k.key_type}`)
+                          : k.key_type}
                       </Badge>
                     </TableCell>
                     <TableCell className="text-xs text-muted-foreground">
@@ -707,8 +725,8 @@ export function TeamClient() {
                   <SelectValue placeholder={t("team.selectType")} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="production">production</SelectItem>
-                  <SelectItem value="test">test</SelectItem>
+                  <SelectItem value="production">{t("team.keyTypes.production")}</SelectItem>
+                  <SelectItem value="test">{t("team.keyTypes.test")}</SelectItem>
                 </SelectContent>
               </Select>
               <Button
@@ -744,8 +762,8 @@ export function TeamClient() {
                 <SelectValue placeholder={t("team.rolePlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="admin">admin</SelectItem>
-                <SelectItem value="member">member</SelectItem>
+                <SelectItem value="admin">{t("team.roles.admin")}</SelectItem>
+                <SelectItem value="member">{t("team.roles.member")}</SelectItem>
               </SelectContent>
             </Select>
             <Button

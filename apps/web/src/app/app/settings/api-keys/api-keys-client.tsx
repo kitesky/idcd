@@ -100,6 +100,9 @@ export function APIKeysClient() {
   // ── Revoke confirm state ─────────────────────────────────────────────────
   const [revokeTarget, setRevokeTarget] = useState<string | null>(null)
   const [revokeLoading, setRevokeLoading] = useState(false)
+  // Per-row revoke error so a failed delete is visible next to the row instead
+  // of silently leaving the confirm panel open with no feedback.
+  const [revokeError, setRevokeError] = useState<string | null>(null)
 
   // ── Load keys ─────────────────────────────────────────────────────────────
 
@@ -179,12 +182,16 @@ export function APIKeysClient() {
 
   async function handleRevoke(id: string) {
     setRevokeLoading(true)
+    setRevokeError(null)
     try {
       await apiRequest(`/v1/account/api-keys/${id}`, { method: "DELETE" })
       setKeys((prev) => prev.filter((k) => k.id !== id))
       setRevokeTarget(null)
-    } catch {
-      // keep confirm panel open on error; user can retry
+    } catch (err) {
+      // Surface failures so the user knows the key is still active and can
+      // retry. Previously the catch was empty and the confirm panel just
+      // stopped spinning with no feedback.
+      setRevokeError(err instanceof Error ? err.message : t("apiKeys.revokeFailed"))
     } finally {
       setRevokeLoading(false)
     }
@@ -204,7 +211,7 @@ export function APIKeysClient() {
         <CardHeader>
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle>API Keys</CardTitle>
+              <CardTitle>{t("apiKeys.title")}</CardTitle>
               <CardDescription className="mt-1">
                 {t("apiKeys.cardDesc")}
               </CardDescription>
@@ -308,28 +315,41 @@ export function APIKeysClient() {
                     </TableCell>
                     <TableCell className="text-right">
                       {revokeTarget === key.id ? (
-                        <div className="flex items-center justify-end gap-2">
-                          <span className="text-xs text-muted-foreground">
-                            {t("apiKeys.revokeConfirm")}
-                          </span>
-                          <Button
-                            variant="destructive"
-                            size="sm"
-                            disabled={revokeLoading}
-                            data-testid={`btn-confirm-revoke-${key.id}`}
-                            onClick={() => handleRevoke(key.id)}
-                          >
-                            {revokeLoading ? t("apiKeys.revoking") : t("apiKeys.confirmRevoke")}
-                          </Button>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            disabled={revokeLoading}
-                            data-testid={`btn-cancel-revoke-${key.id}`}
-                            onClick={() => setRevokeTarget(null)}
-                          >
-                            {t("apiKeys.cancelRevoke")}
-                          </Button>
+                        <div className="flex flex-col items-end gap-2">
+                          <div className="flex items-center justify-end gap-2">
+                            <span className="text-xs text-muted-foreground">
+                              {t("apiKeys.revokeConfirm")}
+                            </span>
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              disabled={revokeLoading}
+                              data-testid={`btn-confirm-revoke-${key.id}`}
+                              onClick={() => handleRevoke(key.id)}
+                            >
+                              {revokeLoading ? t("apiKeys.revoking") : t("apiKeys.confirmRevoke")}
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              disabled={revokeLoading}
+                              data-testid={`btn-cancel-revoke-${key.id}`}
+                              onClick={() => {
+                                setRevokeTarget(null)
+                                setRevokeError(null)
+                              }}
+                            >
+                              {t("apiKeys.cancelRevoke")}
+                            </Button>
+                          </div>
+                          {revokeError && (
+                            <span
+                              className="text-xs text-destructive"
+                              data-testid={`revoke-error-${key.id}`}
+                            >
+                              {revokeError}
+                            </span>
+                          )}
                         </div>
                       ) : (
                         <Button

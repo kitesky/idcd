@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/json"
+	"errors"
 	"math/big"
 	"net/http"
 	"time"
@@ -181,6 +182,10 @@ func (h *BetaInvitationHandler) RedeemBeta(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
+	// Preflight read so we can return a specific error when the row is missing
+	// versus already-used/expired/email-restricted. The actual claim is done
+	// atomically below with a CAS-style UPDATE; the preflight values are only
+	// used for error messages and email gating — never for status decisions.
 	var row betaInvitationRow
 	err := h.pool.QueryRow(ctx,
 		`SELECT id, code, email, status, requested_by, approved_by, used_by, used_at, expires_at, created_at, updated_at
@@ -194,16 +199,6 @@ func (h *BetaInvitationHandler) RedeemBeta(w http.ResponseWriter, r *http.Reques
 		return
 	}
 
-	if row.Status != "approved" {
-		response.Error(w, r, apperr.Conflict("invitation code is not available for redemption"))
-		return
-	}
-
-	if row.ExpiresAt != nil && row.ExpiresAt.Before(time.Now()) {
-		response.Error(w, r, apperr.Conflict("invitation code has expired"))
-		return
-	}
-
 	if row.Email != nil && *row.Email != "" {
 		var userEmail string
 		err := h.pool.QueryRow(ctx, `SELECT email FROM "user" WHERE id = $1`, userID).Scan(&userEmail)
@@ -213,17 +208,35 @@ func (h *BetaInvitationHandler) RedeemBeta(w http.ResponseWriter, r *http.Reques
 		}
 	}
 
+	// Atomic claim: only flip the row when it is still in 'approved' state and
+	// not expired. Two concurrent requests with the same code race on this
+	// single UPDATE — exactly one wins (RowsAffected=1), the loser gets
+	// ErrNoRows and we report "already redeemed". This closes the TOCTOU window
+	// the old read-check-update sequence had.
 	now := time.Now().UTC()
 	var updated betaInvitationRow
 	err = h.pool.QueryRow(ctx,
 		`UPDATE beta_invitations
 		 SET status = 'used', used_by = $1, used_at = $2, updated_at = $2
-		 WHERE id = $3
+		 WHERE code = $3
+		   AND status = 'approved'
+		   AND (expires_at IS NULL OR expires_at > $2)
 		 RETURNING id, code, email, status, requested_by, approved_by, used_by, used_at, expires_at, created_at, updated_at`,
-		userID, now, row.ID,
+		userID, now, body.Code,
 	).Scan(&updated.ID, &updated.Code, &updated.Email, &updated.Status, &updated.RequestedBy,
 		&updated.ApprovedBy, &updated.UsedBy, &updated.UsedAt, &updated.ExpiresAt, &updated.CreatedAt, &updated.UpdatedAt)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Distinguish expired from already-claimed for a better message,
+			// based on the preflight row (best-effort; the claim itself was
+			// still atomic so the race window is closed).
+			if row.ExpiresAt != nil && row.ExpiresAt.Before(time.Now()) {
+				response.Error(w, r, apperr.Conflict("invitation code has expired"))
+				return
+			}
+			response.Error(w, r, apperr.Conflict("invitation code is not available for redemption"))
+			return
+		}
 		response.Error(w, r, apperr.Internal("failed to redeem invitation", err))
 		return
 	}

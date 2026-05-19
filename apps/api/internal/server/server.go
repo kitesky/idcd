@@ -262,7 +262,7 @@ func (s *Server) setupRouter() {
 			WithFieldCipher(fieldCipher).
 			WithEnqueuer(enqueuer).
 			WithAppBaseURL(s.config.Server.AppBaseURL)
-		acctH := handler.NewAccountHandler(q)
+		acctH := handler.NewAccountHandler(q).WithSessions(sessSvc)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)
 		totpH := handler.NewTOTPHandler(s.pgxPool, s.redis, fieldCipher)
@@ -286,6 +286,17 @@ func (s *Server) setupRouter() {
 			KeyPrefix:   "rl:auth:",
 		})
 		authRateMW := middleware.RateLimit(authLimiter)
+
+		// Per-user limiter for sensitive 2FA flows: 5 attempts / 15 min / user.
+		// Stops a stolen JWT from brute-forcing the 6-digit TOTP space (~10^6
+		// values, easily exhaustible without this gate). Applied AFTER authnMW
+		// so UserIDFromContext is populated.
+		totpLimiter := ratelimit.NewLimiter(s.redis, ratelimit.Config{
+			WindowSize:  15 * time.Minute,
+			MaxRequests: 5,
+			KeyPrefix:   "rl:2fa:",
+		})
+		totpRateMW := middleware.RateLimitByUser(totpLimiter)
 
 		r.Route("/v1", func(r chi.Router) {
 			r.Route("/auth", func(r chi.Router) {
@@ -335,8 +346,10 @@ func (s *Server) setupRouter() {
 				// 2FA / TOTP management
 				r.Route("/2fa", func(r chi.Router) {
 					r.Post("/setup", totpH.Setup)
-					r.Post("/verify", totpH.Verify)
-					r.Post("/disable", totpH.Disable)
+					// verify/disable are brute-force surfaces: gate with a
+					// per-user limiter on top of the broader auth limiter.
+					r.With(totpRateMW).Post("/verify", totpH.Verify)
+					r.With(totpRateMW).Post("/disable", totpH.Disable)
 					r.Get("/status", totpH.Status)
 				})
 				// Passkey (WebAuthn) management
@@ -639,7 +652,8 @@ func (s *Server) setupRouter() {
 			// Team / Org endpoints (authentication required)
 			teamH := handler.NewTeamHandler(s.pgxPool)
 			teamKeyH := handler.NewTeamAPIKeyHandler(s.pgxPool)
-			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billingProvider)
+			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billingProvider).
+				WithURLs(s.config.Server.AppBaseURL, s.config.Server.PublicAPIURL)
 			r.Route("/teams", func(r chi.Router) {
 				r.Use(authnMW)
 				r.Post("/", teamH.Create)
@@ -761,6 +775,8 @@ func (s *Server) setupRouter() {
 			r.Post("/{id}/participants", oncallH.AddParticipant)
 			r.Delete("/{id}/participants/{user_id}", oncallH.RemoveParticipant)
 			r.Post("/{id}/overrides", oncallH.CreateOverride)
+			r.Get("/{id}/overrides", oncallH.ListOverrides)
+			r.Delete("/{id}/overrides/{override_id}", oncallH.DeleteOverride)
 			r.Get("/{id}/current", oncallH.GetCurrentOnCall)
 		})
 

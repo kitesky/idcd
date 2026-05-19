@@ -122,11 +122,17 @@
     "passkeyNotSupported": "此浏览器不支持 Passkey",
     "passkeyRegisterCancelled": "注册被取消",
     "passkeyAddFailed": "添加 Passkey 失败",
-    "passkeyDeleteFailed": "删除 Passkey 失败"
+    "passkeyDeleteFailed": "删除 Passkey 失败",
+    "passkeyDefaultName": "Passkey（{platform}）",
+    "passkeyConfirmDeleteTitle": "删除此 Passkey？",
+    "passkeyConfirmDeleteDesc": "删除后这台设备将无法再用 Passkey 登录，仍可通过密码 + 2FA 登录。",
+    "passkeyConfirmDelete": "删除",
+    "passkeyCancelDelete": "取消"
   },
   "apiKeys": {
-    "title": "API Keys",
+    "title": "API 密钥",
     "desc": "用于通过 API 访问 idcd 服务。请妥善保管，切勿泄露。",
+    "revokeFailed": "撤销 API 密钥失败",
     "create": "创建 API Key",
     "name": "名称",
     "type": "类型",
@@ -213,6 +219,10 @@
       "admin": "管理员",
       "member": "成员"
     },
+    "keyTypes": {
+      "production": "生产",
+      "test": "测试"
+    },
     "pending": "待接受",
     "noMembers": "暂无成员",
     "noTeam": "暂无团队",
@@ -287,6 +297,7 @@
     "tableActions": "操作",
     "title": "访问令牌",
     "desc": "用于 CLI 工具和 MCP 集成的长期访问令牌",
+    "revokeFailed": "撤销令牌失败",
     "create": "生成新 Token",
     "name": "令牌名称",
     "scopes": "Scopes",

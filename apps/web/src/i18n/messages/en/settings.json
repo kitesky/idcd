@@ -122,11 +122,17 @@
     "passkeyNotSupported": "This browser does not support Passkey",
     "passkeyRegisterCancelled": "Registration cancelled",
     "passkeyAddFailed": "Failed to add Passkey",
-    "passkeyDeleteFailed": "Failed to delete Passkey"
+    "passkeyDeleteFailed": "Failed to delete Passkey",
+    "passkeyDefaultName": "Passkey ({platform})",
+    "passkeyConfirmDeleteTitle": "Delete this Passkey?",
+    "passkeyConfirmDeleteDesc": "This device will no longer be able to sign in with Passkey. You can still sign in with password + 2FA.",
+    "passkeyConfirmDelete": "Delete",
+    "passkeyCancelDelete": "Cancel"
   },
   "apiKeys": {
     "title": "API Keys",
     "desc": "Used to access idcd services via API. Keep them safe and never expose them.",
+    "revokeFailed": "Failed to revoke API key",
     "create": "Create API Key",
     "name": "Name",
     "type": "Type",
@@ -213,6 +219,10 @@
       "admin": "Admin",
       "member": "Member"
     },
+    "keyTypes": {
+      "production": "Production",
+      "test": "Test"
+    },
     "pending": "Pending",
     "noMembers": "No members yet",
     "noTeam": "No team yet",
@@ -287,6 +297,7 @@
     "tableActions": "Actions",
     "title": "Access Tokens",
     "desc": "Long-lived access tokens for CLI tools and MCP integrations",
+    "revokeFailed": "Failed to revoke token",
     "create": "Generate New Token",
     "name": "Token Name",
     "scopes": "Scopes",

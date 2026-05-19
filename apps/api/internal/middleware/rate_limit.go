@@ -19,6 +19,42 @@ type RateLimitFunc interface {
 	Allow(ctx context.Context, key string) (*ratelimit.Result, error)
 }
 
+// RateLimitByUser creates a chi middleware that enforces rate limiting keyed
+// on the authenticated user. Use this for endpoints where IP-based limiting is
+// too lenient (e.g. TOTP verification — an attacker holding a stolen JWT can
+// brute-force 6-digit codes against a single victim from anywhere).
+//
+// Must be applied AFTER the auth middleware so UserIDFromContext is populated.
+// Requests without an authenticated user fall through unchecked because the
+// auth middleware itself will already have rejected them.
+func RateLimitByUser(limiter RateLimitFunc) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID := UserIDFromContext(r.Context())
+			if userID == "" {
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			result, err := limiter.Allow(r.Context(), "user:"+userID)
+			if err != nil {
+				// Fail open on limiter errors so a Redis blip does not lock
+				// every user out of MFA flows.
+				next.ServeHTTP(w, r)
+				return
+			}
+
+			setRateLimitHeaders(w, result)
+			if !result.Allowed {
+				response.Error(w, r, apperr.RateLimit("Rate limit exceeded"))
+				return
+			}
+
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 // RateLimit creates a chi middleware that enforces rate limiting based on client IP.
 // When rate limit is exceeded, it returns 429 Too Many Requests with appropriate headers.
 func RateLimit(limiter RateLimitFunc) func(http.Handler) http.Handler {

@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"time"
 
@@ -46,17 +47,25 @@ type createTeamAPIKeyRequest struct {
 	KeyType string `json:"key_type"`
 }
 
-func (h *TeamAPIKeyHandler) requireAdminRole(ctx context.Context, teamID, userID string) error {
+// requireAdminRole returns a typed application error when the caller is not an
+// owner/admin of the team. Previously this re-used pgx.ErrNoRows to signal
+// "not admin", which made the caller's `err != nil` check correct by accident
+// but coupled HTTP authorization decisions to a database-layer sentinel —
+// any future change to ErrNoRows semantics would silently leak admin actions.
+func (h *TeamAPIKeyHandler) requireAdminRole(ctx context.Context, teamID, userID string) *apperr.Error {
 	var role string
 	err := h.pool.QueryRow(ctx,
 		`SELECT role FROM team_memberships WHERE team_id = $1 AND user_id = $2`,
 		teamID, userID,
 	).Scan(&role)
 	if err != nil {
-		return err
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apperr.Forbidden("not a team member")
+		}
+		return apperr.Internal("failed to verify team role", err)
 	}
 	if role != "owner" && role != "admin" {
-		return pgx.ErrNoRows
+		return apperr.Forbidden("owner or admin required")
 	}
 	return nil
 }
@@ -70,8 +79,8 @@ func (h *TeamAPIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	teamID := chi.URLParam(r, "id")
 
-	if err := h.requireAdminRole(r.Context(), teamID, userID); err != nil {
-		response.Error(w, r, apperr.Forbidden("owner or admin required"))
+	if appErr := h.requireAdminRole(r.Context(), teamID, userID); appErr != nil {
+		response.Error(w, r, appErr)
 		return
 	}
 
@@ -208,8 +217,8 @@ func (h *TeamAPIKeyHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	teamID := chi.URLParam(r, "id")
 	keyID := chi.URLParam(r, "key_id")
 
-	if err := h.requireAdminRole(r.Context(), teamID, userID); err != nil {
-		response.Error(w, r, apperr.Forbidden("owner or admin required"))
+	if appErr := h.requireAdminRole(r.Context(), teamID, userID); appErr != nil {
+		response.Error(w, r, appErr)
 		return
 	}
 

@@ -5,7 +5,10 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"net/http"
+	"net/mail"
+	"regexp"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +20,22 @@ import (
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/idgen"
 )
+
+// Input length limits for team-scoped string fields. Applied at the handler
+// layer so a hostile caller can't trigger a 50MB row write and chew through
+// DB / log budget before Postgres' column constraints reject it.
+const (
+	maxTeamNameLen        = 64
+	minTeamSlugLen        = 3
+	maxTeamSlugLen        = 32
+	maxInvitationEmailLen = 256
+)
+
+// teamSlugRe enforces the URL-safe slug format: lowercase alphanumerics and
+// inner dashes only, no leading/trailing dash. The DB unique index handles
+// collision; this regex is the upfront contract that rejects characters
+// (uppercase, underscores, slashes, etc.) Postgres would silently accept.
+var teamSlugRe = regexp.MustCompile(`^[a-z0-9]+(?:-[a-z0-9]+)*$`)
 
 type TeamPool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
@@ -108,6 +127,18 @@ func (h *TeamHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Name == "" || req.Slug == "" {
 		response.Error(w, r, apperr.Validation("name and slug are required", ""))
+		return
+	}
+	if len(req.Name) > maxTeamNameLen {
+		response.Error(w, r, apperr.Validation("name is too long", "name"))
+		return
+	}
+	if len(req.Slug) < minTeamSlugLen || len(req.Slug) > maxTeamSlugLen {
+		response.Error(w, r, apperr.Validation("slug must be 3-32 characters", "slug"))
+		return
+	}
+	if !teamSlugRe.MatchString(req.Slug) {
+		response.Error(w, r, apperr.Validation("slug must be lowercase alphanumerics with optional inner dashes", "slug"))
 		return
 	}
 
@@ -288,6 +319,10 @@ func (h *TeamHandler) Update(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("name is required", ""))
 		return
 	}
+	if len(req.Name) > maxTeamNameLen {
+		response.Error(w, r, apperr.Validation("name is too long", "name"))
+		return
+	}
 
 	var id, name, slug, plan, ownerID string
 	var createdAt, updatedAt time.Time
@@ -414,6 +449,78 @@ func (h *TeamHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Resolve the team's current owner so we can reject "owner downgrades
+	// themselves" (which would lock the team out of admin-only ops) and so a
+	// real transfer keeps teams.owner_id in sync with the membership table.
+	var currentOwnerID string
+	if err := h.pool.QueryRow(r.Context(),
+		`SELECT owner_id FROM teams WHERE id = $1`, teamID,
+	).Scan(&currentOwnerID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, r, apperr.NotFound("team not found"))
+			return
+		}
+		response.Error(w, r, apperr.Internal("failed to fetch team", err))
+		return
+	}
+
+	// Block self-demotion. Without this an owner can hand themselves "member"
+	// and the team has no one able to call owner-only endpoints afterwards.
+	if targetUserID == currentOwnerID && req.Role != "owner" {
+		response.Error(w, r, apperr.Validation("owner cannot demote themselves; transfer ownership first", "role"))
+		return
+	}
+
+	// Promoting someone else to owner = ownership transfer. Do the membership
+	// flip, the previous owner's demotion to admin, and the teams.owner_id
+	// update inside one transaction so we never expose a state with two owners
+	// or a team whose owner_id no longer matches a 'owner' membership row.
+	if req.Role == "owner" && targetUserID != currentOwnerID {
+		tx, err := h.pool.Begin(r.Context())
+		if err != nil {
+			response.Error(w, r, apperr.Internal("failed to begin transaction", err))
+			return
+		}
+		defer func() { _ = tx.Rollback(r.Context()) }()
+
+		tag, err := tx.Exec(r.Context(),
+			`UPDATE team_memberships SET role = 'owner' WHERE team_id = $1 AND user_id = $2`,
+			teamID, targetUserID,
+		)
+		if err != nil {
+			response.Error(w, r, apperr.Internal("failed to promote new owner", err))
+			return
+		}
+		if tag.RowsAffected() == 0 {
+			response.Error(w, r, apperr.NotFound("member not found"))
+			return
+		}
+
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE team_memberships SET role = 'admin' WHERE team_id = $1 AND user_id = $2`,
+			teamID, currentOwnerID,
+		); err != nil {
+			response.Error(w, r, apperr.Internal("failed to demote previous owner", err))
+			return
+		}
+
+		if _, err := tx.Exec(r.Context(),
+			`UPDATE teams SET owner_id = $1, updated_at = NOW() WHERE id = $2`,
+			targetUserID, teamID,
+		); err != nil {
+			response.Error(w, r, apperr.Internal("failed to update team owner", err))
+			return
+		}
+
+		if err := tx.Commit(r.Context()); err != nil {
+			response.Error(w, r, apperr.Internal("failed to commit ownership transfer", err))
+			return
+		}
+
+		response.JSON(w, r, http.StatusOK, map[string]string{"message": "ownership transferred"})
+		return
+	}
+
 	tag, err := h.pool.Exec(r.Context(),
 		`UPDATE team_memberships SET role = $1 WHERE team_id = $2 AND user_id = $3`,
 		req.Role, teamID, targetUserID,
@@ -449,11 +556,22 @@ func (h *TeamHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Owner cannot leave the team — transfer ownership first.
+	// Owner cannot leave the team — transfer ownership first. The previous
+	// version swallowed this query's error with `_ =`, which meant a missing
+	// team row left ownerID="" and silently bypassed the owner guard. Treat
+	// pgx.ErrNoRows as a real "team gone" 404 and any other error as 500 so
+	// we never DELETE memberships against a phantom team.
 	var ownerID string
-	_ = h.pool.QueryRow(r.Context(),
+	if err := h.pool.QueryRow(r.Context(),
 		`SELECT owner_id FROM teams WHERE id = $1`, teamID,
-	).Scan(&ownerID)
+	).Scan(&ownerID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			response.Error(w, r, apperr.NotFound("team not found"))
+			return
+		}
+		response.Error(w, r, apperr.Internal("failed to fetch team", err))
+		return
+	}
 	if targetUserID == ownerID {
 		response.Error(w, r, apperr.Validation("owner cannot leave the team; transfer ownership first", ""))
 		return
@@ -552,9 +670,26 @@ func (h *TeamHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Validation("email is required", ""))
 		return
 	}
+	if len(req.Email) > maxInvitationEmailLen {
+		response.Error(w, r, apperr.Validation("email is too long", "email"))
+		return
+	}
+	// RFC 5322 / 6532 validation. mail.ParseAddress accepts the same syntax
+	// our outbound mailer will eventually feed into SMTP, so anything it
+	// rejects here would have failed delivery anyway — but unvalidated input
+	// would still have been persisted and rendered in the team UI.
+	if _, err := mail.ParseAddress(req.Email); err != nil {
+		response.Error(w, r, apperr.Validation("email is not a valid address", "email"))
+		return
+	}
 	invRole := req.Role
 	if invRole == "" {
 		invRole = "member"
+	}
+	if invRole != "admin" && invRole != "member" {
+		// owner role is reserved for transfer-ownership flow, not invitations.
+		response.Error(w, r, apperr.Validation("role must be admin or member", "role"))
+		return
 	}
 
 	token, err := generateInvitationToken()
@@ -642,10 +777,23 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Wrap UPDATE+INSERT in a single transaction. Previously the two ran on the
+	// raw pool — if the INSERT failed (DB hiccup, FK violation, anything), the
+	// UPDATE had already marked the invitation 'accepted' and could not be
+	// retried, leaving the user permanently outside the team with a dead token.
+	// With a transaction, INSERT failure rolls the UPDATE back so the user can
+	// re-attempt or admin can revoke/reissue cleanly.
+	tx, err := h.pool.Begin(r.Context())
+	if err != nil {
+		response.Error(w, r, apperr.Internal("failed to begin transaction", err))
+		return
+	}
+	defer func() { _ = tx.Rollback(r.Context()) }()
+
 	// Atomically consume the invitation — prevents two concurrent accepts with the same token
 	// AND eliminates the race where the expiry check happens after the row is marked accepted.
 	var invID, teamID, role, invitedBy string
-	err := h.pool.QueryRow(r.Context(),
+	err = tx.QueryRow(r.Context(),
 		`UPDATE team_invitations
 		 SET status = 'accepted'
 		 WHERE token = $1 AND status = 'pending' AND expires_at > NOW()
@@ -653,7 +801,7 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 		req.Token,
 	).Scan(&invID, &teamID, &role, &invitedBy)
 	if err != nil {
-		if err == pgx.ErrNoRows {
+		if errors.Is(err, pgx.ErrNoRows) {
 			// Could be: token unknown, already used, OR expired.
 			// Probe the row to give a clearer error to the user.
 			var exists bool
@@ -673,7 +821,7 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	memberID := idgen.New("tmb_")
-	_, err = h.pool.Exec(r.Context(),
+	_, err = tx.Exec(r.Context(),
 		`INSERT INTO team_memberships (id, team_id, user_id, role, invited_by)
 		 VALUES ($1, $2, $3, $4, $5)
 		 ON CONFLICT (team_id, user_id) DO NOTHING`,
@@ -681,6 +829,11 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 	)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to create membership", err))
+		return
+	}
+
+	if err := tx.Commit(r.Context()); err != nil {
+		response.Error(w, r, apperr.Internal("failed to commit invitation acceptance", err))
 		return
 	}
 

@@ -1,7 +1,10 @@
+import type { Metadata } from "next"
+import { getT } from "@/i18n/getT"
 import { APIKeysClient } from "./api-keys-client"
 
-export const metadata = {
-  title: "API Keys — idcd",
+export async function generateMetadata(): Promise<Metadata> {
+  const t = await getT("settings.apiKeys")
+  return { title: `${t("title")} — idcd` }
 }
 
 export default function APIKeysPage() {

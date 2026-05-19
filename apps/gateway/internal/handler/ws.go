@@ -194,11 +194,17 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if h.pool != nil {
-		_, _ = h.pool.Exec(ctx, `
+		// Best-effort presence flip — the heartbeat loop will retry every 30s,
+		// so a transient DB hiccup here is recoverable. Surface as a warn so it
+		// shows up in logs when DB is genuinely down (rather than silently
+		// leaving status='offline' for a fully-connected node).
+		if _, err := h.pool.Exec(ctx, `
 			UPDATE enrolled_nodes
 			SET status = 'active', last_seen_at = now()
 			WHERE node_id = $1
-		`, nodeID)
+		`, nodeID); err != nil {
+			h.logger.Warn("ws: failed to mark node active on connect", "err", err, "node_id", nodeID)
+		}
 	}
 
 	c := h.hub.Register(nodeID, conn)
@@ -293,9 +299,19 @@ func (h *WSHandler) writePump(c *hub.Connection) {
 				c.Conn.WriteMessage(websocket.CloseMessage, []byte{})
 				return
 			}
-			if err := c.Conn.WriteMessage(websocket.TextMessage, msg); err != nil {
+			if err := c.Conn.WriteMessage(websocket.TextMessage, msg.Payload); err != nil {
 				h.logger.Error("websocket write error", "err", err, "node_id", c.NodeID)
+				// Do NOT close msg.Delivered — the caller waiting on it should
+				// learn about the failure via Connection.Closed() instead, so it
+				// can correctly decline to ACK the upstream stream message.
 				return
+			}
+			// Only signal delivery after WriteMessage succeeded. From the
+			// dispatcher's perspective this is the earliest moment it is safe
+			// to XACK the originating stream message — the bytes are now in the
+			// OS socket buffer and TCP will carry them or report failure.
+			if msg.Delivered != nil {
+				close(msg.Delivered)
 			}
 		case <-ticker.C:
 			c.Conn.SetWriteDeadline(time.Now().Add(wsWriteDeadline))

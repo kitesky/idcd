@@ -135,6 +135,11 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 	h, mockPool := newTeamTestHandler(t)
 	defer mockPool.Close()
 
+	// UPDATE+INSERT now run inside a tx so the membership and the
+	// invitation-status flip commit atomically; previously INSERT failure
+	// left the invitation 'accepted' with no membership row, locking the
+	// user out forever.
+	mockPool.ExpectBegin()
 	// UPDATE...RETURNING atomically consumes the invitation, with expiry
 	// merged into the WHERE clause so the check can't race the status flip.
 	mockPool.ExpectQuery(regexp.QuoteMeta(`UPDATE team_invitations`)).
@@ -145,6 +150,7 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 	mockPool.ExpectExec(regexp.QuoteMeta(`INSERT INTO team_memberships`)).
 		WithArgs(pgxmock.AnyArg(), "team_abc", "u_joiner", "member", "u_inviter").
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
+	mockPool.ExpectCommit()
 
 	req := teamRequest(http.MethodPost, "/v1/teams/accept-invitation",
 		map[string]string{"token": "valid-token-abc"})

@@ -42,6 +42,14 @@ const (
 	blockTimeout = 2 * time.Second
 	claimMinIdle = 60 * time.Second
 
+	// deliveryTimeout caps how long a worker waits for writePump to commit a
+	// dispatched frame to the OS socket buffer before giving up and leaving
+	// the stream message in PEL for reclaimPending to pick up. Should be a
+	// few-second budget — long enough to ride out a backlog on a busy agent's
+	// SendCh, short enough that a wedged agent doesn't pin one stream slot
+	// indefinitely.
+	deliveryTimeout = 5 * time.Second
+
 	// redisBusyGroup is the error string Redis returns when the consumer group already exists.
 	redisBusyGroup = "BUSYGROUP Consumer Group name already exists"
 )
@@ -126,11 +134,13 @@ func (d *Dispatcher) Run(ctx context.Context) {
 			continue
 		}
 
+		// Each message is dispatched in its own goroutine so a slow agent's
+		// deliveryTimeout doesn't serialise the rest of the batch. Worst-case
+		// throughput on a batch of 20 fully-offline nodes drops from
+		// 20*deliveryTimeout to one deliveryTimeout — and the messages stay
+		// in PEL either way for reclaimPending to retry.
 		for _, msg := range msgs {
-			if dispatched := d.dispatch(ctx, msg); dispatched {
-				d.ack(ctx, msg.ID)
-			}
-			// If not dispatched (node offline), leave in PEL for reclaimPending.
+			go d.dispatchAndAck(ctx, msg)
 		}
 
 		// Non-blocking check: fire reclaim only when the 30s ticker has elapsed.
@@ -145,13 +155,23 @@ func (d *Dispatcher) Run(ctx context.Context) {
 	}
 }
 
-// dispatch forwards a single stream message to the target agent.
-// Returns true if successfully sent (should ACK), false if node offline (should not ACK).
-func (d *Dispatcher) dispatch(_ context.Context, msg redis.XMessage) bool {
+// dispatchAndAck forwards a single stream message to the target agent and
+// XACKs the stream entry only after writePump has confirmed the frame hit the
+// OS socket. Three outcomes:
+//
+//  1. Garbage message (no node_id / unmarshal-able) — ACK to clear it.
+//  2. Successful delivery (delivered chan closed) — ACK.
+//  3. Node offline, SendCh full, connection died mid-write, or delivery
+//     timeout — do NOT ACK; reclaimPending will pick it up on the next 30s
+//     tick. This is the at-least-once safety net the bare hub.Broadcast
+//     return value couldn't provide on its own (that only signalled "queued
+//     in process buffer", not "wrote to socket").
+func (d *Dispatcher) dispatchAndAck(ctx context.Context, msg redis.XMessage) {
 	nodeID, ok := msg.Values["node_id"].(string)
 	if !ok || nodeID == "" {
 		d.logger.Warn("dispatcher: message missing node_id, discarding", "msg_id", msg.ID)
-		return true // ACK to clear garbage
+		d.ack(ctx, msg.ID)
+		return
 	}
 
 	// Build the task payload from stream fields
@@ -161,7 +181,8 @@ func (d *Dispatcher) dispatch(_ context.Context, msg redis.XMessage) bool {
 	payloadJSON, err := json.Marshal(payload)
 	if err != nil {
 		d.logger.Error("dispatcher: marshal payload", "err", err, "msg_id", msg.ID)
-		return true // ACK to avoid infinite retry on corrupt message
+		d.ack(ctx, msg.ID) // corrupt — ACK to avoid infinite retry
+		return
 	}
 
 	wsMsg := taskMessage{
@@ -170,21 +191,39 @@ func (d *Dispatcher) dispatch(_ context.Context, msg redis.XMessage) bool {
 	}
 	wsMsgJSON, _ := json.Marshal(wsMsg)
 
-	sent := d.hub.Broadcast(nodeID, wsMsgJSON)
-	if sent {
-		d.logger.Debug("dispatcher: task dispatched",
+	fut, sent := d.hub.BroadcastWithDelivery(nodeID, wsMsgJSON)
+	if !sent {
+		// Node not connected (or SendCh full) — leave in PEL for reclaimPending.
+		d.logger.Info("dispatcher: node offline, task held in PEL",
 			"node_id", nodeID,
 			"task_id", msg.Values["task_id"],
 			"msg_id", msg.ID)
-		return true
+		return
 	}
 
-	// Node not connected — leave in PEL, reclaimPending will retry.
-	d.logger.Info("dispatcher: node offline, task held in PEL",
-		"node_id", nodeID,
-		"task_id", msg.Values["task_id"],
-		"msg_id", msg.ID)
-	return false
+	select {
+	case <-fut.Delivered:
+		d.logger.Debug("dispatcher: task delivered",
+			"node_id", nodeID,
+			"task_id", msg.Values["task_id"],
+			"msg_id", msg.ID)
+		d.ack(ctx, msg.ID)
+	case <-fut.Closed:
+		// Connection torn down before writePump could commit the frame —
+		// leave the message un-ACKed so the next dispatcher reclaim sweeps it.
+		d.logger.Info("dispatcher: connection closed before delivery, task held in PEL",
+			"node_id", nodeID,
+			"task_id", msg.Values["task_id"],
+			"msg_id", msg.ID)
+	case <-time.After(deliveryTimeout):
+		d.logger.Warn("dispatcher: delivery timeout, task held in PEL",
+			"node_id", nodeID,
+			"task_id", msg.Values["task_id"],
+			"msg_id", msg.ID,
+			"timeout", deliveryTimeout)
+	case <-ctx.Done():
+		return
+	}
 }
 
 // ensureGroup creates the consumer group (MKSTREAM creates the stream if absent).
@@ -265,9 +304,7 @@ func (d *Dispatcher) reclaimPending(ctx context.Context) {
 
 	for _, msg := range msgs {
 		d.logger.Info("dispatcher: reclaiming pending task", "msg_id", msg.ID, "node_id", msg.Values["node_id"])
-		if dispatched := d.dispatch(ctx, msg); dispatched {
-			d.ack(ctx, msg.ID)
-		}
+		go d.dispatchAndAck(ctx, msg)
 	}
 }
 

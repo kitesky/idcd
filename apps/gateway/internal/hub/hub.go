@@ -14,13 +14,24 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promauto"
 )
 
+// OutboundMsg is a message queued for delivery on a Connection. Payload is the
+// frame bytes; Delivered, when non-nil, is closed by writePump after
+// WriteMessage returns without error (i.e. the bytes were accepted by the OS
+// socket buffer). Callers that need stronger-than-"channel push succeeded"
+// delivery can wait on Delivered before treating the message as sent — see
+// Hub.BroadcastWithDelivery and the dispatcher's stream-ACK path.
+type OutboundMsg struct {
+	Payload   []byte
+	Delivered chan<- struct{}
+}
+
 // Connection represents a single agent node WebSocket connection.
 type Connection struct {
 	NodeID    string
 	Conn      *websocket.Conn
-	LastHB    time.Time     // last heartbeat timestamp
-	SendCh    chan []byte   // outbound message channel
-	closeCh   chan struct{} // signal connection close
+	LastHB    time.Time        // last heartbeat timestamp
+	SendCh    chan OutboundMsg // outbound message channel
+	closeCh   chan struct{}    // signal connection close
 	closeOnce sync.Once
 	// generation is a monotonically increasing token assigned at Register
 	// time. P2#20: a leaked api_key could be used to repeatedly re-connect
@@ -30,6 +41,13 @@ type Connection struct {
 	// Connection's hub state. See Hub.ActiveGen / Hub.IsActive.
 	generation uint64
 }
+
+// Closed returns a channel that is closed when the Connection is torn down
+// (either by Hub.Unregister, Register-replace, or an explicit Close call).
+// Callers awaiting writePump delivery on OutboundMsg.Delivered should also
+// select on this channel — if the connection dies before the message is
+// written, Delivered will never be closed.
+func (c *Connection) Closed() <-chan struct{} { return c.closeCh }
 
 // Hub manages all active agent connections.
 type Hub struct {
@@ -113,7 +131,7 @@ func (h *Hub) Register(nodeID string, conn *websocket.Conn) *Connection {
 		NodeID:     nodeID,
 		Conn:       conn,
 		LastHB:     time.Now(),
-		SendCh:     make(chan []byte, 256),
+		SendCh:     make(chan OutboundMsg, 256),
 		closeCh:    make(chan struct{}),
 		generation: gen,
 	}
@@ -261,7 +279,12 @@ func (h *Hub) UpdateHeartbeat(nodeID string) bool {
 }
 
 // Broadcast sends a message to a specific node.
-// Returns false if the node is not connected.
+// Returns false if the node is not connected or the send channel is full.
+//
+// Note: "true" only means the message was queued on the Connection's SendCh
+// (i.e. the in-process buffer). If you need to know the bytes actually hit
+// the OS socket (so an upstream stream consumer can ACK), use
+// BroadcastWithDelivery and wait on the returned Delivered channel.
 func (h *Hub) Broadcast(nodeID string, msg []byte) bool {
 	h.mu.RLock()
 	c, exists := h.connections[nodeID]
@@ -272,7 +295,7 @@ func (h *Hub) Broadcast(nodeID string, msg []byte) bool {
 	}
 
 	select {
-	case c.SendCh <- msg:
+	case c.SendCh <- OutboundMsg{Payload: msg}:
 		// P1#19: outbound dispatch counted under the "broadcast" type so the
 		// gateway_node_messages_total series tracks both inbound and outbound
 		// traffic without needing ws.go instrumentation.
@@ -283,6 +306,48 @@ func (h *Hub) Broadcast(nodeID string, msg []byte) bool {
 		MetricsNodeMessages.WithLabelValues("broadcast_dropped").Inc()
 		h.logger.Warn("send channel full, dropping message", "node_id", nodeID)
 		return false
+	}
+}
+
+// BroadcastFuture is returned by BroadcastWithDelivery. Delivered is closed by
+// writePump after WriteMessage returns without error — the bytes are in the OS
+// socket buffer and TCP will carry them to the agent. Closed mirrors the
+// Connection's close channel; callers should select on both so a connection
+// that dies before the write completes doesn't leak a goroutine waiting on
+// Delivered.
+type BroadcastFuture struct {
+	Delivered <-chan struct{}
+	Closed    <-chan struct{}
+}
+
+// BroadcastWithDelivery queues a message for delivery to nodeID and returns a
+// future that the caller can wait on to learn when the write actually hit the
+// OS socket. ok is false if the node is offline or the SendCh is full — in
+// both cases nothing was queued and the caller must not treat the message as
+// sent.
+//
+// Intended use is for stream consumers (dispatcher) that XACK only after the
+// frame is committed to the socket, so a Broadcast that ends in a SendCh push
+// followed by an immediate connection drop does not silently lose the message
+// to the ACK'd-but-undelivered window.
+func (h *Hub) BroadcastWithDelivery(nodeID string, msg []byte) (*BroadcastFuture, bool) {
+	h.mu.RLock()
+	c, exists := h.connections[nodeID]
+	h.mu.RUnlock()
+
+	if !exists {
+		return nil, false
+	}
+
+	delivered := make(chan struct{})
+	select {
+	case c.SendCh <- OutboundMsg{Payload: msg, Delivered: delivered}:
+		MetricsNodeMessages.WithLabelValues("broadcast").Inc()
+		return &BroadcastFuture{Delivered: delivered, Closed: c.closeCh}, true
+	default:
+		MetricsNodeMessages.WithLabelValues("broadcast_dropped").Inc()
+		h.logger.Warn("send channel full, dropping message", "node_id", nodeID)
+		return nil, false
 	}
 }
 
@@ -297,7 +362,7 @@ func (h *Hub) BroadcastAll(msg []byte) {
 
 	for _, c := range conns {
 		select {
-		case c.SendCh <- msg:
+		case c.SendCh <- OutboundMsg{Payload: msg}:
 		default:
 			h.logger.Warn("send channel full during broadcast", "node_id", c.NodeID)
 		}

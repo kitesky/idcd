@@ -40,7 +40,7 @@ func TestRegisterUnregister(t *testing.T) {
 		NodeID:  nodeID,
 		Conn:    nil, // In real usage, this would be a *websocket.Conn
 		LastHB:  time.Now(),
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 	h.connections[nodeID] = c
@@ -81,7 +81,7 @@ func TestUpdateHeartbeat(t *testing.T) {
 	c := &Connection{
 		NodeID:  nodeID,
 		LastHB:  time.Now().Add(-10 * time.Second),
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 	h.connections[nodeID] = c
@@ -123,7 +123,7 @@ func TestBroadcast(t *testing.T) {
 	c := &Connection{
 		NodeID:  nodeID,
 		LastHB:  time.Now(),
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 	h.connections[nodeID] = c
@@ -139,8 +139,8 @@ func TestBroadcast(t *testing.T) {
 	// Verify message was received
 	select {
 	case received := <-c.SendCh:
-		if string(received) != string(msg) {
-			t.Errorf("expected message %q, got %q", msg, received)
+		if string(received.Payload) != string(msg) {
+			t.Errorf("expected message %q, got %q", msg, received.Payload)
 		}
 	case <-time.After(100 * time.Millisecond):
 		t.Error("timeout waiting for message")
@@ -164,7 +164,7 @@ func TestBroadcastAll(t *testing.T) {
 		c := &Connection{
 			NodeID:  nodeID,
 			LastHB:  time.Now(),
-			SendCh:  make(chan []byte, 256),
+			SendCh:  make(chan OutboundMsg, 256),
 			closeCh: make(chan struct{}),
 		}
 		h.connections[nodeID] = c
@@ -186,8 +186,8 @@ func TestBroadcastAll(t *testing.T) {
 	for _, c := range conns {
 		select {
 		case received := <-c.SendCh:
-			if string(received) != string(msg) {
-				t.Errorf("node %s: expected message %q, got %q", c.NodeID, msg, received)
+			if string(received.Payload) != string(msg) {
+				t.Errorf("node %s: expected message %q, got %q", c.NodeID, msg, received.Payload)
 			}
 		case <-time.After(100 * time.Millisecond):
 			t.Errorf("node %s: timeout waiting for message", c.NodeID)
@@ -204,13 +204,13 @@ func TestCheckHeartbeats(t *testing.T) {
 	h.connections["node-fresh"] = &Connection{
 		NodeID:  "node-fresh",
 		LastHB:  time.Now(),
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 	h.connections["node-stale"] = &Connection{
 		NodeID:  "node-stale",
 		LastHB:  time.Now().Add(-2 * time.Second), // stale
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 	h.mu.Unlock()
@@ -247,7 +247,7 @@ func TestStartHeartbeatMonitor(t *testing.T) {
 	h.connections["node-stale"] = &Connection{
 		NodeID:  "node-stale",
 		LastHB:  time.Now().Add(-1 * time.Second),
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 	h.mu.Unlock()
@@ -267,7 +267,7 @@ func TestStartHeartbeatMonitor(t *testing.T) {
 func TestConnectionClose(t *testing.T) {
 	c := &Connection{
 		NodeID:  "node-123",
-		SendCh:  make(chan []byte, 256),
+		SendCh:  make(chan OutboundMsg, 256),
 		closeCh: make(chan struct{}),
 	}
 
@@ -444,7 +444,7 @@ func TestRegisterReplaceSendChannelClosed(t *testing.T) {
 	go func() {
 		msg, ok := <-second.SendCh
 		if ok {
-			received <- msg
+			received <- msg.Payload
 		}
 	}()
 
@@ -657,7 +657,7 @@ func TestCount(t *testing.T) {
 		nodeID := "node-" + string(rune('0'+i))
 		h.connections[nodeID] = &Connection{
 			NodeID:  nodeID,
-			SendCh:  make(chan []byte, 256),
+			SendCh:  make(chan OutboundMsg, 256),
 			closeCh: make(chan struct{}),
 		}
 		h.mu.Unlock()

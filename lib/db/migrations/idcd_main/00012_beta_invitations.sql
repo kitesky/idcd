@@ -1,7 +1,5 @@
 -- +goose Up
 
--- migrate:up
-
 CREATE TABLE beta_invitations (
   id           TEXT PRIMARY KEY,
   code         TEXT UNIQUE NOT NULL,
@@ -20,6 +18,6 @@ CREATE INDEX ON beta_invitations(status);
 CREATE INDEX ON beta_invitations(email);
 CREATE INDEX ON beta_invitations(requested_by);
 
--- migrate:down
+-- +goose Down
 
 DROP TABLE IF EXISTS beta_invitations;

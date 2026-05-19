@@ -862,13 +862,24 @@ func (h *MonitorHandler) fetchUptimeMap(ctx context.Context, monitorIDs []string
 	return result
 }
 
+// maxPage caps the page query parameter. Without an upper bound,
+// (page-1)*limit can overflow int32 when cast for the SQL OFFSET binding,
+// AND a multi-million OFFSET makes Postgres scan-then-discard a huge prefix
+// of the index, turning a "list endpoint" into a DoS amplifier. Any caller
+// genuinely needing rows beyond ~200k records should switch to keyset
+// pagination, not paginate forward through every page.
+const maxPage = 10000
+
 // parsePagination extracts page/limit from query params with sensible defaults.
+// page is clamped to [1, maxPage]; limit is clamped to [1, 100] with default 20.
+// Out-of-range values silently fall back to defaults (the rendered list is
+// still useful — surfacing a 400 here just confuses scripted clients).
 func parsePagination(r *http.Request) (page, limit int) {
 	page = 1
 	limit = 20
 
 	if p := r.URL.Query().Get("page"); p != "" {
-		if v, err := strconv.Atoi(p); err == nil && v > 0 {
+		if v, err := strconv.Atoi(p); err == nil && v > 0 && v <= maxPage {
 			page = v
 		}
 	}

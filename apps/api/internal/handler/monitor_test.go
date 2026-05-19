@@ -403,6 +403,11 @@ func TestParsePagination(t *testing.T) {
 		{"page=2&limit=10", 2, 10},
 		{"page=0&limit=200", 1, 20},  // page 0 → default 1; limit 200 > 100 → default 20
 		{"page=abc", 1, 20},
+		// page above maxPage (10000) silently falls back to default 1 — guards
+		// against int32 OFFSET overflow and DoS-by-giant-OFFSET on Postgres.
+		{"page=999999999", 1, 20},
+		{"page=10001", 1, 20},
+		{"page=10000", 10000, 20}, // boundary inclusive
 	}
 	for _, tc := range tests {
 		req := httptest.NewRequest(http.MethodGet, "/?"+tc.query, nil)

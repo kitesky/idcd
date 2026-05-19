@@ -24,6 +24,7 @@ package main
 import (
 	"context"
 	"crypto"
+	"crypto/x509"
 	"fmt"
 	"log/slog"
 	"os"
@@ -43,8 +44,10 @@ import (
 	"github.com/kite365/idcd/lib/attest/sign"
 	"github.com/kite365/idcd/lib/attest/sign/alikms"
 	"github.com/kite365/idcd/lib/attest/sign/awskms"
+	"github.com/kite365/idcd/lib/attest/sign/localfile"
 	"github.com/kite365/idcd/lib/attest/tsa"
 	"github.com/kite365/idcd/lib/attest/tsa/digicert"
+	"github.com/kite365/idcd/lib/attest/tsa/freetsa"
 	"github.com/kite365/idcd/lib/attest/tsa/globalsign"
 )
 
@@ -127,10 +130,37 @@ func main() {
 	tsaProvider := &multiProviderAdapter{multi: multi, fallbackName: primary.name}
 
 	// --- Signer X.509 cert -------------------------------------------
-	signerCert, certChain, err := wireSignerCert(log, verifier)
-	if err != nil {
-		log.Error("attest-generator: signer cert load", "err", err)
-		os.Exit(1)
+	// For SignBackend=local: cert MUST be derived from the localfile key
+	// so the SubjectPublicKey matches the signer's pub key (otherwise
+	// pdfsign embed → verify would always fail). The cert is regenerated
+	// every start but the underlying key is stable across restarts
+	// (localfile persists it to disk).
+	var (
+		signerCert *x509.Certificate
+		certChain  []*x509.Certificate
+	)
+	if cfg.SignBackend == config.SignBackendLocal {
+		holder, ok := signer.(localfile.PrivateKeyHolder)
+		if !ok {
+			log.Error("attest-generator: localfile signer does not expose PrivateKeyHolder — refusing to start")
+			os.Exit(1)
+		}
+		signerCert, certChain, err = signerCertForKey(holder.PrivateKey())
+		if err != nil {
+			log.Error("attest-generator: local signer cert build", "err", err)
+			os.Exit(1)
+		}
+		log.Warn("attest-generator: using LOCAL signer + self-signed cert (dev only); production must override before S2 GA",
+			"subject", signerCert.Subject.CommonName,
+			"not_after", signerCert.NotAfter.Format(time.RFC3339),
+			"key_path", cfg.LocalKeyPath,
+		)
+	} else {
+		signerCert, certChain, err = wireSignerCert(log, verifier)
+		if err != nil {
+			log.Error("attest-generator: signer cert load", "err", err)
+			os.Exit(1)
+		}
 	}
 
 	// --- Archiver ----------------------------------------------------
@@ -170,6 +200,8 @@ func main() {
 	// --- Redis Stream consumer ---------------------------------------
 	rdb := redis.NewClient(&redis.Options{
 		Addr:         cfg.RedisAddr,
+		Password:     cfg.RedisPassword,
+		DB:           cfg.RedisDB,
 		DialTimeout:  5 * time.Second,
 		ReadTimeout:  6 * time.Second, // > consumer BLOCK (5s) so we don't time out the read.
 		WriteTimeout: 3 * time.Second,
@@ -233,9 +265,14 @@ func buildSigner(cfg *config.Config) (sign.Signer, error) {
 			KeyID:           cfg.AliKMSKeyID,
 			Algorithm:       cfg.AliKMSAlgorithm,
 		})
+	case config.SignBackendLocal:
+		return localfile.New(localfile.Config{
+			KeyPath:   cfg.LocalKeyPath,
+			Algorithm: cfg.LocalAlgorithm,
+		})
 	default:
-		return nil, fmt.Errorf("ATTEST_SIGN_BACKEND must be set to %q or %q",
-			config.SignBackendAWS, config.SignBackendAliyun)
+		return nil, fmt.Errorf("ATTEST_SIGN_BACKEND must be set to %q, %q or %q",
+			config.SignBackendAWS, config.SignBackendAliyun, config.SignBackendLocal)
 	}
 }
 
@@ -264,9 +301,14 @@ func buildVerifier(cfg *config.Config) (sign.Verifier, error) {
 			KeyID:           cfg.AliKMSKeyID,
 			Algorithm:       cfg.AliKMSAlgorithm,
 		})
+	case config.SignBackendLocal:
+		return localfile.NewVerifier(localfile.Config{
+			KeyPath:   cfg.LocalKeyPath,
+			Algorithm: cfg.LocalAlgorithm,
+		})
 	default:
-		return nil, fmt.Errorf("ATTEST_SIGN_BACKEND must be set to %q or %q",
-			config.SignBackendAWS, config.SignBackendAliyun)
+		return nil, fmt.Errorf("ATTEST_SIGN_BACKEND must be set to %q, %q or %q",
+			config.SignBackendAWS, config.SignBackendAliyun, config.SignBackendLocal)
 	}
 }
 
@@ -319,8 +361,14 @@ func newTSAProvider(name string) (*tsaProviderInfo, error) {
 			endpoint: globalsign.DefaultEndpoint,
 			provider: globalsign.New(globalsign.Config{}),
 		}, nil
+	case "freetsa":
+		return &tsaProviderInfo{
+			name:     "freetsa",
+			endpoint: freetsa.DefaultEndpoint,
+			provider: freetsa.New(freetsa.Config{}),
+		}, nil
 	default:
-		return nil, fmt.Errorf("unknown TSA provider %q (supported: digicert, globalsign)", name)
+		return nil, fmt.Errorf("unknown TSA provider %q (supported: digicert, globalsign, freetsa)", name)
 	}
 }
 

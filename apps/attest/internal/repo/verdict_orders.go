@@ -20,7 +20,7 @@ type VerdictOrdersRepo struct {
 
 const verdictOrderColumns = `id, owner_id, template, target,
 	time_window_start, time_window_end, status,
-	price_cny, price_paid_cny, ext_order_id,
+	price_cny, price_paid_cny, paddle_order_id,
 	refund_reason, refund_attempt_count, refund_last_error,
 	refund_apology_sent_at,
 	created_at, paid_at, delivered_at, failed_at, refunded_at`
@@ -29,7 +29,7 @@ const verdictOrderInsertSQL = `
 	INSERT INTO idcd_attest.verdict_order (
 		id, owner_id, template, target,
 		time_window_start, time_window_end, status,
-		price_cny, price_paid_cny, ext_order_id,
+		price_cny, price_paid_cny, paddle_order_id,
 		refund_reason, refund_attempt_count, refund_last_error,
 		refund_apology_sent_at,
 		created_at, paid_at, delivered_at, failed_at, refunded_at

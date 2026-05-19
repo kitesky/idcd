@@ -228,7 +228,7 @@ type extOrderLookupAdapter struct {
 }
 
 func (a *extOrderLookupAdapter) LookupByExtOrderID(ctx context.Context, extOrderID string) (string, string, error) {
-	const q = `SELECT id, status FROM idcd_attest.verdict_order WHERE ext_order_id = $1`
+	const q = `SELECT id, status FROM idcd_attest.verdict_order WHERE paddle_order_id = $1`
 	var id, status string
 	if err := a.pool.QueryRow(ctx, q, extOrderID).Scan(&id, &status); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

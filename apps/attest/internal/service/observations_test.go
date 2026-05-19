@@ -12,7 +12,7 @@ import (
 	"github.com/pashagolub/pgxmock/v4"
 )
 
-// syntheticObservationPool returns three deterministic monitor_check rows
+// syntheticObservationPool returns three deterministic monitor_checks rows
 // no matter the args. It backstops orchestrator tests in this package
 // that construct minimal Orders (no Target / OwnerID / window) and rely
 // on fetchObservations producing realistic data without touching a real
@@ -21,13 +21,10 @@ type syntheticObservationPool struct{}
 
 func (syntheticObservationPool) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) {
 	now := time.Now().UTC().Truncate(time.Second)
-	json1 := []byte(`[{"node_id":"node-cn-bj","ok":true,"latency_ms":42}]`)
-	json2 := []byte(`[{"node_id":"node-cn-sh","ok":true,"latency_ms":51}]`)
-	json3 := []byte(`[{"node_id":"node-cn-gz","ok":true,"latency_ms":47}]`)
-	rows := pgxmock.NewRows([]string{"started_at", "node_results"}).
-		AddRow(now.Add(-3*time.Second), json1).
-		AddRow(now.Add(-2*time.Second), json2).
-		AddRow(now.Add(-1*time.Second), json3)
+	rows := pgxmock.NewRows([]string{"check_at", "node_id", "latency_ms", "status"}).
+		AddRow(now.Add(-3*time.Second), "node-cn-bj", int64(42), "up").
+		AddRow(now.Add(-2*time.Second), "node-cn-sh", int64(51), "up").
+		AddRow(now.Add(-1*time.Second), "node-cn-gz", int64(47), "up")
 	return rows.Kind(), nil
 }
 
@@ -70,10 +67,10 @@ func newObservationOrder(t time.Time) *Order {
 }
 
 // ---------------------------------------------------------------------------
-// happy path: 2 monitor_check rows, 3 node_results each → 6 obs sorted
+// happy path: 6 monitor_checks rows (one per node × per check_at) → 6 obs sorted
 // ---------------------------------------------------------------------------
 
-func TestFetchObservations_HappyPath_FlattensNodeResults(t *testing.T) {
+func TestFetchObservations_HappyPath_PerNodeRows(t *testing.T) {
 	mock, err := pgxmock.NewPool()
 	if err != nil {
 		t.Fatalf("pgxmock: %v", err)
@@ -87,22 +84,16 @@ func TestFetchObservations_HappyPath_FlattensNodeResults(t *testing.T) {
 
 	row1At := base.Add(10 * time.Minute)
 	row2At := base.Add(5 * time.Minute) // earlier — checks sort
-	row1JSON := []byte(`[
-		{"node_id":"node-cn-bj","ok":true,"latency_ms":42},
-		{"node_id":"node-cn-sh","ok":true,"latency_ms":51},
-		{"node_id":"node-cn-gz","ok":false,"latency_ms":900}
-	]`)
-	row2JSON := []byte(`[
-		{"node_id":"node-cn-bj","ok":true,"latency_ms":40},
-		{"node_id":"node-cn-sh","ok":true,"latency_ms":50},
-		{"node_id":"node-cn-gz","ok":true,"latency_ms":47}
-	]`)
 
-	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
+	mock.ExpectQuery(`FROM monitor_checks`).
 		WithArgs(order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd).
-		WillReturnRows(pgxmock.NewRows([]string{"started_at", "node_results"}).
-			AddRow(row1At, row1JSON).
-			AddRow(row2At, row2JSON))
+		WillReturnRows(pgxmock.NewRows([]string{"check_at", "node_id", "latency_ms", "status"}).
+			AddRow(row1At, "node-cn-bj", int64(42), "up").
+			AddRow(row1At, "node-cn-sh", int64(51), "up").
+			AddRow(row1At, "node-cn-gz", int64(900), "down").
+			AddRow(row2At, "node-cn-bj", int64(40), "up").
+			AddRow(row2At, "node-cn-sh", int64(50), "up").
+			AddRow(row2At, "node-cn-gz", int64(47), "up"))
 
 	obs, err := fetchObservations(context.Background(), mock, order)
 	if err != nil {
@@ -140,6 +131,14 @@ func TestFetchObservations_HappyPath_FlattensNodeResults(t *testing.T) {
 	if !bj.OK {
 		t.Fatalf("node-cn-bj@row1 OK = false, want true")
 	}
+	// row1 node-cn-gz has status=down → OK should be false
+	for _, o := range obs {
+		if o.Timestamp.Equal(row1At) && o.NodeID == "node-cn-gz" {
+			if o.OK {
+				t.Fatalf("expected down → OK=false")
+			}
+		}
+	}
 	if err := mock.ExpectationsWereMet(); err != nil {
 		t.Fatalf("unmet expectations: %v", err)
 	}
@@ -157,9 +156,9 @@ func TestFetchObservations_ZeroRowsReturnsError(t *testing.T) {
 	defer mock.Close()
 
 	order := newObservationOrder(time.Now().UTC())
-	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
+	mock.ExpectQuery(`FROM monitor_checks`).
 		WithArgs(order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd).
-		WillReturnRows(pgxmock.NewRows([]string{"started_at", "node_results"}))
+		WillReturnRows(pgxmock.NewRows([]string{"check_at", "node_id", "latency_ms", "status"}))
 
 	obs, err := fetchObservations(context.Background(), mock, order)
 	if err == nil {
@@ -170,30 +169,6 @@ func TestFetchObservations_ZeroRowsReturnsError(t *testing.T) {
 	}
 	if obs != nil {
 		t.Fatalf("expected nil slice, got %v", obs)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// bad JSON → wrapped decode error
-// ---------------------------------------------------------------------------
-
-func TestFetchObservations_BadJSONWrapped(t *testing.T) {
-	mock, err := pgxmock.NewPool()
-	if err != nil {
-		t.Fatalf("pgxmock: %v", err)
-	}
-	defer mock.Close()
-
-	order := newObservationOrder(time.Now().UTC())
-	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
-		WithArgs(order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd).
-		WillReturnRows(pgxmock.NewRows([]string{"started_at", "node_results"}).
-			AddRow(time.Now().UTC(), []byte("{ this is not json")))
-
-	if _, err := fetchObservations(context.Background(), mock, order); err == nil {
-		t.Fatalf("expected JSON decode error, got nil")
-	} else if !strings.Contains(err.Error(), "decode node_results json") {
-		t.Fatalf("expected wrapped decode error, got: %v", err)
 	}
 }
 
@@ -209,13 +184,13 @@ func TestFetchObservations_QueryErrorWrapped(t *testing.T) {
 	defer mock.Close()
 
 	order := newObservationOrder(time.Now().UTC())
-	mock.ExpectQuery(`FROM idcd_main.monitor_check`).
+	mock.ExpectQuery(`FROM monitor_checks`).
 		WithArgs(order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd).
 		WillReturnError(errors.New("boom"))
 
 	if _, err := fetchObservations(context.Background(), mock, order); err == nil {
 		t.Fatalf("expected query error, got nil")
-	} else if !strings.Contains(err.Error(), "query monitor_check") {
+	} else if !strings.Contains(err.Error(), "query monitor_checks") {
 		t.Fatalf("expected wrapped query error, got: %v", err)
 	}
 }

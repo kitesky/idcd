@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -74,15 +73,6 @@ func NewObservationPoolFromEnv(ctx context.Context) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
-// nodeResult is the per-node payload nested inside monitor_check.node_results.
-// Only the fields fetchObservations consumes are decoded; extra fields
-// in the jsonb (RTT distribution, headers, etc.) are ignored.
-type nodeResult struct {
-	NodeID    string `json:"node_id"`
-	OK        bool   `json:"ok"`
-	LatencyMS int64  `json:"latency_ms"`
-}
-
 // fetchObservations pulls raw probe points for one Verdict order out of
 // idcd_main.monitor_check. Per D1 this is a cross-schema READ — fine, no
 // FK is created. Per docs/prd/18 §3.1 step 1, empty results signal a
@@ -103,52 +93,49 @@ func fetchObservations(ctx context.Context, pool ObservationPool, order *Order) 
 		return nil, ErrObservationPoolNotConfigured
 	}
 
-	// Single statement: monitor_check joined to monitor on monitor_id,
-	// scoped by owner_id + target + time window. idx_monitor_check_monitor_time
-	// + idx_monitor_target keep this cheap even for active accounts.
+	// Naming note: the v2 spec (D1) places monitors / monitor_checks under
+	// the idcd_main schema with singular names + a nested node_results jsonb
+	// column, but the live deployment uses default-schema plural names with
+	// one row per (monitor, node, check_at). We query the live shape here.
 	//
-	// We project only node_results and started_at because the orchestrator
-	// flattens node_results into per-node observations below. Hypertable
-	// reads honour the started_at bound; ORDER BY is delegated to Go since
-	// we still have to flatten + re-sort by per-node timestamp anyway.
+	// Per-node row → observation directly (no jsonb flatten). check_at /
+	// latency_ms / status come straight off the row. OK is derived from
+	// status='up' to match the legacy nodeResult.OK semantics.
 	const q = `
-		SELECT mc.started_at, mc.node_results
-		FROM idcd_main.monitor_check mc
-		JOIN idcd_main.monitor m ON m.id = mc.monitor_id
-		WHERE m.owner_id = $1
+		SELECT mc.check_at, mc.node_id, COALESCE(mc.latency_ms, 0), mc.status
+		FROM monitor_checks mc
+		JOIN monitors m ON m.id = mc.monitor_id
+		WHERE m.user_id = $1
 		  AND m.target = $2
-		  AND mc.started_at >= $3
-		  AND mc.started_at <= $4
+		  AND mc.check_at >= $3
+		  AND mc.check_at <= $4
 	`
 	rows, err := pool.Query(ctx, q, order.OwnerID, order.Target, order.TimeWindowStart, order.TimeWindowEnd)
 	if err != nil {
-		return nil, fmt.Errorf("fetchObservations: query monitor_check: %w", err)
+		return nil, fmt.Errorf("fetchObservations: query monitor_checks: %w", err)
 	}
 	defer rows.Close()
 
 	out := make([]observation, 0, 16)
 	for rows.Next() {
-		var startedAt time.Time
-		var raw []byte
-		if err := rows.Scan(&startedAt, &raw); err != nil {
-			return nil, fmt.Errorf("fetchObservations: scan monitor_check row: %w", err)
+		var (
+			checkAt   time.Time
+			nodeID    string
+			latencyMS int64
+			status    string
+		)
+		if err := rows.Scan(&checkAt, &nodeID, &latencyMS, &status); err != nil {
+			return nil, fmt.Errorf("fetchObservations: scan monitor_checks row: %w", err)
 		}
-		var nodes []nodeResult
-		if err := json.Unmarshal(raw, &nodes); err != nil {
-			return nil, fmt.Errorf("fetchObservations: decode node_results json (started_at=%s): %w",
-				startedAt.Format(time.RFC3339Nano), err)
-		}
-		for _, n := range nodes {
-			out = append(out, observation{
-				NodeID:    n.NodeID,
-				Timestamp: startedAt.UTC(),
-				Latency:   time.Duration(n.LatencyMS) * time.Millisecond,
-				OK:        n.OK,
-			})
-		}
+		out = append(out, observation{
+			NodeID:    nodeID,
+			Timestamp: checkAt.UTC(),
+			Latency:   time.Duration(latencyMS) * time.Millisecond,
+			OK:        status == "up",
+		})
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("fetchObservations: iterate monitor_check rows: %w", err)
+		return nil, fmt.Errorf("fetchObservations: iterate monitor_checks rows: %w", err)
 	}
 
 	if len(out) == 0 {

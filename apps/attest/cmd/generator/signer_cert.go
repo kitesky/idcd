@@ -246,6 +246,14 @@ func loadDevSignerCert() (*x509.Certificate, []*x509.Certificate, error) {
 	if err != nil {
 		return nil, nil, fmt.Errorf("generate dev RSA key: %w", err)
 	}
+	return signerCertForKey(key)
+}
+
+// signerCertForKey 用传入的 RSA 私钥生成一份 self-signed cert，cert 的
+// SubjectPublicKey == key 的公钥。Local backend 走这个路径，能保证 cert
+// 与 localfile signer 的 key 严格匹配，PDF embed 后 verifier 能用 cert
+// 公钥验证嵌入的 CMS signature。
+func signerCertForKey(key *rsa.PrivateKey) (*x509.Certificate, []*x509.Certificate, error) {
 	tmpl := &x509.Certificate{
 		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject: pkix.Name{

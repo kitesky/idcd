@@ -23,7 +23,9 @@ const (
 	envLogLevel = "ATTEST_LOG_LEVEL"
 	envDB       = "ATTEST_DB_DSN"
 	envRedis    = "ATTEST_REDIS_ADDR"
-	envS3Bucket = "ATTEST_S3_BUCKET" // WORM archive bucket; empty disables archival
+	envS3Bucket     = "ATTEST_S3_BUCKET" // WORM archive bucket; empty disables archival
+	envRedisPasswd  = "ATTEST_REDIS_PASSWORD"
+	envRedisDB      = "ATTEST_REDIS_DB"
 
 	envSignBackend = "ATTEST_SIGN_BACKEND" // "aws" | "aliyun"
 
@@ -39,7 +41,10 @@ const (
 	envAliKMSKeyID           = "ATTEST_ALIKMS_KEY_ID"
 	envAliKMSAlgorithm       = "ATTEST_ALIKMS_ALGORITHM" // optional, default ECDSA_SHA_256
 
-	envTSAProviders = "ATTEST_TSA_PROVIDERS" // comma list: digicert,globalsign
+	envLocalKeyPath   = "ATTEST_LOCAL_KEY_PATH"  // SignBackend=local: PEM 私钥路径，不存在自动生成
+	envLocalAlgorithm = "ATTEST_LOCAL_ALGORITHM" // optional, default RSASSA_PKCS1_V1_5_SHA_256
+
+	envTSAProviders = "ATTEST_TSA_PROVIDERS" // comma list: digicert,globalsign,freetsa
 
 	envVerifyEndpoint = "ATTEST_VERIFY_ENDPOINT" // Self-Verify Worker target (D6)
 
@@ -59,6 +64,10 @@ const (
 
 	SignBackendAWS    = "aws"
 	SignBackendAliyun = "aliyun"
+	// SignBackendLocal 是 dev-only fallback：从 ATTEST_LOCAL_KEY_PATH 指向
+	// 的 PEM 文件读 RSA-2048 私钥（不存在则生成）。不要用于生产 — 私钥
+	// 裸存磁盘，无 KMS audit / HSM / 轮换机制。
+	SignBackendLocal = "local"
 
 	defaultPort      = 8080
 	defaultEnv       = "development"
@@ -80,9 +89,11 @@ type Config struct {
 	Env      string
 	LogLevel string
 
-	DatabaseDSN string
-	RedisAddr   string
-	S3Bucket    string
+	DatabaseDSN   string
+	RedisAddr     string
+	RedisPassword string
+	RedisDB       int
+	S3Bucket      string
 
 	SignBackend string // "aws" | "aliyun"
 
@@ -97,6 +108,10 @@ type Config struct {
 	AliKMSAccessKeySecret string
 	AliKMSKeyID           string
 	AliKMSAlgorithm       string
+
+	// LocalKeyPath / LocalAlgorithm 仅在 SignBackend=local 时使用。
+	LocalKeyPath   string
+	LocalAlgorithm string
 
 	TSAProviders []string // ordered: primary first
 
@@ -155,6 +170,16 @@ func Load() (*Config, error) {
 	if v := strings.TrimSpace(os.Getenv(envRedis)); v != "" {
 		cfg.RedisAddr = v
 	}
+	if v := os.Getenv(envRedisPasswd); v != "" {
+		cfg.RedisPassword = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisDB)); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil || n < 0 {
+			return nil, fmt.Errorf("config: invalid %s=%q", envRedisDB, v)
+		}
+		cfg.RedisDB = n
+	}
 	if v := strings.TrimSpace(os.Getenv(envS3Bucket)); v != "" {
 		cfg.S3Bucket = v
 	}
@@ -191,6 +216,13 @@ func Load() (*Config, error) {
 	}
 	if v := strings.TrimSpace(os.Getenv(envAliKMSAlgorithm)); v != "" {
 		cfg.AliKMSAlgorithm = v
+	}
+
+	if v := strings.TrimSpace(os.Getenv(envLocalKeyPath)); v != "" {
+		cfg.LocalKeyPath = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envLocalAlgorithm)); v != "" {
+		cfg.LocalAlgorithm = v
 	}
 
 	if v := strings.TrimSpace(os.Getenv(envTSAProviders)); v != "" {
@@ -260,9 +292,14 @@ func Load() (*Config, error) {
 				envSignBackend, SignBackendAliyun,
 				envAliKMSRegionID, envAliKMSAccessKeyID, envAliKMSAccessKeySecret, envAliKMSKeyID)
 		}
+	case SignBackendLocal:
+		if cfg.LocalKeyPath == "" {
+			return nil, fmt.Errorf("config: %s=%s requires %s",
+				envSignBackend, SignBackendLocal, envLocalKeyPath)
+		}
 	default:
-		return nil, fmt.Errorf("config: %s=%q must be %q or %q",
-			envSignBackend, cfg.SignBackend, SignBackendAWS, SignBackendAliyun)
+		return nil, fmt.Errorf("config: %s=%q must be %q, %q or %q",
+			envSignBackend, cfg.SignBackend, SignBackendAWS, SignBackendAliyun, SignBackendLocal)
 	}
 
 	return cfg, nil

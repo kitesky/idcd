@@ -32,6 +32,27 @@ type AlertEvent struct {
 	Metadata       []byte             `json:"metadata"`
 }
 
+type AlertGroup struct {
+	ID          string             `json:"id"`
+	UserID      string             `json:"user_id"`
+	Name        string             `json:"name"`
+	GroupBy     string             `json:"group_by"`
+	GroupValue  string             `json:"group_value"`
+	WaitSeconds int32              `json:"wait_seconds"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+}
+
+type AlertNoiseStat struct {
+	ID            string      `json:"id"`
+	UserID        string      `json:"user_id"`
+	Date          pgtype.Date `json:"date"`
+	MonitorID     string      `json:"monitor_id"`
+	TotalFirings  int32       `json:"total_firings"`
+	TotalResolved int32       `json:"total_resolved"`
+	AvgDurationS  *float64    `json:"avg_duration_s"`
+	FlapCount     int32       `json:"flap_count"`
+}
+
 type AlertNotification struct {
 	ID        string             `json:"id"`
 	EventID   string             `json:"event_id"`
@@ -56,6 +77,30 @@ type AlertPolicy struct {
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 }
 
+type AlertSilence struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	MonitorID *string            `json:"monitor_id"`
+	Reason    string             `json:"reason"`
+	StartsAt  pgtype.Timestamptz `json:"starts_at"`
+	EndsAt    pgtype.Timestamptz `json:"ends_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type AnchorDeviation struct {
+	ID            string             `json:"id"`
+	MonitorID     string             `json:"monitor_id"`
+	BaselineID    string             `json:"baseline_id"`
+	DeviationType string             `json:"deviation_type"`
+	CurrentValue  float64            `json:"current_value"`
+	BaselineValue float64            `json:"baseline_value"`
+	DeviationPct  float64            `json:"deviation_pct"`
+	Severity      string             `json:"severity"`
+	Status        string             `json:"status"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	ResolvedAt    pgtype.Timestamptz `json:"resolved_at"`
+}
+
 type ApiKey struct {
 	ID                string             `json:"id"`
 	OwnerType         string             `json:"owner_type"`
@@ -76,6 +121,7 @@ type ApiKey struct {
 	CreatedAt         pgtype.Timestamptz `json:"created_at"`
 	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
 	KeyType           string             `json:"key_type"`
+	TeamID            *string            `json:"team_id"`
 }
 
 type AuditLog struct {
@@ -92,6 +138,188 @@ type AuditLog struct {
 	Result       *string            `json:"result"`
 	ErrorReason  *string            `json:"error_reason"`
 	Metadata     []byte             `json:"metadata"`
+}
+
+type BetaInvitation struct {
+	ID          string             `json:"id"`
+	Code        string             `json:"code"`
+	Email       *string            `json:"email"`
+	Status      string             `json:"status"`
+	RequestedBy *string            `json:"requested_by"`
+	ApprovedBy  *string            `json:"approved_by"`
+	UsedBy      *string            `json:"used_by"`
+	UsedAt      pgtype.Timestamptz `json:"used_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type CertAbuseBan struct {
+	ID           int64              `json:"id"`
+	AccountID    int64              `json:"account_id"`
+	Reason       string             `json:"reason"`
+	BannedBy     string             `json:"banned_by"`
+	BannedAt     pgtype.Timestamptz `json:"banned_at"`
+	LiftedAt     pgtype.Timestamptz `json:"lifted_at"`
+	LiftedBy     *string            `json:"lifted_by"`
+	LiftedReason *string            `json:"lifted_reason"`
+}
+
+type CertAcmeAccount struct {
+	ID               int64              `json:"id"`
+	Ca               string             `json:"ca"`
+	Env              string             `json:"env"`
+	AccountUrl       string             `json:"account_url"`
+	KeyKmsHandle     string             `json:"key_kms_handle"`
+	EabKid           *string            `json:"eab_kid"`
+	EabHmacKmsHandle *string            `json:"eab_hmac_kms_handle"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+}
+
+type CertAuditLog struct {
+	ID           int64              `json:"id"`
+	AccountID    *int64             `json:"account_id"`
+	Actor        string             `json:"actor"`
+	Action       string             `json:"action"`
+	TargetKind   *string            `json:"target_kind"`
+	TargetID     *int64             `json:"target_id"`
+	PayloadJsonb []byte             `json:"payload_jsonb"`
+	OccurredAt   pgtype.Timestamptz `json:"occurred_at"`
+}
+
+type CertCert struct {
+	ID                int64              `json:"id"`
+	OrderID           int64              `json:"order_id"`
+	AccountID         int64              `json:"account_id"`
+	Sans              []string           `json:"sans"`
+	Issuer            string             `json:"issuer"`
+	SerialHex         string             `json:"serial_hex"`
+	FingerprintSha256 string             `json:"fingerprint_sha256"`
+	LeafPem           string             `json:"leaf_pem"`
+	ChainPem          string             `json:"chain_pem"`
+	KeyKmsHandle      string             `json:"key_kms_handle"`
+	NotBefore         pgtype.Timestamptz `json:"not_before"`
+	NotAfter          pgtype.Timestamptz `json:"not_after"`
+	Status            string             `json:"status"`
+	RevokedAt         pgtype.Timestamptz `json:"revoked_at"`
+	RevokeReason      *string            `json:"revoke_reason"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+}
+
+type CertDnsCredential struct {
+	ID              int64              `json:"id"`
+	AccountID       int64              `json:"account_id"`
+	Provider        string             `json:"provider"`
+	DisplayName     string             `json:"display_name"`
+	EncryptedBlob   []byte             `json:"encrypted_blob"`
+	DekWrapped      []byte             `json:"dek_wrapped"`
+	KekKeyID        string             `json:"kek_key_id"`
+	HealthStatus    string             `json:"health_status"`
+	HealthCheckedAt pgtype.Timestamptz `json:"health_checked_at"`
+	CreatedAt       pgtype.Timestamptz `json:"created_at"`
+	RevokedAt       pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type CertDomain struct {
+	ID           int64              `json:"id"`
+	AccountID    int64              `json:"account_id"`
+	Fqdn         string             `json:"fqdn"`
+	CaaStatus    *string            `json:"caa_status"`
+	CaaCheckedAt pgtype.Timestamptz `json:"caa_checked_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type CertOrder struct {
+	ID               int64              `json:"id"`
+	AccountID        int64              `json:"account_id"`
+	Sans             []string           `json:"sans"`
+	SansUnicode      []string           `json:"sans_unicode"`
+	CommonName       *string            `json:"common_name"`
+	Tier             string             `json:"tier"`
+	Ca               string             `json:"ca"`
+	ResellerChannel  *string            `json:"reseller_channel"`
+	ResellerOrderRef *string            `json:"reseller_order_ref"`
+	OrganizationID   *int64             `json:"organization_id"`
+	ValidityDays     int32              `json:"validity_days"`
+	ChallengeType    string             `json:"challenge_type"`
+	DnsCredentialID  *int64             `json:"dns_credential_id"`
+	Status           string             `json:"status"`
+	CsrPem           *string            `json:"csr_pem"`
+	CertID           *int64             `json:"cert_id"`
+	BillingInvoiceID *string            `json:"billing_invoice_id"`
+	RetryCount       int32              `json:"retry_count"`
+	LastError        *string            `json:"last_error"`
+	IdempotencyKey   *string            `json:"idempotency_key"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	FinalizedAt      pgtype.Timestamptz `json:"finalized_at"`
+}
+
+type CertOrderEvent struct {
+	ID           int64              `json:"id"`
+	OrderID      int64              `json:"order_id"`
+	ActionSeq    int32              `json:"action_seq"`
+	Action       string             `json:"action"`
+	PayloadJsonb []byte             `json:"payload_jsonb"`
+	OccurredAt   pgtype.Timestamptz `json:"occurred_at"`
+}
+
+type CertRenewalJob struct {
+	ID           int64              `json:"id"`
+	CertID       int64              `json:"cert_id"`
+	ScheduledAt  pgtype.Timestamptz `json:"scheduled_at"`
+	AttemptCount int32              `json:"attempt_count"`
+	LastError    *string            `json:"last_error"`
+	Status       string             `json:"status"`
+	NewOrderID   *int64             `json:"new_order_id"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type EnrolledNode struct {
+	ID                   string             `json:"id"`
+	NodeID               string             `json:"node_id"`
+	SecretHash           string             `json:"secret_hash"`
+	Hostname             *string            `json:"hostname"`
+	Arch                 *string            `json:"arch"`
+	Os                   *string            `json:"os"`
+	Kernel               *string            `json:"kernel"`
+	IpAddress            *string            `json:"ip_address"`
+	AgentVersion         *string            `json:"agent_version"`
+	Status               string             `json:"status"`
+	EnrolledAt           pgtype.Timestamptz `json:"enrolled_at"`
+	LastSeenAt           pgtype.Timestamptz `json:"last_seen_at"`
+	Metadata             []byte             `json:"metadata"`
+	Fingerprint          []byte             `json:"fingerprint"`
+	FingerprintUpdatedAt pgtype.Timestamptz `json:"fingerprint_updated_at"`
+}
+
+type IcpRecord struct {
+	ID         int64              `json:"id"`
+	Domain     string             `json:"domain"`
+	IcpNumber  string             `json:"icp_number"`
+	Company    string             `json:"company"`
+	FilingType string             `json:"filing_type"`
+	FiledAt    pgtype.Date        `json:"filed_at"`
+	Source     string             `json:"source"`
+	Note       string             `json:"note"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
+}
+
+type IncidentPostmortem struct {
+	ID           string             `json:"id"`
+	AlertEventID string             `json:"alert_event_id"`
+	MonitorID    string             `json:"monitor_id"`
+	UserID       string             `json:"user_id"`
+	Title        string             `json:"title"`
+	Status       string             `json:"status"`
+	Severity     string             `json:"severity"`
+	Impact       string             `json:"impact"`
+	Timeline     []byte             `json:"timeline"`
+	RootCause    string             `json:"root_cause"`
+	Resolution   string             `json:"resolution"`
+	ActionItems  []byte             `json:"action_items"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Invoice struct {
@@ -124,6 +352,45 @@ type Monitor struct {
 	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
 }
 
+type MonitorAgentObsCheck struct {
+	ID              string             `json:"id"`
+	MonitorID       string             `json:"monitor_id"`
+	ObsType         string             `json:"obs_type"`
+	Status          string             `json:"status"`
+	LatencyMs       *float64           `json:"latency_ms"`
+	TokensUsed      *int32             `json:"tokens_used"`
+	ErrorCode       *string            `json:"error_code"`
+	ResponsePreview *string            `json:"response_preview"`
+	CheckedAt       pgtype.Timestamptz `json:"checked_at"`
+}
+
+type MonitorAgentObsConfig struct {
+	MonitorID         string             `json:"monitor_id"`
+	ObsType           string             `json:"obs_type"`
+	EndpointUrl       string             `json:"endpoint_url"`
+	ModelName         *string            `json:"model_name"`
+	ExpectedTokensMax *int32             `json:"expected_tokens_max"`
+	LatencySlaMs      *int32             `json:"latency_sla_ms"`
+	PayloadTemplate   []byte             `json:"payload_template"`
+	CheckIntervalS    int32              `json:"check_interval_s"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt         pgtype.Timestamptz `json:"updated_at"`
+}
+
+type MonitorBaseline struct {
+	ID          string             `json:"id"`
+	MonitorID   string             `json:"monitor_id"`
+	P50Latency  *float64           `json:"p50_latency"`
+	P95Latency  *float64           `json:"p95_latency"`
+	P99Latency  *float64           `json:"p99_latency"`
+	SuccessRate *float64           `json:"success_rate"`
+	SampleCount int32              `json:"sample_count"`
+	ComputedAt  pgtype.Timestamptz `json:"computed_at"`
+	WindowHours int32              `json:"window_hours"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
 type MonitorCheck struct {
 	CheckAt   pgtype.Timestamptz `json:"check_at"`
 	MonitorID string             `json:"monitor_id"`
@@ -132,6 +399,95 @@ type MonitorCheck struct {
 	LatencyMs *int32             `json:"latency_ms"`
 	Error     *string            `json:"error"`
 	Metadata  []byte             `json:"metadata"`
+}
+
+type NodeApplication struct {
+	ID                 string             `json:"id"`
+	UserID             string             `json:"user_id"`
+	Hostname           string             `json:"hostname"`
+	IpAddress          string             `json:"ip_address"`
+	Country            string             `json:"country"`
+	City               *string            `json:"city"`
+	Isp                *string            `json:"isp"`
+	BandwidthMbps      *int32             `json:"bandwidth_mbps"`
+	OsInfo             *string            `json:"os_info"`
+	Motivation         *string            `json:"motivation"`
+	Status             string             `json:"status"`
+	ReviewedBy         *string            `json:"reviewed_by"`
+	ReviewNote         *string            `json:"review_note"`
+	ProbationStartedAt pgtype.Timestamptz `json:"probation_started_at"`
+	ActivatedAt        pgtype.Timestamptz `json:"activated_at"`
+	CreatedAt          pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
+}
+
+type NodeCommand struct {
+	ID        string             `json:"id"`
+	NodeID    string             `json:"node_id"`
+	Command   string             `json:"command"`
+	Payload   []byte             `json:"payload"`
+	Status    string             `json:"status"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	SentAt    pgtype.Timestamptz `json:"sent_at"`
+	AckedAt   pgtype.Timestamptz `json:"acked_at"`
+}
+
+type NodeEnrollmentToken struct {
+	ID        string             `json:"id"`
+	TokenHash string             `json:"token_hash"`
+	Label     *string            `json:"label"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	UsedAt    pgtype.Timestamptz `json:"used_at"`
+	UsedBy    *string            `json:"used_by"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type NodePoint struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	Amount    int32              `json:"amount"`
+	Balance   int32              `json:"balance"`
+	Reason    string             `json:"reason"`
+	RefID     *string            `json:"ref_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type NodeUpgradeRollout struct {
+	ID          string             `json:"id"`
+	Version     string             `json:"version"`
+	DownloadUrl string             `json:"download_url"`
+	Checksum    string             `json:"checksum"`
+	RolloutPct  int32              `json:"rollout_pct"`
+	Status      string             `json:"status"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type OncallOverride struct {
+	ID         string             `json:"id"`
+	ScheduleID string             `json:"schedule_id"`
+	UserID     string             `json:"user_id"`
+	StartAt    pgtype.Timestamptz `json:"start_at"`
+	EndAt      pgtype.Timestamptz `json:"end_at"`
+	CreatedBy  string             `json:"created_by"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
+type OncallParticipant struct {
+	ID         string `json:"id"`
+	ScheduleID string `json:"schedule_id"`
+	UserID     string `json:"user_id"`
+	OrderIndex int32  `json:"order_index"`
+}
+
+type OncallSchedule struct {
+	ID           string             `json:"id"`
+	TeamID       string             `json:"team_id"`
+	Name         string             `json:"name"`
+	RotationType string             `json:"rotation_type"`
+	HandoffHour  int32              `json:"handoff_hour"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 }
 
 type Payment struct {
@@ -158,35 +514,106 @@ type PaymentProvider struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type PersonalAccessToken struct {
+	ID          string             `json:"id"`
+	UserID      string             `json:"user_id"`
+	Name        string             `json:"name"`
+	TokenHash   string             `json:"token_hash"`
+	TokenPrefix string             `json:"token_prefix"`
+	Scopes      []string           `json:"scopes"`
+	LastUsedAt  pgtype.Timestamptz `json:"last_used_at"`
+	ExpiresAt   pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt   pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
+}
+
+type PointRedemption struct {
+	ID           string             `json:"id"`
+	UserID       string             `json:"user_id"`
+	PointsSpent  int32              `json:"points_spent"`
+	RewardType   string             `json:"reward_type"`
+	RewardAmount int32              `json:"reward_amount"`
+	Status       string             `json:"status"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+}
+
+type ProbeResult struct {
+	ID         string             `json:"id"`
+	TaskID     string             `json:"task_id"`
+	NodeID     string             `json:"node_id"`
+	Raw        []byte             `json:"raw"`
+	Summary    []byte             `json:"summary"`
+	DurationMs *int32             `json:"duration_ms"`
+	Success    *bool              `json:"success"`
+	Error      *string            `json:"error"`
+	Signature  string             `json:"signature"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+}
+
 type ProbeTask struct {
-	ID               string             `json:"id"`
-	Type             string             `json:"type"`
-	Target           string             `json:"target"`
-	TargetNormalized string             `json:"target_normalized"`
-	Params           []byte             `json:"params"`
-	InitiatedBy      *string            `json:"initiated_by"`
-	ApiKeyID         *string            `json:"api_key_id"`
-	ClientIp         *netip.Addr        `json:"client_ip"`
-	UserAgent        *string            `json:"user_agent"`
-	NodeSelection    []byte             `json:"node_selection"`
-	Status           string             `json:"status"`
-	CreatedAt        pgtype.Timestamptz `json:"created_at"`
-	StartedAt        pgtype.Timestamptz `json:"started_at"`
-	CompletedAt      pgtype.Timestamptz `json:"completed_at"`
+	ID                string             `json:"id"`
+	Type              string             `json:"type"`
+	Target            string             `json:"target"`
+	TargetNormalized  string             `json:"target_normalized"`
+	Params            []byte             `json:"params"`
+	InitiatedBy       *string            `json:"initiated_by"`
+	ApiKeyID          *string            `json:"api_key_id"`
+	ClientIp          *netip.Addr        `json:"client_ip"`
+	UserAgent         *string            `json:"user_agent"`
+	NodeSelection     []byte             `json:"node_selection"`
+	Status            string             `json:"status"`
+	CreatedAt         pgtype.Timestamptz `json:"created_at"`
+	StartedAt         pgtype.Timestamptz `json:"started_at"`
+	CompletedAt       pgtype.Timestamptz `json:"completed_at"`
+	Result            []byte             `json:"result"`
+	SpeedDownloadMbps pgtype.Numeric     `json:"speed_download_mbps"`
+	SpeedUploadMbps   pgtype.Numeric     `json:"speed_upload_mbps"`
+}
+
+type ReferralCode struct {
+	ID        string             `json:"id"`
+	UserID    string             `json:"user_id"`
+	Code      string             `json:"code"`
+	UsesCount int32              `json:"uses_count"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type ReferralReward struct {
+	ID           string             `json:"id"`
+	ReferrerID   string             `json:"referrer_id"`
+	ReferredID   string             `json:"referred_id"`
+	Code         string             `json:"code"`
+	Status       string             `json:"status"`
+	RewardAmount pgtype.Numeric     `json:"reward_amount"`
+	CreditedAt   pgtype.Timestamptz `json:"credited_at"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
 }
 
 type StatusPage struct {
-	ID                       string             `json:"id"`
-	UserID                   string             `json:"user_id"`
-	Slug                     string             `json:"slug"`
-	Name                     string             `json:"name"`
-	Description              *string            `json:"description"`
-	CustomDomain             *string            `json:"custom_domain"`
-	CustomDomainVerifiedAt   pgtype.Timestamptz `json:"custom_domain_verified_at"`
+	ID                        string             `json:"id"`
+	UserID                    string             `json:"user_id"`
+	Slug                      string             `json:"slug"`
+	Name                      string             `json:"name"`
+	Description               *string            `json:"description"`
+	CustomDomain              *string            `json:"custom_domain"`
+	Branding                  bool               `json:"branding"`
+	CreatedAt                 pgtype.Timestamptz `json:"created_at"`
+	CustomDomainVerifiedAt    pgtype.Timestamptz `json:"custom_domain_verified_at"`
 	CustomDomainCertExpiresAt pgtype.Timestamptz `json:"custom_domain_cert_expires_at"`
-	Branding                 bool               `json:"branding"`
-	CreatedAt                pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt                pgtype.Timestamptz `json:"updated_at"`
+	UpdatedAt                 pgtype.Timestamptz `json:"updated_at"`
+	DefaultLocale             string             `json:"default_locale"`
+}
+
+type StatusPageSubscription struct {
+	ID           string             `json:"id"`
+	StatusPageID string             `json:"status_page_id"`
+	ChannelType  string             `json:"channel_type"`
+	Endpoint     string             `json:"endpoint"`
+	Verified     bool               `json:"verified"`
+	VerifyToken  *string            `json:"verify_token"`
+	Events       []string           `json:"events"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	Locale       string             `json:"locale"`
 }
 
 type Subscription struct {
@@ -202,6 +629,37 @@ type Subscription struct {
 	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
 	Provider           string             `json:"provider"`
 	ExtSubID           *string            `json:"ext_sub_id"`
+}
+
+type Team struct {
+	ID        string             `json:"id"`
+	Name      string             `json:"name"`
+	Slug      string             `json:"slug"`
+	Plan      string             `json:"plan"`
+	OwnerID   string             `json:"owner_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+type TeamInvitation struct {
+	ID        string             `json:"id"`
+	TeamID    string             `json:"team_id"`
+	Email     string             `json:"email"`
+	Role      string             `json:"role"`
+	Token     string             `json:"token"`
+	InvitedBy string             `json:"invited_by"`
+	Status    string             `json:"status"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type TeamMembership struct {
+	ID        string             `json:"id"`
+	TeamID    string             `json:"team_id"`
+	UserID    string             `json:"user_id"`
+	Role      string             `json:"role"`
+	InvitedBy *string            `json:"invited_by"`
+	JoinedAt  pgtype.Timestamptz `json:"joined_at"`
 }
 
 type User struct {
@@ -267,4 +725,26 @@ type UserSession struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	ExpiresAt        pgtype.Timestamptz `json:"expires_at"`
 	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
+}
+
+type WebauthnChallenge struct {
+	Challenge string             `json:"challenge"`
+	UserID    *string            `json:"user_id"`
+	Purpose   string             `json:"purpose"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type WebauthnCredential struct {
+	ID           string             `json:"id"`
+	UserID       string             `json:"user_id"`
+	CredentialID string             `json:"credential_id"`
+	PublicKey    string             `json:"public_key"`
+	Aaguid       string             `json:"aaguid"`
+	SignCount    int64              `json:"sign_count"`
+	DeviceName   string             `json:"device_name"`
+	Transports   []string           `json:"transports"`
+	BackedUp     bool               `json:"backed_up"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	LastUsedAt   pgtype.Timestamptz `json:"last_used_at"`
 }

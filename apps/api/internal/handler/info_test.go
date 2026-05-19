@@ -226,8 +226,10 @@ func TestInfoHandler_DNS_QueryFunctions(t *testing.T) {
 	h := NewInfoHandler()
 	ctx := context.Background()
 
-	t.Run("queryARecords - localhost", func(t *testing.T) {
-		records, err := h.queryARecords(ctx, "localhost")
+	// 改用 example.com:新实现走 1.1.1.1 上游(为了拿 TTL),不再依赖系统
+	// resolver,所以 localhost 这种 host-file 名字查不到了。
+	t.Run("queryARecords - example.com", func(t *testing.T) {
+		records, err := h.queryARecords(ctx, "example.com")
 		if err != nil {
 			t.Errorf("queryARecords() error = %v", err)
 		}
@@ -236,9 +238,8 @@ func TestInfoHandler_DNS_QueryFunctions(t *testing.T) {
 		}
 	})
 
-	t.Run("queryAAAARecords - localhost", func(t *testing.T) {
-		records, err := h.queryAAAARecords(ctx, "localhost")
-		// May fail on some systems without IPv6
+	t.Run("queryAAAARecords - example.com", func(t *testing.T) {
+		records, err := h.queryAAAARecords(ctx, "example.com")
 		if err == nil && len(records) == 0 {
 			t.Log("queryAAAARecords() returned no records (acceptable)")
 		}

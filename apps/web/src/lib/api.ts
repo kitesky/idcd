@@ -287,10 +287,16 @@ export async function getProbeTask(taskId: string): Promise<ProbeTaskResult> {
 export interface SSLInfo {
   domain: string
   issuer: string
-  valid_from: string
-  valid_to: string
-  days_remaining: number
-  is_valid: boolean
+  subject?: string
+  not_before: string
+  not_after: string
+  san_domains?: string[]
+  protocol?: string
+  days_until_expiry: number
+  /** 链验证是否通过(过期/自签/SAN 不匹配会是 false,但证书内容仍返回)。 */
+  valid: boolean
+  /** valid=false 时给出 Go x509.Verify 的原始错误信息。 */
+  verify_error?: string
 }
 
 export interface WhoisInfo {
@@ -362,10 +368,13 @@ export interface BGPInfo {
 export interface ICPInfo {
   domain: string
   icp_number: string
-  company: string
-  type: string
-  filed_at: string
-  note: string
+  company?: string
+  type?: string
+  filed_at?: string
+  note?: string
+  /** 未命中本地库时给前端的跳转 URL,引导去工信部公示页手查。 */
+  inquiry_url?: string
+  source?: string
 }
 
 export async function getRDNSInfo(q: string): Promise<RDNSInfo> {
@@ -407,6 +416,26 @@ export async function getBGPInfo(q: string): Promise<BGPInfo> {
 
 export async function getICPInfo(q: string): Promise<ICPInfo> {
   const res = await apiRequest<{ data: ICPInfo }>(`/v1/info/icp?q=${encodeURIComponent(q)}`)
+  return res.data
+}
+
+export interface DNSRecord {
+  value: string
+  ttl?: number
+  /** 仅 MX 类型有效:权重越小越优先。 */
+  priority?: number
+}
+
+export interface DNSInfo {
+  domain: string
+  type: string
+  records: DNSRecord[]
+}
+
+export async function getDNSInfo(q: string, type = "A"): Promise<DNSInfo> {
+  const res = await apiRequest<{ data: DNSInfo }>(
+    `/v1/info/dns?q=${encodeURIComponent(q)}&type=${encodeURIComponent(type)}`
+  )
   return res.data
 }
 

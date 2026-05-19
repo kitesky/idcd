@@ -9,6 +9,7 @@ import (
 )
 
 type Querier interface {
+	CountICPRecords(ctx context.Context) (int64, error)
 	CreateAPIKey(ctx context.Context, arg CreateAPIKeyParams) (ApiKey, error)
 	CreateAuditLog(ctx context.Context, arg CreateAuditLogParams) error
 	CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (Invoice, error)
@@ -19,15 +20,19 @@ type Querier interface {
 	CreateUser(ctx context.Context, arg CreateUserParams) (User, error)
 	CreateUserCredential(ctx context.Context, arg CreateUserCredentialParams) (UserCredential, error)
 	CreateUserOTP(ctx context.Context, arg CreateUserOTPParams) (UserOtp, error)
+	DeleteICPRecord(ctx context.Context, domain string) error
 	DeleteMonitor(ctx context.Context, id string) error
 	ExpireAPIKey(ctx context.Context) error
 	GetAPIKeyByID(ctx context.Context, id string) (ApiKey, error)
 	GetAPIKeyByPrefix(ctx context.Context, prefix string) (ApiKey, error)
+	GetICPRecordByDomain(ctx context.Context, domain string) (IcpRecord, error)
 	GetMonitorByID(ctx context.Context, id string) (Monitor, error)
-	GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (StatusPage, error)
-	GetStatusPageByID(ctx context.Context, id string) (StatusPage, error)
 	GetSessionByID(ctx context.Context, id string) (UserSession, error)
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (UserSession, error)
+	// status_page.sql — sqlc queries for status_pages custom domain management
+	// Run `sqlc generate` after migration 00011 has been applied.
+	GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (StatusPage, error)
+	GetStatusPageByID(ctx context.Context, id string) (StatusPage, error)
 	// billing.sql — sqlc queries for billing tables (post-00010 migration)
 	// Run `sqlc generate` after the 00010 migration has been applied.
 	GetSubscriptionByUserID(ctx context.Context, userID string) (GetSubscriptionByUserIDRow, error)
@@ -43,6 +48,7 @@ type Querier interface {
 	ListAuditLogsByActor(ctx context.Context, arg ListAuditLogsByActorParams) ([]AuditLog, error)
 	ListAuditLogsByOwner(ctx context.Context, arg ListAuditLogsByOwnerParams) ([]AuditLog, error)
 	ListAuditLogsByResource(ctx context.Context, arg ListAuditLogsByResourceParams) ([]AuditLog, error)
+	ListICPRecords(ctx context.Context, arg ListICPRecordsParams) ([]IcpRecord, error)
 	ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]ListInvoicesByUserRow, error)
 	ListMonitorsByUser(ctx context.Context, arg ListMonitorsByUserParams) ([]Monitor, error)
 	ListUserCredentialsByUser(ctx context.Context, userID string) ([]UserCredential, error)
@@ -55,6 +61,7 @@ type Querier interface {
 	SetStatusPageCustomDomain(ctx context.Context, arg SetStatusPageCustomDomainParams) (StatusPage, error)
 	SoftDeleteUser(ctx context.Context, id string) error
 	UpdateAPIKeyLastUsed(ctx context.Context, arg UpdateAPIKeyLastUsedParams) error
+	UpdateCertExpiry(ctx context.Context, arg UpdateCertExpiryParams) error
 	UpdateMonitorFields(ctx context.Context, arg UpdateMonitorFieldsParams) (Monitor, error)
 	UpdateMonitorNextCheck(ctx context.Context, arg UpdateMonitorNextCheckParams) error
 	UpdateMonitorStatus(ctx context.Context, arg UpdateMonitorStatusParams) (Monitor, error)
@@ -64,8 +71,8 @@ type Querier interface {
 	UpdateUserLastLogin(ctx context.Context, arg UpdateUserLastLoginParams) error
 	UpdateUserPasswordHash(ctx context.Context, arg UpdateUserPasswordHashParams) error
 	UpdateUserProfile(ctx context.Context, arg UpdateUserProfileParams) (User, error)
-	UpdateCertExpiry(ctx context.Context, arg UpdateCertExpiryParams) error
 	UpdateUserStatus(ctx context.Context, arg UpdateUserStatusParams) (User, error)
+	UpsertICPRecord(ctx context.Context, arg UpsertICPRecordParams) (IcpRecord, error)
 }
 
 var _ Querier = (*Queries)(nil)

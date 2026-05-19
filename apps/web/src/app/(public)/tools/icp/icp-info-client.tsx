@@ -18,7 +18,7 @@ export default function IcpInfoClient() {
       inputId="icp-query"
       onQuery={getICPInfo}
       renderResult={(result) => {
-        const rows: [string, string][] = [
+        const rows: [string, string | undefined][] = [
           [t("probe.result.rows.domain"), result.domain],
           [t("probe.result.rows.icpNumber"), result.icp_number],
           [t("probe.result.rows.company"), result.company],

@@ -10,11 +10,24 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover"
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
-import { getNodes, probeHttp, probePing, probeDns, probeTcp, probeMtr, probeTraceroute } from "@/lib/api"
+import {
+  getNodes,
+  probeHttp,
+  probePing,
+  probeDns,
+  probeTcp,
+  probeMtr,
+  probeTraceroute,
+  getWhoisInfo,
+  getICPInfo,
+  getSSLInfo,
+  getDNSInfo,
+} from "@/lib/api"
 import type { Node as ProbeNode } from "@/lib/api"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import { usePollingProbeResult } from "@/hooks/usePollingProbeResult"
 import { ProbeResultPanel } from "@/components/probe/ProbeResultPanel"
+import { DomainResultPanel, type DomainResult } from "@/components/hero/DomainResultPanel"
 
 // ── 大类 tab 配置 ────────────────────────────────────────────────────────────
 
@@ -273,6 +286,25 @@ const PROBE_FN: Record<string, typeof probeHttp> = {
   traceroute: probeTraceroute,
 }
 
+// ── Domain dispatch ───────────────────────────────────────────────────────────
+// Synchronous /v1/info/* queries (WHOIS / ICP / SSL / DNS). Unlike network
+// probes these don't go through the task queue — server returns the answer
+// in the same response — so there's no polling and no node selector.
+async function runDomainQuery(tool: string, q: string): Promise<DomainResult> {
+  switch (tool) {
+    case "whois":
+      return { kind: "whois", data: await getWhoisInfo(q) }
+    case "icp":
+      return { kind: "icp", data: await getICPInfo(q) }
+    case "ssl":
+      return { kind: "ssl", data: await getSSLInfo(q) }
+    case "dns":
+      return { kind: "dns", data: await getDNSInfo(q) }
+    default:
+      throw new Error(`unknown domain tool: ${tool}`)
+  }
+}
+
 // ── HeroSearch ────────────────────────────────────────────────────────────────
 
 export function HeroSearch() {
@@ -291,12 +323,15 @@ export function HeroSearch() {
   const [submitError, setSubmitError] = useState("")
   const polling = useProbePolling(taskId)
   const probeResult = usePollingProbeResult(polling)
+  // Domain-category state — synchronous /v1/info/* queries, no task queue.
+  const [domainResult, setDomainResult] = useState<DomainResult | null>(null)
 
   const catConfig = CATEGORY_CONFIGS.find(c => c.key === activeCat) ?? CATEGORY_CONFIGS[1]!
 
   const resetResult = () => {
     setTaskId(null)
     setSubmitError("")
+    setDomainResult(null)
   }
 
   const handleCatChange = (key: string) => {
@@ -310,15 +345,22 @@ export function HeroSearch() {
     if (!query.trim()) return
     setSubmitError("")
     setTaskId(null)
+    setDomainResult(null)
     setSubmitting(true)
 
     try {
-      const fn = PROBE_FN[activeTool] ?? probeHttp
-      const res = await fn({
-        target: query.trim(),
-        node_ids: selectedNodeIds.length ? selectedNodeIds : undefined,
-      })
-      setTaskId(res.task_id)
+      const q = query.trim()
+      if (activeCat === "domain") {
+        const data = await runDomainQuery(activeTool, q)
+        setDomainResult(data)
+      } else {
+        const fn = PROBE_FN[activeTool] ?? probeHttp
+        const res = await fn({
+          target: q,
+          node_ids: selectedNodeIds.length ? selectedNodeIds : undefined,
+        })
+        setTaskId(res.task_id)
+      }
     } catch (err) {
       setSubmitError(err instanceof Error ? err.message : t("hero.probeError", { message: "" }))
     } finally {
@@ -329,6 +371,7 @@ export function HeroSearch() {
   const probeLoading = submitting || polling.isPolling
   const probeError = submitError || polling.error
   const hasResult = probeResult !== null
+  const isDomain = activeCat === "domain"
 
   return (
     <>
@@ -407,11 +450,13 @@ export function HeroSearch() {
           {/* CTA */}
           <Button
             onClick={handleGo}
-            disabled={!query.trim() || probeLoading}
+            disabled={!query.trim() || probeLoading || submitting}
             className="h-11 px-6 text-sm font-medium w-full md:w-auto rounded-none rounded-b-md md:rounded-r-md"
           >
-            {probeLoading ? t("hero.detecting") : t("hero.cta")}
-            {!probeLoading && <ArrowRight className="h-4 w-4 ml-1" />}
+            {(probeLoading || submitting)
+              ? (isDomain ? t("categories.domain.querying") : t("hero.detecting"))
+              : t("hero.cta")}
+            {!(probeLoading || submitting) && <ArrowRight className="h-4 w-4 ml-1" />}
           </Button>
         </div>
 
@@ -428,30 +473,51 @@ export function HeroSearch() {
       </div>
     </section>
 
-    {/* ── 拨测结果面板 ─────────────────────────────────────────── */}
-    {(probeLoading || hasResult || probeError) && (
-      <div className="border-b bg-background">
-        {probeError ? (
-          <div className="mx-auto max-w-screen-xl px-6 py-6 text-sm text-destructive">
-            {t("hero.probeError", { message: probeError })}
+    {/* ── 拨测 / 域名查询 结果面板 ──────────────────────────────── */}
+    {isDomain
+      ? (submitting || domainResult || submitError) && (
+          <div className="border-b bg-background">
+            {submitError ? (
+              <div className="mx-auto max-w-screen-xl px-6 py-6 text-sm text-destructive">
+                {t("categories.domain.queryError", { message: submitError })}
+              </div>
+            ) : domainResult ? (
+              <div className="mx-auto max-w-screen-xl px-6 py-6">
+                <DomainResultPanel result={domainResult} />
+              </div>
+            ) : (
+              <div className="mx-auto max-w-screen-xl px-6 py-8 space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
+                ))}
+                <p className="text-xs text-muted-foreground">{t("categories.domain.querying")}</p>
+              </div>
+            )}
           </div>
-        ) : probeResult ? (
-          <ProbeResultPanel
-            result={probeResult}
-            target={query}
-            probeType={activeTool}
-            isLoading={probeLoading}
-          />
-        ) : (
-          <div className="mx-auto max-w-screen-xl px-6 py-8 space-y-3">
-            {[1, 2, 3].map(i => (
-              <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
-            ))}
-            <p className="text-xs text-muted-foreground">{t("hero.probePending")}</p>
+        )
+      : (probeLoading || hasResult || probeError) && (
+          <div className="border-b bg-background">
+            {probeError ? (
+              <div className="mx-auto max-w-screen-xl px-6 py-6 text-sm text-destructive">
+                {t("hero.probeError", { message: probeError })}
+              </div>
+            ) : probeResult ? (
+              <ProbeResultPanel
+                result={probeResult}
+                target={query}
+                probeType={activeTool}
+                isLoading={probeLoading}
+              />
+            ) : (
+              <div className="mx-auto max-w-screen-xl px-6 py-8 space-y-3">
+                {[1, 2, 3].map(i => (
+                  <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
+                ))}
+                <p className="text-xs text-muted-foreground">{t("hero.probePending")}</p>
+              </div>
+            )}
           </div>
         )}
-      </div>
-    )}
     </>
   )
 }

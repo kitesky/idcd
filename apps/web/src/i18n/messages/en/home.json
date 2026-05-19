@@ -40,7 +40,17 @@
       "title": "Domain Information Lookup",
       "subtitle": "WHOIS • ICP • SSL • DNS — comprehensive query",
       "desc": "Query domain registration info, ICP filing status, SSL certificate status and DNS records.",
-      "placeholder": "Enter domain, e.g. example.com"
+      "placeholder": "Enter domain, e.g. example.com",
+      "querying": "Querying...",
+      "queryError": "Query failed: {message}",
+      "noResult": "No result found",
+      "dns": {
+        "typeLabel": "Record type",
+        "recordsTitle": "DNS records",
+        "noRecords": "No {type} records found",
+        "valueCol": "Value",
+        "ttlCol": "TTL"
+      }
     }
   },
   "features": {

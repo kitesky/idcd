@@ -354,6 +354,9 @@ func (s *Server) setupRouter() {
 			})
 			r.Route("/info", func(r chi.Router) {
 				infoH := handler.NewInfoHandler()
+				if s.pgxPool != nil {
+					infoH.WithICPQuerier(idcdmain.New(s.pgxPool))
+				}
 				r.Get("/ip", infoH.IP)
 				r.Get("/whois", infoH.Whois)
 				r.Get("/dns", infoH.DNS)

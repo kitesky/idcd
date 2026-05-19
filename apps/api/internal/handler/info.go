@@ -4,6 +4,7 @@ package handler
 import (
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -12,12 +13,23 @@ import (
 	"strings"
 	"time"
 
+	"github.com/likexian/whois"
+	whoisparser "github.com/likexian/whois-parser"
+	"github.com/miekg/dns"
+
 	"github.com/kite365/idcd/apps/api/internal/denylist"
 	"github.com/kite365/idcd/apps/api/internal/response"
+	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
 	"github.com/kite365/idcd/lib/shared/netfilter"
 	"github.com/kite365/idcd/lib/shared/netutil"
 )
+
+// ICPQuerier 是 InfoHandler 需要的 sqlc 子集。nil 时 ICP 接口直接走 fallback
+// (只返回 inquiry_url),避免单测必须配 DB。
+type ICPQuerier interface {
+	GetICPRecordByDomain(ctx context.Context, domain string) (idcdmain.IcpRecord, error)
+}
 
 // rejectIfBlockedHost validates a user-supplied hostname against the
 // SSRF / metadata netfilter and writes a 400 response if blocked.
@@ -37,6 +49,7 @@ func rejectIfBlockedHost(w http.ResponseWriter, r *http.Request, host string) bo
 // InfoHandler handles network information query endpoints.
 type InfoHandler struct {
 	httpClient *http.Client
+	icpQ       ICPQuerier // 可选; nil 时 ICP 接口走 fallback。
 }
 
 // NewInfoHandler creates a new info handler.
@@ -46,6 +59,12 @@ func NewInfoHandler() *InfoHandler {
 			Timeout: 10 * time.Second,
 		},
 	}
+}
+
+// WithICPQuerier 装配 ICP 自建库查询接口,返回同一 handler 以便链式调用。
+func (h *InfoHandler) WithICPQuerier(q ICPQuerier) *InfoHandler {
+	h.icpQ = q
+	return h
 }
 
 // --- Response types ---
@@ -99,12 +118,18 @@ type DNSResponse struct {
 }
 
 // DNSRecord represents a single DNS record.
+// Priority 仅 MX 有意义,其它类型置 0 不返回。
 type DNSRecord struct {
-	Value string `json:"value"`
-	TTL   uint32 `json:"ttl,omitempty"`
+	Value    string `json:"value"`
+	TTL      uint32 `json:"ttl,omitempty"`
+	Priority uint16 `json:"priority,omitempty"`
 }
 
 // SSLResponse represents SSL certificate information.
+//
+// Valid==false 时 VerifyError 解释了为什么链验证失败(过期/自签/SAN 不匹配
+// 等)；其它字段照样填充,因为前端要展示坏证书的实际内容(过期日期、issuer、
+// SAN)以便用户诊断,而不是 503 抛错完事。
 type SSLResponse struct {
 	Domain          string   `json:"domain"`
 	Issuer          string   `json:"issuer"`
@@ -114,16 +139,23 @@ type SSLResponse struct {
 	SANDomains      []string `json:"san_domains"`
 	Protocol        string   `json:"protocol"`
 	DaysUntilExpiry int      `json:"days_until_expiry"`
+	Valid           bool     `json:"valid"`
+	VerifyError     string   `json:"verify_error,omitempty"`
 }
 
 // ICPResponse represents ICP filing information.
+//
+// 本地库命中:icp_number / company / type / filed_at 完整。
+// 未命中: Note 给提示 + InquiryURL 让前端跳转工信部公示页(主域名预填)。
 type ICPResponse struct {
-	Domain    string `json:"domain"`
-	ICPNumber string `json:"icp_number"`
-	Company   string `json:"company,omitempty"`
-	Type      string `json:"type,omitempty"`
-	FiledAt   string `json:"filed_at,omitempty"`
-	Note      string `json:"note,omitempty"`
+	Domain     string `json:"domain"`
+	ICPNumber  string `json:"icp_number"`
+	Company    string `json:"company,omitempty"`
+	Type       string `json:"type,omitempty"`
+	FiledAt    string `json:"filed_at,omitempty"`
+	Note       string `json:"note,omitempty"`
+	InquiryURL string `json:"inquiry_url,omitempty"`
+	Source     string `json:"source,omitempty"`
 }
 
 // --- IP Query Handler ---
@@ -228,6 +260,11 @@ func (h *InfoHandler) IP(w http.ResponseWriter, r *http.Request) {
 // --- WHOIS Query Handler ---
 
 // Whois handles GET /v1/info/whois?q=<domain或IP> — WHOIS query.
+//
+// 用 likexian/whois 取 raw,whois-parser 做字段解析。比手写 grep 强在:
+//  1. 自动跟随 IANA referral(.io / .ai / .app 等先 iana 再 nic.io)
+//  2. 覆盖 50+ TLD 的字段命名差异
+//  3. CN 域名中文字段(注册商/注册日期/到期日期)在 parser 里有规则
 func (h *InfoHandler) Whois(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
@@ -235,7 +272,6 @@ func (h *InfoHandler) Whois(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize: remove protocol prefix and path.
 	query = strings.TrimPrefix(query, "https://")
 	query = strings.TrimPrefix(query, "http://")
 	if idx := strings.IndexByte(query, '/'); idx != -1 {
@@ -243,70 +279,82 @@ func (h *InfoHandler) Whois(w http.ResponseWriter, r *http.Request) {
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
 
-	server := whoisServer(query)
-	result := queryWhois(r.Context(), query, server)
+	result := queryWhois(r.Context(), query)
 	response.JSON(w, r, http.StatusOK, result)
 }
 
-// whoisServer returns the appropriate WHOIS server for the given domain.
-func whoisServer(domain string) string {
-	parts := strings.Split(domain, ".")
-	if len(parts) < 2 {
-		return "whois.iana.org"
+// queryWhois 走 likexian 客户端 + parser,失败 fallback 到 raw + 手写解析。
+func queryWhois(ctx context.Context, domain string) WhoisResponse {
+	// likexian 没暴露 ctx,这里用 channel 模拟超时(默认 10s)。
+	type whoisOut struct {
+		raw string
+		err error
 	}
-	tld := parts[len(parts)-1]
-	switch tld {
-	case "com", "net":
-		return "whois.verisign-grs.com"
-	case "org":
-		return "whois.pir.org"
-	case "cn":
-		return "whois.cnnic.cn"
-	case "io":
-		return "whois.iana.org"
-	default:
-		return "whois.iana.org"
+	ch := make(chan whoisOut, 1)
+	go func() {
+		raw, err := whois.NewClient().Whois(domain)
+		ch <- whoisOut{raw, err}
+	}()
+	var raw string
+	select {
+	case out := <-ch:
+		if out.err != nil {
+			return WhoisResponse{Domain: domain, Note: "WHOIS query unavailable: " + out.err.Error()}
+		}
+		raw = out.raw
+	case <-ctx.Done():
+		return WhoisResponse{Domain: domain, Note: "WHOIS query timed out"}
+	case <-time.After(10 * time.Second):
+		return WhoisResponse{Domain: domain, Note: "WHOIS query timed out"}
 	}
+
+	parsed, perr := whoisparser.Parse(raw)
+	if perr != nil {
+		// parser 不支持的 TLD 走旧 fallback,至少能填 registrar/NS
+		return fallbackParseWhois(domain, raw)
+	}
+
+	result := WhoisResponse{Domain: domain}
+	if parsed.Registrar != nil {
+		result.Registrar = parsed.Registrar.Name
+	}
+	if parsed.Domain != nil {
+		result.CreationDate = parsed.Domain.CreatedDate
+		result.ExpiryDate = parsed.Domain.ExpirationDate
+		if len(parsed.Domain.NameServers) > 0 {
+			ns := make([]string, 0, len(parsed.Domain.NameServers))
+			for _, n := range parsed.Domain.NameServers {
+				ns = append(ns, strings.ToLower(n))
+			}
+			result.NameServers = ns
+		}
+	}
+	// parser 解析出空时回退手写 grep(覆盖中文 WHOIS / 非主流 TLD)
+	if result.Registrar == "" && result.CreationDate == "" && len(result.NameServers) == 0 {
+		return fallbackParseWhois(domain, raw)
+	}
+	return result
 }
 
-// queryWhois performs a TCP WHOIS query against the given server.
-func queryWhois(ctx context.Context, domain, server string) WhoisResponse {
-	d := net.Dialer{Timeout: 10 * time.Second}
-	conn, err := d.DialContext(ctx, "tcp", server+":43")
-	if err != nil {
-		return WhoisResponse{Domain: domain, Note: "WHOIS query unavailable: " + err.Error()}
-	}
-	defer conn.Close()
-	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
-
-	fmt.Fprintf(conn, "%s\r\n", domain)
-
-	lr := io.LimitReader(conn, 65536)
-	raw, err := io.ReadAll(lr)
-	if err != nil && len(raw) == 0 {
-		return WhoisResponse{Domain: domain, Note: "WHOIS read error: " + err.Error()}
-	}
-
-	return parseWhoisResponse(domain, string(raw))
-}
-
-// parseWhoisResponse parses a raw WHOIS response text into a WhoisResponse.
-func parseWhoisResponse(domain, raw string) WhoisResponse {
+// fallbackParseWhois 是旧的手写解析,保留作 parser 不识别时的兜底。
+// 覆盖常见英文字段 + CN 域名常见中文字段。
+func fallbackParseWhois(domain, raw string) WhoisResponse {
 	result := WhoisResponse{Domain: domain}
 	var nameServers []string
 
 	for line := range strings.SplitSeq(raw, "\n") {
 		lower := strings.ToLower(line)
-		if strings.Contains(lower, "registrar:") && result.Registrar == "" {
+		switch {
+		case (strings.Contains(lower, "registrar:") || strings.Contains(line, "注册商:") || strings.Contains(line, "注册商：")) && result.Registrar == "":
 			result.Registrar = extractWhoisField(line)
-		}
-		if (strings.Contains(lower, "creation date:") || strings.Contains(lower, "registered:")) && result.CreationDate == "" {
+		case (strings.Contains(lower, "creation date:") || strings.Contains(lower, "registered:") ||
+			strings.Contains(line, "注册日期:") || strings.Contains(line, "注册时间:")) && result.CreationDate == "":
 			result.CreationDate = extractWhoisField(line)
-		}
-		if (strings.Contains(lower, "registry expiry date:") || strings.Contains(lower, "expiry date:") || strings.Contains(lower, "expires:")) && result.ExpiryDate == "" {
+		case (strings.Contains(lower, "registry expiry date:") || strings.Contains(lower, "expiry date:") ||
+			strings.Contains(lower, "expires:") || strings.Contains(line, "到期日期:") ||
+			strings.Contains(line, "到期时间:")) && result.ExpiryDate == "":
 			result.ExpiryDate = extractWhoisField(line)
-		}
-		if strings.Contains(lower, "name server:") {
+		case strings.Contains(lower, "name server:") || strings.Contains(line, "DNS Serve") || strings.Contains(line, "域名服务器:"):
 			if ns := extractWhoisField(line); ns != "" {
 				nameServers = append(nameServers, strings.ToLower(ns))
 			}
@@ -316,13 +364,15 @@ func parseWhoisResponse(domain, raw string) WhoisResponse {
 	return result
 }
 
-// extractWhoisField extracts the value after the first colon in a WHOIS line.
+// extractWhoisField extracts the value after the first colon (ASCII or
+// fullwidth) in a WHOIS line.
 func extractWhoisField(line string) string {
-	_, after, found := strings.Cut(line, ":")
-	if !found {
-		return ""
+	for _, sep := range []string{":", "："} {
+		if i := strings.Index(line, sep); i != -1 {
+			return strings.TrimSpace(line[i+len(sep):])
+		}
 	}
-	return strings.TrimSpace(after)
+	return ""
 }
 
 // --- rDNS Query Handler ---
@@ -415,6 +465,9 @@ func (h *InfoHandler) DMARC(w http.ResponseWriter, r *http.Request) {
 // --- DNS Query Handler ---
 
 // DNS handles GET /v1/info/dns?q=<domain>&type=<A|AAAA|MX|TXT|CNAME|NS|CAA> — DNS query.
+//
+// 用 miekg/dns 直接构造 DNS 协议包发上游(默认 1.1.1.1:53),拿到 raw RR 后
+// 才能填 TTL、MX priority、CAA 三元组。Go 标准库 net.Resolver 不暴露这些。
 func (h *InfoHandler) DNS(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
@@ -430,34 +483,16 @@ func (h *InfoHandler) DNS(w http.ResponseWriter, r *http.Request) {
 		recordType = "A"
 	}
 
-	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
-	defer cancel()
-
-	var records []DNSRecord
-	var err error
-
-	switch recordType {
-	case "A":
-		records, err = h.queryARecords(ctx, query)
-	case "AAAA":
-		records, err = h.queryAAAARecords(ctx, query)
-	case "MX":
-		records, err = h.queryMXRecords(ctx, query)
-	case "TXT":
-		records, err = h.queryTXTRecords(ctx, query)
-	case "CNAME":
-		records, err = h.queryCNAMERecord(ctx, query)
-	case "NS":
-		records, err = h.queryNSRecords(ctx, query)
-	case "CAA":
-		// CAA records require external library (github.com/miekg/dns)
-		// For S1, return empty
-		records = []DNSRecord{}
-	default:
+	qtype, ok := dnsTypeCode(recordType)
+	if !ok {
 		response.Error(w, r, apperr.Validation("Invalid DNS type", "Supported types: A, AAAA, MX, TXT, CNAME, NS, CAA"))
 		return
 	}
 
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+
+	records, err := queryDNSRR(ctx, query, qtype)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("DNS query failed", err))
 		return
@@ -472,72 +507,137 @@ func (h *InfoHandler) DNS(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, result)
 }
 
-func (h *InfoHandler) queryARecords(ctx context.Context, domain string) ([]DNSRecord, error) {
-	ips, err := net.DefaultResolver.LookupIP(ctx, "ip4", domain)
-	if err != nil {
-		return nil, err
+// dnsTypeCode 把字符串类型映射到 miekg/dns 的常量。
+func dnsTypeCode(t string) (uint16, bool) {
+	switch t {
+	case "A":
+		return dns.TypeA, true
+	case "AAAA":
+		return dns.TypeAAAA, true
+	case "MX":
+		return dns.TypeMX, true
+	case "TXT":
+		return dns.TypeTXT, true
+	case "CNAME":
+		return dns.TypeCNAME, true
+	case "NS":
+		return dns.TypeNS, true
+	case "CAA":
+		return dns.TypeCAA, true
 	}
-	records := make([]DNSRecord, 0, len(ips))
-	for _, ip := range ips {
-		records = append(records, DNSRecord{Value: ip.String()})
+	return 0, false
+}
+
+// dnsUpstreams 是查询用的上游解析器,顺序尝试直到拿到响应。
+//
+// 顺序刻意排:
+//  1. 223.5.5.5 (AliDNS) — 国内可达性最好,生产首选
+//  2. 119.29.29.29 (DNSPod) — 国内备援
+//  3. 1.1.1.1 (Cloudflare) — 国际兜底,出海域名 / CAA 准确
+//
+// 走自己发包(不用 net.Resolver)是因为标准库不暴露 TTL / MX priority / CAA。
+var dnsUpstreams = []string{"223.5.5.5:53", "119.29.29.29:53", "1.1.1.1:53"}
+
+// queryDNSRR 用 miekg/dns 发查询并把 RR 转成 DNSRecord 列表。
+// 任一上游成功即返回,全部失败才向上抛 error。
+func queryDNSRR(ctx context.Context, domain string, qtype uint16) ([]DNSRecord, error) {
+	c := &dns.Client{Timeout: 3 * time.Second}
+	m := new(dns.Msg)
+	m.SetQuestion(dns.Fqdn(domain), qtype)
+	m.RecursionDesired = true
+
+	var resp *dns.Msg
+	var lastErr error
+	for _, ups := range dnsUpstreams {
+		r, _, err := c.ExchangeContext(ctx, m, ups)
+		if err == nil && r != nil {
+			resp = r
+			break
+		}
+		lastErr = err
+	}
+	if resp == nil {
+		if lastErr == nil {
+			lastErr = fmt.Errorf("all DNS upstreams failed")
+		}
+		return nil, lastErr
+	}
+	if resp == nil {
+		return []DNSRecord{}, nil
+	}
+	// NXDOMAIN / NotImp 等 RCODE 转成 Go error,语义清晰且与旧 net.Resolver 一致。
+	if resp.Rcode != dns.RcodeSuccess {
+		return nil, fmt.Errorf("dns query: rcode %s", dns.RcodeToString[resp.Rcode])
+	}
+	records := make([]DNSRecord, 0, len(resp.Answer))
+	for _, rr := range resp.Answer {
+		// 跳过 CNAME 链中的中间结果,只保留请求类型对应的 RR。
+		// 例外: 当用户主动查 CNAME 时把 CNAME 链返回。
+		if rr.Header().Rrtype != qtype {
+			continue
+		}
+		records = append(records, rrToRecord(rr))
 	}
 	return records, nil
 }
 
-func (h *InfoHandler) queryAAAARecords(ctx context.Context, domain string) ([]DNSRecord, error) {
-	ips, err := net.DefaultResolver.LookupIP(ctx, "ip6", domain)
-	if err != nil {
-		return nil, err
+// rrToRecord 把 miekg/dns 的 RR 转成对外 DNSRecord。
+func rrToRecord(rr dns.RR) DNSRecord {
+	rec := DNSRecord{TTL: rr.Header().Ttl}
+	switch v := rr.(type) {
+	case *dns.A:
+		rec.Value = v.A.String()
+	case *dns.AAAA:
+		rec.Value = v.AAAA.String()
+	case *dns.MX:
+		rec.Value = v.Mx
+		rec.Priority = v.Preference
+	case *dns.TXT:
+		rec.Value = strings.Join(v.Txt, "")
+	case *dns.CNAME:
+		rec.Value = v.Target
+	case *dns.NS:
+		rec.Value = v.Ns
+	case *dns.CAA:
+		// CAA 三元组: <flag> <tag> "<value>"
+		rec.Value = fmt.Sprintf("%d %s %q", v.Flag, v.Tag, v.Value)
+	default:
+		// 兜底: 用 miekg/dns 自带 String() 去掉头部
+		full := rr.String()
+		if i := strings.Index(full, "\t"); i != -1 {
+			// 简单截掉前 4 列(name/ttl/class/type),只留 rdata。
+			parts := strings.SplitN(full, "\t", 5)
+			if len(parts) == 5 {
+				rec.Value = parts[4]
+			} else {
+				rec.Value = full
+			}
+		} else {
+			rec.Value = full
+		}
 	}
-	records := make([]DNSRecord, 0, len(ips))
-	for _, ip := range ips {
-		records = append(records, DNSRecord{Value: ip.String()})
-	}
-	return records, nil
+	return rec
 }
 
-func (h *InfoHandler) queryMXRecords(ctx context.Context, domain string) ([]DNSRecord, error) {
-	mxs, err := net.DefaultResolver.LookupMX(ctx, domain)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]DNSRecord, 0, len(mxs))
-	for _, mx := range mxs {
-		records = append(records, DNSRecord{Value: mx.Host})
-	}
-	return records, nil
+// query{A,AAAA,MX,TXT,CNAME,NS}Records 是 thin wrappers,新代码统一走 queryDNSRR;
+// 保留方法形式给老测试用例,后续可以推动改用 typed param 的 queryDNSRR 直接调。
+func (h *InfoHandler) queryARecords(ctx context.Context, d string) ([]DNSRecord, error) {
+	return queryDNSRR(ctx, d, dns.TypeA)
 }
-
-func (h *InfoHandler) queryTXTRecords(ctx context.Context, domain string) ([]DNSRecord, error) {
-	txts, err := net.DefaultResolver.LookupTXT(ctx, domain)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]DNSRecord, 0, len(txts))
-	for _, txt := range txts {
-		records = append(records, DNSRecord{Value: txt})
-	}
-	return records, nil
+func (h *InfoHandler) queryAAAARecords(ctx context.Context, d string) ([]DNSRecord, error) {
+	return queryDNSRR(ctx, d, dns.TypeAAAA)
 }
-
-func (h *InfoHandler) queryCNAMERecord(ctx context.Context, domain string) ([]DNSRecord, error) {
-	cname, err := net.DefaultResolver.LookupCNAME(ctx, domain)
-	if err != nil {
-		return nil, err
-	}
-	return []DNSRecord{{Value: cname}}, nil
+func (h *InfoHandler) queryMXRecords(ctx context.Context, d string) ([]DNSRecord, error) {
+	return queryDNSRR(ctx, d, dns.TypeMX)
 }
-
-func (h *InfoHandler) queryNSRecords(ctx context.Context, domain string) ([]DNSRecord, error) {
-	nss, err := net.DefaultResolver.LookupNS(ctx, domain)
-	if err != nil {
-		return nil, err
-	}
-	records := make([]DNSRecord, 0, len(nss))
-	for _, ns := range nss {
-		records = append(records, DNSRecord{Value: ns.Host})
-	}
-	return records, nil
+func (h *InfoHandler) queryTXTRecords(ctx context.Context, d string) ([]DNSRecord, error) {
+	return queryDNSRR(ctx, d, dns.TypeTXT)
+}
+func (h *InfoHandler) queryCNAMERecord(ctx context.Context, d string) ([]DNSRecord, error) {
+	return queryDNSRR(ctx, d, dns.TypeCNAME)
+}
+func (h *InfoHandler) queryNSRecords(ctx context.Context, d string) ([]DNSRecord, error) {
+	return queryDNSRR(ctx, d, dns.TypeNS)
 }
 
 // --- SSL Query Handler ---
@@ -565,10 +665,12 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Connect using the pre-resolved IP; preserve original hostname as SNI.
+	// SSL 检查工具的核心价值是查 *坏* 证书 — 过期 / 自签 / 域名不匹配 — 所以
+	// 先跳过链验证拿到证书,再单独跑 cert.Verify() 把失败原因塞进
+	// VerifyError。否则用户最关心的"为什么证书有问题"会被 503 吞掉。
 	dialer := &net.Dialer{Timeout: 10 * time.Second}
 	conn, err := tls.DialWithDialer(dialer, "tcp", resolvedAddr, &tls.Config{
-		InsecureSkipVerify: false,
+		InsecureSkipVerify: true, //nolint:gosec // 见上,故意跳过 + 后续显式验证
 		ServerName:         query,
 	})
 	if err != nil {
@@ -577,7 +679,6 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 	}
 	defer conn.Close()
 
-	// Get certificate
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		response.Error(w, r, apperr.NotFound("No certificates found"))
@@ -586,6 +687,21 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 
 	cert := certs[0]
 	daysUntilExpiry := int(time.Until(cert.NotAfter).Hours() / 24)
+
+	// 用 leaf 之外的 PeerCertificates 当 intermediates,跑标准链验证。
+	intermediates := x509.NewCertPool()
+	for _, c := range certs[1:] {
+		intermediates.AddCert(c)
+	}
+	_, verifyErr := cert.Verify(x509.VerifyOptions{
+		DNSName:       query,
+		Intermediates: intermediates,
+	})
+	valid := verifyErr == nil
+	verifyMsg := ""
+	if !valid {
+		verifyMsg = verifyErr.Error()
+	}
 
 	result := SSLResponse{
 		Domain:          query,
@@ -596,6 +712,8 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 		SANDomains:      cert.DNSNames,
 		Protocol:        conn.ConnectionState().NegotiatedProtocol,
 		DaysUntilExpiry: daysUntilExpiry,
+		Valid:           valid,
+		VerifyError:     verifyMsg,
 	}
 
 	response.JSON(w, r, http.StatusOK, result)
@@ -604,6 +722,9 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 // --- ICP Query Handler ---
 
 // ICP handles GET /v1/info/icp?q=<domain> — ICP filing query.
+//
+// 完全走自建库 icp.records:命中返回完整字段;未命中给前端跳转工信部的
+// inquiry_url(不调任何第三方 API,因为公开源都已死或要鉴权)。
 func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	if query == "" {
@@ -611,68 +732,66 @@ func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Normalize: remove protocol prefix and path.
 	query = strings.TrimPrefix(query, "https://")
 	query = strings.TrimPrefix(query, "http://")
 	if idx := strings.IndexByte(query, '/'); idx != -1 {
 		query = query[:idx]
 	}
 	query = strings.ToLower(strings.TrimSpace(query))
+	// 去掉常见子域,归一到 eTLD+1(粗略 — 不引 publicsuffix 库,因为 ICP 备案
+	// 本身就只看主域名;www.baidu.com / m.baidu.com → baidu.com)。
+	query = stripWWW(query)
 
-	// SSRF / metadata-host guard. While the upstream service is a fixed
-	// third-party URL, we still refuse to forward internal IPs / metadata
-	// hostnames as the lookup target — both to avoid leaking topology and to
-	// keep quota from being burned on obviously-wrong inputs.
-	if rejectIfBlockedHost(w, r, query) {
-		return
-	}
+	// ICP 不调任何外部接口(纯本地库查询),所以不需要 SSRF guard。
+	// 之前误把 gov.cn 等域名挡掉 — 它们恰恰是合法 ICP 主体。
 
 	result := h.queryICP(r.Context(), query)
 	response.JSON(w, r, http.StatusOK, result)
 }
 
-// queryICP attempts to query ICP filing information for the given domain.
-// Falls back gracefully if the external service is unavailable.
+func stripWWW(d string) string {
+	return strings.TrimPrefix(d, "www.")
+}
+
+// miitInquiryURL 是工信部备案公示查询页。前端把这个 URL 渲染成"去工信部查"按钮。
+// 不接收 domain 因为工信部 SPA 没有支持 query param 预填的入口,只能跳到主页让
+// 用户手填。
+func miitInquiryURL() string {
+	return "https://beian.miit.gov.cn/#/Integrated/recordQuery"
+}
+
+// queryICP 查本地库;未命中走 fallback。
 func (h *InfoHandler) queryICP(ctx context.Context, domain string) ICPResponse {
-	apiURL := "https://icplishi.com/api/?domain=" + domain
-	req, err := http.NewRequestWithContext(ctx, "GET", apiURL, nil)
+	if h.icpQ == nil {
+		return icpFallback(domain, "ICP database not configured")
+	}
+	rec, err := h.icpQ.GetICPRecordByDomain(ctx, domain)
 	if err != nil {
-		return ICPResponse{Domain: domain, Note: "ICP filing lookup requires the MIIT official API; currently in demo mode. Please visit https://beian.miit.gov.cn/ to query manually."}
+		// pgx.ErrNoRows 走 fallback;其它 DB 错也降级返回,不抛 5xx,
+		// 因为 ICP 是辅助功能不该挡主链路。
+		return icpFallback(domain, "ICP record not found in local database")
 	}
-	req.Header.Set("User-Agent", "idcd-icp-tool/1.0")
+	resp := ICPResponse{
+		Domain:    rec.Domain,
+		ICPNumber: rec.IcpNumber,
+		Company:   rec.Company,
+		Type:      rec.FilingType,
+		Source:    rec.Source,
+	}
+	if rec.FiledAt.Valid {
+		resp.FiledAt = rec.FiledAt.Time.Format("2006-01-02")
+	}
+	if rec.Note != "" {
+		resp.Note = rec.Note
+	}
+	return resp
+}
 
-	resp, err := h.httpClient.Do(req)
-	if err != nil {
-		return ICPResponse{Domain: domain, Note: "ICP filing lookup service is temporarily unavailable. Please visit https://beian.miit.gov.cn/ to query manually."}
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return ICPResponse{Domain: domain, Note: "ICP filing lookup service returned an error. Please visit https://beian.miit.gov.cn/ to query manually."}
-	}
-
-	var apiResp struct {
-		Code int `json:"code"`
-		Data struct {
-			ICPNo  string `json:"icpNo"`
-			Name   string `json:"name"`
-			Type   string `json:"type"`
-			Domain string `json:"domain"`
-		} `json:"data"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		return ICPResponse{Domain: domain, Note: "Failed to parse ICP filing data. Please visit https://beian.miit.gov.cn/ to query manually."}
-	}
-
-	if apiResp.Code != 0 || apiResp.Data.ICPNo == "" {
-		return ICPResponse{Domain: domain, Note: "No ICP filing record found"}
-	}
-
+func icpFallback(domain, note string) ICPResponse {
 	return ICPResponse{
-		Domain:    domain,
-		ICPNumber: apiResp.Data.ICPNo,
-		Company:   apiResp.Data.Name,
-		Type:      apiResp.Data.Type,
+		Domain:     domain,
+		Note:       note + ". Please visit https://beian.miit.gov.cn/ to query manually.",
+		InquiryURL: miitInquiryURL(),
 	}
 }
 

@@ -40,7 +40,17 @@
       "title": "域名信息查询",
       "subtitle": "WHOIS • ICP • SSL • DNS 全方位查询",
       "desc": "查询域名注册信息、ICP 备案、SSL 证书状态及 DNS 解析记录。",
-      "placeholder": "请输入域名，如 example.com"
+      "placeholder": "请输入域名，如 example.com",
+      "querying": "查询中...",
+      "queryError": "查询失败：{message}",
+      "noResult": "未查询到结果",
+      "dns": {
+        "typeLabel": "记录类型",
+        "recordsTitle": "解析记录",
+        "noRecords": "未找到 {type} 记录",
+        "valueCol": "记录值",
+        "ttlCol": "TTL"
+      }
     }
   },
   "features": {

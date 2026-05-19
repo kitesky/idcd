@@ -20,14 +20,15 @@ export default function SslInfoClient() {
       loadingLabel={t("probe.loadingLabel")}
       onQuery={getSSLInfo}
       renderResult={(result) => {
+        const days = result.days_until_expiry
         const rows: [string, string][] = [
           [t("probe.result.rows.domain"), result.domain],
           [t("probe.result.rows.issuer"), result.issuer],
-          [t("probe.result.rows.validFrom"), result.valid_from],
-          [t("probe.result.rows.validTo"), result.valid_to],
+          [t("probe.result.rows.validFrom"), result.not_before],
+          [t("probe.result.rows.validTo"), result.not_after],
           [
             t("probe.result.rows.certStatus"),
-            result.is_valid
+            days > 0
               ? t("probe.result.status.valid")
               : t("probe.result.status.invalid"),
           ],
@@ -38,11 +39,11 @@ export default function SslInfoClient() {
               <div className="flex items-center justify-between">
                 <CardTitle>{t("probe.result.title")}</CardTitle>
                 <Badge
-                  variant={result.days_remaining > 30 ? "default" : "destructive"}
+                  variant={days > 30 ? "default" : "destructive"}
                 >
-                  {result.days_remaining > 0
+                  {days > 0
                     ? t("probe.result.expiresInDays", {
-                        days: result.days_remaining,
+                        days,
                       })
                     : t("probe.result.expired")}
                 </Badge>

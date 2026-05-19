@@ -26,6 +26,12 @@ type Executor struct {
 // NewExecutor creates a new task executor with the given secret key for watermarking.
 func NewExecutor(secretKey []byte) *Executor {
 	pingProbe := &probe.PingProbe{}
+	// MTR needs an explicit sender. PingProbe.Sender is lazily initialised on
+	// first Execute(), so reading it during NewExecutor would always be nil —
+	// which silently locked MTR into its single-ping-per-hop fallback path.
+	// Inject ICMPPingSender directly: it tries the unprivileged datagram
+	// socket first (listenICMP4), so it works on macOS without root and on
+	// Linux without CAP_NET_RAW provided ping_group_range covers the agent.
 	return &Executor{
 		httpProbe:       &probe.HTTPProbe{},
 		pingProbe:       pingProbe,
@@ -34,7 +40,7 @@ func NewExecutor(secretKey []byte) *Executor {
 		tracerouteProbe: &probe.TracerouteProbe{},
 		smtpProbe:       &probe.SMTPProbe{},
 		ntpProbe:        &probe.NTPProbe{},
-		mtrProbe:        &probe.MTRProbe{Sender: pingProbe.Sender},
+		mtrProbe:        &probe.MTRProbe{Sender: &probe.ICMPPingSender{}},
 		speedtestProbe:  &probe.SpeedtestProbe{},
 		secretKey:       secretKey,
 	}

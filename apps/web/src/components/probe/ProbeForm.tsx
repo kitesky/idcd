@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Loader2Icon, SendIcon, RadioTowerIcon } from "lucide-react"
 import {
   Card, CardContent, CardHeader, CardTitle,
   Input, Button, Label, Checkbox,
@@ -11,7 +12,12 @@ export type ProbeType = "http" | "ping" | "tcp" | "dns" | "traceroute" | "mtr"
 
 interface ProbeFormProps {
   type: ProbeType
-  onSubmit: (target: string, params: Record<string, unknown>) => void
+  // onSubmit may be async; ProbeForm awaits the returned Promise so the
+  // submit button reflects request state even when callers don't track it.
+  onSubmit: (target: string, params: Record<string, unknown>) => void | Promise<void>
+  // External loading flag (e.g. while polling task status). OR'd with the
+  // internal submitting state so callers can still drive the button after
+  // onSubmit resolves.
   loading?: boolean
 }
 
@@ -21,6 +27,9 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
   const [followRedirect, setFollowRedirect] = useState(true)
   const [count, setCount] = useState("4")
   const [recordType, setRecordType] = useState("A")
+  const [submitting, setSubmitting] = useState(false)
+
+  const busy = loading || submitting
 
   const getPlaceholder = () => {
     switch (type) {
@@ -58,9 +67,9 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
     return true
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!validate() || loading) return
+    if (!validate() || busy) return
 
     const params: Record<string, unknown> = {}
 
@@ -77,7 +86,12 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
       params.record_type = recordType
     }
 
-    onSubmit(target, params)
+    setSubmitting(true)
+    try {
+      await onSubmit(target, params)
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -94,7 +108,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
               placeholder={getPlaceholder()}
               value={target}
               onChange={(e) => setTarget(e.target.value)}
-              disabled={loading}
+              disabled={busy}
             />
           </div>
 
@@ -102,7 +116,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
             <>
               <div className="space-y-2">
                 <Label>请求方法</Label>
-                <Select value={method} onValueChange={setMethod} disabled={loading}>
+                <Select value={method} onValueChange={setMethod} disabled={busy}>
                   <SelectTrigger>
                     <SelectValue />
                   </SelectTrigger>
@@ -118,7 +132,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
                   id="followRedirect"
                   checked={followRedirect}
                   onCheckedChange={(v) => setFollowRedirect(v === true)}
-                  disabled={loading}
+                  disabled={busy}
                 />
                 <Label htmlFor="followRedirect" className="cursor-pointer font-normal">
                   跟随重定向
@@ -130,7 +144,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
           {type === "ping" && (
             <div className="space-y-2">
               <Label>发送次数</Label>
-              <Select value={count} onValueChange={setCount} disabled={loading}>
+              <Select value={count} onValueChange={setCount} disabled={busy}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -146,7 +160,7 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
           {type === "dns" && (
             <div className="space-y-2">
               <Label>记录类型</Label>
-              <Select value={recordType} onValueChange={setRecordType} disabled={loading}>
+              <Select value={recordType} onValueChange={setRecordType} disabled={busy}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -162,8 +176,23 @@ export default function ProbeForm({ type, onSubmit, loading = false }: ProbeForm
             </div>
           )}
 
-          <Button type="submit" disabled={loading || !validate()} className="w-full">
-            {loading ? "拨测中..." : "开始拨测"}
+          <Button type="submit" disabled={busy || !validate()} className="w-full">
+            {submitting ? (
+              <>
+                <Loader2Icon className="size-4 animate-spin" aria-hidden="true" />
+                <span>正在提交</span>
+              </>
+            ) : loading ? (
+              <>
+                <RadioTowerIcon className="size-4 animate-pulse" aria-hidden="true" />
+                <span>拨测进行中</span>
+              </>
+            ) : (
+              <>
+                <SendIcon className="size-4" aria-hidden="true" />
+                <span>开始拨测</span>
+              </>
+            )}
           </Button>
         </form>
       </CardContent>

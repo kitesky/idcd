@@ -6,6 +6,7 @@ import (
 	"math"
 	"net"
 	"os"
+	"syscall"
 	"time"
 )
 
@@ -157,13 +158,36 @@ func calculatePingStats(sent, received int, rtts []time.Duration) PingStats {
 }
 
 // isPermissionError returns true when the error is an OS permission denial,
-// meaning raw socket access (CAP_NET_RAW) is unavailable.
+// meaning raw socket access (CAP_NET_RAW on Linux, root on macOS) is
+// unavailable. icmp.ListenPacket wraps the EPERM inside net.OpError →
+// os.SyscallError → syscall.Errno, so we Unwrap the whole chain. The old
+// version only matched *os.PathError and silently returned false on macOS,
+// leaving the ICMP path active even though every Echo request would fail
+// with "operation not permitted" — visible to users as packets_sent=N /
+// packets_received=0 with an unhelpful "open raw socket" error.
 func isPermissionError(err error) bool {
-	var pe *os.PathError
-	if errors.As(err, &pe) {
-		return os.IsPermission(pe.Err)
+	if err == nil {
+		return false
 	}
-	return os.IsPermission(err)
+	if os.IsPermission(err) {
+		return true
+	}
+	if errors.Is(err, syscall.EPERM) || errors.Is(err, syscall.EACCES) {
+		return true
+	}
+	var pe *os.PathError
+	if errors.As(err, &pe) && os.IsPermission(pe.Err) {
+		return true
+	}
+	var se *os.SyscallError
+	if errors.As(err, &se) && os.IsPermission(se.Err) {
+		return true
+	}
+	var ne *net.OpError
+	if errors.As(err, &ne) && ne.Err != nil {
+		return isPermissionError(ne.Err)
+	}
+	return false
 }
 
 func getIntOption(options map[string]any, key string, defaultValue int) int {

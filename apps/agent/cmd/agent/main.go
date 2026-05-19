@@ -332,19 +332,36 @@ func (a *Agent) handleTask(payload json.RawMessage) error {
 		a.logger.Warn("task: target blocked by netfilter",
 			"task_id", t.ID, "type", t.Type, "target", t.Target, "reason", reason)
 		result := a.failedTaskResult(t, "target blocked by netfilter: "+reason)
-		if err := a.buffer.Store(result); err != nil {
-			a.logger.Error("task: store blocked result", "task_id", t.ID, "err", err)
-		}
+		a.deliverResult(result)
 		return nil
 	}
 
 	result := a.executor.Execute(t)
 	if result != nil {
-		if err := a.buffer.Store(*result); err != nil {
-			a.logger.Error("task: store result", "task_id", t.ID, "err", err)
-		}
+		a.deliverResult(*result)
 	}
 	return nil
+}
+
+// deliverResult tries to ship the result over WebSocket immediately so users
+// see tool-page output within seconds of the probe completing. Earlier
+// versions only wrote to the SQLite buffer and waited on the 30s upload
+// ticker — that one design choice turned every "click ping → see result"
+// flow into a 30-60s lag (worst-case 200s+ with re-buffer / network jitter)
+// and was the primary cause of users seeing "等待节点返回结果..." forever.
+// Falls back to the buffer on send failure so disconnected agents still
+// retry on reconnect.
+func (a *Agent) deliverResult(r probe.Result) {
+	sendErr := a.ws.Send("result", []probe.Result{r})
+	if sendErr == nil {
+		return
+	}
+	a.logger.Warn("task: live upload failed, buffering for retry",
+		"task_id", r.TaskID, "err", sendErr)
+	if err := a.buffer.Store(r); err != nil {
+		a.logger.Error("task: buffer store after live-upload failure",
+			"task_id", r.TaskID, "err", err)
+	}
 }
 
 // checkTaskTarget validates task.Target against the netfilter SSRF policy.

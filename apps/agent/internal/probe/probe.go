@@ -99,10 +99,16 @@ type MXRecord struct {
 }
 
 // TracerouteHop represents a single hop in a traceroute.
+//
+// RTTMs is the per-hop average RTT in **milliseconds** as a float so callers
+// (frontend / MTR aggregator) can keep sub-ms precision without doing unit
+// conversion. Earlier versions stored a raw time.Duration with the same JSON
+// tag, which silently shipped nanoseconds under a `rtt_ms` field name —
+// a 1s RTT showed up as 1_062_638_750 in the UI.
 type TracerouteHop struct {
-	Hop      int           `json:"hop"`
-	IP       string        `json:"ip"`
-	Hostname string        `json:"hostname,omitempty"`
-	RTT      time.Duration `json:"rtt_ms"`
-	Timeout  bool          `json:"timeout"`
+	Hop      int     `json:"hop"`
+	IP       string  `json:"ip"`
+	Hostname string  `json:"hostname,omitempty"`
+	RTTMs    float64 `json:"rtt_ms"`
+	Timeout  bool    `json:"timeout"`
 }

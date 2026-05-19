@@ -11,49 +11,61 @@ import (
 	"github.com/kite365/idcd/lib/shared/netutil"
 )
 
-// CheckTarget validates whether a probe target is allowed and returns
-// the pre-resolved IP (as a string) to eliminate DNS rebinding (TOCTOU).
-// Callers MUST use the returned resolvedAddr instead of the original hostname
-// so that the same IP that passed the check is the one that gets dialed.
-// Returns ("", err) if the target is rejected.
+// CheckTarget validates whether a probe target is allowed. Returns the
+// original (trimmed) target unchanged on success, and ("", err) on rejection.
+//
+// Earlier versions returned the first resolved IP to defeat DNS rebinding
+// (TOCTOU). That broke every probe that needed the original hostname or URL:
+//   - HTTP/Speedtest got a bare IPv6 address with no brackets and no scheme
+//     ("2409:…:59ca"), then url.Parse blew up on the implicit "port".
+//   - DNS got an IP literal instead of a name and dutifully looked up the
+//     A record of "2409:…", returning an empty record set with success=true.
+//
+// The DNS rebinding window is closed inside the agent: lib/shared/netfilter
+// re-checks the host immediately before dial, so a rebind would have to flip
+// IPs in the microseconds between LookupIP and Dial — acceptable for a public
+// reachability tool.
 //
 // Accepts full URLs (http://… or https://…), bare hostnames, or host:port pairs.
-func CheckTarget(target string) (resolvedAddr string, err error) {
+func CheckTarget(target string) (validatedTarget string, err error) {
 	target = strings.TrimSpace(target)
 	if target == "" {
 		return "", fmt.Errorf("target cannot be empty")
 	}
 
-	// Handle full URLs: extract host (and port) from the parsed URL.
+	// hostPort is what the rest of the function inspects. We keep `target`
+	// untouched so the original URL / hostname / host:port flows back to the
+	// caller verbatim.
+	hostPort := target
 	if strings.HasPrefix(target, "http://") || strings.HasPrefix(target, "https://") {
 		u, parseErr := url.Parse(target)
 		if parseErr != nil {
 			return "", fmt.Errorf("invalid URL: %w", parseErr)
 		}
-		target = u.Host // e.g. "example.com" or "example.com:8443"
-		if target == "" {
+		hostPort = u.Host
+		if hostPort == "" {
 			return "", fmt.Errorf("URL has no host")
 		}
 	}
 
 	// Extract host and optional port.
-	host := target
+	host := hostPort
 	port := ""
-	if strings.Contains(target, "]:") {
+	if strings.Contains(hostPort, "]:") {
 		// IPv6 with port: [::1]:8080
-		lastColon := strings.LastIndex(target, ":")
-		host = strings.Trim(target[:lastColon], "[]")
-		port = target[lastColon+1:]
-	} else if strings.Count(target, ":") == 1 {
+		lastColon := strings.LastIndex(hostPort, ":")
+		host = strings.Trim(hostPort[:lastColon], "[]")
+		port = hostPort[lastColon+1:]
+	} else if strings.Count(hostPort, ":") == 1 {
 		// IPv4 or hostname with port: example.com:443 or 1.1.1.1:443
 		var splitErr error
-		host, port, splitErr = net.SplitHostPort(target)
+		host, port, splitErr = net.SplitHostPort(hostPort)
 		if splitErr != nil {
-			host = target
+			host = hostPort
 			port = ""
 		}
 	}
-	// else: bare IPv6 (multiple colons, no brackets) or plain hostname — host == target
+	// else: bare IPv6 (multiple colons, no brackets) or plain hostname — host == hostPort
 
 	if port != "" {
 		portNum, atoiErr := strconv.Atoi(port)
@@ -70,11 +82,7 @@ func CheckTarget(target string) (resolvedAddr string, err error) {
 		if isPrivateIP(ip) {
 			return "", fmt.Errorf("cannot probe private IP addresses")
 		}
-		resolved := ip.String()
-		if port != "" {
-			resolved = net.JoinHostPort(resolved, port)
-		}
-		return resolved, nil
+		return target, nil
 	}
 
 	// Hostname: resolve and check ALL returned IPs to prevent partial-alias bypass.
@@ -92,13 +100,7 @@ func CheckTarget(target string) (resolvedAddr string, err error) {
 		}
 	}
 
-	// Return the first resolved IP so the caller can dial it directly,
-	// avoiding a second DNS lookup that could return a different address.
-	resolved := ips[0].String()
-	if port != "" {
-		resolved = net.JoinHostPort(resolved, port)
-	}
-	return resolved, nil
+	return target, nil
 }
 
 // isPrivateIP reports whether ip is private, reserved, or otherwise denied.

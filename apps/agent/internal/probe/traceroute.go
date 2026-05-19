@@ -16,8 +16,9 @@ const (
 )
 
 // Execute performs a traceroute probe.
-// Uses raw ICMP sockets (CAP_NET_RAW) when available; falls back to a
-// single-hop TCP reachability check when permissions are denied.
+// Uses ICMP sockets (datagram preferred, raw fallback — see listenICMP4) to
+// run a real TTL-walk. Drops back to a single TCP reachability hop only when
+// every ICMP path is denied.
 func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options map[string]any) *Result {
 	start := time.Now()
 
@@ -36,7 +37,7 @@ func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options 
 
 	hops, err := runTraceroute(targetIP.IP, maxHops, timeout)
 	if err != nil {
-		// Degraded mode: single TCP reachability hop (no raw socket permissions)
+		// Degraded mode: single TCP reachability hop (no ICMP socket at all)
 		hops = tcpReachabilityHop(targetIP.IP, timeout)
 	}
 
@@ -52,13 +53,13 @@ func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options 
 
 // runTraceroute executes a real ICMP-based traceroute by incrementing TTL.
 func runTraceroute(dst net.IP, maxHops int, timeout time.Duration) ([]TracerouteHop, error) {
-	recv, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	recv, _, err := listenICMP4()
 	if err != nil {
 		return nil, fmt.Errorf("open recv socket: %w", err)
 	}
 	defer recv.Close()
 
-	send, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	send, writeAddr, err := listenICMP4()
 	if err != nil {
 		return nil, fmt.Errorf("open send socket: %w", err)
 	}
@@ -77,7 +78,7 @@ func runTraceroute(dst net.IP, maxHops int, timeout time.Duration) ([]Traceroute
 	var hops []TracerouteHop
 
 	for ttl := 1; ttl <= maxHops; ttl++ {
-		hop := probeHop(send, recv, dst, ttl, probeID, perHop)
+		hop := probeHop(send, recv, dst, writeAddr, ttl, probeID, perHop)
 		hops = append(hops, hop)
 
 		// Stop when we reach the destination
@@ -91,7 +92,7 @@ func runTraceroute(dst net.IP, maxHops int, timeout time.Duration) ([]Traceroute
 
 // probeHop sends probesPerHop ICMP Echo packets at a given TTL and returns
 // the responding router IP and average RTT.
-func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, probeID int, perHopTimeout time.Duration) TracerouteHop {
+func probeHop(send, recv *icmp.PacketConn, dst net.IP, writeAddr func(net.IP) net.Addr, ttl, probeID int, perHopTimeout time.Duration) TracerouteHop {
 	hop := TracerouteHop{Hop: ttl, Timeout: true}
 
 	if err := send.IPv4PacketConn().SetTTL(ttl); err != nil {
@@ -114,7 +115,7 @@ func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, probeID int, perHopT
 		}
 
 		start := time.Now()
-		if _, err := send.WriteTo(b, &net.IPAddr{IP: dst}); err != nil {
+		if _, err := send.WriteTo(b, writeAddr(dst)); err != nil {
 			continue
 		}
 
@@ -133,14 +134,14 @@ func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, probeID int, perHopT
 
 		switch rm.Type {
 		case ipv4.ICMPTypeTimeExceeded:
-			if peerAddr, ok := peer.(*net.IPAddr); ok {
-				hopIP = peerAddr.IP.String()
+			if ip := peerIP(peer); ip != nil {
+				hopIP = ip.String()
 			}
 			rtts = append(rtts, rtt)
 		case ipv4.ICMPTypeEchoReply:
 			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == probeID {
-				if peerAddr, ok := peer.(*net.IPAddr); ok {
-					hopIP = peerAddr.IP.String()
+				if ip := peerIP(peer); ip != nil {
+					hopIP = ip.String()
 				}
 				rtts = append(rtts, rtt)
 			}
@@ -155,7 +156,7 @@ func probeHop(send, recv *icmp.PacketConn, dst net.IP, ttl, probeID int, perHopT
 	for _, r := range rtts {
 		sum += r
 	}
-	hop.RTT = sum / time.Duration(len(rtts))
+	hop.RTTMs = msFloat(sum / time.Duration(len(rtts)))
 	hop.IP = hopIP
 	hop.Timeout = false
 
@@ -178,7 +179,7 @@ func tcpReachabilityHop(ip net.IP, timeout time.Duration) []TracerouteHop {
 		conn, err := net.DialTimeout("tcp", net.JoinHostPort(ip.String(), port), timeout)
 		if err == nil {
 			conn.Close()
-			hop.RTT = time.Since(start)
+			hop.RTTMs = msFloat(time.Since(start))
 			hop.Timeout = false
 			if names, err := net.LookupAddr(ip.String()); err == nil && len(names) > 0 {
 				hop.Hostname = names[0]

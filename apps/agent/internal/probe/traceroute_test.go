@@ -46,7 +46,7 @@ func TestTCPReachabilityHop_Unreachable(t *testing.T) {
 		t.Errorf("hop number want 1, got %d", hops[0].Hop)
 	}
 	// May or may not timeout depending on environment — just ensure no panic.
-	t.Logf("unreachable hop: timeout=%v rtt=%v", hops[0].Timeout, hops[0].RTT)
+	t.Logf("unreachable hop: timeout=%v rtt_ms=%v", hops[0].Timeout, hops[0].RTTMs)
 }
 
 func TestTracerouteProbe_Execute_Fallback(t *testing.T) {

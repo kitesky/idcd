@@ -109,8 +109,27 @@ func (p *Processor) Process(ctx context.Context, msgID string, values map[string
 		return fmt.Errorf("processor: insert probe_result: %w", err)
 	}
 
-	summaryJSON, _ := json.Marshal(result.summary)
-	if err := p.completeProbeTask(ctx, taskID, summaryJSON); err != nil {
+	// Persist task result with the full result envelope: metadata (node_id,
+	// success, duration_ms, error) alongside the probe-specific data. The
+	// frontend's buildDisplayItems already reads these top-level fields —
+	// writing only summary left node_id="unknown", duration="-" and the
+	// success/failure badge always-false in the tools UI.
+	enriched := map[string]any{
+		"node_id":     nodeID,
+		"success":     result.success,
+		"duration_ms": result.durationMs,
+	}
+	if result.errMsg != "" {
+		enriched["error"] = result.errMsg
+	}
+	for k, v := range result.summary {
+		// Don't let probe payloads collide with metadata keys.
+		if _, reserved := enriched[k]; !reserved {
+			enriched[k] = v
+		}
+	}
+	enrichedJSON, _ := json.Marshal(enriched)
+	if err := p.completeProbeTask(ctx, taskID, enrichedJSON); err != nil {
 		return fmt.Errorf("processor: complete probe_task: %w", err)
 	}
 

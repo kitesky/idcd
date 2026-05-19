@@ -78,9 +78,9 @@ func TestMTRProbe_withMockSender(t *testing.T) {
 
 	// Construct synthetic hops to exercise the ping path.
 	hops := []TracerouteHop{
-		{Hop: 1, IP: "10.0.0.1", RTT: 5 * time.Millisecond, Timeout: false},
+		{Hop: 1, IP: "10.0.0.1", RTTMs: 5, Timeout: false},
 		{Hop: 2, IP: "", Timeout: true}, // timeout hop
-		{Hop: 3, IP: "8.8.8.8", RTT: 20 * time.Millisecond, Timeout: false},
+		{Hop: 3, IP: "8.8.8.8", RTTMs: 20, Timeout: false},
 	}
 
 	result := buildMTRResultWithSender("8.8.8.8", hops, true, sender)
@@ -121,7 +121,7 @@ func TestMTRProbe_withMockSender(t *testing.T) {
 // TestMTRProbe_senderError verifies that a ping error results in 100% loss for that hop.
 func TestMTRProbe_senderError(t *testing.T) {
 	hops := []TracerouteHop{
-		{Hop: 1, IP: "10.0.0.1", RTT: 5 * time.Millisecond, Timeout: false},
+		{Hop: 1, IP: "10.0.0.1", RTTMs: 5, Timeout: false},
 	}
 
 	result := buildMTRResultWithSender("10.0.0.1", hops, true, &mockPingSender{err: errSendFailed})
@@ -194,12 +194,12 @@ func buildMTRResultWithSender(target string, hops []TracerouteHop, targetReached
 				mh.Loss = 100.0
 			}
 		} else {
+			mh.SentPkts = 1
 			mh.RecvPkts = 1
 			mh.Loss = 0
-			rttMs := msFloat(h.RTT)
-			mh.AvgRTTMs = rttMs
-			mh.MinRTTMs = rttMs
-			mh.MaxRTTMs = rttMs
+			mh.AvgRTTMs = h.RTTMs
+			mh.MinRTTMs = h.RTTMs
+			mh.MaxRTTMs = h.RTTMs
 		}
 		mtrHops = append(mtrHops, mh)
 	}

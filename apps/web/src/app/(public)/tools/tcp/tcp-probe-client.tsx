@@ -4,6 +4,7 @@ import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
+import { useProbePolling } from "@/hooks/useProbePolling"
 import { probeTcp } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 
@@ -11,6 +12,7 @@ export default function TcpProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState("")
+  const polling = useProbePolling(taskId)
 
   const handleSubmit = async (target: string, params: Record<string, unknown>) => {
     try {
@@ -38,12 +40,12 @@ export default function TcpProbeClient() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <ProbeForm type="tcp" onSubmit={handleSubmit} loading={false} />
+          <ProbeForm type="tcp" onSubmit={handleSubmit} loading={polling.isPolling} />
           <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
         </div>
 
         <div>
-          <ProbeResults taskId={taskId} error={submitError} />
+          <ProbeResults taskId={taskId} polling={polling} error={submitError} />
         </div>
       </div>
 

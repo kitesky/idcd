@@ -1,6 +1,7 @@
 "use client"
 
 import { useState } from "react"
+import { Loader2Icon, GaugeIcon, ZapIcon } from "lucide-react"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
 import { probeSpeedtest } from "@/lib/api"
@@ -14,7 +15,8 @@ export default function SpeedtestProbeClient() {
   const [submitError, setSubmitError] = useState("")
   const [loading, setLoading] = useState(false)
 
-  const { taskResult } = useProbePolling(taskId)
+  const polling = useProbePolling(taskId)
+  const { taskResult } = polling
 
   const downloadMbps = taskResult?.result
     ? (taskResult.result as Record<string, unknown>)["download_mbps"] as number | undefined
@@ -75,10 +77,25 @@ export default function SpeedtestProbeClient() {
                 </div>
                 <Button
                   type="submit"
-                  disabled={!target.trim() || loading}
+                  disabled={!target.trim() || loading || polling.isPolling}
                   className="w-full"
                 >
-                  {loading ? "测试中..." : "开始测速"}
+                  {loading ? (
+                    <>
+                      <Loader2Icon className="size-4 animate-spin" aria-hidden="true" />
+                      <span>正在提交</span>
+                    </>
+                  ) : polling.isPolling ? (
+                    <>
+                      <GaugeIcon className="size-4 animate-pulse" aria-hidden="true" />
+                      <span>测速进行中</span>
+                    </>
+                  ) : (
+                    <>
+                      <ZapIcon className="size-4" aria-hidden="true" />
+                      <span>开始测速</span>
+                    </>
+                  )}
                 </Button>
               </form>
             </CardContent>
@@ -116,7 +133,7 @@ export default function SpeedtestProbeClient() {
         </div>
 
         <div>
-          <ProbeResults taskId={taskId} error={submitError} />
+          <ProbeResults taskId={taskId} polling={polling} error={submitError} />
         </div>
       </div>
 

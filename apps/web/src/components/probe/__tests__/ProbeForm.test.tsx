@@ -67,7 +67,7 @@ describe('ProbeForm', () => {
     const mockSubmit = vi.fn()
     render(<ProbeForm type="http" onSubmit={mockSubmit} loading={true} />)
 
-    const button = screen.getByRole('button', { name: /拨测中.../ })
+    const button = screen.getByRole('button', { name: /拨测进行中/ })
     expect(button).toBeDisabled()
   })
 

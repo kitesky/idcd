@@ -1,14 +1,47 @@
 "use client"
 
+import { useEffect, useState } from "react"
+import { Loader2Icon, RadioTowerIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
 import { useProbePolling } from "@/hooks/useProbePolling"
-import type { ProbeResult, ProbeTaskResult } from "@/lib/api"
+import { getNodes, type Node, type ProbeResult, type ProbeTaskResult } from "@/lib/api"
 import type { SingleProbeReport } from "@/lib/diagnose-store"
 import ShareResultButton from "./ShareResultButton"
 
+// Module-level cache so multiple ProbeResults instances (one per tool page,
+// plus the diagnose flow's parallel calls) share a single /v1/nodes fetch
+// instead of stampeding it. Stale data is acceptable here — node names are
+// effectively static and the worst case is showing "node-1" instead of the
+// renamed hostname for a few minutes.
+let nodesCache: Node[] | null = null
+let nodesPromise: Promise<Node[]> | null = null
+function fetchNodesOnce(): Promise<Node[]> {
+  if (nodesCache) return Promise.resolve(nodesCache)
+  if (!nodesPromise) {
+    nodesPromise = getNodes()
+      .then((n) => { nodesCache = n; return n })
+      .catch((err) => { nodesPromise = null; throw err })
+  }
+  return nodesPromise
+}
+
+// PollingState mirrors the shape returned by useProbePolling so callers can
+// either let ProbeResults drive its own polling (legacy single-tool pages and
+// tests) or lift the hook to the page so the submit button can react to
+// isPolling — see *-probe-client.tsx in (public)/tools/*.
+type PollingState = {
+  taskResult: ProbeTaskResult | null
+  isPolling: boolean
+  error: string
+}
+
 interface ProbeResultsProps {
   result?: ProbeResult | null  // legacy prop mode
-  taskId?: string | null       // new polling mode
+  taskId?: string | null       // new polling mode (managed internally)
+  // When provided, ProbeResults consumes this polling state instead of
+  // calling useProbePolling itself — required to share polling state with
+  // the ProbeForm submit button.
+  polling?: PollingState
   loading?: boolean
   error?: string
   // When set, render a "Share Result" button once the task reaches a terminal state.
@@ -26,6 +59,43 @@ interface DisplayItem {
   latency_ms?: number
   error?: string
   details?: Record<string, unknown>
+}
+
+// Human-readable labels for the most common probe-payload fields. Anything
+// not in the table falls back to the raw key, so adding a new probe type
+// doesn't break this — it just shows a slightly less polished label.
+const DETAIL_LABELS: Record<string, string> = {
+  packets_sent: "发送",
+  packets_received: "接收",
+  packet_loss: "丢包",
+  min_ms: "最小",
+  avg_ms: "平均",
+  max_ms: "最大",
+  stddev_ms: "抖动",
+  status_code: "状态码",
+  dns_lookup_ms: "DNS",
+  tcp_connect_ms: "TCP",
+  tls_handshake_ms: "TLS",
+  ttfb_ms: "TTFB",
+  download_mbps: "下载",
+  upload_mbps: "上传",
+  records: "记录",
+  total_hops: "跳数",
+  target_reached: "到达",
+}
+
+function formatDetailValue(key: string, value: unknown): string {
+  if (value === null || value === undefined) return "-"
+  if (typeof value === "number") {
+    if (key === "packet_loss") return `${value}%`
+    if (key.endsWith("_ms")) return `${value} ms`
+    if (key.endsWith("_mbps")) return `${value.toFixed(1)} Mbps`
+    return String(value)
+  }
+  if (typeof value === "boolean") return value ? "是" : "否"
+  if (Array.isArray(value)) return `${value.length} 条`
+  if (typeof value === "object") return JSON.stringify(value)
+  return String(value)
 }
 
 function buildDisplayItems(
@@ -56,16 +126,38 @@ function buildDisplayItems(
 export default function ProbeResults({
   result,
   taskId,
+  polling,
   loading = false,
   error: externalError,
   shareContext,
 }: ProbeResultsProps) {
-  const { taskResult, isPolling, error: pollError } = useProbePolling(taskId ?? null)
+  // Always call the hook (rules of hooks); pass null when the parent already
+  // owns the polling state via `polling` so we don't double-poll the API.
+  const internal = useProbePolling(polling ? null : taskId ?? null)
+  const { taskResult, isPolling, error: pollError } = polling ?? internal
+
+  const [nodeNameById, setNodeNameById] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let cancelled = false
+    fetchNodesOnce()
+      .then((nodes) => {
+        if (cancelled) return
+        const map: Record<string, string> = {}
+        for (const n of nodes) map[n.id] = n.name || n.id
+        setNodeNameById(map)
+      })
+      .catch(() => { /* fall back to raw node_id */ })
+    return () => { cancelled = true }
+  }, [])
 
   const isLoading = loading || isPolling
   const error = externalError || pollError
 
-  const displayItems = buildDisplayItems(result, taskResult)
+  const rawItems = buildDisplayItems(result, taskResult)
+  const displayItems = rawItems.map((it) => ({
+    ...it,
+    node_name: it.node_name ?? nodeNameById[it.node_id],
+  }))
   const successCount = displayItems.filter(r => r.success).length
   const totalCount = displayItems.length
 
@@ -82,7 +174,10 @@ export default function ProbeResults({
             ))}
           </div>
           {isPolling && (
-            <p className="text-xs text-muted-foreground mt-2">等待节点返回结果...</p>
+            <div className="mt-4 flex items-center gap-2 text-xs text-muted-foreground">
+              <Loader2Icon className="size-3.5 animate-spin" aria-hidden="true" />
+              <span>等待节点返回结果...</span>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -144,7 +239,10 @@ export default function ProbeResults({
       <CardContent>
         {isPolling && (
           <div className="mb-4">
-            <Badge>正在获取结果...</Badge>
+            <Badge className="gap-1.5">
+              <RadioTowerIcon className="size-3 animate-pulse" aria-hidden="true" />
+              正在获取结果
+            </Badge>
           </div>
         )}
 
@@ -180,7 +278,21 @@ export default function ProbeResults({
                       {item.latency_ms !== undefined ? `${item.latency_ms} ms` : "-"}
                     </td>
                     <td className="py-3 px-3 text-muted-foreground">
-                      {item.error ?? (item.details ? JSON.stringify(item.details) : "-")}
+                      {item.error && (
+                        <div className="mb-1 text-destructive break-all">{item.error}</div>
+                      )}
+                      {item.details && Object.keys(item.details).length > 0 ? (
+                        <div className="flex flex-wrap gap-x-3 gap-y-1">
+                          {Object.entries(item.details).map(([k, v]) => (
+                            <span key={k} className="whitespace-nowrap">
+                              <span className="text-foreground/60">{DETAIL_LABELS[k] ?? k}:</span>{" "}
+                              <span className="text-foreground">{formatDetailValue(k, v)}</span>
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        !item.error && <span>-</span>
+                      )}
                     </td>
                   </tr>
                 ))

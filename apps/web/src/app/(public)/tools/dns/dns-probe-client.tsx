@@ -4,6 +4,7 @@ import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
+import { useProbePolling } from "@/hooks/useProbePolling"
 import { probeDns } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 
@@ -12,6 +13,7 @@ export default function DnsProbeClient() {
   const [taskId, setTaskId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState("")
   const [shareCtx, setShareCtx] = useState<{ target: string; params: Record<string, unknown> } | null>(null)
+  const polling = useProbePolling(taskId)
 
   const handleSubmit = async (target: string, params: Record<string, unknown>) => {
     try {
@@ -41,13 +43,14 @@ export default function DnsProbeClient() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <ProbeForm type="dns" onSubmit={handleSubmit} loading={false} />
+          <ProbeForm type="dns" onSubmit={handleSubmit} loading={polling.isPolling} />
           <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
         </div>
 
         <div>
           <ProbeResults
             taskId={taskId}
+            polling={polling}
             error={submitError}
             shareContext={shareCtx ? { tool: "dns", ...shareCtx } : undefined}
           />

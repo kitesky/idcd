@@ -37,6 +37,10 @@ var errNoActiveProbeNode = errors.New("no active probe node available")
 type ProbeHandler struct {
 	pool         ProbePool
 	streamClient *stream.Client
+	// pinNode forces unspecified-node tasks to a fixed node_id when non-empty
+	// (server.pin_probe_node in config). Dev-only escape hatch — see
+	// ServerConfig.PinProbeNode for the rationale.
+	pinNode string
 }
 
 // ProbePool is the interface for database operations.
@@ -51,6 +55,15 @@ func NewProbeHandler(pool ProbePool, streamClient *stream.Client) *ProbeHandler 
 		pool:         pool,
 		streamClient: streamClient,
 	}
+}
+
+// WithPinNode returns a copy of the handler that pins unspecified-node tasks
+// to the given node_id. Intended for development/test wiring only — production
+// callers should leave the handler unpinned so the normal balancer runs.
+func (h *ProbeHandler) WithPinNode(nodeID string) *ProbeHandler {
+	c := *h
+	c.pinNode = nodeID
+	return &c
 }
 
 // ProbeRequest is the common request structure for probe endpoints.
@@ -329,13 +342,36 @@ func (h *ProbeHandler) createProbeTask(
 // node or wait for an existing one to come online). Any other error is a real
 // DB failure and is wrapped, so the caller can map it to 500.
 func (h *ProbeHandler) resolveActiveNodeID(ctx context.Context) (string, error) {
+	// Pinned-node escape hatch: dev / test setups that share a redis with
+	// other gateways can lock all probes to one node_id to dodge the random
+	// pick. Verify the pinned node is still active before honoring it; fall
+	// through to the normal balancer otherwise so a stale pin can't take the
+	// whole service down.
+	if h.pinNode != "" {
+		var found string
+		err := h.pool.QueryRow(ctx,
+			`SELECT node_id FROM enrolled_nodes WHERE node_id=$1 AND status='active'`,
+			h.pinNode,
+		).Scan(&found)
+		if err == nil && found != "" {
+			return found, nil
+		}
+	}
+
 	var nodeID string
-	// ORDER BY random() spreads load across all active nodes instead of
-	// letting Postgres pick whichever row the current plan happens to read
-	// first — without an ORDER BY clause the result was effectively pinned
-	// to one node and hot-spotted under steady traffic.
+	// Two-tier ordering: nodes whose last heartbeat is recent (within ~2x the
+	// agent's 30s heartbeat interval) sort first, stale rows second. Inside
+	// each bucket the order is randomised to balance load. This prevents the
+	// common dev scenario where an "active"-but-actually-offline node (left
+	// over from an earlier shell session, crashed agent, or remote node
+	// without a live ws) gets picked and the task sits forever in the
+	// gateway's PEL while a healthy node sits idle. If every active node is
+	// stale, the second bucket still wins — preserving the legacy behavior
+	// rather than failing closed.
 	err := h.pool.QueryRow(ctx,
-		`SELECT node_id FROM enrolled_nodes WHERE status='active' ORDER BY random() LIMIT 1`,
+		`SELECT node_id FROM enrolled_nodes WHERE status='active' `+
+			`ORDER BY CASE WHEN last_seen_at IS NOT NULL AND last_seen_at > NOW() - INTERVAL '60 seconds' `+
+			`THEN 0 ELSE 1 END, random() LIMIT 1`,
 	).Scan(&nodeID)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

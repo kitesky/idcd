@@ -57,7 +57,14 @@ func (s *Server) setupRouter() {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(60 * time.Second))
+	// NOTE: middleware.Timeout intentionally not mounted at the router level.
+	// It cancels r.Context() after the configured duration and wraps the
+	// ResponseWriter, which kills long-lived WebSocket connections on
+	// /agent/ws (the wrapper closes the underlying conn the moment the ctx
+	// expires, even though the WS body has been hijacked). Per-handler
+	// timeouts (chi has middleware.WithValue, REST endpoints can use their
+	// own per-request ctx) cover the slow-handler threat surface without
+	// the WS-killer side effect.
 
 	healthHandler := handler.NewHealthHandler(s.hub, s.redis, s.logger)
 	r.Get("/health", healthHandler.Health)
@@ -133,10 +140,19 @@ func newCertSvcProxy(rawURL string, logger *slog.Logger) (http.Handler, error) {
 
 func (s *Server) setupHTTPServer() {
 	s.httpServer = &http.Server{
-		Addr:              s.config.ListenAddr,
-		Handler:           s.router,
-		ReadTimeout:       30 * time.Second,
-		WriteTimeout:      30 * time.Second,
+		Addr:    s.config.ListenAddr,
+		Handler: s.router,
+		// ReadTimeout / WriteTimeout intentionally unset: the gateway carries
+		// long-lived WebSocket connections on /agent/ws, and Go's
+		// ReadTimeout fires from-request-start through body-end, which on
+		// a hijacked WS connection severs the underlying TCP at ~30s and
+		// causes "websocket: close 1006 (abnormal closure): unexpected EOF"
+		// reconnect storms. Per-handler timeouts (chi middleware.Timeout
+		// for non-WS routes, hub heartbeat/pong deadlines for WS) cover
+		// the same threat surface without the WS-killer side effect.
+		//
+		// Slowloris is still mitigated by ReadHeaderTimeout, which only
+		// gates the time spent reading request headers.
 		IdleTimeout:       120 * time.Second,
 		ReadHeaderTimeout: 5 * time.Second,
 	}

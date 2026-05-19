@@ -103,11 +103,12 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 				mh.Loss = 100.0
 			}
 		} else {
+			mh.SentPkts = 1
 			mh.RecvPkts = 1
-			rttMs := msFloat(h.RTT)
-			mh.AvgRTTMs = rttMs
-			mh.MinRTTMs = rttMs
-			mh.MaxRTTMs = rttMs
+			mh.Loss = 0
+			mh.AvgRTTMs = h.RTTMs
+			mh.MinRTTMs = h.RTTMs
+			mh.MaxRTTMs = h.RTTMs
 		}
 	}
 

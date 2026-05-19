@@ -4,7 +4,7 @@ import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
 import ProbeResults from "@/components/probe/ProbeResults"
-import { probeMtr } from "@/lib/api"
+import { probeMtr, type ProbeTaskResult } from "@/lib/api"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
 import { Badge } from "@/components/ui/badge"
@@ -101,9 +101,7 @@ function MTRHopTable({ hops }: { hops: MTRHop[] }) {
   )
 }
 
-function MTRHopSection({ taskId }: { taskId: string | null }) {
-  const { taskResult } = useProbePolling(taskId)
-
+function MTRHopSection({ taskResult }: { taskResult: ProbeTaskResult | null }) {
   if (!taskResult?.result) return null
 
   // The probe result data is nested under result.data for MTR.
@@ -140,6 +138,7 @@ export default function MTRProbeClient() {
   const [selectedNodes, setSelectedNodes] = useState<string[]>([])
   const [taskId, setTaskId] = useState<string | null>(null)
   const [submitError, setSubmitError] = useState("")
+  const polling = useProbePolling(taskId)
 
   const handleSubmit = async (target: string, params: Record<string, unknown>) => {
     try {
@@ -167,16 +166,16 @@ export default function MTRProbeClient() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <div className="space-y-6">
-          <ProbeForm type="mtr" onSubmit={handleSubmit} loading={false} />
+          <ProbeForm type="mtr" onSubmit={handleSubmit} loading={polling.isPolling} />
           <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
         </div>
 
         <div>
-          <ProbeResults taskId={taskId} error={submitError} />
+          <ProbeResults taskId={taskId} polling={polling} error={submitError} />
         </div>
       </div>
 
-      <MTRHopSection taskId={taskId} />
+      <MTRHopSection taskResult={polling.taskResult} />
 
       <Card>
         <CardHeader>

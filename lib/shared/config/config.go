@@ -103,6 +103,14 @@ type ServerConfig struct {
 	// from request headers like Origin/Host — a tampered client header
 	// would redirect refund / payment webhooks to an attacker URL.
 	PublicAPIURL string `yaml:"public_api_url"`
+	// PinProbeNode forces every unspecified-node probe / diagnose task to be
+	// routed to this node_id, bypassing the normal random-balance over all
+	// active enrolled_nodes. Intended for shared-redis dev setups where
+	// multiple gateways consume the same probe.tasks stream and the random
+	// pick routes ~50% of tasks to nodes whose agent is connected to a
+	// different gateway — leaving them stuck in PEL. Leave empty in
+	// production so the load-balancer behaviour is preserved.
+	PinProbeNode string `yaml:"pin_probe_node"`
 }
 
 type JWTConfig struct {

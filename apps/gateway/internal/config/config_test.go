@@ -18,8 +18,8 @@ func TestDefault(t *testing.T) {
 		t.Errorf("expected RedisAddr %q, got %q", "localhost:6379", cfg.RedisAddr)
 	}
 
-	if cfg.HeartbeatTimeout != 30*time.Second {
-		t.Errorf("expected HeartbeatTimeout %v, got %v", 30*time.Second, cfg.HeartbeatTimeout)
+	if cfg.HeartbeatTimeout != 90*time.Second {
+		t.Errorf("expected HeartbeatTimeout %v, got %v", 90*time.Second, cfg.HeartbeatTimeout)
 	}
 
 	if cfg.MaxConnections != 10000 {

@@ -51,11 +51,14 @@ func (s *ICMPPingSender) SendPing(target string, timeout time.Duration, count in
 	return pingIPv6(ip, timeout, count)
 }
 
-// pingIPv4 sends ICMP Echo Requests using IPv4 raw socket.
+// pingIPv4 sends ICMP Echo Requests using an IPv4 ICMP socket.
+// Uses an unprivileged datagram socket when the kernel allows it (Darwin
+// always; Linux when ping_group_range covers the agent's gid), and falls
+// back to a raw socket for hardened containers / older kernels.
 func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	conn, writeAddr, err := listenICMP4()
 	if err != nil {
-		return PingStats{PacketsSent: count}, fmt.Errorf("open raw socket: %w", err)
+		return PingStats{PacketsSent: count}, fmt.Errorf("open icmp socket: %w", err)
 	}
 	defer conn.Close()
 
@@ -85,7 +88,7 @@ func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 		start := time.Now()
 		sent++
 
-		if _, err := conn.WriteTo(b, &net.IPAddr{IP: ip}); err != nil {
+		if _, err := conn.WriteTo(b, writeAddr(ip)); err != nil {
 			continue
 		}
 
@@ -112,11 +115,12 @@ func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 	return buildPingStats(sent, received, rtts), nil
 }
 
-// pingIPv6 sends ICMPv6 Echo Requests.
+// pingIPv6 sends ICMPv6 Echo Requests. See pingIPv4 for the datagram/raw
+// fallback rationale.
 func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
-	conn, err := icmp.ListenPacket("ip6:ipv6-icmp", "::")
+	conn, writeAddr, err := listenICMP6()
 	if err != nil {
-		return PingStats{PacketsSent: count}, fmt.Errorf("open raw ipv6 socket: %w", err)
+		return PingStats{PacketsSent: count}, fmt.Errorf("open icmp6 socket: %w", err)
 	}
 	defer conn.Close()
 
@@ -146,7 +150,7 @@ func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 		start := time.Now()
 		sent++
 
-		if _, err := conn.WriteTo(b, &net.IPAddr{IP: ip}); err != nil {
+		if _, err := conn.WriteTo(b, writeAddr(ip)); err != nil {
 			continue
 		}
 

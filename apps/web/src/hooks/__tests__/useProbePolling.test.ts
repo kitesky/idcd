@@ -155,7 +155,7 @@ describe('useProbePolling', () => {
     expect(result.current.taskResult?.status).toBe('completed')
   })
 
-  it('超过 30s 超时后停止轮询并设置超时错误', async () => {
+  it('超过 120s 超时后停止轮询并设置超时错误', async () => {
     // 一直返回 running
     mockGetProbeTask.mockResolvedValue({
       task_id: 'pt_timeout',
@@ -174,8 +174,8 @@ describe('useProbePolling', () => {
       await Promise.resolve()
     })
 
-    // 推进系统时间超过 30s，使得超时检查生效
-    vi.setSystemTime(startTime + 31_000)
+    // 推进系统时间超过 120s，使得超时检查生效
+    vi.setSystemTime(startTime + 121_000)
 
     // 推进 2s 定时器，让下一次 poll 尝试触发（超时检查会拦截）
     await act(async () => {
@@ -183,7 +183,7 @@ describe('useProbePolling', () => {
       await Promise.resolve()
     })
 
-    expect(result.current.error).toBe('拨测超时（30s），请重试')
+    expect(result.current.error).toBe('拨测超时（120s），请重试')
     expect(result.current.isPolling).toBe(false)
   })
 })

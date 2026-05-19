@@ -98,7 +98,16 @@ func Default() *Config {
 		RedisAddr:        "localhost:6379",
 		RedisPassword:    "",
 		RedisDB:          0,
-		HeartbeatTimeout: 30 * time.Second,
+		// Must be >= 2x the agent's heartbeat interval (apps/agent sends one
+		// application-level "heartbeat" message every 30s). At the old 30s value
+		// the comparison `now - LastHB > 30s` flickered into "true" whenever
+		// the agent's next heartbeat slipped behind the gateway's check ticker
+		// by even a few hundred ms — typical of a remote DB heartbeat handler
+		// or scheduler jitter — and the hub evicted the still-healthy node,
+		// causing the "WS connects → ~30s later disconnects → reconnects"
+		// reconnect storm. 90s gives two full agent heartbeat windows of slack
+		// before declaring a node stale.
+		HeartbeatTimeout: 90 * time.Second,
 		MaxConnections:   10000,
 		Env:              "development",
 	}

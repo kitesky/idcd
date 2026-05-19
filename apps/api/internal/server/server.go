@@ -371,6 +371,9 @@ func (s *Server) setupRouter() {
 			// Probe endpoints
 			streamClient := stream.New(s.redis)
 			probeH := handler.NewProbeHandler(s.pgxPool, streamClient)
+			if s.config.Server.PinProbeNode != "" {
+				probeH = probeH.WithPinNode(s.config.Server.PinProbeNode)
+			}
 			// Probe creation runs anonymously (public tool pages) — auth is
 			// optional. Wrapping the route group with OptionalAuthnWithTokens
 			// lets the handlers see the caller's user_id / api_key_id when
@@ -385,6 +388,9 @@ func (s *Server) setupRouter() {
 				r.Post("/http", probeH.HTTP)
 				r.Post("/ping", probeH.Ping)
 				r.Post("/tcp", probeH.TCP)
+				// /tcping 是 /tcp 的别名 — 前端 TCP / TCPing 工具页都走这个 handler。
+				// 拨测语义本身是 TCP 三次握手 RTT，名字按习惯保留两种。
+				r.Post("/tcping", probeH.TCP)
 				r.Post("/dns", probeH.DNS)
 				r.Post("/traceroute", probeH.Traceroute)
 				// T12–T14 + N4 — handler 已存在但未挂载

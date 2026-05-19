@@ -173,6 +173,20 @@ func (h *WSHandler) ServeWS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Clear server-level Read/Write deadlines before upgrading: the parent
+	// http.Server sets ReadTimeout=30s (server.go), which is from-request-start
+	// to body-end and silently kills WebSocket connections at 30s. After the
+	// upgrade, deadlines are managed by readPump (SetReadDeadline on every
+	// pong) and writePump — those want to control the connection lifetime
+	// without the server-wide cap fighting them.
+	rc := http.NewResponseController(w)
+	if err := rc.SetReadDeadline(time.Time{}); err != nil {
+		h.logger.Warn("ws: clear ReadDeadline failed", "err", err, "node_id", nodeID)
+	}
+	if err := rc.SetWriteDeadline(time.Time{}); err != nil {
+		h.logger.Warn("ws: clear WriteDeadline failed", "err", err, "node_id", nodeID)
+	}
+
 	conn, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		h.logger.Error("websocket upgrade failed", "err", err, "node_id", nodeID)
@@ -472,10 +486,22 @@ func queryPendingCommands(ctx context.Context, pool NodeAuthPool, nodeID string)
 
 // ── result / ack / cmd_ack ────────────────────────────────────────────────────
 
-// probeResultItem is the minimal structure parsed from a probe result.
+// probeResultItem mirrors apps/agent/internal/probe.Result on the wire.
+// Earlier versions only kept TaskID + Data and silently discarded success /
+// duration / error / watermark. The aggregator reads those fields via the
+// stream payload (raw / summary / duration_ms / success / error / signature),
+// so dropping them on the floor here left probe_task.result = {} for every
+// tool-page submission. Keep this struct in sync with probe.Result.
 type probeResultItem struct {
-	TaskID string         `json:"task_id"`
-	Data   map[string]any `json:"data"`
+	TaskID     string         `json:"task_id"`
+	NodeID     string         `json:"node_id"`
+	Type       string         `json:"type"`
+	Target     string         `json:"target"`
+	Success    bool           `json:"success"`
+	Data       map[string]any `json:"data"`
+	Error      string         `json:"error,omitempty"`
+	Watermark  string         `json:"watermark"`
+	DurationMs int64          `json:"duration_ms"`
 }
 
 func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) error {
@@ -525,7 +551,21 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 			}
 		}
 
-		streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, result.Data)
+		// Map agent Result -> stream schema the aggregator expects.
+		// raw carries the full probe-specific payload; summary mirrors it for
+		// now since tools like ping/dns/http don't produce a separate roll-up.
+		// duration / success / error / signature land as scalar fields so
+		// processor.parseResult can decode them without unwrapping JSON.
+		rawJSON, _ := json.Marshal(result.Data)
+		streamPayload := map[string]any{
+			"raw":         string(rawJSON),
+			"summary":     string(rawJSON),
+			"duration_ms": result.DurationMs,
+			"success":     result.Success,
+			"error":       result.Error,
+			"signature":   result.Watermark,
+		}
+		streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, streamPayload)
 		if err != nil {
 			h.logger.Error("failed to write result to stream", "task_id", result.TaskID, "err", err)
 			continue

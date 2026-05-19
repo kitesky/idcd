@@ -38,10 +38,9 @@ import (
 //   - claimMinIdle: PEL 中超过此时长仍未 ACK 的任务允许被其他 dispatcher
 //     XAutoClaim 接管，应大于单次任务处理 P99 时延。
 const (
-	consumerGroup = "gateway-dispatch"
-	batchSize     = 20
-	blockTimeout  = 2 * time.Second
-	claimMinIdle  = 60 * time.Second
+	batchSize    = 20
+	blockTimeout = 2 * time.Second
+	claimMinIdle = 60 * time.Second
 
 	// redisBusyGroup is the error string Redis returns when the consumer group already exists.
 	redisBusyGroup = "BUSYGROUP Consumer Group name already exists"
@@ -61,6 +60,7 @@ type taskMessage struct {
 type Dispatcher struct {
 	rdb          redis.Cmdable
 	hub          *hub.Hub
+	group        string
 	consumerName string
 	logger       *slog.Logger
 
@@ -71,12 +71,25 @@ type Dispatcher struct {
 
 // New creates a Dispatcher. consumerName should be unique per gateway instance
 // (e.g. hostname). Call Run(ctx) to start.
+//
+// The consumer-group name comes from the GATEWAY_DISPATCH_GROUP env var when
+// set, otherwise defaults to "gateway-dispatch". Override is needed for dev
+// setups that share a redis with a production gateway: using the same group
+// means redis load-balances each task to exactly one consumer (dev or prod),
+// so half the time a tool-page probe lands on the *other* gateway and stalls
+// in PEL because that gateway doesn't have the target agent's ws. Setting a
+// dev-only group gives each gateway its own copy of the stream and lets it
+// only ACK the tasks whose node_id it can actually serve.
 func New(rdb redis.Cmdable, h *hub.Hub, logger *slog.Logger) *Dispatcher {
-	name := consumerName()
+	group := os.Getenv("GATEWAY_DISPATCH_GROUP")
+	if group == "" {
+		group = "gateway-dispatch"
+	}
 	return &Dispatcher{
 		rdb:          rdb,
 		hub:          h,
-		consumerName: name,
+		group:        group,
+		consumerName: consumerName(),
 		logger:       logger,
 	}
 }
@@ -90,7 +103,7 @@ func (d *Dispatcher) Run(ctx context.Context) {
 
 	d.logger.Info("dispatcher started",
 		"stream", probeTasksStream,
-		"group", consumerGroup,
+		"group", d.group,
 		"consumer", d.consumerName)
 
 	// Reclaim any messages abandoned by a crashed previous instance.
@@ -175,8 +188,18 @@ func (d *Dispatcher) dispatch(_ context.Context, msg redis.XMessage) bool {
 }
 
 // ensureGroup creates the consumer group (MKSTREAM creates the stream if absent).
+// The default group ("gateway-dispatch") starts from "0" so a brand-new
+// production deployment will replay any tasks that landed before it came up.
+// Custom dev groups (GATEWAY_DISPATCH_GROUP override) start from "$" instead
+// — they only fire on tasks queued *after* the dev gateway connects, which
+// avoids ingesting the full historical backlog of node_ids that this dev
+// gateway can't serve and would just churn PEL forever.
 func (d *Dispatcher) ensureGroup(ctx context.Context) error {
-	err := d.rdb.XGroupCreateMkStream(ctx, probeTasksStream, consumerGroup, "0").Err()
+	startID := "0"
+	if d.group != "gateway-dispatch" {
+		startID = "$"
+	}
+	err := d.rdb.XGroupCreateMkStream(ctx, probeTasksStream, d.group, startID).Err()
 	if err != nil && err.Error() != redisBusyGroup {
 		return fmt.Errorf("XGroupCreateMkStream: %w", err)
 	}
@@ -186,7 +209,7 @@ func (d *Dispatcher) ensureGroup(ctx context.Context) error {
 // readGroup reads up to batchSize new messages from the consumer group.
 func (d *Dispatcher) readGroup(ctx context.Context) ([]redis.XMessage, error) {
 	streams, err := d.rdb.XReadGroup(ctx, &redis.XReadGroupArgs{
-		Group:    consumerGroup,
+		Group:    d.group,
 		Consumer: d.consumerName,
 		Streams:  []string{probeTasksStream, ">"},
 		Count:    batchSize,
@@ -206,7 +229,7 @@ func (d *Dispatcher) readGroup(ctx context.Context) ([]redis.XMessage, error) {
 
 // ack acknowledges successful processing of a message.
 func (d *Dispatcher) ack(ctx context.Context, msgID string) {
-	if err := d.rdb.XAck(ctx, probeTasksStream, consumerGroup, msgID).Err(); err != nil {
+	if err := d.rdb.XAck(ctx, probeTasksStream, d.group, msgID).Err(); err != nil {
 		d.logger.Warn("dispatcher: XAck failed", "msg_id", msgID, "err", err)
 	}
 }
@@ -222,7 +245,7 @@ func (d *Dispatcher) reclaimPending(ctx context.Context) {
 
 	msgs, next, err := d.rdb.XAutoClaim(ctx, &redis.XAutoClaimArgs{
 		Stream:   probeTasksStream,
-		Group:    consumerGroup,
+		Group:    d.group,
 		Consumer: d.consumerName,
 		MinIdle:  claimMinIdle,
 		Start:    start,

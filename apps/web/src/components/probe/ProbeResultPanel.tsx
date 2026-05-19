@@ -2,6 +2,10 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Copy, Check, ChevronLeft, ChevronRight } from "lucide-react"
+import {
+  Bar, BarChart, CartesianGrid, ResponsiveContainer,
+  Tooltip, XAxis, YAxis, type TooltipContentProps,
+} from "recharts"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { cn } from "@/lib/utils"
@@ -22,13 +26,16 @@ export interface ResultRow {
   success: boolean
   latency_ms?: number
   error?: string
-  // HTTP timing breakdown (from details)
+  // HTTP timing breakdown (from details). server_ms is the new pure
+  // server-processing slice (ttfb minus dns/connect/ssl) — the stacked bar
+  // chart uses this instead of ttfb_ms so phases sum to total_ms.
   status_code?: number
   redirect_ms?: number
   dns_ms?: number
   connect_ms?: number
   ssl_ms?: number
   ttfb_ms?: number
+  server_ms?: number
   download_ms?: number
   body_size?: number
   resolved_ip?: string
@@ -48,8 +55,9 @@ function parseRow(item: NonNullable<ProbeResult["results"]>[number]): ResultRow 
     connect_ms:  d.connect_ms as number | undefined,
     ssl_ms:      d.ssl_ms as number | undefined,
     ttfb_ms:     d.ttfb_ms as number | undefined,
+    server_ms:   d.server_ms as number | undefined,
     download_ms: d.download_ms as number | undefined,
-    body_size:   d.body_size as number | undefined,
+    body_size:   (d.body_size ?? d.downloaded_bytes) as number | undefined,
     resolved_ip: (d.resolved_ip ?? d.ip) as string | undefined,
   }
 }
@@ -90,32 +98,80 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-// ── StackedBar ────────────────────────────────────────────────────────────────
+// ── StackedBar (recharts) ─────────────────────────────────────────────────────
 
+// Each phase is stacked into a single bar per node. Order matters — paints
+// bottom-up in the same sequence as HTTP_PHASES, so "重定向" is at the bottom
+// and "下载" caps the bar.
 const HTTP_PHASES = [
   { key: "redirect_ms", label: "重定向", color: "#3b82f6" },
   { key: "dns_ms",      label: "解析",   color: "#6366f1" },
   { key: "connect_ms",  label: "建连",   color: "#f59e0b" },
   { key: "ssl_ms",      label: "SSL",    color: "#10b981" },
-  { key: "ttfb_ms",     label: "首包",   color: "#22d3ee" },
+  { key: "server_ms",   label: "首包",   color: "#22d3ee" },
   { key: "download_ms", label: "下载",   color: "#a3e635" },
 ] as const
 
-function StackedBarChart({ rows }: { rows: ResultRow[] }) {
-  const maxTotal = Math.max(...rows.map(r =>
-    HTTP_PHASES.reduce((s, p) => s + (r[p.key] ?? 0), 0)
-  ), 1)
+type PhaseKey = typeof HTTP_PHASES[number]["key"]
 
-  const BAR_HEIGHT = 180
+interface StackedTooltipItem {
+  dataKey?: string | number
+  name?: string | number
+  value?: number | string | (number | string)[]
+  color?: string
+  payload?: Record<string, unknown>
+}
+
+function StackedTooltip({ active, payload, label }: TooltipContentProps<number, string>) {
+  if (!active || !payload || payload.length === 0) return null
+  const items = payload as unknown as StackedTooltipItem[]
+  const total = items.reduce((s, it) => {
+    const v = typeof it.value === "number" ? it.value : 0
+    return s + v
+  }, 0)
+  return (
+    <div className="rounded-md border border-border/50 bg-popover px-3 py-2 text-xs shadow-md">
+      <p className="font-medium mb-1.5 text-foreground">{label}</p>
+      <div className="space-y-1">
+        {items.filter((it) => typeof it.value === "number" && (it.value as number) > 0).map((it) => {
+          const phase = HTTP_PHASES.find((p) => p.key === it.dataKey)
+          const v = typeof it.value === "number" ? it.value : 0
+          return (
+            <div key={String(it.dataKey)} className="flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ background: phase?.color ?? it.color }} />
+              <span className="text-muted-foreground">{phase?.label ?? String(it.dataKey)}</span>
+              <span className="ml-auto font-mono tabular-nums text-foreground">{v} ms</span>
+            </div>
+          )
+        })}
+      </div>
+      <p className="border-t mt-1.5 pt-1.5 flex justify-between text-foreground font-medium">
+        <span>合计</span>
+        <span className="font-mono tabular-nums">{total} ms</span>
+      </p>
+    </div>
+  )
+}
+
+function StackedBarChart({ rows }: { rows: ResultRow[] }) {
+  // Build chart-ready data: each row → object with node_name + phase keys.
+  const data = useMemo(() => rows.map((r) => {
+    const entry: Record<string, string | number> = { node_name: r.node_name }
+    for (const p of HTTP_PHASES) {
+      const v = r[p.key as PhaseKey] as number | undefined
+      entry[p.key] = typeof v === "number" ? v : 0
+    }
+    return entry
+  }), [rows])
 
   return (
     <div className="mt-6 rounded-lg border bg-background p-5">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
         <p className="text-sm text-muted-foreground">
           检测目标: <span className="text-foreground font-medium">{rows[0]?.node_name ?? "–"}</span>
         </p>
         <div className="flex flex-wrap gap-3">
-          {HTTP_PHASES.map(p => (
+          {HTTP_PHASES.map((p) => (
             <span key={p.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
               <span className="h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ background: p.color }} />
               {p.label}时间
@@ -124,42 +180,21 @@ function StackedBarChart({ rows }: { rows: ResultRow[] }) {
         </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <div className="flex items-end gap-6 min-w-0" style={{ minHeight: BAR_HEIGHT + 40 }}>
-          {/* Y 轴刻度 */}
-          <div className="flex flex-col justify-between text-right text-xs text-muted-foreground flex-shrink-0" style={{ height: BAR_HEIGHT }}>
-            {[1, 0.75, 0.5, 0.25, 0].map(f => (
-              <span key={f}>{Math.round(maxTotal * f)}</span>
+      <div className="h-[260px] w-full">
+        <ResponsiveContainer width="100%" height="100%">
+          <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
+            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
+            <XAxis dataKey="node_name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
+            <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} unit=" ms" width={56} />
+            <Tooltip
+              content={(props) => <StackedTooltip {...(props as TooltipContentProps<number, string>)} />}
+              cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+            />
+            {HTTP_PHASES.map((p) => (
+              <Bar key={p.key} dataKey={p.key} stackId="phase" fill={p.color} radius={p.key === "download_ms" ? [4, 4, 0, 0] : 0} />
             ))}
-          </div>
-
-          {rows.map(row => {
-            const phases = HTTP_PHASES.map(p => ({ ...p, val: row[p.key] ?? 0 }))
-            const total = phases.reduce((s, p) => s + p.val, 0)
-            return (
-              <div key={row.node_id} className="flex flex-col items-center gap-1 flex-1 min-w-[48px]">
-                <div
-                  className="flex flex-col-reverse w-full rounded-sm overflow-hidden"
-                  style={{ height: `${(total / maxTotal) * BAR_HEIGHT}px` }}
-                >
-                  {phases.map(p => p.val > 0 && (
-                    <div
-                      key={p.key}
-                      title={`${p.label}: ${p.val}ms`}
-                      style={{
-                        background: p.color,
-                        height: `${(p.val / total) * 100}%`,
-                      }}
-                    />
-                  ))}
-                </div>
-                <span className="text-[11px] text-muted-foreground text-center leading-tight mt-1">
-                  {row.node_name}
-                </span>
-              </div>
-            )
-          })}
-        </div>
+          </BarChart>
+        </ResponsiveContainer>
       </div>
     </div>
   )
@@ -241,8 +276,10 @@ function SummaryTab({ rows, isHttp, isChinaOnly }: { rows: ResultRow[]; isHttp: 
         </div>
       </div>
 
-      {/* HTTP stacked bar chart */}
-      {isHttp && rows.some(r => r.ttfb_ms !== undefined) && (
+      {/* HTTP stacked bar chart — render only when the agent returned the
+          new server_ms-based phase breakdown (legacy results without dns/
+          connect/ssl/server timings would draw a misleading single-color bar). */}
+      {isHttp && rows.some(r => r.server_ms !== undefined || r.dns_ms !== undefined) && (
         <StackedBarChart rows={sorted} />
       )}
     </div>

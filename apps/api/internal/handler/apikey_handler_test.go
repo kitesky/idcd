@@ -153,8 +153,8 @@ func TestCreateAPIKey_success(t *testing.T) {
 	if wrapped.Data.ID == "" {
 		t.Error("expected non-empty key ID")
 	}
-	if wrapped.Data.KeyType != keyTypeProduction {
-		t.Errorf("expected key_type %q, got %q", keyTypeProduction, wrapped.Data.KeyType)
+	if wrapped.Data.Type != keyTypeProduction {
+		t.Errorf("expected key_type %q, got %q", keyTypeProduction, wrapped.Data.Type)
 	}
 }
 
@@ -183,8 +183,8 @@ func TestCreateAPIKey_testType(t *testing.T) {
 	if !strings.HasPrefix(wrapped.Data.Key, apiKeyTestPrefix) {
 		t.Errorf("test key should start with %q, got %q", apiKeyTestPrefix, wrapped.Data.Key)
 	}
-	if wrapped.Data.KeyType != keyTypeTest {
-		t.Errorf("expected key_type %q, got %q", keyTypeTest, wrapped.Data.KeyType)
+	if wrapped.Data.Type != keyTypeTest {
+		t.Errorf("expected key_type %q, got %q", keyTypeTest, wrapped.Data.Type)
 	}
 }
 
@@ -254,17 +254,19 @@ func TestListAPIKeys_success(t *testing.T) {
 	}
 
 	var wrapped struct {
-		Data []apiKeyResponse `json:"data"`
+		Data struct {
+			APIKeys []apiKeyResponse `json:"api_keys"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &wrapped); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(wrapped.Data) != 2 {
-		t.Errorf("expected 2 keys, got %d", len(wrapped.Data))
+	if len(wrapped.Data.APIKeys) != 2 {
+		t.Errorf("expected 2 keys, got %d", len(wrapped.Data.APIKeys))
 	}
-	for _, k := range wrapped.Data {
-		if k.KeyType == "" {
-			t.Errorf("expected key_type to be non-empty for key %s", k.ID)
+	for _, k := range wrapped.Data.APIKeys {
+		if k.Type == "" {
+			t.Errorf("expected type to be non-empty for key %s", k.ID)
 		}
 	}
 }
@@ -295,13 +297,15 @@ func TestListAPIKeys_empty(t *testing.T) {
 		t.Errorf("expected 200, got %d", rr.Code)
 	}
 	var wrapped struct {
-		Data []apiKeyResponse `json:"data"`
+		Data struct {
+			APIKeys []apiKeyResponse `json:"api_keys"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &wrapped); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(wrapped.Data) != 0 {
-		t.Errorf("expected 0 keys, got %d", len(wrapped.Data))
+	if len(wrapped.Data.APIKeys) != 0 {
+		t.Errorf("expected 0 keys, got %d", len(wrapped.Data.APIKeys))
 	}
 }
 

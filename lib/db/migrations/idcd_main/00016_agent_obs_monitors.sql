@@ -13,8 +13,10 @@ CREATE TABLE monitor_agent_obs_configs (
   updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+-- PK 必须含 checked_at（TimescaleDB hypertable 分区列要求）。
+-- 历史 00032 是对老版本 PK 的补丁修复，新建库直接合并到这里。
 CREATE TABLE monitor_agent_obs_checks (
-  id               TEXT PRIMARY KEY,
+  id               TEXT NOT NULL,
   monitor_id       TEXT NOT NULL,
   obs_type         TEXT NOT NULL,
   status           TEXT NOT NULL,
@@ -22,7 +24,8 @@ CREATE TABLE monitor_agent_obs_checks (
   tokens_used      INTEGER,
   error_code       TEXT,
   response_preview TEXT,
-  checked_at       TIMESTAMPTZ NOT NULL
+  checked_at       TIMESTAMPTZ NOT NULL,
+  PRIMARY KEY (id, checked_at)
 );
 SELECT create_hypertable('monitor_agent_obs_checks', 'checked_at');
 CREATE INDEX ON monitor_agent_obs_checks(monitor_id, checked_at DESC);

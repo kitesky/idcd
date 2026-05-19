@@ -116,12 +116,14 @@ func TestTeamAPIKey_Create_Admin_201(t *testing.T) {
 
 	var resp struct {
 		Data struct {
-			Prefix string `json:"prefix"`
-			Key    string `json:"key"`
+			APIKey struct {
+				Prefix string `json:"prefix"`
+				Key    string `json:"key"`
+			} `json:"api_key"`
 		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	assert.True(t, strings.HasPrefix(resp.Data.Key, apiKeyLivePrefix), "key should start with sk_live_")
+	assert.True(t, strings.HasPrefix(resp.Data.APIKey.Key, apiKeyLivePrefix), "key should start with sk_live_")
 	assert.NoError(t, mockPool.ExpectationsWereMet())
 }
 
@@ -148,11 +150,13 @@ func TestTeamAPIKey_List_200(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 
 	var resp struct {
-		Data []teamAPIKeyResponse `json:"data"`
+		Data struct {
+			APIKeys []teamAPIKeyResponse `json:"api_keys"`
+		} `json:"data"`
 	}
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &resp))
-	assert.Len(t, resp.Data, 1)
-	assert.Equal(t, "key_abc", resp.Data[0].ID)
+	assert.Len(t, resp.Data.APIKeys, 1)
+	assert.Equal(t, "key_abc", resp.Data.APIKeys[0].ID)
 	assert.NoError(t, mockPool.ExpectationsWereMet())
 }
 

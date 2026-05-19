@@ -50,6 +50,7 @@ var allowedPATScopes = map[string]struct{}{
 	"write:teams":     {},
 	"read:status":     {},
 	"write:status":    {},
+	"read:alerts":     {},
 }
 
 // validatePATScopes returns the first invalid scope encountered, or "" if all
@@ -200,7 +201,7 @@ func (h *PATHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusOK, items)
+	response.JSON(w, r, http.StatusOK, map[string]any{"tokens": items})
 }
 
 // Delete handles DELETE /v1/account/tokens/{id}.

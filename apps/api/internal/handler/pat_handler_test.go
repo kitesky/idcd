@@ -338,20 +338,22 @@ func TestPATList_success(t *testing.T) {
 	}
 
 	var wrapped struct {
-		Data []patResponse `json:"data"`
+		Data struct {
+			Tokens []patResponse `json:"tokens"`
+		} `json:"data"`
 	}
 	if err := json.Unmarshal(rr.Body.Bytes(), &wrapped); err != nil {
 		t.Fatalf("decode: %v", err)
 	}
-	if len(wrapped.Data) != 2 {
-		t.Errorf("expected 2 tokens for usr_001, got %d", len(wrapped.Data))
+	if len(wrapped.Data.Tokens) != 2 {
+		t.Errorf("expected 2 tokens for usr_001, got %d", len(wrapped.Data.Tokens))
 	}
 	// Verify list response does not contain "token" key
 	rawBody := rr.Body.String()
 	if strings.Contains(rawBody, `"token":"idcd_pat_`) {
 		t.Error("list response should not contain full token value")
 	}
-	for _, tok := range wrapped.Data {
+	for _, tok := range wrapped.Data.Tokens {
 		if tok.TokenPrefix == "" {
 			t.Error("token_prefix should not be empty")
 		}

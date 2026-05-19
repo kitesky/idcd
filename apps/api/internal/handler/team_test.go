@@ -94,7 +94,7 @@ func TestTeamHandler_List_Success(t *testing.T) {
 	assert.Equal(t, http.StatusOK, rr.Code)
 	var listEnvelope map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &listEnvelope))
-	items := listEnvelope["data"].([]any)
+	items := listEnvelope["data"].(map[string]any)["teams"].([]any)
 	assert.Len(t, items, 1)
 	assert.Equal(t, "team_abc", items[0].(map[string]any)["id"])
 	assert.NoError(t, mockPool.ExpectationsWereMet())
@@ -126,7 +126,7 @@ func TestTeamHandler_CreateInvitation_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, rr.Code)
 	var invEnvelope map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &invEnvelope))
-	invResp := invEnvelope["data"].(map[string]any)
+	invResp := invEnvelope["data"].(map[string]any)["invitation"].(map[string]any)
 	assert.Equal(t, "alice@example.com", invResp["email"])
 	assert.NoError(t, mockPool.ExpectationsWereMet())
 }

@@ -42,8 +42,8 @@ type teamAPIKeyResponse struct {
 }
 
 type createTeamAPIKeyRequest struct {
-	Name string `json:"name"`
-	Type string `json:"type"`
+	Name    string `json:"name"`
+	KeyType string `json:"key_type"`
 }
 
 func (h *TeamAPIKeyHandler) requireAdminRole(ctx context.Context, teamID, userID string) error {
@@ -86,7 +86,7 @@ func (h *TeamAPIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ktype := keyTypeProduction
-	if req.Type == keyTypeTest {
+	if req.KeyType == keyTypeTest {
 		ktype = keyTypeTest
 	}
 
@@ -124,17 +124,19 @@ func (h *TeamAPIKeyHandler) Create(w http.ResponseWriter, r *http.Request) {
 		teamAPIKeyResponse
 		Key string `json:"key"`
 	}
-	response.JSON(w, r, http.StatusCreated, createResp{
-		teamAPIKeyResponse: teamAPIKeyResponse{
-			ID:        id,
-			Name:      name,
-			Prefix:    pfx + keyPfx + "...",
-			Scopes:    scopes,
-			Status:    status,
-			KeyType:   kt,
-			CreatedAt: createdAt.Time.UTC().Format(time.RFC3339),
+	response.JSON(w, r, http.StatusCreated, map[string]any{
+		"api_key": createResp{
+			teamAPIKeyResponse: teamAPIKeyResponse{
+				ID:        id,
+				Name:      name,
+				Prefix:    pfx + keyPfx + "...",
+				Scopes:    scopes,
+				Status:    status,
+				KeyType:   kt,
+				CreatedAt: createdAt.Time.UTC().Format(time.RFC3339),
+			},
+			Key: rawKey,
 		},
-		Key: rawKey,
 	})
 }
 
@@ -193,7 +195,7 @@ func (h *TeamAPIKeyHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	response.JSON(w, r, http.StatusOK, items)
+	response.JSON(w, r, http.StatusOK, map[string]any{"api_keys": items})
 }
 
 func (h *TeamAPIKeyHandler) Delete(w http.ResponseWriter, r *http.Request) {

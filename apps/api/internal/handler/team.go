@@ -47,6 +47,7 @@ type memberResponse struct {
 	ID         string  `json:"id"`
 	TeamID     string  `json:"team_id"`
 	UserID     string  `json:"user_id"`
+	Email      string  `json:"email"`
 	Role       string  `json:"role"`
 	InvitedBy  *string `json:"invited_by,omitempty"`
 	JoinedAt   string  `json:"joined_at"`
@@ -204,7 +205,7 @@ func (h *TeamHandler) List(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	response.JSON(w, r, http.StatusOK, items)
+	response.JSON(w, r, http.StatusOK, map[string]any{"teams": items})
 }
 
 func (h *TeamHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -380,7 +381,7 @@ func (h *TeamHandler) ListMembers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusOK, members)
+	response.JSON(w, r, http.StatusOK, map[string]any{"members": members})
 }
 
 func (h *TeamHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
@@ -520,7 +521,7 @@ func (h *TeamHandler) ListInvitations(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	response.JSON(w, r, http.StatusOK, items)
+	response.JSON(w, r, http.StatusOK, map[string]any{"invitations": items})
 }
 
 func (h *TeamHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
@@ -574,15 +575,17 @@ func (h *TeamHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusCreated, invitationResponse{
-		ID:        id,
-		TeamID:    tid,
-		Email:     email,
-		Role:      iRole,
-		InvitedBy: invitedBy,
-		Status:    status,
-		ExpiresAt: expAt.UTC().Format(time.RFC3339),
-		CreatedAt: createdAt.UTC().Format(time.RFC3339),
+	response.JSON(w, r, http.StatusCreated, map[string]any{
+		"invitation": invitationResponse{
+			ID:        id,
+			TeamID:    tid,
+			Email:     email,
+			Role:      iRole,
+			InvitedBy: invitedBy,
+			Status:    status,
+			ExpiresAt: expAt.UTC().Format(time.RFC3339),
+			CreatedAt: createdAt.UTC().Format(time.RFC3339),
+		},
 	})
 }
 
@@ -694,8 +697,10 @@ func (h *TeamHandler) getMemberRole(ctx context.Context, teamID, userID string) 
 
 func (h *TeamHandler) listMembersInternal(ctx context.Context, teamID string) ([]memberResponse, error) {
 	rows, err := h.pool.Query(ctx,
-		`SELECT id, team_id, user_id, role, invited_by, joined_at
-		 FROM team_memberships WHERE team_id = $1 ORDER BY joined_at ASC`,
+		`SELECT tm.id, tm.team_id, tm.user_id, u.email, tm.role, tm.invited_by, tm.joined_at
+		 FROM team_memberships tm
+		 JOIN "user" u ON u.id = tm.user_id
+		 WHERE tm.team_id = $1 ORDER BY tm.joined_at ASC`,
 		teamID,
 	)
 	if err != nil {
@@ -705,16 +710,17 @@ func (h *TeamHandler) listMembersInternal(ctx context.Context, teamID string) ([
 
 	members := make([]memberResponse, 0)
 	for rows.Next() {
-		var id, tid, uid, role string
+		var id, tid, uid, email, role string
 		var invitedBy *string
 		var joinedAt time.Time
-		if err := rows.Scan(&id, &tid, &uid, &role, &invitedBy, &joinedAt); err != nil {
+		if err := rows.Scan(&id, &tid, &uid, &email, &role, &invitedBy, &joinedAt); err != nil {
 			return nil, err
 		}
 		members = append(members, memberResponse{
 			ID:        id,
 			TeamID:    tid,
 			UserID:    uid,
+			Email:     email,
 			Role:      role,
 			InvitedBy: invitedBy,
 			JoinedAt:  joinedAt.UTC().Format(time.RFC3339),

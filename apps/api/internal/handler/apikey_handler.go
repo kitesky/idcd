@@ -54,14 +54,14 @@ func NewAPIKeyHandler(q APIKeyQuerier) *APIKeyHandler {
 // ─────────────────────────────────────────────
 
 // apiKeyResponse is the public representation of an API key.
-// The secret_hash is never returned; prefix is masked as sk_live_xxx...xxx.
+// The secret_hash is never returned; key_prefix is masked as sk_live_xxx...xxx.
 type apiKeyResponse struct {
 	ID         string   `json:"id"`
 	Name       string   `json:"name"`
-	Prefix     string   `json:"prefix"`
+	KeyPrefix  string   `json:"key_prefix"`
 	Scopes     []string `json:"scopes"`
 	Status     string   `json:"status"`
-	KeyType    string   `json:"key_type"`
+	Type       string   `json:"type"`
 	CreatedAt  string   `json:"created_at"`
 	LastUsedAt *string  `json:"last_used_at"`
 }
@@ -89,10 +89,10 @@ func toAPIKeyResponse(k idcdmain.ApiKey) apiKeyResponse {
 	return apiKeyResponse{
 		ID:         k.ID,
 		Name:       k.Name,
-		Prefix:     pfx + k.Prefix + "...",
+		KeyPrefix:  pfx + k.Prefix + "...",
 		Scopes:     k.Scopes,
 		Status:     k.Status,
-		KeyType:    ktype,
+		Type:       ktype,
 		CreatedAt:  k.CreatedAt.Time.UTC().Format(time.RFC3339),
 		LastUsedAt: lastUsed,
 	}
@@ -166,8 +166,8 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		apiKeyResponse: toAPIKeyResponse(k),
 		Key:            rawKey,
 	}
-	// Override the masked prefix to show full key in create response.
-	resp.Prefix = pfx + prefix + "..."
+	// Override the masked key_prefix to show full prefix in create response.
+	resp.KeyPrefix = pfx + prefix + "..."
 
 	_ = expiresAt // reserved for future expiry support
 
@@ -196,7 +196,7 @@ func (h *APIKeyHandler) ListAPIKeys(w http.ResponseWriter, r *http.Request) {
 		items = append(items, toAPIKeyResponse(k))
 	}
 
-	response.JSON(w, r, http.StatusOK, items)
+	response.JSON(w, r, http.StatusOK, map[string]any{"api_keys": items})
 }
 
 // RevokeAPIKey handles DELETE /v1/account/api-keys/:id.

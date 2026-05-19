@@ -32,6 +32,7 @@ import {
   Skeleton,
 } from "@/components/ui"
 import { CheckCircle2, Copy, Key, Plus, UserPlus, Users } from "lucide-react"
+import { toast } from "sonner"
 import { apiRequest } from "@/lib/api"
 
 interface TeamAPIKey {
@@ -233,17 +234,20 @@ export function TeamClient() {
         method: "POST",
         body: JSON.stringify({ name: newTeamName, slug: newTeamSlug }),
       })
-      const t = json.data?.team
-      if (t) {
-        setTeam(t)
-        setTeamPlan(t.plan)
-        loadTeamDetails(t.id)
+      const created = json.data?.team
+      if (created) {
+        setTeam(created)
+        setTeamPlan(created.plan)
+        loadTeamDetails(created.id)
+        toast.success(t("team.createSuccess", { name: created.name }))
       }
       setNewTeamName("")
       setNewTeamSlug("")
       setShowCreateTeamDialog(false)
     } catch (err: any) {
-      setError(err.message ?? t("team.createFailed"))
+      const msg = err.message ?? t("team.createFailed")
+      setError(msg)
+      toast.error(msg)
     } finally {
       setCreatingTeam(false)
     }
@@ -251,13 +255,14 @@ export function TeamClient() {
 
   async function handleInvite() {
     if (!inviteEmail.trim() || !team) return
+    const targetEmail = inviteEmail.trim()
     setInviting(true)
     try {
       const json = await apiRequest<{ data: { invitation: PendingInvitation } }>(
         `/v1/teams/${team.id}/invitations`,
         {
           method: "POST",
-          body: JSON.stringify({ email: inviteEmail, role: inviteRole }),
+          body: JSON.stringify({ email: targetEmail, role: inviteRole }),
         }
       )
       const inv = json.data?.invitation
@@ -267,8 +272,11 @@ export function TeamClient() {
       setInviteEmail("")
       setInviteRole("member")
       setShowInviteDialog(false)
+      toast.success(t("team.inviteSuccess", { email: targetEmail }))
     } catch (err: any) {
-      setError(err.message ?? t("team.inviteFailed"))
+      const msg = err.message ?? t("team.inviteFailed")
+      setError(msg)
+      toast.error(msg)
     } finally {
       setInviting(false)
     }
@@ -289,9 +297,12 @@ export function TeamClient() {
       if (key) {
         setTeamKeys((prev) => [...prev, key])
         setCreatedKeyValue(key.key)
+        toast.success(t("team.addKeySuccess"))
       }
     } catch (err: any) {
-      setError(err.message ?? t("team.addKeyFailed"))
+      const msg = err.message ?? t("team.addKeyFailed")
+      setError(msg)
+      toast.error(msg)
     } finally {
       setAddingKey(false)
     }
@@ -302,8 +313,11 @@ export function TeamClient() {
     try {
       await apiRequest(`/v1/teams/${team.id}/api-keys/${keyID}`, { method: "DELETE" })
       setTeamKeys((prev) => prev.filter((k) => k.id !== keyID))
+      toast.success(t("team.revokeKeySuccess"))
     } catch (err: any) {
-      setError(err.message ?? t("team.revokeKeyFailed"))
+      const msg = err.message ?? t("team.revokeKeyFailed")
+      setError(msg)
+      toast.error(msg)
     }
   }
 
@@ -313,8 +327,11 @@ export function TeamClient() {
       await apiRequest(`/v1/teams/${team.id}/members/${userId}`, { method: "DELETE" })
       setMembers((prev) => prev.filter((m) => m.user_id !== userId))
       setTeam((prev) => prev ? { ...prev, member_count: prev.member_count - 1 } : prev)
+      toast.success(t("team.removeMemberSuccess"))
     } catch (err: any) {
-      setError(err.message ?? t("team.removeMemberFailed"))
+      const msg = err.message ?? t("team.removeMemberFailed")
+      setError(msg)
+      toast.error(msg)
     }
   }
 

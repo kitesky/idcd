@@ -154,14 +154,16 @@ func (h *TeamHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusCreated, teamResponse{
-		ID:        teamID,
-		Name:      name,
-		Slug:      slug,
-		Plan:      plan,
-		OwnerID:   ownerID,
-		CreatedAt: createdAt.UTC().Format(time.RFC3339),
-		UpdatedAt: updatedAt.UTC().Format(time.RFC3339),
+	response.JSON(w, r, http.StatusCreated, map[string]any{
+		"team": teamResponse{
+			ID:        teamID,
+			Name:      name,
+			Slug:      slug,
+			Plan:      plan,
+			OwnerID:   ownerID,
+			CreatedAt: createdAt.UTC().Format(time.RFC3339),
+			UpdatedAt: updatedAt.UTC().Format(time.RFC3339),
+		},
 	})
 }
 
@@ -300,14 +302,16 @@ func (h *TeamHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response.JSON(w, r, http.StatusOK, teamResponse{
-		ID:        id,
-		Name:      name,
-		Slug:      slug,
-		Plan:      plan,
-		OwnerID:   ownerID,
-		CreatedAt: createdAt.UTC().Format(time.RFC3339),
-		UpdatedAt: updatedAt.UTC().Format(time.RFC3339),
+	response.JSON(w, r, http.StatusOK, map[string]any{
+		"team": teamResponse{
+			ID:        id,
+			Name:      name,
+			Slug:      slug,
+			Plan:      plan,
+			OwnerID:   ownerID,
+			CreatedAt: createdAt.UTC().Format(time.RFC3339),
+			UpdatedAt: updatedAt.UTC().Format(time.RFC3339),
+		},
 	})
 }
 

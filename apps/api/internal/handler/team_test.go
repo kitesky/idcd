@@ -70,7 +70,7 @@ func TestTeamHandler_Create_Success(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, rr.Code)
 	var envelope map[string]any
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &envelope))
-	resp := envelope["data"].(map[string]any)
+	resp := envelope["data"].(map[string]any)["team"].(map[string]any)
 	assert.Equal(t, "team_abc", resp["id"])
 	assert.Equal(t, "acme", resp["slug"])
 	assert.NoError(t, mockPool.ExpectationsWereMet())

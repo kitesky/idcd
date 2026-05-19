@@ -3,12 +3,15 @@ package handler
 import (
 	"context"
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"net/http"
 	"net/mail"
+	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -45,11 +48,22 @@ type TeamPool interface {
 }
 
 type TeamHandler struct {
-	pool TeamPool
+	pool       TeamPool
+	appBaseURL string
 }
 
 func NewTeamHandler(pool TeamPool) *TeamHandler {
 	return &TeamHandler{pool: pool}
+}
+
+// WithAppBaseURL configures the trusted frontend base URL used to build the
+// invite_url returned alongside a freshly minted invitation token. Set from
+// server.AppBaseURL (e.g. "https://app.idcd.com"). Tampered request headers
+// must never feed this — the URL is part of an email/IM payload the user
+// will click on.
+func (h *TeamHandler) WithAppBaseURL(baseURL string) *TeamHandler {
+	h.appBaseURL = strings.TrimRight(baseURL, "/")
+	return h
 }
 
 type teamResponse struct {
@@ -83,6 +97,17 @@ type invitationResponse struct {
 	CreatedAt  string `json:"created_at"`
 }
 
+// invitationCreateResponse is returned only by CreateInvitation. The Token
+// and InviteURL fields surface the plaintext secret exactly once — it is
+// never persisted (only its SHA-256 hash is) and never returned by List /
+// Revoke. The inviter must hand this to the invitee out-of-band (paste link,
+// copy code, future email task) before navigating away from the dialog.
+type invitationCreateResponse struct {
+	invitationResponse
+	Token     string `json:"token"`
+	InviteURL string `json:"invite_url,omitempty"`
+}
+
 type createTeamRequest struct {
 	Name string `json:"name"`
 	Slug string `json:"slug"`
@@ -105,12 +130,37 @@ type acceptInvitationRequest struct {
 	Token string `json:"token"`
 }
 
+// generateInvitationToken returns a fresh 16-byte random hex token used as
+// the bearer secret in the invite URL. The caller stores hashInvitationToken
+// of the returned value, never the value itself.
 func generateInvitationToken() (string, error) {
 	b := make([]byte, 16)
 	if _, err := rand.Read(b); err != nil {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// hashInvitationToken returns hex(sha256(token)). Matches the format used
+// in the team_invitations.token_hash column (00046 migration) and stays
+// consistent with PAT/API-key hashing elsewhere in this package.
+func hashInvitationToken(token string) string {
+	sum := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(sum[:])
+}
+
+// buildInviteURL produces the invitee-facing link, e.g.
+//   {appBaseURL}/invite/{token}
+// Returns "" when appBaseURL is unset (CLI / test contexts) — callers should
+// still ship the raw Token field so the inviter has *something* to forward.
+// We percent-escape the token defensively; the hex generator can't produce
+// reserved characters today, but a future format change would silently
+// produce malformed URLs without escaping.
+func (h *TeamHandler) buildInviteURL(token string) string {
+	if h.appBaseURL == "" {
+		return ""
+	}
+	return h.appBaseURL + "/invite/" + url.PathEscape(token)
 }
 
 func (h *TeamHandler) Create(w http.ResponseWriter, r *http.Request) {
@@ -712,6 +762,7 @@ func (h *TeamHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("failed to generate token", err))
 		return
 	}
+	tokenHash := hashInvitationToken(token)
 
 	invID := idgen.New("tinv_")
 	expiresAt := time.Now().Add(7 * 24 * time.Hour)
@@ -719,10 +770,10 @@ func (h *TeamHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	var id, tid, email, iRole, invitedBy, status string
 	var expAt, createdAt time.Time
 	err = h.pool.QueryRow(r.Context(),
-		`INSERT INTO team_invitations (id, team_id, email, role, token, invited_by, expires_at)
+		`INSERT INTO team_invitations (id, team_id, email, role, token_hash, invited_by, expires_at)
 		 VALUES ($1, $2, $3, $4, $5, $6, $7)
 		 RETURNING id, team_id, email, role, invited_by, status, expires_at, created_at`,
-		invID, teamID, req.Email, invRole, token, userID, expiresAt,
+		invID, teamID, req.Email, invRole, tokenHash, userID, expiresAt,
 	).Scan(&id, &tid, &email, &iRole, &invitedBy, &status, &expAt, &createdAt)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to create invitation", err))
@@ -730,15 +781,19 @@ func (h *TeamHandler) CreateInvitation(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.JSON(w, r, http.StatusCreated, map[string]any{
-		"invitation": invitationResponse{
-			ID:        id,
-			TeamID:    tid,
-			Email:     email,
-			Role:      iRole,
-			InvitedBy: invitedBy,
-			Status:    status,
-			ExpiresAt: expAt.UTC().Format(time.RFC3339),
-			CreatedAt: createdAt.UTC().Format(time.RFC3339),
+		"invitation": invitationCreateResponse{
+			invitationResponse: invitationResponse{
+				ID:        id,
+				TeamID:    tid,
+				Email:     email,
+				Role:      iRole,
+				InvitedBy: invitedBy,
+				Status:    status,
+				ExpiresAt: expAt.UTC().Format(time.RFC3339),
+				CreatedAt: createdAt.UTC().Format(time.RFC3339),
+			},
+			Token:     token,
+			InviteURL: h.buildInviteURL(token),
 		},
 	})
 }
@@ -807,13 +862,16 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 
 	// Atomically consume the invitation — prevents two concurrent accepts with the same token
 	// AND eliminates the race where the expiry check happens after the row is marked accepted.
+	// We look up by SHA-256 hash of the supplied token; the DB never sees the
+	// plaintext, so a leaked row cannot be replayed as a bearer credential.
+	tokenHash := hashInvitationToken(req.Token)
 	var invID, teamID, role, invitedBy string
 	err = tx.QueryRow(r.Context(),
 		`UPDATE team_invitations
 		 SET status = 'accepted'
-		 WHERE token = $1 AND status = 'pending' AND expires_at > NOW()
+		 WHERE token_hash = $1 AND status = 'pending' AND expires_at > NOW()
 		 RETURNING id, team_id, role, invited_by`,
-		req.Token,
+		tokenHash,
 	).Scan(&invID, &teamID, &role, &invitedBy)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -821,8 +879,8 @@ func (h *TeamHandler) AcceptInvitation(w http.ResponseWriter, r *http.Request) {
 			// Probe the row to give a clearer error to the user.
 			var exists bool
 			_ = h.pool.QueryRow(r.Context(),
-				`SELECT EXISTS (SELECT 1 FROM team_invitations WHERE token = $1 AND expires_at <= NOW())`,
-				req.Token,
+				`SELECT EXISTS (SELECT 1 FROM team_invitations WHERE token_hash = $1 AND expires_at <= NOW())`,
+				tokenHash,
 			).Scan(&exists)
 			if exists {
 				response.Error(w, r, apperr.Validation("invitation has expired", ""))

@@ -25,7 +25,7 @@ redis:
 server:
   port: 8080
   env: "development"
-  admin_token: "test-admin-token"
+  admin_token: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   cors_origins:
     - "http://localhost:3000"
 

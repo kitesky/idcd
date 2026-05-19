@@ -171,6 +171,16 @@ func (s *Server) buildJWTService() (*jwt.Service, error) {
 	return jwt.NewServiceWithOptions(cfg, jwt.WithBlocklist(jwt.NewRedisBlocklist(s.redis)))
 }
 
+// newAdminHandler builds an AdminHandler with the IP allowlist and Origin
+// gate wired from config. All /internal/admin/* (and /admin/refund-failed,
+// /v1/admin/*) routes go through this so a config update is one-touch
+// instead of N route registrations needing edits.
+func (s *Server) newAdminHandler() *handler.AdminHandler {
+	return handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken).
+		WithIPAllowlist(s.config.Server.AdminIPAllowlist).
+		WithAdminOrigins(s.config.Server.AdminOrigins)
+}
+
 // setupRouter configures the chi router with middleware and routes.
 func (s *Server) setupRouter() {
 	r := chi.NewRouter()
@@ -481,7 +491,7 @@ func (s *Server) setupRouter() {
 
 			// Admin billing endpoints — require admin token via Authorization: Bearer header.
 			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool).WithEnqueuer(asynqBillingEnq)
-			billingAdminAuthH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+			billingAdminAuthH := s.newAdminHandler()
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(billingAdminAuthH.AdminAuthMiddleware)
 				r.Get("/refund-failed", adminBillingH.ListRefundFailed)
@@ -736,7 +746,7 @@ func (s *Server) setupRouter() {
 		})
 
 		// Admin management endpoints (token-protected, VPN-only in production).
-		adminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		adminH := s.newAdminHandler()
 
 		// Prometheus metrics endpoint — gated by the same admin Bearer token
 		// as /internal/admin/*. Network policy alone is not enough: metrics
@@ -774,7 +784,7 @@ func (s *Server) setupRouter() {
 		r.With(authnMW).Get("/v1/nodes/my-applications", communityH.MyApplications)
 		r.With(authnMW).Get("/v1/account/points", communityH.GetPoints)
 		r.With(authnMW).Post("/v1/account/points/redeem", communityH.Redeem)
-		communityAdminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		communityAdminH := s.newAdminHandler()
 		r.With(communityAdminH.AdminAuthMiddleware).Get("/v1/admin/node-applications", communityH.AdminList)
 		r.With(communityAdminH.AdminAuthMiddleware).Patch("/v1/admin/node-applications/{id}", communityH.AdminUpdate)
 		// 前端实际调 PATCH .../{id}/review；保留 /review 别名以兼容（K8 路由对齐）
@@ -809,7 +819,7 @@ func (s *Server) setupRouter() {
 			r.With(authnMW).Get("/status", betaH.GetBetaStatus)
 			r.With(authnMW).Post("/redeem", betaH.RedeemBeta)
 		})
-		betaAdminH := handler.NewAdminHandler(s.pgxPool, s.config.Server.AdminToken)
+		betaAdminH := s.newAdminHandler()
 		r.Route("/v1/admin/beta-invitations", func(r chi.Router) {
 			r.Use(betaAdminH.AdminAuthMiddleware)
 			r.Get("/", betaH.AdminListBetaInvitations)

@@ -4,7 +4,11 @@ package handler
 import (
 	"context"
 	"crypto/subtle"
+	"fmt"
+	"log/slog"
+	"net"
 	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +17,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
 )
@@ -27,8 +32,10 @@ type AdminPool interface {
 
 // AdminHandler handles admin management endpoints.
 type AdminHandler struct {
-	pool       AdminPool
-	adminToken string
+	pool         AdminPool
+	adminToken   string
+	ipAllowlist  []*net.IPNet // pre-parsed CIDRs; nil = no IP gating
+	adminOrigins map[string]struct{}
 }
 
 // NewAdminHandler creates a new AdminHandler.
@@ -37,9 +44,89 @@ func NewAdminHandler(pool AdminPool, adminToken string) *AdminHandler {
 	return &AdminHandler{pool: pool, adminToken: adminToken}
 }
 
-// AdminAuthMiddleware returns a middleware that validates the admin Bearer token.
+// WithIPAllowlist pre-parses the given list of CIDRs / single-IP entries.
+// Bad entries are logged and skipped so a typo in one operator's config
+// can't take the whole admin surface offline. Empty list (default) means
+// no IP gating — appropriate for dev / loopback-only deployments.
+//
+// Single-IP entries ("203.0.113.42") are normalised to /32 (or /128 for v6)
+// so the CIDR check works uniformly.
+func (h *AdminHandler) WithIPAllowlist(entries []string) *AdminHandler {
+	nets := make([]*net.IPNet, 0, len(entries))
+	for _, raw := range entries {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		if !strings.Contains(raw, "/") {
+			if ip := net.ParseIP(raw); ip != nil {
+				if ip.To4() != nil {
+					raw += "/32"
+				} else {
+					raw += "/128"
+				}
+			}
+		}
+		_, n, err := net.ParseCIDR(raw)
+		if err != nil {
+			slog.Default().Warn("admin: ignoring invalid ip allowlist entry",
+				"entry", raw, "error", err)
+			continue
+		}
+		nets = append(nets, n)
+	}
+	h.ipAllowlist = nets
+	return h
+}
+
+// WithAdminOrigins seeds the Origin / Referer allowlist used by mutating
+// requests. Each entry should be a scheme+host (e.g. "https://admin.idcd.com").
+// Empty disables the check (Bearer alone is considered sufficient — fine for
+// server-to-server clients without a browser context).
+func (h *AdminHandler) WithAdminOrigins(origins []string) *AdminHandler {
+	set := make(map[string]struct{}, len(origins))
+	for _, o := range origins {
+		o = strings.TrimRight(strings.TrimSpace(o), "/")
+		if o == "" {
+			continue
+		}
+		set[o] = struct{}{}
+	}
+	h.adminOrigins = set
+	return h
+}
+
+// AdminAuthMiddleware enforces the admin auth contract on /internal/admin/*:
+//
+//  1. IP allowlist gate (when configured) — cheapest reject, runs first.
+//  2. Origin / Referer gate (mutating methods only, when configured) — closes
+//     the "logged-in admin browses evil.com which fetches /internal/*" window.
+//  3. Bearer admin_token check with constant-time compare.
+//  4. Structured audit log of the call (actor=admin, method, path, IP, UA).
+//
+// Each gate fails closed with a distinct error code so ops can disambiguate
+// "blocked by network policy" vs "wrong token" in logs without leaking which
+// stage matched to the unauthenticated caller (all four return 401/403 with
+// generic messages externally).
 func (h *AdminHandler) AdminAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		clientIP := middleware.ClientIP(r)
+
+		if !h.ipAllowed(clientIP) {
+			slog.Default().Warn("admin auth: ip blocked",
+				"ip", clientIP, "path", r.URL.Path, "method", r.Method)
+			response.Error(w, r, apperr.Forbidden("admin access denied"))
+			return
+		}
+
+		if !isSafeMethod(r.Method) && !h.originAllowed(r) {
+			slog.Default().Warn("admin auth: origin blocked",
+				"ip", clientIP, "origin", r.Header.Get("Origin"),
+				"referer", r.Header.Get("Referer"), "path", r.URL.Path)
+			response.Error(w, r, apperr.Forbidden("admin access denied"))
+			return
+		}
+
 		auth := r.Header.Get("Authorization")
 		if !strings.HasPrefix(auth, "Bearer ") {
 			response.Error(w, r, apperr.Unauthorized("missing or malformed Authorization header"))
@@ -49,11 +136,85 @@ func (h *AdminHandler) AdminAuthMiddleware(next http.Handler) http.Handler {
 		// Constant-time compare to prevent length/byte-leak timing attacks.
 		if token == "" || h.adminToken == "" ||
 			subtle.ConstantTimeCompare([]byte(token), []byte(h.adminToken)) != 1 {
+			slog.Default().Warn("admin auth: token rejected",
+				"ip", clientIP, "path", r.URL.Path, "method", r.Method)
 			response.Error(w, r, apperr.Unauthorized("invalid admin token"))
 			return
 		}
+
+		// Successful entry. Audit before handing off so a panic in the
+		// inner handler still leaves a trace of "who tried what".
+		slog.Default().Info("audit",
+			"category", "audit",
+			"event", "audit.internal_admin.access",
+			"actor_user_id", "admin", // admin_token is a shared service credential
+			"ip", clientIP,
+			"user_agent", r.UserAgent(),
+			"method", r.Method,
+			"path", r.URL.Path,
+		)
+
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isSafeMethod reports whether the HTTP method is non-mutating per RFC 7231.
+// GET / HEAD / OPTIONS do not need Origin checks; their CSRF analogue is
+// covered by per-endpoint authorization. POST / PUT / PATCH / DELETE do.
+func isSafeMethod(m string) bool {
+	switch m {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	}
+	return false
+}
+
+// ipAllowed returns true when the client IP matches any configured CIDR.
+// Empty allowlist (default) trivially returns true — operators who don't
+// set the field opt out of IP gating entirely.
+func (h *AdminHandler) ipAllowed(ipStr string) bool {
+	if len(h.ipAllowlist) == 0 {
+		return true
+	}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, n := range h.ipAllowlist {
+		if n.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
+// originAllowed validates the request's Origin (preferred) or Referer
+// header against the configured allowlist. Empty allowlist disables the
+// check. Missing Origin AND Referer on a mutating request from a browser
+// context is treated as block-by-default — non-browser callers that need
+// to POST should set Origin explicitly. Server-to-server tools without an
+// Origin header should use an empty admin_origins config (which disables
+// this check entirely) rather than relying on missing-header bypass.
+func (h *AdminHandler) originAllowed(r *http.Request) bool {
+	if len(h.adminOrigins) == 0 {
+		return true
+	}
+	candidate := r.Header.Get("Origin")
+	if candidate == "" {
+		// Fall back to Referer's origin component. Referer is the full URL
+		// including path; we strip back to scheme+host.
+		if ref := r.Header.Get("Referer"); ref != "" {
+			if u, err := url.Parse(ref); err == nil && u.Scheme != "" && u.Host != "" {
+				candidate = fmt.Sprintf("%s://%s", u.Scheme, u.Host)
+			}
+		}
+	}
+	if candidate == "" {
+		return false
+	}
+	candidate = strings.TrimRight(candidate, "/")
+	_, ok := h.adminOrigins[candidate]
+	return ok
 }
 
 // SubscriptionBreakdown holds subscription counts per plan.

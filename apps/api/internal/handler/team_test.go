@@ -109,8 +109,14 @@ func TestTeamHandler_CreateInvitation_Success(t *testing.T) {
 		WithArgs("team_abc", "u_admin").
 		WillReturnRows(pgxmock.NewRows([]string{"role"}).AddRow("admin"))
 
+	// Args order after 00046: id, team_id, email, role, token_hash, invited_by, expires_at.
+	// The fifth arg is now hex(sha256(plaintext)); we accept AnyArg here and
+	// assert format on the response body below — verifying both that the
+	// handler returns the plaintext and that it didn't accidentally feed
+	// the plaintext through as the DB column value.
 	mockPool.ExpectQuery(regexp.QuoteMeta(`INSERT INTO team_invitations`)).
-		WithArgs(pgxmock.AnyArg(), "team_abc", "alice@example.com", "member", pgxmock.AnyArg(), "u_admin", pgxmock.AnyArg()).
+		WithArgs(pgxmock.AnyArg(), "team_abc", "alice@example.com", "member",
+			pgxmock.AnyArg(), "u_admin", pgxmock.AnyArg()).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "team_id", "email", "role", "invited_by", "status", "expires_at", "created_at"}).
 			AddRow("tinv_xyz", "team_abc", "alice@example.com", "member", "u_admin", "pending", now.Add(7*24*time.Hour), now))
 
@@ -128,6 +134,16 @@ func TestTeamHandler_CreateInvitation_Success(t *testing.T) {
 	require.NoError(t, json.Unmarshal(rr.Body.Bytes(), &invEnvelope))
 	invResp := invEnvelope["data"].(map[string]any)["invitation"].(map[string]any)
 	assert.Equal(t, "alice@example.com", invResp["email"])
+
+	// Plaintext token must be surfaced exactly once at creation time.
+	tok, _ := invResp["token"].(string)
+	assert.Len(t, tok, 32, "invitation token should be 16-byte hex (32 chars)")
+	assert.Regexp(t, "^[0-9a-f]{32}$", tok)
+	// invite_url is omitempty: empty when AppBaseURL is unset (this test's default).
+	if v, ok := invResp["invite_url"]; ok {
+		assert.Equal(t, "", v)
+	}
+
 	assert.NoError(t, mockPool.ExpectationsWereMet())
 }
 
@@ -142,8 +158,13 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 	mockPool.ExpectBegin()
 	// UPDATE...RETURNING atomically consumes the invitation, with expiry
 	// merged into the WHERE clause so the check can't race the status flip.
+	// Lookup now uses SHA-256 hex (00046 migration) — compute the expected
+	// hash here rather than hardcoding so a future hash-algo change in the
+	// handler trips the test instead of silently diverging.
+	const plainToken = "valid-token-abc"
+	expectedHash := hashInvitationToken(plainToken)
 	mockPool.ExpectQuery(regexp.QuoteMeta(`UPDATE team_invitations`)).
-		WithArgs("valid-token-abc").
+		WithArgs(expectedHash).
 		WillReturnRows(pgxmock.NewRows([]string{"id", "team_id", "role", "invited_by"}).
 			AddRow("tinv_xyz", "team_abc", "member", "u_inviter"))
 
@@ -153,7 +174,7 @@ func TestTeamHandler_AcceptInvitation_ValidToken(t *testing.T) {
 	mockPool.ExpectCommit()
 
 	req := teamRequest(http.MethodPost, "/v1/teams/accept-invitation",
-		map[string]string{"token": "valid-token-abc"})
+		map[string]string{"token": plainToken})
 	req = prepReq(req, "u_joiner")
 	rr := httptest.NewRecorder()
 	h.AcceptInvitation(rr, req)

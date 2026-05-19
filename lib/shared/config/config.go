@@ -95,8 +95,21 @@ type ServerConfig struct {
 	Env         string   `yaml:"env"` // development | staging | production
 	CORSOrigins []string `yaml:"cors_origins"`
 	AdminToken  string   `yaml:"admin_token"`
-	RPID        string   `yaml:"rp_id"`        // WebAuthn Relying Party ID (default: idcd.com)
-	AppBaseURL  string   `yaml:"app_base_url"` // Frontend base URL for email deep-links, e.g. "https://app.idcd.com"
+	// AdminIPAllowlist gates /internal/admin/* by direct or proxy-forwarded
+	// client IP. Each entry is a CIDR ("10.0.0.0/8") or single IP. Empty
+	// allows any IP (dev default). Production should pin VPN / office /
+	// bastion ranges so a leaked admin_token alone is not enough to walk
+	// in from the open internet.
+	AdminIPAllowlist []string `yaml:"admin_ip_allowlist"`
+	// AdminOrigins lists Origin / Referer hosts permitted to call
+	// /internal/admin/* with a mutating method. Empty disables the check
+	// (Bearer auth alone is considered enough — appropriate when callers
+	// are server-to-server tools without a browser context). Set this when
+	// you wire a browser-based admin console so a hijacked tab on another
+	// origin can't ride a logged-in admin session.
+	AdminOrigins []string `yaml:"admin_origins"`
+	RPID         string   `yaml:"rp_id"`        // WebAuthn Relying Party ID (default: idcd.com)
+	AppBaseURL   string   `yaml:"app_base_url"` // Frontend base URL for email deep-links, e.g. "https://app.idcd.com"
 	// PublicAPIURL is the externally-reachable base URL for the API service
 	// itself (e.g. "https://api.idcd.com"). Used to build webhook callback
 	// URLs that the payment platform calls back into. MUST NOT be derived
@@ -229,6 +242,14 @@ func (c *Config) validate() error {
 	}
 	if c.Server.AdminToken == "" {
 		return fmt.Errorf("server.admin_token is required")
+	}
+	// Recommend `openssl rand -hex 32` (= 64 hex chars / 32 bytes entropy).
+	// 32 bytes is the Go crypto/rand standard for HMAC-grade secrets and
+	// matches the encryption.field_key requirement above; weaker tokens
+	// expose /internal/admin/* to feasible online brute force given how
+	// rarely operators rotate them. Empty was already rejected above.
+	if len(c.Server.AdminToken) < 64 {
+		return fmt.Errorf("server.admin_token must be at least 64 chars (use `openssl rand -hex 32`)")
 	}
 	return nil
 }

@@ -57,6 +57,15 @@ for _ in {1..60}; do
 done
 
 # 3) Enroll a local agent (one-time per session — writes /tmp/idcd-agent.yaml).
+# If the yaml already exists but is missing fields added in newer revisions,
+# patch them in-place so an old session's yaml doesn't silently strand the
+# new feature (e.g. geoip_db_path).
+if [[ -f /tmp/idcd-agent.yaml ]]; then
+  if [[ -f "$ROOT/apps/agent/data/GeoLite2-City.mmdb" ]] && ! grep -q "^geoip_db_path:" /tmp/idcd-agent.yaml; then
+    echo "geoip_db_path: \"$ROOT/apps/agent/data/GeoLite2-City.mmdb\"" >> /tmp/idcd-agent.yaml
+    log "patched existing /tmp/idcd-agent.yaml with geoip_db_path"
+  fi
+fi
 if [[ ! -f /tmp/idcd-agent.yaml ]]; then
   log "enrolling local agent…"
   ADMIN=$(awk -F'"' '/admin_token/{print $2; exit}' config/dev.env.yaml)

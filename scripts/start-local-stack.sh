@@ -69,6 +69,10 @@ if [[ ! -f /tmp/idcd-agent.yaml ]]; then
   NODE_ID=$(echo "$CRED" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["node_id"])')
   SECRET=$(echo "$CRED" | python3 -c 'import json,sys;print(json.load(sys.stdin)["data"]["secret_key"])')
   mkdir -p /tmp/idcd-agent-data
+  GEOIP_PATH=""
+  if [[ -f "$ROOT/apps/agent/data/GeoLite2-City.mmdb" ]]; then
+    GEOIP_PATH="$ROOT/apps/agent/data/GeoLite2-City.mmdb"
+  fi
   cat > /tmp/idcd-agent.yaml <<EOF
 node_id: $NODE_ID
 gateway_url: ws://localhost:8443/agent/ws
@@ -76,10 +80,11 @@ secret_key: $SECRET
 data_dir: /tmp/idcd-agent-data
 poll_interval: 5s
 batch_size: 10
+geoip_db_path: "$GEOIP_PATH"
 observability:
   prometheus_port: 9099
 EOF
-  log "agent enrolled: $NODE_ID"
+  log "agent enrolled: $NODE_ID${GEOIP_PATH:+ (geoip enabled)}"
 fi
 
 # 4) Agent

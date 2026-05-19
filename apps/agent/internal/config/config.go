@@ -19,6 +19,7 @@ type Config struct {
 	SecretKey     string                           `yaml:"secret_key"`
 	PollInterval  string                           `yaml:"poll_interval"`
 	BatchSize     int                              `yaml:"batch_size"`
+	GeoIPDBPath   string                           `yaml:"geoip_db_path"`
 }
 
 // Load reads and parses the agent config file at path.
@@ -93,5 +94,8 @@ func (c *Config) applyEnvOverrides() {
 	}
 	if gatewayURL := os.Getenv("AGENT_GATEWAY_URL"); gatewayURL != "" {
 		c.GatewayURL = gatewayURL
+	}
+	if geoip := os.Getenv("AGENT_GEOIP_DB"); geoip != "" {
+		c.GeoIPDBPath = geoip
 	}
 }

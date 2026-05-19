@@ -67,7 +67,7 @@ func (m *MockDNSResolver) LookupNS(name string) ([]string, error) {
 
 func TestNewExecutor(t *testing.T) {
 	secretKey := []byte("test-secret-key")
-	executor := NewExecutor(secretKey)
+	executor := NewExecutor(secretKey, nil)
 
 	if executor == nil {
 		t.Fatal("Expected non-nil executor")
@@ -96,7 +96,7 @@ func TestNewExecutor(t *testing.T) {
 
 func TestExecutor_Execute(t *testing.T) {
 	secretKey := []byte("test-secret-key")
-	executor := NewExecutor(secretKey)
+	executor := NewExecutor(secretKey, nil)
 
 	// Mock the ping probe
 	mockPingProbe := &probe.PingProbe{
@@ -272,7 +272,7 @@ func TestExecutor_Execute(t *testing.T) {
 
 func TestExecutor_ExecuteWithDefaults(t *testing.T) {
 	secretKey := []byte("test-secret-key")
-	executor := NewExecutor(secretKey)
+	executor := NewExecutor(secretKey, nil)
 
 	// Test with zero timeout (should get default)
 	task := Task{
@@ -299,7 +299,7 @@ func TestExecutor_ExecuteWithDefaults(t *testing.T) {
 
 func TestExecutor_ExecuteBatch(t *testing.T) {
 	secretKey := []byte("test-secret-key")
-	executor := NewExecutor(secretKey)
+	executor := NewExecutor(secretKey, nil)
 
 	// Mock the ping probe for consistent results
 	mockPingProbe := &probe.PingProbe{
@@ -373,7 +373,7 @@ func TestExecutor_ExecuteBatch(t *testing.T) {
 
 func TestExecutor_SetProbes(t *testing.T) {
 	secretKey := []byte("test-secret-key")
-	executor := NewExecutor(secretKey)
+	executor := NewExecutor(secretKey, nil)
 
 	// Test SetPingProbe
 	customPingProbe := &probe.PingProbe{

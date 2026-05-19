@@ -54,6 +54,9 @@ config/aggregator.yaml
 *.pfx
 *.crt
 *.jks
+
+# GeoIP databases (download via scripts/download-geolite2.sh — license-bound)
+*.mmdb
 infra/terraform/.terraform/
 infra/terraform/terraform.tfstate*
 infra/terraform/*.tfvars

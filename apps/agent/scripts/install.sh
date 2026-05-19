@@ -159,6 +159,10 @@ secret_key: "${SECRET_KEY}"
 data_dir: "${DATA_DIR}"
 poll_interval: "30s"
 batch_size: 100
+# Path to MaxMind GeoLite2-City.mmdb for traceroute hop geo lookup.
+# Optional — leave blank to ship hops without country/city/lat/lng.
+# Download via scripts/download-geolite2.sh on the build host.
+geoip_db_path: ""
 observability:
   telemetry:
     enabled: false

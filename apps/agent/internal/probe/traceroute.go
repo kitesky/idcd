@@ -41,6 +41,10 @@ func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options 
 		hops = tcpReachabilityHop(targetIP.IP, timeout)
 	}
 
+	if p.Geo != nil {
+		annotateGeo(hops, p.Geo)
+	}
+
 	reached := len(hops) > 0 && !hops[len(hops)-1].Timeout && hops[len(hops)-1].IP == targetIP.IP.String()
 
 	return &Result{

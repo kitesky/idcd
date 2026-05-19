@@ -103,7 +103,22 @@ func main() {
 
 // NewAgent creates and wires all agent components.
 func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, error) {
-	executor := task.NewExecutor([]byte(cfg.SecretKey))
+	// GeoIP is optional — if the mmdb file is missing or unreadable we keep
+	// running with hops that lack country/city/lat/lng. Missing geo is a
+	// degraded experience (no map path), not a probe failure.
+	var geo probe.GeoLookup
+	if cfg.GeoIPDBPath != "" {
+		g, err := probe.OpenMMDB(cfg.GeoIPDBPath)
+		if err != nil {
+			log.Warn("geoip mmdb load failed; traceroute hops will have no geo",
+				"path", cfg.GeoIPDBPath, "err", err)
+		} else {
+			geo = g
+			log.Info("geoip mmdb loaded", "path", cfg.GeoIPDBPath)
+		}
+	}
+
+	executor := task.NewExecutor([]byte(cfg.SecretKey), geo)
 
 	buf, err := buffer.New(cfg.DataDir)
 	if err != nil {

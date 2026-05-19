@@ -3,7 +3,8 @@
 import { useState } from "react"
 import ProbeForm from "@/components/probe/ProbeForm"
 import NodeSelector from "@/components/probe/NodeSelector"
-import ProbeResults from "@/components/probe/ProbeResults"
+import { TracerouteResultPanel } from "@/components/probe/TracerouteResultPanel"
+import ShareResultButton from "@/components/probe/ShareResultButton"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import { probeTraceroute } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui"
@@ -32,27 +33,32 @@ export default function TracerouteProbeClient() {
     }
   }
 
+  const shareSlot = shareCtx && polling.taskResult
+    ? <ShareResultButton tool="traceroute" target={shareCtx.target} params={shareCtx.params} taskResult={polling.taskResult} />
+    : null
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold">路由追踪</h1>
         <p className="text-muted-foreground mt-2">
-          从全球多个节点追踪到目标主机的网络路径，显示每一跳的延迟
+          从全球多个节点追踪到目标主机的网络路径，在地图上可视化每一跳的位置与延迟
         </p>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)]">
         <div className="space-y-6">
           <ProbeForm type="traceroute" onSubmit={handleSubmit} loading={polling.isPolling} />
           <NodeSelector selectedNodes={selectedNodes} onNodesChange={setSelectedNodes} />
         </div>
 
         <div>
-          <ProbeResults
-            taskId={taskId}
+          <TracerouteResultPanel
             polling={polling}
+            sourceNodeId={selectedNodes[0]}
+            variant="traceroute"
             error={submitError}
-            shareContext={shareCtx ? { tool: "traceroute", ...shareCtx } : undefined}
+            headerSlot={shareSlot}
           />
         </div>
       </div>
@@ -63,9 +69,10 @@ export default function TracerouteProbeClient() {
         </CardHeader>
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>• <strong>目标地址</strong>：输入域名或 IP 地址（如 example.com 或 1.1.1.1）</p>
-          <p>• <strong>路由信息</strong>：显示数据包经过的每一跳路由器的 IP 和延迟</p>
-          <p>• <strong>应用场景</strong>：诊断网络路径、定位网络瓶颈、分析跨国线路</p>
-          <p>• <strong>节点选择</strong>：可选择特定节点，默认使用所有可用节点</p>
+          <p>• <strong>路径地图</strong>：基于每一跳的 IP 地理位置（GeoIP）连成路径，鼠标悬停查看详细信息</p>
+          <p>• <strong>跳点列表</strong>：完整的 hop / IP / 主机名 / 位置 / 延迟表格</p>
+          <p>• <strong>* 号或超时</strong>：路由器不响应 ICMP 或私网节点（如运营商网关），无法定位</p>
+          <p>• <strong>节点选择</strong>：可选择起点节点，默认使用所有可用节点</p>
         </CardContent>
       </Card>
     </div>

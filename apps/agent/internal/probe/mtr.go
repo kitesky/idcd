@@ -8,8 +8,11 @@ import (
 )
 
 // MTRProbe executes MTR (traceroute + per-hop ping) probes.
+// Geo is optional; passed through to the embedded TracerouteProbe so each
+// MTR hop gets the same country/city/lat/lng treatment.
 type MTRProbe struct {
 	Sender PingSender
+	Geo    GeoLookup
 }
 
 // MTRHop represents a single MTR hop with ping statistics.
@@ -24,13 +27,17 @@ type MTRHop struct {
 	MinRTTMs float64 `json:"min_rtt_ms"`
 	MaxRTTMs float64 `json:"max_rtt_ms"`
 	Timeout  bool    `json:"timeout,omitempty"`
+	Country  string  `json:"country,omitempty"`
+	City     string  `json:"city,omitempty"`
+	Lat      float64 `json:"lat,omitempty"`
+	Lng      float64 `json:"lng,omitempty"`
 }
 
 // Execute runs MTR: traceroute first to discover hops, then pings each hop 3 times.
 func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[string]any) *Result {
 	start := time.Now()
 
-	tr := &TracerouteProbe{}
+	tr := &TracerouteProbe{Geo: p.Geo}
 	trResult := tr.Execute(target, timeout, options)
 
 	hops, _ := trResult.Data["hops"].([]TracerouteHop)
@@ -50,7 +57,7 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 	const rdnsTimeout = 1 * time.Second
 	pingTimeout := 2 * time.Second
 
-	// Phase 1: build base hop structs.
+	// Phase 1: build base hop structs (geo copied from traceroute pass).
 	mtrHops := make([]MTRHop, len(hops))
 	for i, h := range hops {
 		mh := MTRHop{
@@ -58,6 +65,10 @@ func (p *MTRProbe) Execute(target string, timeout time.Duration, options map[str
 			IP:       h.IP,
 			Hostname: h.Hostname,
 			Timeout:  h.Timeout,
+			Country:  h.Country,
+			City:     h.City,
+			Lat:      h.Lat,
+			Lng:      h.Lng,
 		}
 		if h.Timeout || h.IP == "" || h.IP == "*" {
 			mh.SentPkts = pingsPerHop

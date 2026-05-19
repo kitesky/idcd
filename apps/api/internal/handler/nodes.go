@@ -36,15 +36,21 @@ type NodeListResponse struct {
 
 // NodeInfo represents a single node in the directory.
 type NodeInfo struct {
-	ID          string `json:"id"`
-	Name        string `json:"name,omitempty"`
-	Tier        string `json:"tier"`
-	CountryCode string `json:"country_code"`
-	Region      string `json:"region,omitempty"`
-	City        string `json:"city,omitempty"`
-	ASN         string `json:"asn,omitempty"`
-	ISP         string `json:"isp,omitempty"`
-	Status      string `json:"status"`
+	ID          string   `json:"id"`
+	Name        string   `json:"name,omitempty"`
+	Tier        string   `json:"tier"`
+	CountryCode string   `json:"country_code"`
+	Region      string   `json:"region,omitempty"`
+	City        string   `json:"city,omitempty"`
+	ASN         string   `json:"asn,omitempty"`
+	ISP         string   `json:"isp,omitempty"`
+	Status      string   `json:"status"`
+	// Lat/Lng come from enrolled_nodes.metadata (the agent geo annotator
+	// populates them at enrollment time). Pointer so JSON omits the field
+	// entirely when metadata lacks coords — the map UI uses presence as a
+	// signal to draw the path origin.
+	Lat *float64 `json:"lat,omitempty"`
+	Lng *float64 `json:"lng,omitempty"`
 }
 
 // NewNodesHandler creates a new NodesHandler.
@@ -102,7 +108,9 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]Nod
 		       metadata->>'region'       AS region,
 		       metadata->>'city'         AS city,
 		       metadata->>'asn'          AS asn,
-		       metadata->>'isp'          AS isp
+		       metadata->>'isp'          AS isp,
+		       (metadata->>'lat')::float8 AS lat,
+		       (metadata->>'lng')::float8 AS lng
 		FROM enrolled_nodes
 		WHERE status = 'active'
 	`
@@ -129,6 +137,7 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]Nod
 		var n NodeInfo
 		var hostname, ipAddr *string
 		var countryCode, region, city, asn, isp *string
+		var lat, lng *float64
 
 		if err := rows.Scan(
 			&n.ID,
@@ -140,6 +149,8 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]Nod
 			&city,
 			&asn,
 			&isp,
+			&lat,
+			&lng,
 		); err != nil {
 			return nil, err
 		}
@@ -164,6 +175,8 @@ func (h *NodesHandler) queryNodes(ctx context.Context, country, _ string) ([]Nod
 		if isp != nil {
 			n.ISP = *isp
 		}
+		n.Lat = lat
+		n.Lng = lng
 		n.Tier = "community"
 
 		nodes = append(nodes, n)

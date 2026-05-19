@@ -56,7 +56,10 @@ type DNSProbe struct {
 }
 
 // TracerouteProbe executes traceroute probes.
-type TracerouteProbe struct{}
+// Geo is optional; when nil, hops are returned without country/city/lat/lng.
+type TracerouteProbe struct {
+	Geo GeoLookup
+}
 
 // SMTPProbe executes SMTP banner/EHLO connection probes.
 type SMTPProbe struct{}
@@ -105,10 +108,18 @@ type MXRecord struct {
 // conversion. Earlier versions stored a raw time.Duration with the same JSON
 // tag, which silently shipped nanoseconds under a `rtt_ms` field name —
 // a 1s RTT showed up as 1_062_638_750 in the UI.
+//
+// Country/City/Lat/Lng populated when a GeoLookup is wired in and the IP
+// resolves; omitted (zero / empty) otherwise so the JSON payload stays
+// compact for private hops.
 type TracerouteHop struct {
 	Hop      int     `json:"hop"`
 	IP       string  `json:"ip"`
 	Hostname string  `json:"hostname,omitempty"`
 	RTTMs    float64 `json:"rtt_ms"`
 	Timeout  bool    `json:"timeout"`
+	Country  string  `json:"country,omitempty"`
+	City     string  `json:"city,omitempty"`
+	Lat      float64 `json:"lat,omitempty"`
+	Lng      float64 `json:"lng,omitempty"`
 }

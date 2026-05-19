@@ -197,6 +197,25 @@ export interface Node {
   tier?: string
   status: string
   is_active: boolean
+  /** Geo coordinates — populated when enrolled_nodes.metadata carries lat/lng.
+   * Used by TracerouteMap as the path origin. Absent for nodes without geo. */
+  lat?: number
+  lng?: number
+}
+
+/** Per-hop record returned in traceroute/MTR result.data.hops.
+ * country/city/lat/lng populated when the agent has a GeoIP DB loaded;
+ * absent for private / unresolved / loopback hops. */
+export interface TracerouteHop {
+  hop: number
+  ip: string
+  hostname?: string
+  rtt_ms: number
+  timeout: boolean
+  country?: string
+  city?: string
+  lat?: number
+  lng?: number
 }
 
 export interface ProbeParams {

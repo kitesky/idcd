@@ -24,7 +24,8 @@ type Executor struct {
 }
 
 // NewExecutor creates a new task executor with the given secret key for watermarking.
-func NewExecutor(secretKey []byte) *Executor {
+// geo may be nil — traceroute / MTR hops will simply omit country/city/lat/lng.
+func NewExecutor(secretKey []byte, geo probe.GeoLookup) *Executor {
 	pingProbe := &probe.PingProbe{}
 	// MTR needs an explicit sender. PingProbe.Sender is lazily initialised on
 	// first Execute(), so reading it during NewExecutor would always be nil —
@@ -37,10 +38,10 @@ func NewExecutor(secretKey []byte) *Executor {
 		pingProbe:       pingProbe,
 		tcpProbe:        &probe.TCPProbe{},
 		dnsProbe:        &probe.DNSProbe{},
-		tracerouteProbe: &probe.TracerouteProbe{},
+		tracerouteProbe: &probe.TracerouteProbe{Geo: geo},
 		smtpProbe:       &probe.SMTPProbe{},
 		ntpProbe:        &probe.NTPProbe{},
-		mtrProbe:        &probe.MTRProbe{Sender: &probe.ICMPPingSender{}},
+		mtrProbe:        &probe.MTRProbe{Sender: &probe.ICMPPingSender{}, Geo: geo},
 		speedtestProbe:  &probe.SpeedtestProbe{},
 		secretKey:       secretKey,
 	}

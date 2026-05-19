@@ -84,7 +84,6 @@ const ChartStyle = ({ id, config }: { id: string; config: ChartConfig }) => {
   if (!colorConfig.length) return null
   return (
     <style
-      // eslint-disable-next-line react/no-danger
       dangerouslySetInnerHTML={{
         __html: Object.entries(THEMES)
           .map(
@@ -157,7 +156,10 @@ const ChartTooltipContent = React.forwardRef<HTMLDivElement, ChartTooltipContent
     ref
   ) => {
     const { config } = useChart()
-    const items = Array.isArray(payload) ? (payload as TooltipPayloadItem[]) : []
+    const items = React.useMemo(
+      () => Array.isArray(payload) ? (payload as TooltipPayloadItem[]) : [],
+      [payload]
+    )
 
     const tooltipLabel = React.useMemo(() => {
       if (hideLabel || items.length === 0) return null

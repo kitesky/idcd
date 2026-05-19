@@ -1,12 +1,22 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
+import dynamic from "next/dynamic"
 import { Loader2Icon, RadioTowerIcon } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle, Badge } from "@/components/ui"
 import { useProbePolling } from "@/hooks/useProbePolling"
 import { getNodes, type Node, type ProbeResult, type ProbeTaskResult } from "@/lib/api"
 import type { SingleProbeReport } from "@/lib/diagnose-store"
+import type { MapNode } from "./ProbeMap"
 import ShareResultButton from "./ShareResultButton"
+
+// ProbeMap pulls in d3-geo + topojson lazily — keep it out of the initial
+// bundle and SSR pass. ssr:false avoids hydration mismatches from the async
+// fetch("/china-map-data.json") inside ChinaMap.
+const ProbeMap = dynamic(
+  () => import("./ProbeMap").then(m => ({ default: m.ProbeMap })),
+  { ssr: false, loading: () => <div className="w-full h-52 bg-muted/30 animate-pulse rounded" /> }
+)
 
 // Module-level cache so multiple ProbeResults instances (one per tool page,
 // plus the diagnose flow's parallel calls) share a single /v1/nodes fetch
@@ -136,15 +146,15 @@ export default function ProbeResults({
   const internal = useProbePolling(polling ? null : taskId ?? null)
   const { taskResult, isPolling, error: pollError } = polling ?? internal
 
-  const [nodeNameById, setNodeNameById] = useState<Record<string, string>>({})
+  const [nodeById, setNodeById] = useState<Record<string, Node>>({})
   useEffect(() => {
     let cancelled = false
     fetchNodesOnce()
       .then((nodes) => {
         if (cancelled) return
-        const map: Record<string, string> = {}
-        for (const n of nodes) map[n.id] = n.name || n.id
-        setNodeNameById(map)
+        const map: Record<string, Node> = {}
+        for (const n of nodes) map[n.id] = n
+        setNodeById(map)
       })
       .catch(() => { /* fall back to raw node_id */ })
     return () => { cancelled = true }
@@ -156,10 +166,32 @@ export default function ProbeResults({
   const rawItems = buildDisplayItems(result, taskResult)
   const displayItems = rawItems.map((it) => ({
     ...it,
-    node_name: it.node_name ?? nodeNameById[it.node_id],
+    node_name: it.node_name ?? nodeById[it.node_id]?.name ?? it.node_id,
   }))
   const successCount = displayItems.filter(r => r.success).length
   const totalCount = displayItems.length
+
+  // Geo-tagged MapNode list for ProbeMap. node.name is enough for the map's
+  // fuzzy match (city / region / country keywords), and we'd rather show a
+  // best-effort marker than nothing when DB lat/lng is missing.
+  const mapNodes: MapNode[] = useMemo(() => displayItems.flatMap((it) => {
+    const node = nodeById[it.node_id]
+    if (!node) return []
+    const displayName = [node.region, node.city].filter(Boolean).join(" / ") || node.name
+    return [{
+      name: displayName,
+      lat: 0,
+      lng: 0,
+      latency_ms: it.latency_ms,
+    }]
+  }), [displayItems, nodeById])
+
+  const isChinaOnly = useMemo(() => {
+    if (mapNodes.length === 0) return false
+    return displayItems.every((it) => nodeById[it.node_id]?.country_code === "CN")
+  }, [displayItems, mapNodes.length, nodeById])
+
+  const showMap = !isLoading && mapNodes.length > 0
 
   if (isLoading && totalCount === 0) {
     return (
@@ -243,6 +275,12 @@ export default function ProbeResults({
               <RadioTowerIcon className="size-3 animate-pulse" aria-hidden="true" />
               正在获取结果
             </Badge>
+          </div>
+        )}
+
+        {showMap && (
+          <div className="mb-4">
+            <ProbeMap nodes={mapNodes} isChinaOnly={isChinaOnly} />
           </div>
         )}
 

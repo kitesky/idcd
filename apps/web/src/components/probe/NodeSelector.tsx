@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { Card, CardContent, CardHeader, CardTitle, Badge, cn } from "@/components/ui"
+import { Card, CardContent, CardHeader, CardTitle, Badge, Button, cn } from "@/components/ui"
 import { getNodes, type Node } from "@/lib/api"
 
 interface NodeSelectorProps {
@@ -80,12 +80,15 @@ export default function NodeSelector({ selectedNodes, onNodesChange }: NodeSelec
       <CardHeader>
         <div className="flex items-center justify-between">
           <CardTitle>选择拨测节点</CardTitle>
-          <button
+          <Button
+            type="button"
+            variant="link"
+            size="sm"
             onClick={handleSelectAll}
-            className="text-sm text-primary hover:underline"
+            className="h-auto p-0 text-sm"
           >
             {selectedNodes.length === activeNodes.length ? "取消全选" : "全选"}
-          </button>
+          </Button>
         </div>
       </CardHeader>
       <CardContent>
@@ -93,21 +96,21 @@ export default function NodeSelector({ selectedNodes, onNodesChange }: NodeSelec
           {activeNodes.map((node) => {
             const isSelected = selectedNodes.includes(node.id)
             return (
-              <button
+              <Button
                 key={node.id}
+                type="button"
+                variant={isSelected ? "default" : "outline"}
                 onClick={() => handleToggleNode(node.id)}
                 className={cn(
-                  "px-3 py-2 rounded-md border text-left text-sm transition-colors",
-                  isSelected
-                    ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-card hover:bg-muted border-border"
+                  "h-auto px-3 py-2 justify-start text-left whitespace-normal flex-col items-start gap-0.5",
+                  !isSelected && "bg-card hover:bg-muted"
                 )}
               >
-                <div className="font-medium">{node.name}</div>
-                <div className="text-xs opacity-80">
+                <span className="font-medium text-sm">{node.name}</span>
+                <span className="text-xs opacity-80 font-normal">
                   {node.country_code} • {node.city} • {node.tier}
-                </div>
-              </button>
+                </span>
+              </Button>
             )
           })}
         </div>

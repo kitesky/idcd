@@ -27,11 +27,13 @@ describe("HomePage", () => {
     expect(input).toHaveAttribute("placeholder", "请输入域名或 IP")
   })
 
-  it("renders the diagnosis button", () => {
+  it("renders the diagnosis tab", () => {
     render(<HomePage />)
 
+    // shadcn Tabs renders TabsTrigger as role="tab", not role="button",
+    // so we query the category by tab role.
     expect(
-      screen.getByRole("button", { name: /一键诊断/ })
+      screen.getByRole("tab", { name: /一键诊断/ })
     ).toBeInTheDocument()
   })
 

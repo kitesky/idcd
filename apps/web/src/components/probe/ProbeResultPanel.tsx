@@ -102,14 +102,15 @@ function CopyButton({ text }: { text: string }) {
 
 // Each phase is stacked into a single bar per node. Order matters — paints
 // bottom-up in the same sequence as HTTP_PHASES, so "重定向" is at the bottom
-// and "下载" caps the bar.
+// and "下载" caps the bar. Palette is desaturated Tailwind 400-500 series so
+// the chart reads as a single hue family rather than a clown bar.
 const HTTP_PHASES = [
-  { key: "redirect_ms", label: "重定向", color: "#3b82f6" },
-  { key: "dns_ms",      label: "解析",   color: "#6366f1" },
-  { key: "connect_ms",  label: "建连",   color: "#f59e0b" },
-  { key: "ssl_ms",      label: "SSL",    color: "#10b981" },
-  { key: "server_ms",   label: "首包",   color: "#22d3ee" },
-  { key: "download_ms", label: "下载",   color: "#a3e635" },
+  { key: "redirect_ms", label: "重定向", color: "#94a3b8" }, // slate-400
+  { key: "dns_ms",      label: "解析",   color: "#a78bfa" }, // violet-400
+  { key: "connect_ms",  label: "建连",   color: "#fb923c" }, // orange-400
+  { key: "ssl_ms",      label: "SSL",    color: "#34d399" }, // emerald-400
+  { key: "server_ms",   label: "首包",   color: "#60a5fa" }, // blue-400
+  { key: "download_ms", label: "下载",   color: "#84cc16" }, // lime-500
 ] as const
 
 type PhaseKey = typeof HTTP_PHASES[number]["key"]
@@ -130,25 +131,25 @@ function StackedTooltip({ active, payload, label }: TooltipContentProps<number, 
     return s + v
   }, 0)
   return (
-    <div className="rounded-md border border-border/50 bg-popover px-3 py-2 text-xs shadow-md">
-      <p className="font-medium mb-1.5 text-foreground">{label}</p>
-      <div className="space-y-1">
+    <div className="min-w-[200px] rounded-lg border border-border/60 bg-popover px-3 py-2.5 text-xs shadow-lg">
+      <p className="font-semibold mb-2 text-foreground text-[13px]">{label}</p>
+      <div className="space-y-1.5">
         {items.filter((it) => typeof it.value === "number" && (it.value as number) > 0).map((it) => {
           const phase = HTTP_PHASES.find((p) => p.key === it.dataKey)
           const v = typeof it.value === "number" ? it.value : 0
           return (
             <div key={String(it.dataKey)} className="flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ background: phase?.color ?? it.color }} />
+              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: phase?.color ?? it.color }} />
               <span className="text-muted-foreground">{phase?.label ?? String(it.dataKey)}</span>
-              <span className="ml-auto font-mono tabular-nums text-foreground">{v} ms</span>
+              <span className="ml-auto font-mono tabular-nums text-foreground">{v}<span className="text-muted-foreground ml-0.5">ms</span></span>
             </div>
           )
         })}
       </div>
-      <p className="border-t mt-1.5 pt-1.5 flex justify-between text-foreground font-medium">
-        <span>合计</span>
-        <span className="font-mono tabular-nums">{total} ms</span>
-      </p>
+      <div className="border-t mt-2 pt-2 flex items-center justify-between text-foreground">
+        <span className="text-muted-foreground">合计</span>
+        <span className="font-mono font-semibold tabular-nums">{total}<span className="text-muted-foreground ml-0.5 font-normal">ms</span></span>
+      </div>
     </div>
   )
 }
@@ -166,15 +167,18 @@ function StackedBarChart({ rows }: { rows: ResultRow[] }) {
 
   return (
     <div className="mt-6 rounded-lg border bg-background p-5">
-      <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-        <p className="text-sm text-muted-foreground">
-          检测目标: <span className="text-foreground font-medium">{rows[0]?.node_name ?? "–"}</span>
-        </p>
-        <div className="flex flex-wrap gap-3">
+      <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
+        <div className="flex items-baseline gap-2">
+          <span className="text-sm font-medium text-foreground">阶段耗时分析</span>
+          <span className="text-xs text-muted-foreground">
+            {rows[0]?.node_name ?? "–"}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
           {HTTP_PHASES.map((p) => (
             <span key={p.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-2.5 w-2.5 rounded-sm flex-shrink-0" style={{ background: p.color }} />
-              {p.label}时间
+              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
+              {p.label}
             </span>
           ))}
         </div>
@@ -182,16 +186,47 @@ function StackedBarChart({ rows }: { rows: ResultRow[] }) {
 
       <div className="h-[260px] w-full">
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 10 }}>
-            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" opacity={0.5} />
-            <XAxis dataKey="node_name" tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} />
-            <YAxis tick={{ fill: "hsl(var(--muted-foreground))", fontSize: 11 }} axisLine={false} tickLine={false} unit=" ms" width={56} />
+          <BarChart data={data} margin={{ top: 8, right: 12, left: 8, bottom: 8 }} barCategoryGap="30%">
+            <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="currentColor" className="text-border" opacity={0.4} />
+            <XAxis
+              dataKey="node_name"
+              tick={{ fill: "currentColor", fontSize: 12 }}
+              className="text-muted-foreground"
+              axisLine={false}
+              tickLine={false}
+              tickMargin={10}
+            />
+            <YAxis
+              tick={{ fill: "currentColor", fontSize: 11 }}
+              className="text-muted-foreground"
+              axisLine={false}
+              tickLine={false}
+              tickFormatter={(v) => `${v}`}
+              width={40}
+              label={{
+                value: "ms",
+                position: "insideTopLeft",
+                offset: -2,
+                style: { fill: "currentColor", fontSize: 10, opacity: 0.6 },
+                className: "text-muted-foreground",
+              }}
+            />
             <Tooltip
               content={(props) => <StackedTooltip {...(props as TooltipContentProps<number, string>)} />}
-              cursor={{ fill: "hsl(var(--muted))", opacity: 0.4 }}
+              cursor={{ fill: "currentColor", className: "text-muted", fillOpacity: 0.08 }}
+              wrapperStyle={{ outline: "none" }}
             />
-            {HTTP_PHASES.map((p) => (
-              <Bar key={p.key} dataKey={p.key} stackId="phase" fill={p.color} radius={p.key === "download_ms" ? [4, 4, 0, 0] : 0} />
+            {HTTP_PHASES.map((p, i) => (
+              <Bar
+                key={p.key}
+                dataKey={p.key}
+                stackId="phase"
+                fill={p.color}
+                maxBarSize={96}
+                radius={i === HTTP_PHASES.length - 1 ? [4, 4, 0, 0] : 0}
+                isAnimationActive
+                animationDuration={350}
+              />
             ))}
           </BarChart>
         </ResponsiveContainer>

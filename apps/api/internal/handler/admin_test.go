@@ -95,6 +95,174 @@ func TestAdminAuthMiddleware_CorrectToken(t *testing.T) {
 	assert.True(t, called)
 }
 
+// --- IP allowlist tests ---
+
+// adminMWWithIP wraps a token-valid request so only the IP gate decides
+// whether the inner handler runs. RemoteAddr is set inline because chi /
+// httptest doesn't sniff X-Forwarded-For from non-trusted proxies.
+func adminMWWithIP(t *testing.T, h *AdminHandler, remoteAddr string) (called *bool, rr *httptest.ResponseRecorder) {
+	t.Helper()
+	v := false
+	called = &v
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		v = true
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := h.AdminAuthMiddleware(inner)
+
+	req := httptest.NewRequest(http.MethodGet, "/internal/admin/metrics", nil)
+	req = reqWithAdminToken(req)
+	req = withRequestID(req, "test-ip-gate")
+	req.RemoteAddr = remoteAddr
+	rr = httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	return called, rr
+}
+
+func TestAdminAuthMiddleware_IPAllowlist_Blocks(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	h.WithIPAllowlist([]string{"10.0.0.0/8"})
+
+	called, rr := adminMWWithIP(t, h, "203.0.113.42:1234")
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	assert.False(t, *called, "request from outside allowlist must not reach handler")
+}
+
+func TestAdminAuthMiddleware_IPAllowlist_AllowsCIDR(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	h.WithIPAllowlist([]string{"10.0.0.0/8"})
+
+	called, rr := adminMWWithIP(t, h, "10.5.6.7:1234")
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, *called)
+}
+
+func TestAdminAuthMiddleware_IPAllowlist_AllowsSingleIP(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	// Bare IP (no /32) must be normalised so the CIDR check works.
+	h.WithIPAllowlist([]string{"203.0.113.42"})
+
+	called, rr := adminMWWithIP(t, h, "203.0.113.42:1234")
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, *called)
+}
+
+func TestAdminAuthMiddleware_IPAllowlist_Empty(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	// Default (no WithIPAllowlist) means no gating — must still let through.
+	called, rr := adminMWWithIP(t, h, "8.8.8.8:9999")
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, *called)
+}
+
+// --- Origin allowlist tests ---
+
+func TestAdminAuthMiddleware_Origin_AllowsWhenUnconfigured(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	// Empty origin list = no gating. POST with no Origin header must pass.
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
+	handler := h.AdminAuthMiddleware(inner)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/admin/test-email", nil)
+	req = reqWithAdminToken(req)
+	req = withRequestID(req, "test-origin-empty")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.True(t, called)
+}
+
+func TestAdminAuthMiddleware_Origin_BlocksMismatch(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	h.WithAdminOrigins([]string{"https://admin.idcd.com"})
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { called = true })
+	handler := h.AdminAuthMiddleware(inner)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/admin/test-email", nil)
+	req.Header.Set("Origin", "https://evil.example.com")
+	req = reqWithAdminToken(req)
+	req = withRequestID(req, "test-origin-mismatch")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusForbidden, rr.Code)
+	assert.False(t, called)
+}
+
+func TestAdminAuthMiddleware_Origin_AllowsMatch(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	h.WithAdminOrigins([]string{"https://admin.idcd.com"})
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := h.AdminAuthMiddleware(inner)
+
+	req := httptest.NewRequest(http.MethodPost, "/internal/admin/test-email", nil)
+	req.Header.Set("Origin", "https://admin.idcd.com")
+	req = reqWithAdminToken(req)
+	req = withRequestID(req, "test-origin-match")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, called)
+}
+
+func TestAdminAuthMiddleware_Origin_FallsBackToReferer(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	h.WithAdminOrigins([]string{"https://admin.idcd.com"})
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := h.AdminAuthMiddleware(inner)
+
+	// No Origin, but Referer's scheme+host should match.
+	req := httptest.NewRequest(http.MethodPost, "/internal/admin/test-email", nil)
+	req.Header.Set("Referer", "https://admin.idcd.com/users/123")
+	req = reqWithAdminToken(req)
+	req = withRequestID(req, "test-origin-referer")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, called)
+}
+
+func TestAdminAuthMiddleware_Origin_SkippedForSafeMethods(t *testing.T) {
+	h, mockPool := newAdminTestHandler(t)
+	defer mockPool.Close()
+	h.WithAdminOrigins([]string{"https://admin.idcd.com"})
+
+	called := false
+	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		called = true
+		w.WriteHeader(http.StatusOK)
+	})
+	handler := h.AdminAuthMiddleware(inner)
+
+	// GET with no Origin must pass (Origin check applies to mutating methods only).
+	req := httptest.NewRequest(http.MethodGet, "/internal/admin/metrics", nil)
+	req = reqWithAdminToken(req)
+	req = withRequestID(req, "test-origin-get")
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, req)
+	assert.Equal(t, http.StatusOK, rr.Code)
+	assert.True(t, called)
+}
+
 // --- AdminMetrics tests ---
 
 func TestAdminMetrics_ReturnsCorrectFormat(t *testing.T) {

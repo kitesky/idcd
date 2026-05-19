@@ -46,6 +46,19 @@ func rejectIfBlockedHost(w http.ResponseWriter, r *http.Request, host string) bo
 	return false
 }
 
+// normalizeDomain 把用户粘来的 URL/路径剥到 host:
+// "https://example.com/path?x=1" → "example.com"。
+// DKIM/SPF/DMARC/MX 这些 handler 之前不做规范化,用户复制 URL 时查不到。
+func normalizeDomain(s string) string {
+	s = strings.TrimSpace(s)
+	s = strings.TrimPrefix(s, "https://")
+	s = strings.TrimPrefix(s, "http://")
+	if idx := strings.IndexByte(s, '/'); idx != -1 {
+		s = s[:idx]
+	}
+	return strings.ToLower(s)
+}
+
 // InfoHandler handles network information query endpoints.
 type InfoHandler struct {
 	httpClient *http.Client
@@ -266,33 +279,28 @@ func (h *InfoHandler) IP(w http.ResponseWriter, r *http.Request) {
 //  2. 覆盖 50+ TLD 的字段命名差异
 //  3. CN 域名中文字段(注册商/注册日期/到期日期)在 parser 里有规则
 func (h *InfoHandler) Whois(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", "q parameter is required"))
 		return
 	}
-
-	query = strings.TrimPrefix(query, "https://")
-	query = strings.TrimPrefix(query, "http://")
-	if idx := strings.IndexByte(query, '/'); idx != -1 {
-		query = query[:idx]
-	}
-	query = strings.ToLower(strings.TrimSpace(query))
-
 	result := queryWhois(r.Context(), query)
 	response.JSON(w, r, http.StatusOK, result)
 }
 
 // queryWhois 走 likexian 客户端 + parser,失败 fallback 到 raw + 手写解析。
 func queryWhois(ctx context.Context, domain string) WhoisResponse {
-	// likexian 没暴露 ctx,这里用 channel 模拟超时(默认 10s)。
+	// likexian/whois 客户端的 Whois 调用本身是阻塞同步的,不接 ctx。
+	// 用客户端的 SetTimeout 把上限锁在 10s,且通过 ctx.Done() 让请求生命周期
+	// 提前结束时不再等满 — 即使后台 goroutine 仍在阻塞,我们也不再持有它。
+	// 这样不会泄漏调用方协程,后台 goroutine 最多被 SetTimeout 兜底回收。
 	type whoisOut struct {
 		raw string
 		err error
 	}
 	ch := make(chan whoisOut, 1)
 	go func() {
-		raw, err := whois.NewClient().Whois(domain)
+		raw, err := whois.NewClient().SetTimeout(10 * time.Second).Whois(domain)
 		ch <- whoisOut{raw, err}
 	}()
 	var raw string
@@ -303,8 +311,6 @@ func queryWhois(ctx context.Context, domain string) WhoisResponse {
 		}
 		raw = out.raw
 	case <-ctx.Done():
-		return WhoisResponse{Domain: domain, Note: "WHOIS query timed out"}
-	case <-time.After(10 * time.Second):
 		return WhoisResponse{Domain: domain, Note: "WHOIS query timed out"}
 	}
 
@@ -342,20 +348,23 @@ func fallbackParseWhois(domain, raw string) WhoisResponse {
 	result := WhoisResponse{Domain: domain}
 	var nameServers []string
 
+	// 中文 WHOIS 字段名可能跟半角或全角冒号,统一把行 normalize 成半角后再 grep,
+	// 避免 4 个字段各维护两套字符串(之前 注册商 有全角,日期字段只覆盖半角)。
 	for line := range strings.SplitSeq(raw, "\n") {
-		lower := strings.ToLower(line)
+		nline := strings.ReplaceAll(line, "：", ":")
+		lower := strings.ToLower(nline)
 		switch {
-		case (strings.Contains(lower, "registrar:") || strings.Contains(line, "注册商:") || strings.Contains(line, "注册商：")) && result.Registrar == "":
-			result.Registrar = extractWhoisField(line)
+		case (strings.Contains(lower, "registrar:") || strings.Contains(nline, "注册商:")) && result.Registrar == "":
+			result.Registrar = extractWhoisField(nline)
 		case (strings.Contains(lower, "creation date:") || strings.Contains(lower, "registered:") ||
-			strings.Contains(line, "注册日期:") || strings.Contains(line, "注册时间:")) && result.CreationDate == "":
-			result.CreationDate = extractWhoisField(line)
+			strings.Contains(nline, "注册日期:") || strings.Contains(nline, "注册时间:")) && result.CreationDate == "":
+			result.CreationDate = extractWhoisField(nline)
 		case (strings.Contains(lower, "registry expiry date:") || strings.Contains(lower, "expiry date:") ||
-			strings.Contains(lower, "expires:") || strings.Contains(line, "到期日期:") ||
-			strings.Contains(line, "到期时间:")) && result.ExpiryDate == "":
-			result.ExpiryDate = extractWhoisField(line)
-		case strings.Contains(lower, "name server:") || strings.Contains(line, "DNS Serve") || strings.Contains(line, "域名服务器:"):
-			if ns := extractWhoisField(line); ns != "" {
+			strings.Contains(lower, "expires:") || strings.Contains(nline, "到期日期:") ||
+			strings.Contains(nline, "到期时间:")) && result.ExpiryDate == "":
+			result.ExpiryDate = extractWhoisField(nline)
+		case strings.Contains(lower, "name server:") || strings.Contains(nline, "DNS Serve") || strings.Contains(nline, "域名服务器:"):
+			if ns := extractWhoisField(nline); ns != "" {
 				nameServers = append(nameServers, strings.ToLower(ns))
 			}
 		}
@@ -364,13 +373,11 @@ func fallbackParseWhois(domain, raw string) WhoisResponse {
 	return result
 }
 
-// extractWhoisField extracts the value after the first colon (ASCII or
-// fullwidth) in a WHOIS line.
+// extractWhoisField 取冒号后的值。调用方已把全角冒号归一为半角(见
+// fallbackParseWhois 顶部的 ReplaceAll),所以这里只看半角即可。
 func extractWhoisField(line string) string {
-	for _, sep := range []string{":", "："} {
-		if i := strings.Index(line, sep); i != -1 {
-			return strings.TrimSpace(line[i+len(sep):])
-		}
+	if i := strings.IndexByte(line, ':'); i != -1 {
+		return strings.TrimSpace(line[i+1:])
 	}
 	return ""
 }
@@ -407,7 +414,7 @@ func (h *InfoHandler) RDNS(w http.ResponseWriter, r *http.Request) {
 
 // SPF handles GET /v1/info/spf?q=<domain> — SPF record query.
 func (h *InfoHandler) SPF(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
 		return
@@ -436,7 +443,7 @@ func (h *InfoHandler) SPF(w http.ResponseWriter, r *http.Request) {
 
 // DMARC handles GET /v1/info/dmarc?q=<domain> — DMARC record query.
 func (h *InfoHandler) DMARC(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
 		return
@@ -562,9 +569,6 @@ func queryDNSRR(ctx context.Context, domain string, qtype uint16) ([]DNSRecord, 
 		}
 		return nil, lastErr
 	}
-	if resp == nil {
-		return []DNSRecord{}, nil
-	}
 	// NXDOMAIN / NotImp 等 RCODE 转成 Go error,语义清晰且与旧 net.Resolver 一致。
 	if resp.Rcode != dns.RcodeSuccess {
 		return nil, fmt.Errorf("dns query: rcode %s", dns.RcodeToString[resp.Rcode])
@@ -644,17 +648,10 @@ func (h *InfoHandler) queryNSRecords(ctx context.Context, d string) ([]DNSRecord
 
 // SSL handles GET /v1/info/ssl?q=<domain> — SSL certificate query.
 func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", "q parameter is required"))
 		return
-	}
-
-	// Normalise: strip protocol prefix and path.
-	query = strings.TrimPrefix(query, "https://")
-	query = strings.TrimPrefix(query, "http://")
-	if idx := strings.IndexByte(query, '/'); idx != -1 {
-		query = query[:idx]
 	}
 
 	// SSRF protection: resolve and validate before dialing.
@@ -726,31 +723,22 @@ func (h *InfoHandler) SSL(w http.ResponseWriter, r *http.Request) {
 // 完全走自建库 icp.records:命中返回完整字段;未命中给前端跳转工信部的
 // inquiry_url(不调任何第三方 API,因为公开源都已死或要鉴权)。
 func (h *InfoHandler) ICP(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", "q parameter is required"))
 		return
 	}
-
-	query = strings.TrimPrefix(query, "https://")
-	query = strings.TrimPrefix(query, "http://")
-	if idx := strings.IndexByte(query, '/'); idx != -1 {
-		query = query[:idx]
-	}
-	query = strings.ToLower(strings.TrimSpace(query))
-	// 去掉常见子域,归一到 eTLD+1(粗略 — 不引 publicsuffix 库,因为 ICP 备案
-	// 本身就只看主域名;www.baidu.com / m.baidu.com → baidu.com)。
-	query = stripWWW(query)
+	// 去掉 www. 前缀;ICP 备案只看主域名(www.baidu.com → baidu.com)。
+	// 其它子域(m.* / api.* / mail.*)不在这里归一 — 不引 publicsuffix 库,
+	// 因为公共后缀涉及 co.uk / com.cn 等多段 TLD,粗暴 trim 会出错;
+	// 真要支持 m.baidu.com 这种,后续在导入侧把主站和子域都种进库。
+	query = strings.TrimPrefix(query, "www.")
 
 	// ICP 不调任何外部接口(纯本地库查询),所以不需要 SSRF guard。
 	// 之前误把 gov.cn 等域名挡掉 — 它们恰恰是合法 ICP 主体。
 
 	result := h.queryICP(r.Context(), query)
 	response.JSON(w, r, http.StatusOK, result)
-}
-
-func stripWWW(d string) string {
-	return strings.TrimPrefix(d, "www.")
 }
 
 // miitInquiryURL 是工信部备案公示查询页。前端把这个 URL 渲染成"去工信部查"按钮。
@@ -811,7 +799,7 @@ type MXRecord struct {
 
 // MX handles GET /v1/info/mx?q=<domain> — MX record query.
 func (h *InfoHandler) MX(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
 		return
@@ -846,7 +834,7 @@ type DKIMResponse struct {
 
 // DKIM handles GET /v1/info/dkim?q=<domain>&selector=<selector> — DKIM record query.
 func (h *InfoHandler) DKIM(w http.ResponseWriter, r *http.Request) {
-	query := strings.TrimSpace(r.URL.Query().Get("q"))
+	query := normalizeDomain(r.URL.Query().Get("q"))
 	selector := strings.TrimSpace(r.URL.Query().Get("selector"))
 	if query == "" {
 		response.Error(w, r, apperr.Validation("Missing 'q' parameter", ""))
@@ -926,6 +914,13 @@ func (h *InfoHandler) ASN(w http.ResponseWriter, r *http.Request) {
 	}
 	defer resp.Body.Close()
 
+	// ip-api 偶尔返回 HTML 错误页(域名不可解析时),跟 IP() handler 同样防御:
+	// 不是 JSON 就当输入合法性失败,而不是 500。
+	if ct := resp.Header.Get("Content-Type"); ct != "" && !strings.Contains(strings.ToLower(ct), "json") {
+		response.Error(w, r, apperr.Validation("invalid or unresolvable target", "q"))
+		return
+	}
+
 	var apiResp struct {
 		Status      string `json:"status"`
 		Message     string `json:"message"`
@@ -935,7 +930,7 @@ func (h *InfoHandler) ASN(w http.ResponseWriter, r *http.Request) {
 		AS          string `json:"as"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
-		response.Error(w, r, apperr.Internal("Failed to parse response", err))
+		response.Error(w, r, apperr.Validation("invalid or unresolvable target", "q"))
 		return
 	}
 	if apiResp.Status != "success" {

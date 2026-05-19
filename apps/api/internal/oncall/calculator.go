@@ -87,6 +87,116 @@ func CurrentOnCall(ctx context.Context, db QueryRow, scheduleID string, at time.
 	return nextRotationUser(participants, s.RotationType, s.HandoffHour, at), nil
 }
 
+// BatchCurrentOnCall returns the on-call user for each requested timestamp in
+// a single round-trip's worth of DB work — one schedule lookup, one
+// participants scan, one overrides scan covering the full time range.
+//
+// Callers (notably handler.GetSchedule's 7-day preview) used to call
+// CurrentOnCall once per day, which fanned out to ~3 queries per day, i.e.
+// ~21 round trips just to render the sidebar. With this helper the same render
+// costs three queries total. Returns one user_id per `ats` entry in the same
+// order (empty string when no participants are configured for that day).
+func BatchCurrentOnCall(ctx context.Context, db QueryRow, scheduleID string, ats []time.Time) ([]string, error) {
+	if len(ats) == 0 {
+		return nil, nil
+	}
+
+	var s Schedule
+	if err := db.QueryRow(ctx, `
+		SELECT id, rotation_type, handoff_hour FROM oncall_schedules WHERE id = $1
+	`, scheduleID).Scan(&s.ID, &s.RotationType, &s.HandoffHour); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrScheduleNotFound
+		}
+		return nil, fmt.Errorf("query oncall_schedules: %w", err)
+	}
+
+	// Compute the [min, max] timestamp window so the override scan only loads
+	// rows that could overlap any requested timestamp. Inclusive on min,
+	// exclusive on max — matches the per-day comparison below.
+	minAt, maxAt := ats[0], ats[0]
+	for _, t := range ats[1:] {
+		if t.Before(minAt) {
+			minAt = t
+		}
+		if t.After(maxAt) {
+			maxAt = t
+		}
+	}
+
+	type overrideRow struct {
+		userID    string
+		startAt   time.Time
+		endAt     time.Time
+		createdAt time.Time
+	}
+	rows, err := db.Query(ctx, `
+		SELECT user_id, start_at, end_at, created_at FROM oncall_overrides
+		WHERE schedule_id = $1 AND end_at > $2 AND start_at <= $3
+		ORDER BY created_at DESC
+	`, scheduleID, minAt, maxAt)
+	if err != nil {
+		return nil, fmt.Errorf("query oncall_overrides batch: %w", err)
+	}
+	defer rows.Close()
+	var overrides []overrideRow
+	for rows.Next() {
+		var o overrideRow
+		if err := rows.Scan(&o.userID, &o.startAt, &o.endAt, &o.createdAt); err != nil {
+			return nil, fmt.Errorf("scan oncall_override: %w", err)
+		}
+		overrides = append(overrides, o)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate oncall_overrides batch: %w", err)
+	}
+
+	pRows, err := db.Query(ctx, `
+		SELECT id, schedule_id, user_id, order_index FROM oncall_participants
+		WHERE schedule_id = $1
+		ORDER BY order_index ASC
+	`, scheduleID)
+	if err != nil {
+		return nil, fmt.Errorf("query oncall_participants batch: %w", err)
+	}
+	defer pRows.Close()
+	var participants []Participant
+	for pRows.Next() {
+		var p Participant
+		if err := pRows.Scan(&p.ID, &p.ScheduleID, &p.UserID, &p.OrderIndex); err != nil {
+			return nil, fmt.Errorf("scan oncall_participant batch: %w", err)
+		}
+		participants = append(participants, p)
+	}
+	if err := pRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate oncall_participants batch: %w", err)
+	}
+
+	out := make([]string, len(ats))
+	for i, at := range ats {
+		// Override wins. Overrides are sorted by created_at DESC, so the first
+		// match is the most recently created — matches CurrentOnCall's
+		// single-row LIMIT 1 ORDER BY created_at DESC semantics.
+		matched := false
+		for _, o := range overrides {
+			if !o.startAt.After(at) && o.endAt.After(at) {
+				out[i] = o.userID
+				matched = true
+				break
+			}
+		}
+		if matched {
+			continue
+		}
+		if len(participants) == 0 {
+			out[i] = ""
+			continue
+		}
+		out[i] = nextRotationUser(participants, s.RotationType, s.HandoffHour, at)
+	}
+	return out, nil
+}
+
 var epoch = time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
 
 func nextRotationUser(participants []Participant, rotationType string, handoffHour int, at time.Time) string {

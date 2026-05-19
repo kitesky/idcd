@@ -1,6 +1,6 @@
-import Link from "next/link"
 import { ReactNode } from "react"
 import { getT } from "@/i18n/getT"
+import { SettingsNav } from "./settings-nav"
 
 export default async function SettingsLayout({ children }: { children: ReactNode }) {
   const t = await getT("settings")
@@ -18,23 +18,7 @@ export default async function SettingsLayout({ children }: { children: ReactNode
   return (
     <div className="flex flex-col" data-testid="settings-layout">
       <div className="flex-1 flex flex-col gap-8 lg:flex-row">
-        {/* ── Sidebar nav ──────────────────────────────────────────── */}
-        <nav
-          className="flex flex-row flex-wrap gap-1 lg:flex-col lg:flex-nowrap lg:w-48 shrink-0"
-          data-testid="settings-nav"
-          aria-label={t("title")}
-        >
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className="rounded-md px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-              data-testid={`settings-nav-${item.href.split("/").pop()}`}
-            >
-              {item.label}
-            </Link>
-          ))}
-        </nav>
+        <SettingsNav items={NAV_ITEMS} ariaLabel={t("title")} />
 
         {/* ── Page content ─────────────────────────────────────────── */}
         <div className="flex-1 min-w-0">{children}</div>

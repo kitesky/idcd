@@ -224,5 +224,8 @@ func (h *TeamBillingHandler) GetSubscription(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	response.JSON(w, r, http.StatusOK, sub)
+	// Match the {data: {<resource>: ...}} naming the rest of the team API uses
+	// (teams, members, api_keys, invitations) — flat struct here would force
+	// the frontend into a special-case unwrapper.
+	response.JSON(w, r, http.StatusOK, map[string]any{"subscription": sub})
 }

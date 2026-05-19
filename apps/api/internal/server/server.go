@@ -860,12 +860,16 @@ func (s *Server) Start() error {
 }
 
 // startMetricsServer exposes Prometheus metrics on an internal-only port (:9091).
-// This port must NOT be exposed to public traffic (bind to loopback or internal VPC only).
+// Bind explicitly to loopback so a node misconfigured without a network policy
+// doesn't accidentally expose business metrics (user counts, billing volume,
+// error rates) to the public internet. Production sidecars + k8s pods should
+// scrape via localhost; cross-host scrape goes through the admin-token-gated
+// /internal/metrics endpoint instead.
 func (s *Server) startMetricsServer() {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	metricsServer := &http.Server{
-		Addr:        ":9091",
+		Addr:        "127.0.0.1:9091",
 		Handler:     mux,
 		ReadTimeout: 5 * time.Second,
 	}

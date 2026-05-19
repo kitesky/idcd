@@ -331,25 +331,37 @@ func (h *OncallHandler) GetSchedule(w http.ResponseWriter, r *http.Request) {
 		participants = []oncallParticipantResponse{}
 	}
 
+	// One batch call replaces 8 round-trips (current + 7 preview days). Each
+	// CurrentOnCall fans out to ~3 queries internally, so the old loop was
+	// ~24 DB hits per render of this page.
 	now := time.Now().UTC()
-	currentOnCall, currentErr := oncall.CurrentOnCall(ctx, h.pool, id, now)
-	if currentErr != nil && !errors.Is(currentErr, oncall.ErrScheduleNotFound) {
-		response.Error(w, r, apperr.Internal("failed to compute current on-call", currentErr))
+	ats := make([]time.Time, 0, 8)
+	ats = append(ats, now)
+	for i := range 7 {
+		ats = append(ats, now.AddDate(0, 0, i))
+	}
+	results, batchErr := oncall.BatchCurrentOnCall(ctx, h.pool, id, ats)
+	if batchErr != nil && !errors.Is(batchErr, oncall.ErrScheduleNotFound) {
+		response.Error(w, r, apperr.Internal("failed to compute on-call preview", batchErr))
 		return
 	}
-
-	var preview []previewDay
-	for i := range 7 {
-		day := now.AddDate(0, 0, i)
-		dayUserID, dayErr := oncall.CurrentOnCall(ctx, h.pool, id, day)
-		if dayErr != nil && !errors.Is(dayErr, oncall.ErrScheduleNotFound) {
-			response.Error(w, r, apperr.Internal("failed to compute on-call preview", dayErr))
-			return
+	currentOnCall := ""
+	preview := make([]previewDay, 0, 7)
+	if len(results) > 0 {
+		currentOnCall = results[0]
+		for i := range 7 {
+			preview = append(preview, previewDay{
+				Date:   ats[i+1].Format("2006-01-02"),
+				UserID: results[i+1],
+			})
 		}
-		preview = append(preview, previewDay{
-			Date:   day.Format("2006-01-02"),
-			UserID: dayUserID,
-		})
+	} else {
+		for i := range 7 {
+			preview = append(preview, previewDay{
+				Date:   ats[i+1].Format("2006-01-02"),
+				UserID: "",
+			})
+		}
 	}
 
 	detail := scheduleDetailResponse{

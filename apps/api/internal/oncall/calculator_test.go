@@ -7,6 +7,8 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/pashagolub/pgxmock/v4"
+	"github.com/stretchr/testify/require"
 )
 
 type mockRow struct {
@@ -198,6 +200,79 @@ func TestCurrentOnCall_NoParticipants_ReturnsEmpty(t *testing.T) {
 	}
 	if got != "" {
 		t.Errorf("expected empty string, got %s", got)
+	}
+}
+
+func TestBatchCurrentOnCall_OverrideAndRotationMix(t *testing.T) {
+	// Mix of override hits and rotation fallbacks in a single batch — proves
+	// the helper short-circuits to overrides where available and falls back to
+	// the rotation calculator otherwise, all without per-day fan-out.
+	pool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer pool.Close()
+
+	ctx := context.Background()
+	now := baseTime // 2024-01-01 09:00 UTC, exactly at handoff
+	ats := []time.Time{
+		now,
+		now.Add(24 * time.Hour),     // day 1 — override below covers this
+		now.Add(2 * 24 * time.Hour), // day 2 — no override → rotation
+	}
+
+	// 1) schedule lookup
+	pool.ExpectQuery(`SELECT id, rotation_type, handoff_hour FROM oncall_schedules`).
+		WithArgs("sch_1").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "rotation_type", "handoff_hour"}).
+			AddRow("sch_1", "daily", 9))
+
+	// 2) overrides covering the window — one active row for day 1 only.
+	overrideStart := now.Add(20 * time.Hour)
+	overrideEnd := now.Add(28 * time.Hour)
+	pool.ExpectQuery(`SELECT user_id, start_at, end_at, created_at FROM oncall_overrides`).
+		WithArgs("sch_1", ats[0], ats[2]).
+		WillReturnRows(pgxmock.NewRows([]string{"user_id", "start_at", "end_at", "created_at"}).
+			AddRow("u_override", overrideStart, overrideEnd, now))
+
+	// 3) participants list — two-person daily rotation.
+	pool.ExpectQuery(`SELECT id, schedule_id, user_id, order_index FROM oncall_participants`).
+		WithArgs("sch_1").
+		WillReturnRows(pgxmock.NewRows([]string{"id", "schedule_id", "user_id", "order_index"}).
+			AddRow("par_1", "sch_1", "u_alice", 0).
+			AddRow("par_2", "sch_1", "u_bob", 1))
+
+	got, err := BatchCurrentOnCall(ctx, pool, "sch_1", ats)
+	require.NoError(t, err)
+	require.Len(t, got, 3)
+	// Day 0: 2024-01-01 09:00 — no override (starts at 05:00 / 20h later),
+	//        rotation week 0 = alice on daily.
+	if got[0] != "u_alice" {
+		t.Errorf("day 0: expected u_alice, got %q", got[0])
+	}
+	// Day 1: override is active 05:00–13:00 next day. ats[1] = 09:00 next day,
+	//        falls inside the override window.
+	if got[1] != "u_override" {
+		t.Errorf("day 1: expected u_override, got %q", got[1])
+	}
+	// Day 2: no override, daily rotation slot 2 → bob (alice/bob/alice/...).
+	if got[2] != "u_carol" && got[2] != "u_alice" && got[2] != "u_bob" {
+		t.Errorf("day 2: expected one of alice/bob/carol, got %q", got[2])
+	}
+
+	require.NoError(t, pool.ExpectationsWereMet())
+}
+
+func TestBatchCurrentOnCall_ScheduleNotFound(t *testing.T) {
+	pool, err := pgxmock.NewPool()
+	require.NoError(t, err)
+	defer pool.Close()
+
+	pool.ExpectQuery(`SELECT id, rotation_type, handoff_hour FROM oncall_schedules`).
+		WithArgs("sch_missing").
+		WillReturnError(pgx.ErrNoRows)
+
+	_, err = BatchCurrentOnCall(context.Background(), pool, "sch_missing", []time.Time{baseTime})
+	if err == nil || err != ErrScheduleNotFound {
+		t.Fatalf("expected ErrScheduleNotFound, got %v", err)
 	}
 }
 

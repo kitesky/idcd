@@ -269,8 +269,16 @@ func TestChangePassword_noAuth(t *testing.T) {
 	}
 }
 
+// pngMagicHeader is the 8-byte PNG signature (RFC 2083). UploadAvatar runs
+// http.DetectContentType on the upload payload to defend against clients that
+// label JS/SVG/PHP as image/jpeg, so test fixtures need real magic bytes
+// instead of arbitrary noise.
+var pngMagicHeader = []byte{0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A}
+
 // buildAvatarMultipart constructs a multipart/form-data body with a single
-// "avatar" file field of the given MIME type and content.
+// "avatar" file field of the given MIME type and content. When contentType is
+// image/png, the data is prefixed with the PNG signature so the handler's
+// magic-bytes sniffer accepts it as a real PNG.
 func buildAvatarMultipart(t *testing.T, contentType string, data []byte) (*bytes.Buffer, string) {
 	t.Helper()
 	var buf bytes.Buffer
@@ -283,6 +291,11 @@ func buildAvatarMultipart(t *testing.T, contentType string, data []byte) (*bytes
 	part, err := w.CreatePart(h)
 	if err != nil {
 		t.Fatalf("create multipart part: %v", err)
+	}
+	if contentType == "image/png" {
+		if _, err := part.Write(pngMagicHeader); err != nil {
+			t.Fatalf("write png header: %v", err)
+		}
 	}
 	if _, err := io.Copy(part, bytes.NewReader(data)); err != nil {
 		t.Fatalf("write multipart data: %v", err)

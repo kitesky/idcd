@@ -517,6 +517,11 @@ func (h *TeamHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		auditLog(r, "audit.team.ownership_transferred",
+			"team_id", teamID,
+			"from_user_id", currentOwnerID,
+			"to_user_id", targetUserID,
+		)
 		response.JSON(w, r, http.StatusOK, map[string]string{"message": "ownership transferred"})
 		return
 	}
@@ -534,6 +539,11 @@ func (h *TeamHandler) UpdateMemberRole(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditLog(r, "audit.team.role_updated",
+		"team_id", teamID,
+		"target_user_id", targetUserID,
+		"new_role", req.Role,
+	)
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "role updated"})
 }
 
@@ -590,6 +600,11 @@ func (h *TeamHandler) RemoveMember(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditLog(r, "audit.team.member_removed",
+		"team_id", teamID,
+		"target_user_id", targetUserID,
+		"self_leave", isSelf,
+	)
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "member removed"})
 }
 

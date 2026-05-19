@@ -16,6 +16,11 @@ import (
 	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
 )
 
+// sniffLen is the number of leading bytes http.DetectContentType reads to
+// identify a MIME type. The DetectContentType implementation never looks past
+// 512 bytes — sniffing more is wasted work.
+const sniffLen = 512
+
 // AccountQuerier is the subset of sqlc Queries used by AccountHandler.
 type AccountQuerier interface {
 	GetUserByID(ctx context.Context, id string) (idcdmain.User, error)
@@ -198,7 +203,9 @@ func (h *AccountHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 	}
 	defer file.Close()
 
-	// Validate Content-Type from the multipart header.
+	// Validate the declared MIME type from the multipart header first — this is
+	// the user-supplied label, so it's cheap to reject obviously wrong values
+	// before reading the body.
 	contentType := header.Header.Get("Content-Type")
 	if !allowedAvatarTypes[contentType] {
 		response.Error(w, r, apperr.Validation(
@@ -212,6 +219,23 @@ func (h *AccountHandler) UploadAvatar(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("failed to read uploaded file", err))
 		return
 	}
+
+	// Sniff the actual content — multipart Content-Type is client-controlled,
+	// so an attacker could mark a SVG/HTML/PHP payload as "image/jpeg" and
+	// bypass the header check above. http.DetectContentType reads magic bytes
+	// (RFC 6266 / mime sniff). If the sniff disagrees with the declared type,
+	// reject. We also re-check the sniffed type is in the allowlist, which
+	// closes the loop for types the header check happened to permit but the
+	// real bytes are something else entirely.
+	sniffed := http.DetectContentType(imgBytes[:min(sniffLen, len(imgBytes))])
+	if !allowedAvatarTypes[sniffed] {
+		response.Error(w, r, apperr.Validation(
+			fmt.Sprintf("file content is %q, not a supported image format", sniffed), ""))
+		return
+	}
+	// Pin the stored data URI's media type to the sniffed value so a browser
+	// later rendering the image trusts the bytes, not the upload header.
+	contentType = sniffed
 
 	// Build data URI.
 	encoded := base64.StdEncoding.EncodeToString(imgBytes)
@@ -325,6 +349,7 @@ func (h *AccountHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 	// Failures here are non-fatal: the password change itself succeeded; we
 	// surface a best-effort cleanup. The kicked devices will be force-logged
 	// out on their next request via the missing session lookup.
+	revokedPeers := 0
 	if h.sessions != nil {
 		currentSessionID := middleware.SessionIDFromContext(r.Context())
 		if ids, err := h.sessions.SessionIDsForUser(r.Context(), userID); err == nil {
@@ -332,10 +357,13 @@ func (h *AccountHandler) ChangePassword(w http.ResponseWriter, r *http.Request) 
 				if sid == currentSessionID {
 					continue
 				}
-				_ = h.sessions.Delete(r.Context(), sid)
+				if err := h.sessions.Delete(r.Context(), sid); err == nil {
+					revokedPeers++
+				}
 			}
 		}
 	}
 
+	auditLog(r, "audit.password.changed", "revoked_peer_sessions", revokedPeers)
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "password updated"})
 }

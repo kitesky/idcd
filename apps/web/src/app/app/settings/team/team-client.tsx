@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react"
 import { useTranslations } from "next-intl"
 import {
+  Avatar,
+  AvatarFallback,
   Button,
   Card,
   CardContent,
@@ -110,13 +112,13 @@ function RoleBadge({ role }: { role: string }) {
 
 function MemberAvatar({ email }: { email: string }) {
   const initials = email.slice(0, 2).toUpperCase()
+  // shadcn Avatar gives us the same visual + accessible name (aria-label on
+  // Radix's Avatar Root) plus future-proofs for AvatarImage when we ship
+  // gravatar / uploaded avatars to the members list.
   return (
-    <div
-      className="flex h-8 w-8 items-center justify-center rounded-full bg-muted text-xs font-medium text-muted-foreground"
-      aria-label={email}
-    >
-      {initials}
-    </div>
+    <Avatar className="h-8 w-8" aria-label={email}>
+      <AvatarFallback className="text-xs font-medium">{initials}</AvatarFallback>
+    </Avatar>
   )
 }
 

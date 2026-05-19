@@ -37,6 +37,21 @@ import { apiRequest } from "@/lib/api"
 // device/browser so a newly registered passkey isn't named "My Passkey" for
 // every device. Pure best-effort UA sniff — we only use it as a default name
 // the server stores; the user can rename later.
+// bufToBase64Url base64url-encodes an ArrayBuffer using a byte-by-byte loop.
+// Spreading a Uint8Array into String.fromCharCode passes each byte as a
+// separate function argument; attestationObject for FIDO U2F security keys
+// carries a ~2KB X.509 cert chain and can grow past V8's ~64K argument limit,
+// at which point spread throws "Maximum call stack size exceeded".
+function bufToBase64Url(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf)
+  let binary = ""
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]!)
+  return btoa(binary)
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "")
+}
+
 function detectPasskeyPlatform(): string {
   if (typeof navigator === "undefined") return "Unknown"
   const ua = navigator.userAgent
@@ -226,10 +241,10 @@ export function SecurityClient() {
           challenge: data.challenge_id,
           response: {
             id: credential.id,
-            rawId: btoa(String.fromCharCode(...new Uint8Array(credential.rawId))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+            rawId: bufToBase64Url(credential.rawId),
             response: {
-              clientDataJSON: btoa(String.fromCharCode(...new Uint8Array(response.clientDataJSON))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
-              attestationObject: btoa(String.fromCharCode(...new Uint8Array(response.attestationObject))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, ""),
+              clientDataJSON: bufToBase64Url(response.clientDataJSON),
+              attestationObject: bufToBase64Url(response.attestationObject),
             },
           },
           device_name: t("security.passkeyDefaultName", { platform: detectPasskeyPlatform() }),

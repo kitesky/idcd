@@ -11,6 +11,7 @@ import {
   CardHeader,
   CardTitle,
   Input,
+  Label,
   Badge,
   Alert,
   AlertDescription,
@@ -393,8 +394,9 @@ export function APIKeysClient() {
               )}
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t("apiKeys.keyNameLabel")}</label>
+                <Label htmlFor="api-key-name">{t("apiKeys.keyNameLabel")}</Label>
                 <Input
+                  id="api-key-name"
                   placeholder={t("apiKeys.keyNamePlaceholder")}
                   value={newKeyName}
                   onChange={(e) => {
@@ -408,13 +410,13 @@ export function APIKeysClient() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t("apiKeys.keyType")}</label>
+                <Label htmlFor="api-key-type">{t("apiKeys.keyType")}</Label>
                 <Select
                   value={newKeyType}
                   onValueChange={setNewKeyType}
                   disabled={creating}
                 >
-                  <SelectTrigger data-testid="select-key-type">
+                  <SelectTrigger id="api-key-type" data-testid="select-key-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -425,13 +427,13 @@ export function APIKeysClient() {
               </div>
 
               <div className="space-y-2">
-                <label className="text-sm font-medium">{t("apiKeys.validity")}</label>
+                <Label htmlFor="api-key-expiry">{t("apiKeys.validity")}</Label>
                 <Select
                   value={newKeyExpiry}
                   onValueChange={setNewKeyExpiry}
                   disabled={creating}
                 >
-                  <SelectTrigger data-testid="select-key-expiry">
+                  <SelectTrigger id="api-key-expiry" data-testid="select-key-expiry">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>

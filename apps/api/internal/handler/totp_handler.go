@@ -238,6 +238,7 @@ func (h *TOTPHandler) Disable(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	auditLog(r, "audit.2fa.disabled")
 	response.JSON(w, r, http.StatusOK, map[string]string{"message": "2FA disabled"})
 }
 

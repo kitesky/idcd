@@ -18,7 +18,7 @@ redis:
 jwt:
   secret: "test-secret"
 server:
-  admin_token: "test-admin-token"
+  admin_token: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
   env: "development"
 `
 

@@ -189,6 +189,15 @@ export function TeamClient() {
   const [inviteEmail, setInviteEmail] = useState("")
   const [inviteRole, setInviteRole] = useState("member")
   const [inviting, setInviting] = useState(false)
+  // createdInvite holds the one-time-visible secret returned by
+  // POST /v1/teams/{id}/invitations. Token + invite_url come back exactly
+  // once — the backend stores SHA-256(token), so dismissing this dialog
+  // without copying means re-issuing a fresh invitation. URL is empty when
+  // server.app_base_url is unset (dev fallback); we still surface the raw
+  // token in that case so the operator has something to paste.
+  const [createdInvite, setCreatedInvite] = useState<{ token: string; url: string } | null>(null)
+  const [copiedInviteLink, setCopiedInviteLink] = useState(false)
+  const [copiedInviteToken, setCopiedInviteToken] = useState(false)
 
   const [showAddKeyDialog, setShowAddKeyDialog] = useState(false)
   const [createdKeyValue, setCreatedKeyValue] = useState<string | null>(null)
@@ -273,20 +282,28 @@ export function TeamClient() {
     setError(null)
     setInviting(true)
     try {
-      const json = await apiRequest<{ data: { invitation: PendingInvitation } }>(
-        `/v1/teams/${team.id}/invitations`,
-        {
-          method: "POST",
-          body: JSON.stringify({ email: targetEmail, role: inviteRole }),
-        }
-      )
+      // Response widens PendingInvitation with the one-time `token` and
+      // optional `invite_url` (server.WithAppBaseURL fills it when set).
+      // Cast on the way out so the existing list state stays typed.
+      const json = await apiRequest<{
+        data: { invitation: PendingInvitation & { token?: string; invite_url?: string } }
+      }>(`/v1/teams/${team.id}/invitations`, {
+        method: "POST",
+        body: JSON.stringify({ email: targetEmail, role: inviteRole }),
+      })
       const inv = json.data?.invitation
       if (inv) {
-        setInvitations((prev) => [...prev, inv])
+        const { token, invite_url, ...listEntry } = inv
+        setInvitations((prev) => [...prev, listEntry])
+        if (token) {
+          // Keep the dialog open in "reveal" mode; the inviter has to copy
+          // before closing because the server only stores the hash.
+          setCreatedInvite({ token, url: invite_url ?? "" })
+        } else {
+          // Defensive: older API build that doesn't surface the token.
+          setShowInviteDialog(false)
+        }
       }
-      setInviteEmail("")
-      setInviteRole("member")
-      setShowInviteDialog(false)
       toast.success(t("team.inviteSuccess", { email: targetEmail }))
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : t("team.inviteFailed")
@@ -743,39 +760,140 @@ export function TeamClient() {
         </DialogContent>
       </Dialog>
 
-      <Dialog open={showInviteDialog} onOpenChange={setShowInviteDialog}>
+      <Dialog
+        open={showInviteDialog}
+        onOpenChange={(open) => {
+          if (!open) {
+            setShowInviteDialog(false)
+            setCreatedInvite(null)
+            setInviteEmail("")
+            setInviteRole("member")
+            setCopiedInviteLink(false)
+            setCopiedInviteToken(false)
+          }
+        }}
+      >
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{t("team.inviteTitle")}</DialogTitle>
-            <DialogDescription>
-              {t("team.inviteDesc")}
-            </DialogDescription>
+            <DialogTitle>
+              {createdInvite ? t("team.inviteCreatedTitle") : t("team.inviteTitle")}
+            </DialogTitle>
+            {!createdInvite && (
+              <DialogDescription>{t("team.inviteDesc")}</DialogDescription>
+            )}
           </DialogHeader>
-          <div className="flex flex-col gap-3 mt-2">
-            <Input
-              type="email"
-              placeholder={t("team.emailPlaceholder")}
-              value={inviteEmail}
-              onChange={(e) => setInviteEmail(e.target.value)}
-              data-testid="input-invite-email"
-            />
-            <Select value={inviteRole} onValueChange={setInviteRole}>
-              <SelectTrigger data-testid="select-invite-role">
-                <SelectValue placeholder={t("team.rolePlaceholder")} />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="admin">{t("team.roles.admin")}</SelectItem>
-                <SelectItem value="member">{t("team.roles.member")}</SelectItem>
-              </SelectContent>
-            </Select>
-            <Button
-              onClick={handleInvite}
-              disabled={inviting}
-              data-testid="btn-confirm-invite"
-            >
-              {inviting ? t("team.sending") : t("team.sendInvite")}
-            </Button>
-          </div>
+
+          {createdInvite ? (
+            <div className="flex flex-col gap-3 mt-2">
+              <Alert data-testid="invite-reveal-alert">
+                <AlertDescription className="space-y-3">
+                  <p className="text-amber-600 dark:text-amber-400 font-medium text-sm">
+                    {t("team.inviteOnceWarning")}
+                  </p>
+
+                  {createdInvite.url && (
+                    <div className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {t("team.inviteLinkLabel")}
+                      </p>
+                      <code
+                        className="block bg-muted p-2 rounded text-xs break-all"
+                        data-testid="invite-url-value"
+                      >
+                        {createdInvite.url}
+                      </code>
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {t("team.inviteTokenLabel")}
+                    </p>
+                    <code
+                      className="block bg-muted p-2 rounded text-xs break-all"
+                      data-testid="invite-token-value"
+                    >
+                      {createdInvite.token}
+                    </code>
+                  </div>
+                </AlertDescription>
+              </Alert>
+
+              <div className="flex justify-end gap-2 flex-wrap">
+                {createdInvite.url && (
+                  <Button
+                    variant="outline"
+                    onClick={async () => {
+                      await navigator.clipboard.writeText(createdInvite.url)
+                      setCopiedInviteLink(true)
+                      setTimeout(() => setCopiedInviteLink(false), 2000)
+                    }}
+                    data-testid="btn-copy-invite-link"
+                  >
+                    {copiedInviteLink ? (
+                      <><CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />{t("team.copied")}</>
+                    ) : (
+                      <><Copy className="mr-2 h-4 w-4" />{t("team.copyLink")}</>
+                    )}
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  onClick={async () => {
+                    await navigator.clipboard.writeText(createdInvite.token)
+                    setCopiedInviteToken(true)
+                    setTimeout(() => setCopiedInviteToken(false), 2000)
+                  }}
+                  data-testid="btn-copy-invite-token"
+                >
+                  {copiedInviteToken ? (
+                    <><CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />{t("team.copied")}</>
+                  ) : (
+                    <><Copy className="mr-2 h-4 w-4" />{t("team.copyToken")}</>
+                  )}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setShowInviteDialog(false)
+                    setCreatedInvite(null)
+                    setInviteEmail("")
+                    setInviteRole("member")
+                    setCopiedInviteLink(false)
+                    setCopiedInviteToken(false)
+                  }}
+                  data-testid="btn-done-invite"
+                >
+                  {t("team.done")}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3 mt-2">
+              <Input
+                type="email"
+                placeholder={t("team.emailPlaceholder")}
+                value={inviteEmail}
+                onChange={(e) => setInviteEmail(e.target.value)}
+                data-testid="input-invite-email"
+              />
+              <Select value={inviteRole} onValueChange={setInviteRole}>
+                <SelectTrigger data-testid="select-invite-role">
+                  <SelectValue placeholder={t("team.rolePlaceholder")} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="admin">{t("team.roles.admin")}</SelectItem>
+                  <SelectItem value="member">{t("team.roles.member")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <Button
+                onClick={handleInvite}
+                disabled={inviting}
+                data-testid="btn-confirm-invite"
+              >
+                {inviting ? t("team.sending") : t("team.sendInvite")}
+              </Button>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

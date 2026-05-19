@@ -289,21 +289,26 @@ func (s *Server) setupRouter() {
 		apiKeyVerifier := repository.NewAPIKeyVerifier(s.pgxPool)
 		authnMW := middleware.AuthnWithTokens(jwtSvc, sessSvc, patVerifier, apiKeyVerifier)
 
-		// Strict rate limiter for auth endpoints: 5 requests/IP/minute.
+		// Auth limiter (defaults 5 req / min / IP — see RateLimitConfig).
+		// Values come from cfg.RateLimit.Auth so prod can tune without a
+		// redeploy; zero-valued config falls back to the defaults documented
+		// on RateLimitConfig.
+		authWindow, authMax := s.config.RateLimit.Auth.OrDefault(time.Minute, 5)
 		authLimiter := ratelimit.NewLimiter(s.redis, ratelimit.Config{
-			WindowSize:  time.Minute,
-			MaxRequests: 5,
+			WindowSize:  authWindow,
+			MaxRequests: authMax,
 			KeyPrefix:   "rl:auth:",
 		})
 		authRateMW := middleware.RateLimit(authLimiter)
 
-		// Per-user limiter for sensitive 2FA flows: 5 attempts / 15 min / user.
+		// Per-user limiter for sensitive 2FA flows (defaults 5 / 15 min / user).
 		// Stops a stolen JWT from brute-forcing the 6-digit TOTP space (~10^6
 		// values, easily exhaustible without this gate). Applied AFTER authnMW
 		// so UserIDFromContext is populated.
+		twofaWindow, twofaMax := s.config.RateLimit.TwoFA.OrDefault(15*time.Minute, 5)
 		totpLimiter := ratelimit.NewLimiter(s.redis, ratelimit.Config{
-			WindowSize:  15 * time.Minute,
-			MaxRequests: 5,
+			WindowSize:  twofaWindow,
+			MaxRequests: twofaMax,
 			KeyPrefix:   "rl:2fa:",
 		})
 		totpRateMW := middleware.RateLimitByUser(totpLimiter)
@@ -605,7 +610,8 @@ func (s *Server) setupRouter() {
 			})
 			statusPageRateMW := middleware.RateLimit(statusPagePublicLimiter)
 
-			statusPagePublicH := handler.NewStatusPagePublicHandler(s.pgxPool, s.logger)
+			statusPagePublicH := handler.NewStatusPagePublicHandler(s.pgxPool, s.logger).
+				WithCache(handler.NewRedisStatusPageCache(s.redis))
 			r.With(statusPageRateMW).Get("/status-pages/{slug}/public", statusPagePublicH.Get)
 
 			// Status page subscription endpoints

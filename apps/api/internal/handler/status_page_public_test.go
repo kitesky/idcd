@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
@@ -196,5 +197,127 @@ func TestBatchCurrentStatuses_EmptyInput(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Errorf("expected empty map, got %d entries", len(got))
+	}
+}
+
+// --- Cache layer tests ---
+
+// memCache is an in-memory statusPageCache for tests — no Redis dependency,
+// no TTL expiry (every test resets state). Tracks Set call count so tests
+// can assert "the DB query result was cached".
+type memCache struct {
+	store map[string]string
+	sets  int
+	gets  int
+}
+
+func newMemCache() *memCache { return &memCache{store: map[string]string{}} }
+
+func (m *memCache) Get(ctx context.Context, key string) (string, error) {
+	m.gets++
+	v, ok := m.store[key]
+	if !ok {
+		return "", nil
+	}
+	return v, nil
+}
+
+func (m *memCache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	m.sets++
+	m.store[key] = value
+	return nil
+}
+
+func newPublicRouterCached(pool statusPagePublicPool, cache statusPageCache) http.Handler {
+	h := NewStatusPagePublicHandler(pool, nil).WithCache(cache)
+	r := chi.NewRouter()
+	r.Get("/v1/status-pages/{slug}/public", h.Get)
+	return r
+}
+
+// TestStatusPagePublic_CacheHit_SkipsDB verifies that a populated cache entry
+// is served verbatim — the DB pool is never touched. This is the core
+// optimisation: hot status pages should not amplify every public hit into
+// a 4-query DB pipeline.
+func TestStatusPagePublic_CacheHit_SkipsDB(t *testing.T) {
+	// Pool that fails the test if any DB method is called.
+	pool := &mockPublicPool{
+		queryRow: func(ctx context.Context, sql string, args ...any) pgx.Row {
+			t.Fatal("QueryRow must not be called on cache hit")
+			return nil
+		},
+		query: func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			t.Fatal("Query must not be called on cache hit")
+			return nil, nil
+		},
+	}
+	cache := newMemCache()
+	cache.store[statusPagePublicCacheKey("demo")] = `{"slug":"demo","overall_status":"operational"}`
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status-pages/demo/public", nil)
+	rr := httptest.NewRecorder()
+	newPublicRouterCached(pool, cache).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if got := rr.Header().Get("ETag"); got == "" {
+		t.Error("expected ETag header on cache hit")
+	}
+	if got := rr.Header().Get("Cache-Control"); got == "" {
+		t.Error("expected Cache-Control header on cache hit")
+	}
+}
+
+// TestStatusPagePublic_IfNoneMatch_Returns304 verifies the conditional GET
+// path — a revalidating client sending the right ETag gets a 304 with no body.
+func TestStatusPagePublic_IfNoneMatch_Returns304(t *testing.T) {
+	pool := &mockPublicPool{}
+	cache := newMemCache()
+	body := `{"slug":"demo","overall_status":"operational"}`
+	cache.store[statusPagePublicCacheKey("demo")] = body
+	etag := computeETag([]byte(body))
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status-pages/demo/public", nil)
+	req.Header.Set("If-None-Match", etag)
+	rr := httptest.NewRecorder()
+	newPublicRouterCached(pool, cache).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusNotModified {
+		t.Fatalf("expected 304, got %d", rr.Code)
+	}
+	if rr.Body.Len() != 0 {
+		t.Errorf("304 must not have body, got %d bytes", rr.Body.Len())
+	}
+}
+
+// TestStatusPagePublic_CacheMiss_PopulatesCache verifies the DB → cache write
+// path: a fresh request misses the cache, queries the DB, and writes the
+// rendered data back so the next caller hits the cache.
+func TestStatusPagePublic_CacheMiss_PopulatesCache(t *testing.T) {
+	pool := &mockPublicPool{
+		queryRow: func(ctx context.Context, sql string, args ...any) pgx.Row {
+			return &scanRow{values: []any{
+				"sp1", "user1", "demo", "Demo Status",
+			}}
+		},
+		query: func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			return &emptyRows{}, nil
+		},
+	}
+	cache := newMemCache()
+
+	req := httptest.NewRequest(http.MethodGet, "/v1/status-pages/demo/public", nil)
+	rr := httptest.NewRecorder()
+	newPublicRouterCached(pool, cache).ServeHTTP(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", rr.Code, rr.Body.String())
+	}
+	if cache.sets != 1 {
+		t.Errorf("expected 1 cache Set on miss-then-fill, got %d", cache.sets)
+	}
+	if _, ok := cache.store[statusPagePublicCacheKey("demo")]; !ok {
+		t.Error("expected cache to be populated under the slug key")
 	}
 }

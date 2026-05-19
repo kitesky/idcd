@@ -140,3 +140,57 @@ func TestDefaultPath_fallback(t *testing.T) {
 		t.Errorf("expected default path, got %q", got)
 	}
 }
+
+func TestRateLimitRule_OrDefault(t *testing.T) {
+	defWindow := 30 * time.Second
+	var defMax int64 = 99
+
+	// Both fields zero → defaults apply.
+	w, m := (config.RateLimitRule{}).OrDefault(defWindow, defMax)
+	if w != defWindow || m != defMax {
+		t.Errorf("zero rule: want (%v, %d), got (%v, %d)", defWindow, defMax, w, m)
+	}
+
+	// Only window set → max falls back.
+	r := config.RateLimitRule{Window: config.Duration{Duration: 5 * time.Minute}}
+	w, m = r.OrDefault(defWindow, defMax)
+	if w != 5*time.Minute || m != defMax {
+		t.Errorf("partial rule: want (5m, %d), got (%v, %d)", defMax, w, m)
+	}
+
+	// Both set → both override.
+	r = config.RateLimitRule{Window: config.Duration{Duration: time.Hour}, MaxRequests: 7}
+	w, m = r.OrDefault(defWindow, defMax)
+	if w != time.Hour || m != 7 {
+		t.Errorf("full rule: want (1h, 7), got (%v, %d)", w, m)
+	}
+}
+
+func TestLoad_rateLimitOverrides(t *testing.T) {
+	yaml := testYAML + `
+rate_limit:
+  auth:
+    window: "2m"
+    max_requests: 10
+  twofa:
+    max_requests: 3
+`
+	p := writeTempConfig(t, yaml)
+	cfg, err := config.Load(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.RateLimit.Auth.Window.Duration != 2*time.Minute {
+		t.Errorf("auth.window: want 2m, got %v", cfg.RateLimit.Auth.Window.Duration)
+	}
+	if cfg.RateLimit.Auth.MaxRequests != 10 {
+		t.Errorf("auth.max_requests: want 10, got %d", cfg.RateLimit.Auth.MaxRequests)
+	}
+	// Partial override: only max set; window should remain zero so OrDefault kicks in.
+	if cfg.RateLimit.TwoFA.Window.Duration != 0 {
+		t.Errorf("twofa.window: want 0 (unset), got %v", cfg.RateLimit.TwoFA.Window.Duration)
+	}
+	if cfg.RateLimit.TwoFA.MaxRequests != 3 {
+		t.Errorf("twofa.max_requests: want 3, got %d", cfg.RateLimit.TwoFA.MaxRequests)
+	}
+}

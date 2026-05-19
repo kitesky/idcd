@@ -2,6 +2,9 @@ package handler
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"math"
@@ -10,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
@@ -21,18 +25,46 @@ type statusPagePublicPool interface {
 	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
 }
 
-type StatusPagePublicHandler struct {
-	pool   statusPagePublicPool
-	logger *slog.Logger
+// statusPageCache is the minimal cache surface used by the public status
+// page handler. Defined as an interface so tests pass a tiny in-memory
+// mock and don't need a real Redis; *NewRedisStatusPageCache returns the
+// production implementation that wraps go-redis.
+type statusPageCache interface {
+	Get(ctx context.Context, key string) (string, error)
+	Set(ctx context.Context, key, value string, ttl time.Duration) error
 }
+
+type StatusPagePublicHandler struct {
+	pool     statusPagePublicPool
+	logger   *slog.Logger
+	cache    statusPageCache // nil disables caching (test / minimal harness)
+	cacheTTL time.Duration
+}
+
+// defaultStatusPageCacheTTL is the short TTL used when caching the rendered
+// public status page. 30s tunes for "an outage shows up within half a minute"
+// without losing the bulk of the DB load saving — at 60+ req/min/page the
+// hit rate is already > 95%. Longer TTLs would mute legitimate outage signals
+// to the page's audience, defeating the page's purpose.
+const defaultStatusPageCacheTTL = 30 * time.Second
 
 // NewStatusPagePublicHandler constructs the handler. logger may be nil — a
 // no-op logger is used in that case so tests don't need to wire one up.
+// Caching is OFF by default; call WithCache to enable.
 func NewStatusPagePublicHandler(pool statusPagePublicPool, logger *slog.Logger) *StatusPagePublicHandler {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(discardWriter{}, nil))
 	}
-	return &StatusPagePublicHandler{pool: pool, logger: logger}
+	return &StatusPagePublicHandler{pool: pool, logger: logger, cacheTTL: defaultStatusPageCacheTTL}
+}
+
+// WithCache returns a copy of the handler with a cache backend attached.
+// Pass nil to explicitly disable caching (handy in tests that want to bypass
+// the cache layer without changing the wiring shape).
+func (h *StatusPagePublicHandler) WithCache(c statusPageCache) *StatusPagePublicHandler {
+	cp := *h
+	cp.cache = c
+	return &cp
 }
 
 // discardWriter implements io.Writer by discarding everything — used so a
@@ -40,6 +72,22 @@ func NewStatusPagePublicHandler(pool statusPagePublicPool, logger *slog.Logger) 
 type discardWriter struct{}
 
 func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// statusPagePublicCacheKey is the Redis key under which the rendered JSON
+// response for a given slug is stored. Versioned with a `v1:` prefix so a
+// future schema change can roll forward without serving mixed shapes during
+// the rollout window.
+func statusPagePublicCacheKey(slug string) string {
+	return "cache:status-pub:v1:" + slug
+}
+
+// computeETag returns a short hex digest used as the ETag header. Truncated
+// to 16 hex chars (64 bits) — collision risk is irrelevant for a cache key
+// and the smaller header is friendlier on log lines and proxies.
+func computeETag(body []byte) string {
+	sum := sha256.Sum256(body)
+	return `"` + hex.EncodeToString(sum[:8]) + `"`
+}
 
 type publicMonitorHistory struct {
 	Date   string  `json:"date"`
@@ -74,6 +122,23 @@ type statusPagePublicResponse struct {
 func (h *StatusPagePublicHandler) Get(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	slug := chi.URLParam(r, "slug")
+
+	// Try the cache before hitting the DB. The cached payload is the
+	// marshalled inner `data` only (no request_id) so each hit can be wrapped
+	// in the standard envelope with the current request's id.
+	if h.cache != nil {
+		if cached, err := h.cache.Get(ctx, statusPagePublicCacheKey(slug)); err == nil && cached != "" {
+			h.writeCachedResponse(w, r, []byte(cached))
+			return
+		} else if err != nil {
+			// Cache miss / Redis blip — proceed to DB. We don't distinguish
+			// "not-found" from "Redis unreachable" here; both are
+			// indistinguishable from the request's perspective and the next
+			// DB-backed write will repopulate the cache when Redis comes back.
+			h.logger.Debug("status_page_public: cache get miss",
+				"slug", slug, "err", err)
+		}
+	}
 
 	sp, err := h.getStatusPageBySlug(ctx, slug)
 	if err != nil {
@@ -133,7 +198,69 @@ func (h *StatusPagePublicHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Events: []struct{}{},
 	}
 
-	response.JSON(w, r, http.StatusOK, resp)
+	// Marshal the inner data only (no envelope) and stash it in the cache.
+	// We rewrap with a fresh envelope on every read so request_id stays
+	// per-request and never gets cross-leaked from the request that warmed
+	// the entry.
+	dataBytes, marshalErr := json.Marshal(resp)
+	if marshalErr != nil {
+		// JSON encoding failed on our own struct — extremely unexpected; fall
+		// back to response.JSON which has its own encode-error path.
+		response.JSON(w, r, http.StatusOK, resp)
+		return
+	}
+	if h.cache != nil {
+		// Best-effort: cache failure must not break the request. The next
+		// caller will re-warm the entry from the DB.
+		if setErr := h.cache.Set(ctx, statusPagePublicCacheKey(slug), string(dataBytes), h.cacheTTL); setErr != nil {
+			h.logger.Warn("status_page_public: cache set failed",
+				"slug", slug, "err", setErr)
+		}
+	}
+
+	h.writeCachedResponse(w, r, dataBytes)
+}
+
+// writeCachedResponse wraps cached inner-data bytes in the standard envelope
+// and emits ETag + Cache-Control headers. The 304 short-circuit keeps
+// revalidating clients off the wire entirely when the ETag matches.
+//
+// We compute the ETag from the inner data (not the envelope) so a request
+// that only differs in request_id still hits 304 on a stale browser cache.
+func (h *StatusPagePublicHandler) writeCachedResponse(w http.ResponseWriter, r *http.Request, data []byte) {
+	etag := computeETag(data)
+	w.Header().Set("ETag", etag)
+	w.Header().Set("Cache-Control", "public, max-age=30")
+	if match := r.Header.Get("If-None-Match"); match != "" && match == etag {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Wrap in the standard {data, request_id} envelope. We assemble the
+	// bytes manually to avoid re-marshalling the cached data — it's already
+	// valid JSON. Per response.SuccessResponse: {"data":<inner>,"request_id":"..."}.
+	requestID := requestIDFromHeader(r)
+	_, _ = w.Write([]byte(`{"data":`))
+	_, _ = w.Write(data)
+	_, _ = w.Write([]byte(`,"request_id":"` + requestID + `"}`))
+}
+
+// requestIDFromHeader extracts the request id installed by the RequestID
+// middleware. Mirrors response.getRequestID's fallback chain (context →
+// request header → "unknown") so cache-hit responses and fresh responses
+// emit the same request_id field.
+func requestIDFromHeader(r *http.Request) string {
+	if val := r.Context().Value("request_id"); val != nil { //nolint:staticcheck // matches middleware convention
+		if id, ok := val.(string); ok && id != "" {
+			return id
+		}
+	}
+	if id := r.Header.Get("X-Request-ID"); id != "" {
+		return id
+	}
+	return "unknown"
 }
 
 func (h *StatusPagePublicHandler) getStatusPageBySlug(ctx context.Context, slug string) (idcdmain.StatusPage, error) {
@@ -369,4 +496,33 @@ func overallStatus(monitors []publicMonitor) string {
 		}
 	}
 	return worst
+}
+
+// redisStatusPageCache adapts *redis.Client to the statusPageCache interface.
+// `redis.Nil` (key missing) is converted to (empty string, nil err) — the
+// handler treats those identically as "cache miss, proceed to DB".
+type redisStatusPageCache struct {
+	rdb *redis.Client
+}
+
+// NewRedisStatusPageCache returns a cache-adapter for *redis.Client. Pass nil
+// to opt out of caching (the constructor returns nil so StatusPagePublicHandler.WithCache
+// is a no-op).
+func NewRedisStatusPageCache(rdb *redis.Client) statusPageCache {
+	if rdb == nil {
+		return nil
+	}
+	return &redisStatusPageCache{rdb: rdb}
+}
+
+func (c *redisStatusPageCache) Get(ctx context.Context, key string) (string, error) {
+	v, err := c.rdb.Get(ctx, key).Result()
+	if errors.Is(err, redis.Nil) {
+		return "", nil
+	}
+	return v, err
+}
+
+func (c *redisStatusPageCache) Set(ctx context.Context, key, value string, ttl time.Duration) error {
+	return c.rdb.Set(ctx, key, value, ttl).Err()
 }

@@ -25,6 +25,47 @@ type Config struct {
 	OAuth         OAuthConfig         `yaml:"oauth"`
 	Encryption    EncryptionConfig    `yaml:"encryption"`
 	Payment       PaymentConfig       `yaml:"payment"`
+	RateLimit     RateLimitConfig     `yaml:"rate_limit"`
+}
+
+// RateLimitConfig tunes the per-flow rate limiters previously hard-coded in
+// server.go. Zero-valued fields fall back to the defaults documented on each
+// field — production should override them to match the deployed traffic
+// profile (e.g. lower auth.max_requests during an active credential-stuffing
+// incident, raise twofa.window for legitimately laggy operators).
+type RateLimitConfig struct {
+	// Auth limits /v1/auth/* (login, register, password reset). Default
+	// 5 requests / minute / client IP. Tuned for "human at a login form"
+	// rather than scripted clients — automation should authenticate once
+	// and reuse the resulting JWT/PAT.
+	Auth RateLimitRule `yaml:"auth"`
+	// TwoFA limits /v1/account/2fa/{verify,disable}. Default 5 attempts
+	// per 15 minutes per authenticated user. A stolen JWT cannot
+	// brute-force the 6-digit TOTP space (~10^6) without tripping this.
+	TwoFA RateLimitRule `yaml:"twofa"`
+}
+
+// RateLimitRule pairs a sliding window with a request cap. Both fields must
+// be > 0 to override the consuming code's default; partial overrides fall back
+// to the default for the missing field, so an operator who only wants to
+// lower the cap can omit window: entirely.
+type RateLimitRule struct {
+	Window      Duration `yaml:"window"`
+	MaxRequests int64    `yaml:"max_requests"`
+}
+
+// OrDefault returns the rule's values, substituting the given defaults for
+// any zero/missing field. Keeps the call site in server.go branch-free.
+func (r RateLimitRule) OrDefault(defWindow time.Duration, defMax int64) (time.Duration, int64) {
+	w := r.Window.Duration
+	if w <= 0 {
+		w = defWindow
+	}
+	m := r.MaxRequests
+	if m <= 0 {
+		m = defMax
+	}
+	return w, m
 }
 
 // PaymentConfig holds credentials for the payment aggregation platform.

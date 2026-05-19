@@ -53,6 +53,7 @@
   --chart-3: oklch(0.398 0.07 227.392);
   --chart-4: oklch(0.828 0.189 84.429);
   --chart-5: oklch(0.769 0.188 70.08);
+  --chart-6: oklch(0.7 0.15 142);   /* lime/grass — HTTP "下载" 阶段补一档 */
 
   /* 侧边栏（继承自主色，可独立覆盖） */
   --sidebar: var(--background);
@@ -107,6 +108,7 @@
   --chart-3: oklch(0.769 0.188 70.08);
   --chart-4: oklch(0.627 0.265 303.9);
   --chart-5: oklch(0.645 0.246 16.439);
+  --chart-6: oklch(0.72 0.18 142);  /* dark 模式 lime,亮一档以保对比度 */
 
   /* 侧边栏深色（可独立于页面背景） */
   --sidebar: oklch(0.179 0.006 285.88);
@@ -166,6 +168,7 @@
   --color-chart-3: var(--chart-3);
   --color-chart-4: var(--chart-4);
   --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
 
   /* 侧边栏颜色 */
   --color-sidebar: var(--sidebar);

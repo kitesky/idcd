@@ -2,12 +2,18 @@
 
 import { useState, useMemo, useEffect } from "react"
 import { Copy, Check, ChevronLeft, ChevronRight } from "lucide-react"
-import {
-  Bar, BarChart, CartesianGrid, ResponsiveContainer,
-  Tooltip, XAxis, YAxis, type TooltipContentProps,
-} from "recharts"
+import { Bar, BarChart, CartesianGrid, XAxis } from "recharts"
 import { Button } from "@/components/ui/button"
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import {
+  ChartContainer,
+  ChartLegend,
+  ChartLegendContent,
+  ChartTooltip,
+  ChartTooltipContent,
+  type ChartConfig,
+} from "@/components/ui/chart"
 import { cn } from "@/lib/utils"
 import type { ProbeResult } from "@/lib/api"
 import dynamic from "next/dynamic"
@@ -98,140 +104,83 @@ function CopyButton({ text }: { text: string }) {
 }
 
 
-// ── StackedBar (recharts) ─────────────────────────────────────────────────────
+// ── StackedBar (shadcn charts) ────────────────────────────────────────────────
 
 // Each phase is stacked into a single bar per node. Order matters — paints
-// bottom-up in the same sequence as HTTP_PHASES, so "重定向" is at the bottom
-// and "下载" caps the bar. Palette is desaturated Tailwind 400-500 series so
-// the chart reads as a single hue family rather than a clown bar.
-const HTTP_PHASES = [
-  { key: "redirect_ms", label: "重定向", color: "#94a3b8" }, // slate-400
-  { key: "dns_ms",      label: "解析",   color: "#a78bfa" }, // violet-400
-  { key: "connect_ms",  label: "建连",   color: "#fb923c" }, // orange-400
-  { key: "ssl_ms",      label: "SSL",    color: "#34d399" }, // emerald-400
-  { key: "server_ms",   label: "首包",   color: "#60a5fa" }, // blue-400
-  { key: "download_ms", label: "下载",   color: "#84cc16" }, // lime-500
+// bottom-up in the same sequence below, so "重定向" sits at the bottom and
+// "下载" caps the bar. Colors come from the theme's chart-1..6 OKLCH ramp so
+// light/dark mode and any future palette change happen in theme.css, not here.
+const PHASE_ORDER = [
+  "redirect_ms",
+  "dns_ms",
+  "connect_ms",
+  "ssl_ms",
+  "server_ms",
+  "download_ms",
 ] as const
 
-type PhaseKey = typeof HTTP_PHASES[number]["key"]
+type PhaseKey = typeof PHASE_ORDER[number]
 
-interface StackedTooltipItem {
-  dataKey?: string | number
-  name?: string | number
-  value?: number | string | (number | string)[]
-  color?: string
-  payload?: Record<string, unknown>
-}
-
-function StackedTooltip({ active, payload, label }: TooltipContentProps<number, string>) {
-  if (!active || !payload || payload.length === 0) return null
-  const items = payload as unknown as StackedTooltipItem[]
-  const total = items.reduce((s, it) => {
-    const v = typeof it.value === "number" ? it.value : 0
-    return s + v
-  }, 0)
-  return (
-    <div className="min-w-[200px] rounded-lg border border-border/60 bg-popover px-3 py-2.5 text-xs shadow-lg">
-      <p className="font-semibold mb-2 text-foreground text-[13px]">{label}</p>
-      <div className="space-y-1.5">
-        {items.filter((it) => typeof it.value === "number" && (it.value as number) > 0).map((it) => {
-          const phase = HTTP_PHASES.find((p) => p.key === it.dataKey)
-          const v = typeof it.value === "number" ? it.value : 0
-          return (
-            <div key={String(it.dataKey)} className="flex items-center gap-2">
-              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: phase?.color ?? it.color }} />
-              <span className="text-muted-foreground">{phase?.label ?? String(it.dataKey)}</span>
-              <span className="ml-auto font-mono tabular-nums text-foreground">{v}<span className="text-muted-foreground ml-0.5">ms</span></span>
-            </div>
-          )
-        })}
-      </div>
-      <div className="border-t mt-2 pt-2 flex items-center justify-between text-foreground">
-        <span className="text-muted-foreground">合计</span>
-        <span className="font-mono font-semibold tabular-nums">{total}<span className="text-muted-foreground ml-0.5 font-normal">ms</span></span>
-      </div>
-    </div>
-  )
-}
+const chartConfig = {
+  redirect_ms: { label: "重定向", color: "var(--chart-3)" },
+  dns_ms:      { label: "解析",   color: "var(--chart-4)" },
+  connect_ms:  { label: "建连",   color: "var(--chart-1)" },
+  ssl_ms:      { label: "SSL",    color: "var(--chart-2)" },
+  server_ms:   { label: "首包",   color: "var(--chart-5)" },
+  download_ms: { label: "下载",   color: "var(--chart-6)" },
+} satisfies ChartConfig
 
 function StackedBarChart({ rows }: { rows: ResultRow[] }) {
   // Build chart-ready data: each row → object with node_name + phase keys.
   const data = useMemo(() => rows.map((r) => {
     const entry: Record<string, string | number> = { node_name: r.node_name }
-    for (const p of HTTP_PHASES) {
-      const v = r[p.key as PhaseKey] as number | undefined
-      entry[p.key] = typeof v === "number" ? v : 0
+    for (const k of PHASE_ORDER) {
+      const v = r[k as PhaseKey] as number | undefined
+      entry[k] = typeof v === "number" ? v : 0
     }
     return entry
   }), [rows])
 
   return (
-    <div className="mt-6 rounded-lg border bg-background p-5">
-      <div className="flex items-center justify-between mb-5 flex-wrap gap-2">
-        <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium text-foreground">阶段耗时分析</span>
-          <span className="text-xs text-muted-foreground">
-            {rows[0]?.node_name ?? "–"}
-          </span>
-        </div>
-        <div className="flex flex-wrap gap-x-4 gap-y-1.5">
-          {HTTP_PHASES.map((p) => (
-            <span key={p.key} className="flex items-center gap-1.5 text-xs text-muted-foreground">
-              <span className="h-2 w-2 rounded-full flex-shrink-0" style={{ background: p.color }} />
-              {p.label}
-            </span>
-          ))}
-        </div>
-      </div>
-
-      <div className="h-[260px] w-full">
-        <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 8, right: 12, left: 8, bottom: 8 }} barCategoryGap="30%">
-            <CartesianGrid strokeDasharray="2 4" vertical={false} stroke="currentColor" className="text-border" opacity={0.4} />
+    <Card className="mt-6">
+      <CardHeader>
+        <CardTitle className="text-base">阶段耗时分析</CardTitle>
+        <CardDescription>
+          检测目标 · {rows[0]?.node_name ?? "–"}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <ChartContainer config={chartConfig} className="h-[260px] w-full">
+          <BarChart accessibilityLayer data={data} margin={{ top: 8, right: 12, left: 0, bottom: 0 }}>
+            <CartesianGrid vertical={false} />
             <XAxis
               dataKey="node_name"
-              tick={{ fill: "currentColor", fontSize: 12 }}
-              className="text-muted-foreground"
-              axisLine={false}
               tickLine={false}
               tickMargin={10}
-            />
-            <YAxis
-              tick={{ fill: "currentColor", fontSize: 11 }}
-              className="text-muted-foreground"
               axisLine={false}
-              tickLine={false}
-              tickFormatter={(v) => `${v}`}
-              width={40}
-              label={{
-                value: "ms",
-                position: "insideTopLeft",
-                offset: -2,
-                style: { fill: "currentColor", fontSize: 10, opacity: 0.6 },
-                className: "text-muted-foreground",
-              }}
             />
-            <Tooltip
-              content={(props) => <StackedTooltip {...(props as TooltipContentProps<number, string>)} />}
-              cursor={{ fill: "currentColor", className: "text-muted", fillOpacity: 0.08 }}
-              wrapperStyle={{ outline: "none" }}
-            />
-            {HTTP_PHASES.map((p, i) => (
+            <ChartTooltip content={<ChartTooltipContent indicator="dot" />} />
+            <ChartLegend content={<ChartLegendContent />} />
+            {PHASE_ORDER.map((key, i) => (
               <Bar
-                key={p.key}
-                dataKey={p.key}
+                key={key}
+                dataKey={key}
                 stackId="phase"
-                fill={p.color}
-                maxBarSize={96}
-                radius={i === HTTP_PHASES.length - 1 ? [4, 4, 0, 0] : 0}
-                isAnimationActive
-                animationDuration={350}
+                fill={`var(--color-${key})`}
+                maxBarSize={64}
+                radius={
+                  i === 0
+                    ? [0, 0, 4, 4]
+                    : i === PHASE_ORDER.length - 1
+                    ? [4, 4, 0, 0]
+                    : 0
+                }
               />
             ))}
           </BarChart>
-        </ResponsiveContainer>
-      </div>
-    </div>
+        </ChartContainer>
+      </CardContent>
+    </Card>
   )
 }
 

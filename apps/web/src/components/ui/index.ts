@@ -28,6 +28,11 @@ export { Checkbox } from './checkbox'
 export { Slider } from './slider'
 export { Tabs, TabsList, TabsTrigger, TabsContent } from './tabs'
 export {
+  ChartContainer, ChartTooltip, ChartTooltipContent,
+  ChartLegend, ChartLegendContent, ChartStyle,
+  type ChartConfig,
+} from './chart'
+export {
   Dialog, DialogPortal, DialogOverlay, DialogTrigger, DialogClose,
   DialogContent, DialogHeader, DialogFooter, DialogTitle, DialogDescription,
 } from './dialog'

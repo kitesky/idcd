@@ -74,7 +74,7 @@ function Legend() {
 
 // ── ChinaMap ──────────────────────────────────────────────────────────────────
 
-export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
+export function ChinaMap({ nodes, embedded = false }: { nodes: MapNode[]; embedded?: boolean }) {
   const [mapData, setMapData] = useState<ChinaMapData | null>(null)
 
   useEffect(() => {
@@ -84,7 +84,11 @@ export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
       .catch(console.error)
   }, [])
 
-  if (!mapData) return <div className="w-full h-48 bg-muted animate-pulse rounded" />
+  if (!mapData) return <div className={`w-full h-48 bg-muted animate-pulse${embedded ? "" : " rounded"}`} />
+
+  const wrapperClass = embedded
+    ? "w-full overflow-hidden"
+    : "w-full rounded border border-border overflow-hidden"
 
   // Build name → latency lookup
   const lookup = new Map<string, number>()
@@ -113,7 +117,7 @@ export function ChinaMap({ nodes }: { nodes: MapNode[] }) {
   const { w, h } = mapData
 
   return (
-    <div className="w-full rounded border border-border overflow-hidden">
+    <div className={wrapperClass}>
       <svg
         viewBox={`0 0 ${w} ${h}`}
         style={{ width: "100%", display: "block", background: "#f0f9ff" }}
@@ -210,7 +214,7 @@ function lookupCoords(nodeName: string): [number, number] | undefined {
   return undefined
 }
 
-export function WorldMap({ nodes }: { nodes: MapNode[] }) {
+export function WorldMap({ nodes, embedded = false }: { nodes: MapNode[]; embedded?: boolean }) {
   const [geoPaths, setGeoPaths] = useState<string[]>([])
   const [markers, setMarkers] = useState<Array<{ x: number; y: number; node: MapNode }>>([])
   const W = 640, H = 380
@@ -242,7 +246,7 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
   }, [nodeNameKey])
 
   return (
-    <div className="w-full rounded border border-border overflow-hidden">
+    <div className={embedded ? "w-full overflow-hidden" : "w-full rounded border border-border overflow-hidden"}>
       <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", display: "block", background: "#dbeafe" }}>
         {geoPaths.map((d, i) => (
           <path key={i} d={d} fill="#bfdbfe" stroke="#ffffff" strokeWidth={0.5} />
@@ -258,6 +262,8 @@ export function WorldMap({ nodes }: { nodes: MapNode[] }) {
 
 // ── ProbeMap ──────────────────────────────────────────────────────────────────
 
-export function ProbeMap({ nodes, isChinaOnly }: { nodes: MapNode[]; isChinaOnly: boolean }) {
-  return isChinaOnly ? <ChinaMap nodes={nodes} /> : <WorldMap nodes={nodes} />
+export function ProbeMap({ nodes, isChinaOnly, embedded = false }: { nodes: MapNode[]; isChinaOnly: boolean; embedded?: boolean }) {
+  return isChinaOnly
+    ? <ChinaMap nodes={nodes} embedded={embedded} />
+    : <WorldMap nodes={nodes} embedded={embedded} />
 }

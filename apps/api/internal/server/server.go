@@ -496,11 +496,21 @@ func (s *Server) setupRouter() {
 
 			// Admin billing endpoints — require admin token via Authorization: Bearer header.
 			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool).WithEnqueuer(asynqBillingEnq)
+			adminPricingH := handler.NewAdminPricingHandler(s.pgxPool)
 			billingAdminAuthH := s.newAdminHandler()
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(billingAdminAuthH.AdminAuthMiddleware)
 				r.Get("/refund-failed", adminBillingH.ListRefundFailed)
 				r.Post("/refund-failed/{id}/retry", adminBillingH.RetryRefund)
+
+				// Pricing CRUD (plan / verdict_template prices + promotions).
+				r.Get("/billing/pricing-items", adminPricingH.ListPricingItems)
+				r.Patch("/billing/pricing-items/{kind}/{item_key}", adminPricingH.UpdatePricingItem)
+				r.Get("/billing/promotions", adminPricingH.ListPromotions)
+				r.Post("/billing/promotions", adminPricingH.CreatePromotion)
+				r.Get("/billing/promotions/{id}", adminPricingH.GetPromotion)
+				r.Patch("/billing/promotions/{id}", adminPricingH.UpdatePromotion)
+				r.Delete("/billing/promotions/{id}", adminPricingH.DeletePromotion)
 			})
 
 			// Billing endpoints (subscribe, cancel, invoices, webhook, stub-confirm)

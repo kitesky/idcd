@@ -44,6 +44,14 @@ type Agent struct {
 	buffer   *buffer.Buffer
 	client   *http.Client
 	ws       *agentws.Client
+	// taskCh decouples ws readLoop from probe execution. handleTask only
+	// pushes here and returns immediately; a dedicated worker drains it.
+	// Otherwise a 30+s traceroute blocks readLoop, gateway's ping never gets
+	// a pong, the 60s pongTimeout fires, and the connection churns every
+	// ~40-67s — exactly the "ws 1006 abnormal closure" loop we were seeing.
+	// Buffered so a transient executor stall doesn't backpressure the ws
+	// read; size matches BatchSize ceiling so realistic bursts don't block.
+	taskCh   chan task.Task
 	shutdown chan struct{}
 	wg       sync.WaitGroup
 }
@@ -132,6 +140,7 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 		executor: executor,
 		buffer:   buf,
 		client:   &http.Client{Timeout: 30 * time.Second},
+		taskCh:   make(chan task.Task, 128),
 		shutdown: make(chan struct{}),
 	}
 	a.cfg.Store(cfg)
@@ -159,7 +168,7 @@ func NewAgent(cfg *config.Config, cfgPath string, log *slog.Logger) (*Agent, err
 
 // Run starts all agent goroutines.
 func (a *Agent) Run(ctx context.Context) {
-	a.wg.Add(2)
+	a.wg.Add(3)
 
 	// WebSocket connection loop (includes heartbeat)
 	go func() {
@@ -171,6 +180,15 @@ func (a *Agent) Run(ctx context.Context) {
 	go func() {
 		defer a.wg.Done()
 		a.runMainLoop(ctx)
+	}()
+
+	// Task worker: drains taskCh serially so probe execution never blocks
+	// the ws read loop. Single worker keeps ICMP socket / fd pressure
+	// bounded; tasks remain ordered which matches the previous (broken)
+	// synchronous semantics.
+	go func() {
+		defer a.wg.Done()
+		a.runTaskWorker(ctx)
 	}()
 }
 
@@ -351,11 +369,37 @@ func (a *Agent) handleTask(payload json.RawMessage) error {
 		return nil
 	}
 
-	result := a.executor.Execute(t)
-	if result != nil {
-		a.deliverResult(*result)
+	// Hand off to the worker — must NOT call Execute inline, that would
+	// block the ws readLoop and starve gateway's ping/pong (60s timeout)
+	// for the duration of the probe (traceroute hits 30+s easily).
+	select {
+	case a.taskCh <- t:
+	default:
+		// Queue full: surface as a fast failure so the user sees something
+		// instead of the task silently disappearing. The worker is healthy
+		// but we're being asked faster than we can probe.
+		a.logger.Warn("task: queue full, dropping",
+			"task_id", t.ID, "type", t.Type, "queue_len", len(a.taskCh))
+		a.deliverResult(a.failedTaskResult(t, "agent overloaded: task queue full"))
 	}
 	return nil
+}
+
+// runTaskWorker pulls tasks off taskCh and executes them serially.
+// Exits when ctx is cancelled — taskCh is drained from upstream (no more
+// pushes once ws closes), so a partial drain on shutdown is acceptable.
+func (a *Agent) runTaskWorker(ctx context.Context) {
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case t := <-a.taskCh:
+			result := a.executor.Execute(t)
+			if result != nil {
+				a.deliverResult(*result)
+			}
+		}
+	}
 }
 
 // deliverResult tries to ship the result over WebSocket immediately so users

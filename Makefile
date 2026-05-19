@@ -101,18 +101,35 @@ clean:
 	cd apps/web && rm -rf .next dist 2>/dev/null || true
 
 # ── DB 迁移快捷命令 ────────────────────────────────────────────
+# 多 schema 共用一个 DB：每个 schema 必须用独立的 goose 版本表，
+# 否则版本号会跨 schema 撞车（attest 的 v1-6 会被 main 的 v1-45 “占用”
+# 而被 goose 误判已 apply）。
 _DSN := $(shell python3 -c "import yaml; c=yaml.safe_load(open('config/dev.env.yaml')); print(c['database']['main']['dsn'])" 2>/dev/null)
 _GOOSE := go run github.com/pressly/goose/v3/cmd/goose@latest
-_MIG_DIR := lib/db/migrations/idcd_main
+_MIG_DIR_MAIN := lib/db/migrations/idcd_main
+_MIG_DIR_ATTEST := lib/db/migrations/idcd_attest
 
-migrate-up:
-	$(_GOOSE) -dir $(_MIG_DIR) postgres "$(_DSN)" up
+migrate-up: migrate-main-up migrate-attest-up
 
-migrate-down:
-	$(_GOOSE) -dir $(_MIG_DIR) postgres "$(_DSN)" down
+migrate-down: migrate-attest-down migrate-main-down
 
 migrate-status:
-	$(_GOOSE) -dir $(_MIG_DIR) postgres "$(_DSN)" status
+	@echo "== idcd_main =="
+	$(_GOOSE) -dir $(_MIG_DIR_MAIN) postgres "$(_DSN)" status
+	@echo "== idcd_attest =="
+	$(_GOOSE) -table goose_attest_version -dir $(_MIG_DIR_ATTEST) postgres "$(_DSN)" status
+
+migrate-main-up:
+	$(_GOOSE) -dir $(_MIG_DIR_MAIN) postgres "$(_DSN)" up
+
+migrate-main-down:
+	$(_GOOSE) -dir $(_MIG_DIR_MAIN) postgres "$(_DSN)" down
+
+migrate-attest-up:
+	$(_GOOSE) -table goose_attest_version -dir $(_MIG_DIR_ATTEST) postgres "$(_DSN)" up
+
+migrate-attest-down:
+	$(_GOOSE) -table goose_attest_version -dir $(_MIG_DIR_ATTEST) postgres "$(_DSN)" down
 
 sqlc-gen:
 	sqlc generate -f packages/db/sqlc.yaml

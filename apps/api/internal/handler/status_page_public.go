@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"math"
 	"net/http"
 	"time"
@@ -21,12 +22,24 @@ type statusPagePublicPool interface {
 }
 
 type StatusPagePublicHandler struct {
-	pool statusPagePublicPool
+	pool   statusPagePublicPool
+	logger *slog.Logger
 }
 
-func NewStatusPagePublicHandler(pool statusPagePublicPool) *StatusPagePublicHandler {
-	return &StatusPagePublicHandler{pool: pool}
+// NewStatusPagePublicHandler constructs the handler. logger may be nil — a
+// no-op logger is used in that case so tests don't need to wire one up.
+func NewStatusPagePublicHandler(pool statusPagePublicPool, logger *slog.Logger) *StatusPagePublicHandler {
+	if logger == nil {
+		logger = slog.New(slog.NewTextHandler(discardWriter{}, nil))
+	}
+	return &StatusPagePublicHandler{pool: pool, logger: logger}
 }
+
+// discardWriter implements io.Writer by discarding everything — used so a
+// nil logger argument still gives a valid *slog.Logger.
+type discardWriter struct{}
+
+func (discardWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 type publicMonitorHistory struct {
 	Date   string  `json:"date"`
@@ -280,6 +293,11 @@ func computeUptimePercent(dayRows []dayCheckRow) float64 {
 
 // batchCurrentStatuses fetches the 3 most-recent check statuses for every
 // monitor in a single LATERAL JOIN, eliminating the N+1 round-trip.
+//
+// Fails closed: a query error surfaces to the caller so the public status page
+// returns 5xx rather than silently claiming everything is "operational" when
+// the DB is degraded — a fail-open here would mask real outages to the
+// audience the page is for.
 func (h *StatusPagePublicHandler) batchCurrentStatuses(ctx context.Context, monitorIDs []string) (map[string]string, error) {
 	result := make(map[string]string, len(monitorIDs))
 	for _, id := range monitorIDs {
@@ -301,7 +319,9 @@ func (h *StatusPagePublicHandler) batchCurrentStatuses(ctx context.Context, moni
 		) mc
 	`, monitorIDs)
 	if err != nil {
-		return result, nil // fail open: default to operational
+		h.logger.Warn("status_page_public: batchCurrentStatuses query failed",
+			"err", err, "monitor_count", len(monitorIDs))
+		return nil, err
 	}
 	defer rows.Close()
 
@@ -309,11 +329,15 @@ func (h *StatusPagePublicHandler) batchCurrentStatuses(ctx context.Context, moni
 	for rows.Next() {
 		var monID, st string
 		if err := rows.Scan(&monID, &st); err != nil {
-			continue
+			h.logger.Warn("status_page_public: batchCurrentStatuses scan failed", "err", err)
+			return nil, err
 		}
 		statusMap[monID] = append(statusMap[monID], st)
 	}
-	_ = rows.Err() // best-effort; defaults already set
+	if err := rows.Err(); err != nil {
+		h.logger.Warn("status_page_public: batchCurrentStatuses iter failed", "err", err)
+		return nil, err
+	}
 
 	for id, statuses := range statusMap {
 		failures := 0

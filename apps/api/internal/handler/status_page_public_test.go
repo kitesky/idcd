@@ -32,7 +32,7 @@ func (m *mockPublicPool) Query(ctx context.Context, sql string, args ...any) (pg
 }
 
 func newPublicRouter(pool statusPagePublicPool) http.Handler {
-	h := NewStatusPagePublicHandler(pool)
+	h := NewStatusPagePublicHandler(pool, nil)
 	r := chi.NewRouter()
 	r.Get("/v1/status-pages/{slug}/public", h.Get)
 	return r
@@ -158,5 +158,43 @@ func TestComputeUptimePercent_Empty(t *testing.T) {
 	got := computeUptimePercent(nil)
 	if got != 100.0 {
 		t.Errorf("expected 100.0 for empty, got %.2f", got)
+	}
+}
+
+// TestBatchCurrentStatuses_FailClosed verifies that batchCurrentStatuses
+// surfaces a DB query error to its caller rather than silently defaulting all
+// monitors to "operational". The previous fail-open behaviour could mask a
+// real outage to the audience the status page exists for.
+func TestBatchCurrentStatuses_FailClosed(t *testing.T) {
+	pool := &mockPublicPool{
+		query: func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			return nil, errors.New("db unavailable")
+		},
+	}
+	h := NewStatusPagePublicHandler(pool, nil)
+
+	_, err := h.batchCurrentStatuses(context.Background(), []string{"mon_a", "mon_b"})
+	if err == nil {
+		t.Fatal("expected error when pool.Query fails, got nil")
+	}
+}
+
+// TestBatchCurrentStatuses_EmptyInput documents the short-circuit: zero IDs
+// yields an empty map without hitting the DB.
+func TestBatchCurrentStatuses_EmptyInput(t *testing.T) {
+	pool := &mockPublicPool{
+		query: func(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+			t.Fatal("Query should not be called for empty input")
+			return nil, nil
+		},
+	}
+	h := NewStatusPagePublicHandler(pool, nil)
+
+	got, err := h.batchCurrentStatuses(context.Background(), nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(got) != 0 {
+		t.Errorf("expected empty map, got %d entries", len(got))
 	}
 }

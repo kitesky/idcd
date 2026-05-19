@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -353,8 +354,19 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 			countSQL += fmt.Sprintf(" AND status = $%d", countArgIdx)
 			countArgs = append(countArgs, statusFilter)
 		}
+		// Run the COUNT(*) ahead of the rows query so we know total matching
+		// rows for pagination meta. If COUNT fails (DB blip, statement timeout
+		// on a huge table), don't fail the whole request — log it and let
+		// total fall back to the row count we actually ship below. Front-end
+		// then under-reports pages instead of seeing the contradictory
+		// "items present but total=0" we previously emitted.
 		var total int
-		_ = h.bulkPool.QueryRow(ctx, countSQL, countArgs...).Scan(&total)
+		countOK := true
+		if err := h.bulkPool.QueryRow(ctx, countSQL, countArgs...).Scan(&total); err != nil {
+			slog.Default().Warn("monitor.List: count query failed",
+				"err", err, "user_id", userID, "search", search != "", "status_filter", statusFilter != "")
+			countOK = false
+		}
 
 		rawSQL += fmt.Sprintf(" ORDER BY created_at DESC LIMIT $%d OFFSET $%d", argIdx, argIdx+1)
 		args = append(args, int32(limit), int32((page-1)*limit))
@@ -402,6 +414,12 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		if !countOK && len(items) > total {
+			// Count failed and we shipped more rows than the (zero-defaulted)
+			// total — at minimum the front-end should see what we returned.
+			total = len(items)
+		}
+
 		response.JSON(w, r, http.StatusOK, MonitorListResponse{
 			Items: items,
 			Total: total,
@@ -442,13 +460,19 @@ func (h *MonitorHandler) List(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Count total for accurate pagination.
+	// Count total for accurate pagination. On count failure, fall back to
+	// len(items) so the front-end never sees the "items present, total=0"
+	// inconsistency that the previous silent `_ =` swallow could produce.
 	var total int
 	if h.bulkPool != nil {
-		_ = h.bulkPool.QueryRow(ctx,
+		if err := h.bulkPool.QueryRow(ctx,
 			`SELECT COUNT(*) FROM monitors WHERE user_id = $1 AND status != 'archived'`,
 			userID,
-		).Scan(&total)
+		).Scan(&total); err != nil {
+			slog.Default().Warn("monitor.List: count query failed (no-filter path)",
+				"err", err, "user_id", userID)
+			total = len(items)
+		}
 	} else {
 		total = len(items)
 	}

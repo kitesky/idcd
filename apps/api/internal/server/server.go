@@ -580,15 +580,29 @@ func (s *Server) setupRouter() {
 				r.Get("/verify", statusPageDomainH.VerifyStatusPageDomain)
 			})
 
-			// Status page public endpoint (no auth)
-			statusPagePublicH := handler.NewStatusPagePublicHandler(s.pgxPool)
-			r.Get("/status-pages/{slug}/public", statusPagePublicH.Get)
+			// Status page public endpoint (no auth) — anonymous, so we
+			// gate it behind an IP-based limiter. Each request fans out
+			// into a status-page lookup + N monitor LATERAL JOIN, so an
+			// unthrottled client iterating over slugs could amplify into
+			// expensive DB work. 60/min/IP is generous for a real browser
+			// auto-refresh cadence but bounds abuse. Subscribe / verify /
+			// unsubscribe share the same anonymous surface so they ride
+			// the same limiter.
+			statusPagePublicLimiter := ratelimit.NewLimiter(s.redis, ratelimit.Config{
+				WindowSize:  time.Minute,
+				MaxRequests: 60,
+				KeyPrefix:   "rl:status-pub:",
+			})
+			statusPageRateMW := middleware.RateLimit(statusPagePublicLimiter)
+
+			statusPagePublicH := handler.NewStatusPagePublicHandler(s.pgxPool, s.logger)
+			r.With(statusPageRateMW).Get("/status-pages/{slug}/public", statusPagePublicH.Get)
 
 			// Status page subscription endpoints
 			statusSubH := handler.NewStatusSubscriptionHandler(s.pgxPool)
-			r.Post("/status-pages/{slug}/subscribe", statusSubH.Subscribe)
-			r.Get("/status-pages/{slug}/verify", statusSubH.Verify)
-			r.Delete("/status-pages/{slug}/unsubscribe", statusSubH.Unsubscribe)
+			r.With(statusPageRateMW).Post("/status-pages/{slug}/subscribe", statusSubH.Subscribe)
+			r.With(statusPageRateMW).Get("/status-pages/{slug}/verify", statusSubH.Verify)
+			r.With(statusPageRateMW).Delete("/status-pages/{slug}/unsubscribe", statusSubH.Unsubscribe)
 			r.With(authnMW).Get("/status-pages/{slug}/subscriptions", statusSubH.List)
 			r.With(authnMW).Delete("/status-pages/{slug}/subscriptions/{id}", statusSubH.Delete)
 
@@ -650,7 +664,8 @@ func (s *Server) setupRouter() {
 			})
 
 			// Team / Org endpoints (authentication required)
-			teamH := handler.NewTeamHandler(s.pgxPool)
+			teamH := handler.NewTeamHandler(s.pgxPool).
+				WithAppBaseURL(s.config.Server.AppBaseURL)
 			teamKeyH := handler.NewTeamAPIKeyHandler(s.pgxPool)
 			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billingProvider).
 				WithURLs(s.config.Server.AppBaseURL, s.config.Server.PublicAPIURL)

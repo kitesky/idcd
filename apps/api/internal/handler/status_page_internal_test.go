@@ -14,10 +14,10 @@ import (
 
 // mockStatusPageInternalQuerier implements statusPageInternalQuerier.
 type mockStatusPageInternalQuerier struct {
-	getByCustomDomain func(ctx context.Context, domain string) (idcdmain.StatusPage, error)
+	getByCustomDomain func(ctx context.Context, domain *string) (idcdmain.StatusPage, error)
 }
 
-func (m *mockStatusPageInternalQuerier) GetStatusPageByCustomDomain(ctx context.Context, domain string) (idcdmain.StatusPage, error) {
+func (m *mockStatusPageInternalQuerier) GetStatusPageByCustomDomain(ctx context.Context, domain *string) (idcdmain.StatusPage, error) {
 	if m.getByCustomDomain != nil {
 		return m.getByCustomDomain(ctx, domain)
 	}
@@ -26,13 +26,13 @@ func (m *mockStatusPageInternalQuerier) GetStatusPageByCustomDomain(ctx context.
 
 func TestByDomain_VerifiedDomain(t *testing.T) {
 	q := &mockStatusPageInternalQuerier{
-		getByCustomDomain: func(ctx context.Context, domain string) (idcdmain.StatusPage, error) {
+		getByCustomDomain: func(ctx context.Context, domain *string) (idcdmain.StatusPage, error) {
 			return idcdmain.StatusPage{
 				ID:                     "sp1",
 				UserID:                 "user1",
 				Slug:                   "my-status",
 				Name:                   "My Status",
-				CustomDomain:           &domain,
+				CustomDomain:           domain,
 				CustomDomainVerifiedAt: pgtype.Timestamptz{Valid: true},
 			}, nil
 		},
@@ -56,7 +56,7 @@ func TestByDomain_VerifiedDomain(t *testing.T) {
 func TestByDomain_UnverifiedDomain(t *testing.T) {
 	domain := "status.example.com"
 	q := &mockStatusPageInternalQuerier{
-		getByCustomDomain: func(ctx context.Context, d string) (idcdmain.StatusPage, error) {
+		getByCustomDomain: func(ctx context.Context, d *string) (idcdmain.StatusPage, error) {
 			return idcdmain.StatusPage{
 				ID:                     "sp1",
 				Slug:                   "my-status",
@@ -90,7 +90,7 @@ func TestByDomain_MissingDomainParam(t *testing.T) {
 
 func TestByDomain_NotFound(t *testing.T) {
 	q := &mockStatusPageInternalQuerier{
-		getByCustomDomain: func(ctx context.Context, domain string) (idcdmain.StatusPage, error) {
+		getByCustomDomain: func(ctx context.Context, domain *string) (idcdmain.StatusPage, error) {
 			return idcdmain.StatusPage{}, errors.New("not found")
 		},
 	}

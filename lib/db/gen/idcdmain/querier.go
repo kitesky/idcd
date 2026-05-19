@@ -31,11 +31,11 @@ type Querier interface {
 	GetSessionByTokenHash(ctx context.Context, refreshTokenHash string) (UserSession, error)
 	// status_page.sql — sqlc queries for status_pages custom domain management
 	// Run `sqlc generate` after migration 00011 has been applied.
-	GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (StatusPage, error)
+	GetStatusPageByCustomDomain(ctx context.Context, customDomain *string) (StatusPage, error)
 	GetStatusPageByID(ctx context.Context, id string) (StatusPage, error)
-	// billing.sql — sqlc queries for billing tables (post-00010 migration)
-	// Run `sqlc generate` after the 00010 migration has been applied.
-	GetSubscriptionByUserID(ctx context.Context, userID string) (GetSubscriptionByUserIDRow, error)
+	// billing.sql — sqlc queries for billing tables.
+	// subscriptions / invoices / payments 一律使用 provider + ext_* 命名（聚合支付）。
+	GetSubscriptionByUserID(ctx context.Context, userID string) (Subscription, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id string) (User, error)
 	GetUserByUsername(ctx context.Context, username *string) (User, error)
@@ -49,7 +49,7 @@ type Querier interface {
 	ListAuditLogsByOwner(ctx context.Context, arg ListAuditLogsByOwnerParams) ([]AuditLog, error)
 	ListAuditLogsByResource(ctx context.Context, arg ListAuditLogsByResourceParams) ([]AuditLog, error)
 	ListICPRecords(ctx context.Context, arg ListICPRecordsParams) ([]IcpRecord, error)
-	ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]ListInvoicesByUserRow, error)
+	ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]Invoice, error)
 	ListMonitorsByUser(ctx context.Context, arg ListMonitorsByUserParams) ([]Monitor, error)
 	ListUserCredentialsByUser(ctx context.Context, userID string) ([]UserCredential, error)
 	MarkCustomDomainVerified(ctx context.Context, id string) error

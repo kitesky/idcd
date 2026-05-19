@@ -30,7 +30,7 @@ var asyncVerifySem = make(chan struct{}, 20)
 // statusPageDomainQuerier is the subset of DB operations required by StatusPageDomainHandler.
 type statusPageDomainQuerier interface {
 	GetStatusPageByID(ctx context.Context, id string) (idcdmain.StatusPage, error)
-	GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (idcdmain.StatusPage, error)
+	GetStatusPageByCustomDomain(ctx context.Context, customDomain *string) (idcdmain.StatusPage, error)
 	SetStatusPageCustomDomain(ctx context.Context, arg idcdmain.SetStatusPageCustomDomainParams) (idcdmain.StatusPage, error)
 	MarkCustomDomainVerified(ctx context.Context, id string) error
 }

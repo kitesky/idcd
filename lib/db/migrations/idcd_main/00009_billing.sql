@@ -3,6 +3,7 @@
 -- 00009_billing.sql
 -- S2 billing tables: subscriptions, invoices, payments, status_pages
 -- D1 rule: NO cross-schema FOREIGN KEY REFERENCES; all joins done at application layer.
+-- 支付走聚合支付（微信 / 支付宝 / Stripe），所有外部 ID 列统一命名 ext_*。
 
 -- subscriptions: 订阅
 CREATE TABLE IF NOT EXISTS subscriptions (
@@ -10,7 +11,8 @@ CREATE TABLE IF NOT EXISTS subscriptions (
   user_id         TEXT NOT NULL,             -- 应用层 join，无 FK
   plan            TEXT NOT NULL CHECK (plan IN ('free','pro','team','business')),
   status          TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','cancelled','past_due','paused')),
-  paddle_sub_id   TEXT UNIQUE,               -- Paddle 订阅 ID（后续接入时填充）
+  provider        TEXT NOT NULL DEFAULT 'stub',  -- 'stub' | 'wepay' | 'alipay' | 'stripe'
+  ext_sub_id      TEXT UNIQUE,               -- 支付方订阅 ID（接入后填充）
   current_period_start TIMESTAMPTZ,
   current_period_end   TIMESTAMPTZ,
   cancel_at       TIMESTAMPTZ,
@@ -24,7 +26,8 @@ CREATE TABLE IF NOT EXISTS invoices (
   id              TEXT PRIMARY KEY,          -- inv_前缀 nanoid
   user_id         TEXT NOT NULL,
   subscription_id TEXT,                      -- 应用层 join，无 FK
-  paddle_invoice_id TEXT,
+  provider        TEXT NOT NULL DEFAULT 'stub',
+  ext_invoice_id  TEXT,
   amount_cents    INTEGER NOT NULL,
   currency        TEXT NOT NULL DEFAULT 'CNY',
   status          TEXT NOT NULL CHECK (status IN ('paid','pending','refunded','failed')),
@@ -38,7 +41,8 @@ CREATE TABLE IF NOT EXISTS payments (
   id              TEXT PRIMARY KEY,          -- pay_前缀 nanoid
   user_id         TEXT NOT NULL,
   invoice_id      TEXT,                      -- 应用层 join，无 FK
-  paddle_txn_id   TEXT UNIQUE,
+  provider        TEXT NOT NULL DEFAULT 'stub',
+  ext_txn_id      TEXT UNIQUE,
   amount_cents    INTEGER NOT NULL,
   currency        TEXT NOT NULL DEFAULT 'CNY',
   status          TEXT NOT NULL CHECK (status IN ('succeeded','failed','refunded','refund_failed')),

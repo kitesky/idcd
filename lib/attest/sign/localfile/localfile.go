@@ -19,7 +19,6 @@ package localfile
 
 import (
 	"context"
-	"crypto"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
@@ -28,9 +27,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sync"
 
 	"github.com/kite365/idcd/lib/attest/sign"
+	"github.com/kite365/idcd/lib/attest/sign/internal/idempcache"
 )
 
 // Config 是构造 localfile Signer / Verifier 所需的参数。
@@ -57,10 +56,10 @@ type signer struct {
 	key       *rsa.PrivateKey
 
 	// idempCache 单进程内 (idempotencyKey → signature) 缓存。
-	// dev 环境不存在 KMS audit log 去重问题，但保留缓存让接口语义
-	// 一致（worker 重试同 key 拿同 sig），便于跑通 D4 WAL 用例。
-	mu         sync.Mutex
-	idempCache map[string][]byte
+	// 与 awskms / alikms 共用 idempcache.Cache：bounded FIFO + 防御性 byte copy；
+	// 并发同 key 由 LoadOrStore 处理（先到者写入，后到者读回同值），
+	// 即使 PSS salt 让两次 sign 产出不同 sig，外层拿到的也是同一份。
+	idempCache *idempcache.Cache
 }
 
 type verifier struct {
@@ -79,7 +78,7 @@ func New(cfg Config) (sign.Signer, error) {
 		keyPath:    cfg.KeyPath,
 		algorithm:  alg,
 		key:        key,
-		idempCache: make(map[string][]byte, 32),
+		idempCache: idempcache.New(0),
 	}, nil
 }
 
@@ -211,15 +210,9 @@ func (s *signer) Sign(ctx context.Context, digest []byte, idempotencyKey string)
 		return nil, fmt.Errorf("%w: digest len=%d want=%d", sign.ErrInvalidInput, len(digest), hashAlg.Size())
 	}
 
-	s.mu.Lock()
-	if cached, ok := s.idempCache[idempotencyKey]; ok {
-		s.mu.Unlock()
-		// Return a copy so callers can't mutate the cache.
-		out := make([]byte, len(cached))
-		copy(out, cached)
-		return out, nil
+	if cached, ok := s.idempCache.Load(idempotencyKey); ok {
+		return cached, nil
 	}
-	s.mu.Unlock()
 
 	var sig []byte
 	switch s.algorithm {
@@ -237,13 +230,10 @@ func (s *signer) Sign(ctx context.Context, digest []byte, idempotencyKey string)
 		return nil, fmt.Errorf("localfile: sign: %w", err)
 	}
 
-	s.mu.Lock()
-	s.idempCache[idempotencyKey] = sig
-	s.mu.Unlock()
-
-	out := make([]byte, len(sig))
-	copy(out, sig)
-	return out, nil
+	// LoadOrStore 处理并发同 key — 先到者写入，后到者读回同值；
+	// PSS 即便两次 sign 产出不同 sig，外层拿到的是同一份。
+	stored, _ := s.idempCache.LoadOrStore(idempotencyKey, sig)
+	return stored, nil
 }
 
 // PrivateKey 暴露内部持有的 RSA key，让 cmd/generator 在用同一把 key
@@ -252,7 +242,6 @@ func (s *signer) PrivateKey() *rsa.PrivateKey { return s.key }
 
 var _ sign.Signer = (*signer)(nil)
 var _ PrivateKeyHolder = (*signer)(nil)
-var _ crypto.Signer = nil // (sanity: rsa.PrivateKey already implements crypto.Signer; this line keeps the import non-empty if future refactors drop the others)
 
 // --- verifier interface ---
 

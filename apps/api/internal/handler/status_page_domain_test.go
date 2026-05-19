@@ -21,7 +21,7 @@ import (
 
 type mockStatusPageDomainQuerier struct {
 	getByID              func(ctx context.Context, id string) (idcdmain.StatusPage, error)
-	getByCustomDomain    func(ctx context.Context, domain string) (idcdmain.StatusPage, error)
+	getByCustomDomain    func(ctx context.Context, domain *string) (idcdmain.StatusPage, error)
 	setCustomDomain      func(ctx context.Context, arg idcdmain.SetStatusPageCustomDomainParams) (idcdmain.StatusPage, error)
 	markVerified         func(ctx context.Context, id string) error
 }
@@ -33,7 +33,7 @@ func (m *mockStatusPageDomainQuerier) GetStatusPageByID(ctx context.Context, id 
 	return idcdmain.StatusPage{}, errors.New("not found")
 }
 
-func (m *mockStatusPageDomainQuerier) GetStatusPageByCustomDomain(ctx context.Context, domain string) (idcdmain.StatusPage, error) {
+func (m *mockStatusPageDomainQuerier) GetStatusPageByCustomDomain(ctx context.Context, domain *string) (idcdmain.StatusPage, error) {
 	if m.getByCustomDomain != nil {
 		return m.getByCustomDomain(ctx, domain)
 	}

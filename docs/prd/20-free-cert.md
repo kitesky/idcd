@@ -20,7 +20,7 @@
 |---|---|
 | 02-public-tools | **无耦合**。免费证书不是"公开匿名工具"，不出现在 `/tools/*` 入口。后台 `/app/cert/*` 独立第一级菜单 |
 | 03-account-system | 复用账号、登录、配额计量框架；新增 `cert.*` 配额维度 |
-| 09-billing | S1 完全免费；S3 增量档（API / 多账号 / 私钥托管增值服务）走既有 Paddle / 阿里云市场链路 |
+| 09-billing | S1 完全免费；S3 增量档（API / 多账号 / 私钥托管增值服务）走既有聚合支付 / 阿里云市场链路 |
 | 11-admin | 复用 admin 框架，新增"证书订单"、"CA 配额"、"DNS provider 健康度"三块面板 |
 | 12-compliance-and-abuse | 共用反滥用底盘；新增"短时间内大量不同根域名签发"的风控规则 |
 | 18-evidence | **不复用 KMS 签发链路**。Verdict 用 idcd 自己的 KMS 签名做证据签名；本模块的"证书私钥"用独立 KMS keyring（D-FC-04） |
@@ -834,7 +834,7 @@ API + Webhook + GTS + 商业化档 + 团队席位。
 | **CA 协议** | ACME RFC 8555 | Reseller 各家私有 REST | **新增 `ResellerCA` 实现，与 `AcmeCA` 并列同 interface** |
 | **组织信息（OV/EV）** | ❌ | 公司名 / 地址 / 电话 / 营业执照 | **新增 `cert.organizations` 表 + 表单 + 上传** |
 | **回调验证（OV/EV）** | ❌ | 电话回访 / 邮件回复 | **新增 `awaiting_org_validation` 子状态 + 人工干预接口** |
-| **计费 / 退款** | 不涉及 | Paddle / 阿里云 | **复用 09-billing；新增 `cert.orders.billing_invoice_id`** |
+| **计费 / 退款** | 不涉及 | 聚合支付 / 阿里云 | **复用 09-billing；新增 `cert.orders.billing_invoice_id`** |
 | **库存 / 预付费券** | ❌ | reseller 通常按张预付 / 按订单结算 | **新增 `cert.sku_credits`（按渠道按规格预存）** |
 
 ### 20.3 `CA` 接口必须从 S1 就这么设计

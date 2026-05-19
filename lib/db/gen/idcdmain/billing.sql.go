@@ -18,7 +18,7 @@ INSERT INTO invoices (
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, $9, NOW()
 )
-RETURNING id, user_id, subscription_id, paddle_invoice_id, amount_cents, currency, status, paid_at, created_at, provider, ext_invoice_id
+RETURNING id, user_id, subscription_id, provider, ext_invoice_id, amount_cents, currency, status, paid_at, created_at
 `
 
 type CreateInvoiceParams struct {
@@ -50,14 +50,13 @@ func (q *Queries) CreateInvoice(ctx context.Context, arg CreateInvoiceParams) (I
 		&i.ID,
 		&i.UserID,
 		&i.SubscriptionID,
-		&i.PaddleInvoiceID,
+		&i.Provider,
+		&i.ExtInvoiceID,
 		&i.AmountCents,
 		&i.Currency,
 		&i.Status,
 		&i.PaidAt,
 		&i.CreatedAt,
-		&i.Provider,
-		&i.ExtInvoiceID,
 	)
 	return i, err
 }
@@ -69,7 +68,7 @@ INSERT INTO payments (
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, NOW()
 )
-RETURNING id, user_id, invoice_id, paddle_txn_id, amount_cents, currency, status, refund_retry_count, refund_failed_at, metadata, created_at, provider, ext_txn_id
+RETURNING id, user_id, invoice_id, provider, ext_txn_id, amount_cents, currency, status, refund_retry_count, refund_failed_at, metadata, created_at
 `
 
 type CreatePaymentParams struct {
@@ -99,7 +98,8 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		&i.ID,
 		&i.UserID,
 		&i.InvoiceID,
-		&i.PaddleTxnID,
+		&i.Provider,
+		&i.ExtTxnID,
 		&i.AmountCents,
 		&i.Currency,
 		&i.Status,
@@ -107,8 +107,6 @@ func (q *Queries) CreatePayment(ctx context.Context, arg CreatePaymentParams) (P
 		&i.RefundFailedAt,
 		&i.Metadata,
 		&i.CreatedAt,
-		&i.Provider,
-		&i.ExtTxnID,
 	)
 	return i, err
 }
@@ -120,7 +118,7 @@ INSERT INTO subscriptions (
 ) VALUES (
   $1, $2, $3, $4, $5, $6, $7, $8, NOW(), NOW()
 )
-RETURNING id, user_id, plan, status, paddle_sub_id, current_period_start, current_period_end, cancel_at, created_at, updated_at, provider, ext_sub_id
+RETURNING id, user_id, plan, status, provider, ext_sub_id, current_period_start, current_period_end, cancel_at, created_at, updated_at
 `
 
 type CreateSubscriptionParams struct {
@@ -151,14 +149,13 @@ func (q *Queries) CreateSubscription(ctx context.Context, arg CreateSubscription
 		&i.UserID,
 		&i.Plan,
 		&i.Status,
-		&i.PaddleSubID,
+		&i.Provider,
+		&i.ExtSubID,
 		&i.CurrentPeriodStart,
 		&i.CurrentPeriodEnd,
 		&i.CancelAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Provider,
-		&i.ExtSubID,
 	)
 	return i, err
 }
@@ -173,25 +170,11 @@ ORDER BY created_at DESC
 LIMIT 1
 `
 
-type GetSubscriptionByUserIDRow struct {
-	ID                 string             `json:"id"`
-	UserID             string             `json:"user_id"`
-	Plan               string             `json:"plan"`
-	Status             string             `json:"status"`
-	Provider           string             `json:"provider"`
-	ExtSubID           *string            `json:"ext_sub_id"`
-	CurrentPeriodStart pgtype.Timestamptz `json:"current_period_start"`
-	CurrentPeriodEnd   pgtype.Timestamptz `json:"current_period_end"`
-	CancelAt           pgtype.Timestamptz `json:"cancel_at"`
-	CreatedAt          pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt          pgtype.Timestamptz `json:"updated_at"`
-}
-
-// billing.sql — sqlc queries for billing tables (post-00010 migration)
-// Run `sqlc generate` after the 00010 migration has been applied.
-func (q *Queries) GetSubscriptionByUserID(ctx context.Context, userID string) (GetSubscriptionByUserIDRow, error) {
+// billing.sql — sqlc queries for billing tables.
+// subscriptions / invoices / payments 一律使用 provider + ext_* 命名（聚合支付）。
+func (q *Queries) GetSubscriptionByUserID(ctx context.Context, userID string) (Subscription, error) {
 	row := q.db.QueryRow(ctx, getSubscriptionByUserID, userID)
-	var i GetSubscriptionByUserIDRow
+	var i Subscription
 	err := row.Scan(
 		&i.ID,
 		&i.UserID,
@@ -223,28 +206,15 @@ type ListInvoicesByUserParams struct {
 	Offset int32  `json:"offset"`
 }
 
-type ListInvoicesByUserRow struct {
-	ID             string             `json:"id"`
-	UserID         string             `json:"user_id"`
-	SubscriptionID *string            `json:"subscription_id"`
-	Provider       string             `json:"provider"`
-	ExtInvoiceID   *string            `json:"ext_invoice_id"`
-	AmountCents    int32              `json:"amount_cents"`
-	Currency       string             `json:"currency"`
-	Status         string             `json:"status"`
-	PaidAt         pgtype.Timestamptz `json:"paid_at"`
-	CreatedAt      pgtype.Timestamptz `json:"created_at"`
-}
-
-func (q *Queries) ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]ListInvoicesByUserRow, error) {
+func (q *Queries) ListInvoicesByUser(ctx context.Context, arg ListInvoicesByUserParams) ([]Invoice, error) {
 	rows, err := q.db.Query(ctx, listInvoicesByUser, arg.UserID, arg.Limit, arg.Offset)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	items := []ListInvoicesByUserRow{}
+	items := []Invoice{}
 	for rows.Next() {
-		var i ListInvoicesByUserRow
+		var i Invoice
 		if err := rows.Scan(
 			&i.ID,
 			&i.UserID,
@@ -271,7 +241,7 @@ const updatePaymentStatus = `-- name: UpdatePaymentStatus :one
 UPDATE payments
 SET status = $2
 WHERE id = $1
-RETURNING id, user_id, invoice_id, paddle_txn_id, amount_cents, currency, status, refund_retry_count, refund_failed_at, metadata, created_at, provider, ext_txn_id
+RETURNING id, user_id, invoice_id, provider, ext_txn_id, amount_cents, currency, status, refund_retry_count, refund_failed_at, metadata, created_at
 `
 
 type UpdatePaymentStatusParams struct {
@@ -286,7 +256,8 @@ func (q *Queries) UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStat
 		&i.ID,
 		&i.UserID,
 		&i.InvoiceID,
-		&i.PaddleTxnID,
+		&i.Provider,
+		&i.ExtTxnID,
 		&i.AmountCents,
 		&i.Currency,
 		&i.Status,
@@ -294,8 +265,6 @@ func (q *Queries) UpdatePaymentStatus(ctx context.Context, arg UpdatePaymentStat
 		&i.RefundFailedAt,
 		&i.Metadata,
 		&i.CreatedAt,
-		&i.Provider,
-		&i.ExtTxnID,
 	)
 	return i, err
 }
@@ -304,7 +273,7 @@ const updateSubscriptionStatus = `-- name: UpdateSubscriptionStatus :one
 UPDATE subscriptions
 SET status = $2, updated_at = NOW()
 WHERE id = $1
-RETURNING id, user_id, plan, status, paddle_sub_id, current_period_start, current_period_end, cancel_at, created_at, updated_at, provider, ext_sub_id
+RETURNING id, user_id, plan, status, provider, ext_sub_id, current_period_start, current_period_end, cancel_at, created_at, updated_at
 `
 
 type UpdateSubscriptionStatusParams struct {
@@ -320,14 +289,13 @@ func (q *Queries) UpdateSubscriptionStatus(ctx context.Context, arg UpdateSubscr
 		&i.UserID,
 		&i.Plan,
 		&i.Status,
-		&i.PaddleSubID,
+		&i.Provider,
+		&i.ExtSubID,
 		&i.CurrentPeriodStart,
 		&i.CurrentPeriodEnd,
 		&i.CancelAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
-		&i.Provider,
-		&i.ExtSubID,
 	)
 	return i, err
 }

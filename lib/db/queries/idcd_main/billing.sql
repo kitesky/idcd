@@ -1,5 +1,5 @@
--- billing.sql — sqlc queries for billing tables (post-00010 migration)
--- Run `sqlc generate` after the 00010 migration has been applied.
+-- billing.sql — sqlc queries for billing tables.
+-- subscriptions / invoices / payments 一律使用 provider + ext_* 命名（聚合支付）。
 
 -- name: GetSubscriptionByUserID :one
 SELECT id, user_id, plan, status, provider, ext_sub_id,

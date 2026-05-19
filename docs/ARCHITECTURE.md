@@ -56,7 +56,7 @@ idcd/
 │   └── shared/                    # 共享类型 / 工具函数 / errors / IDs(prefix+nanoid)
 │
 ├── packages/                      # SDK 发布包
-│   ├── payment-go-sdk/            # Paddle 支付 Go SDK
+│   ├── payment-go-sdk/            # 聚合支付 Go SDK (微信 / 支付宝 / Stripe)
 │   └── sdk-go/                    # idcd Go SDK
 │
 ├── infra/

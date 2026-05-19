@@ -13,7 +13,7 @@ import (
 
 // statusPageInternalQuerier is the subset of DB operations required by StatusPageInternalHandler.
 type statusPageInternalQuerier interface {
-	GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (idcdmain.StatusPage, error)
+	GetStatusPageByCustomDomain(ctx context.Context, customDomain *string) (idcdmain.StatusPage, error)
 }
 
 // StatusPageInternalHandler handles internal (non-public) status page lookup endpoints.
@@ -42,7 +42,7 @@ func (h *StatusPageInternalHandler) ByDomain(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
-	sp, err := h.q.GetStatusPageByCustomDomain(ctx, domain)
+	sp, err := h.q.GetStatusPageByCustomDomain(ctx, &domain)
 	if err != nil {
 		response.Error(w, r, apperr.NotFound("status page not found for domain"))
 		return

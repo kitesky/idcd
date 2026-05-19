@@ -13,7 +13,7 @@
 //
 // D5 refund retry 调参
 //
-// CLAUDE.md §M D5 锁定 "Paddle/PaymentHub refund 失败 5min/30min 重试，
+// CLAUDE.md §M D5 锁定 "聚合支付 refund 失败 5min/30min 重试，
 // 30min 内强制发用户道歉邮箱"。本包的 RefundRetryFirstDelay /
 // RefundRetrySecondDelay / RefundRetryMaxAttempts 直接落地这条决策：
 //
@@ -24,7 +24,7 @@
 //                          停止重试，触发 refund_apology 邮箱给用户兜底
 //
 // 调整任一值需同步评估：
-//   - Paddle / PaymentHub API 限流配额
+//   - 聚合支付 API 限流配额
 //   - 道歉邮箱模板里的 "30 分钟内" 措辞 (apps/notifier/internal/template)
 //   - admin dashboard "refund_failed" 状态告警阈值 (CLAUDE.md D5)
 package asynqtask

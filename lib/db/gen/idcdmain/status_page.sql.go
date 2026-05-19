@@ -12,10 +12,13 @@ import (
 )
 
 const getStatusPageByCustomDomain = `-- name: GetStatusPageByCustomDomain :one
-SELECT id, user_id, slug, name, description, custom_domain, custom_domain_verified_at, custom_domain_cert_expires_at, branding, created_at, updated_at FROM status_pages WHERE custom_domain = $1
+
+SELECT id, user_id, slug, name, description, custom_domain, branding, created_at, custom_domain_verified_at, custom_domain_cert_expires_at, updated_at, default_locale FROM status_pages WHERE custom_domain = $1
 `
 
-func (q *Queries) GetStatusPageByCustomDomain(ctx context.Context, customDomain string) (StatusPage, error) {
+// status_page.sql — sqlc queries for status_pages custom domain management
+// Run `sqlc generate` after migration 00011 has been applied.
+func (q *Queries) GetStatusPageByCustomDomain(ctx context.Context, customDomain *string) (StatusPage, error) {
 	row := q.db.QueryRow(ctx, getStatusPageByCustomDomain, customDomain)
 	var i StatusPage
 	err := row.Scan(
@@ -25,37 +28,22 @@ func (q *Queries) GetStatusPageByCustomDomain(ctx context.Context, customDomain 
 		&i.Name,
 		&i.Description,
 		&i.CustomDomain,
-		&i.CustomDomainVerifiedAt,
-		&i.CustomDomainCertExpiresAt,
 		&i.Branding,
 		&i.CreatedAt,
+		&i.CustomDomainVerifiedAt,
+		&i.CustomDomainCertExpiresAt,
 		&i.UpdatedAt,
+		&i.DefaultLocale,
 	)
 	return i, err
 }
 
-const setStatusPageCustomDomain = `-- name: SetStatusPageCustomDomain :one
-UPDATE status_pages
-SET custom_domain = $2,
-    custom_domain_verified_at = NULL,
-    custom_domain_cert_expires_at = NULL,
-    updated_at = NOW()
-WHERE id = $1 AND user_id = $3
-RETURNING id, user_id, slug, name, description, custom_domain, custom_domain_verified_at, custom_domain_cert_expires_at, branding, created_at, updated_at
+const getStatusPageByID = `-- name: GetStatusPageByID :one
+SELECT id, user_id, slug, name, description, custom_domain, branding, created_at, custom_domain_verified_at, custom_domain_cert_expires_at, updated_at, default_locale FROM status_pages WHERE id = $1
 `
 
-type SetStatusPageCustomDomainParams struct {
-	ID           string  `json:"id"`
-	CustomDomain *string `json:"custom_domain"`
-	UserID       string  `json:"user_id"`
-}
-
-func (q *Queries) SetStatusPageCustomDomain(ctx context.Context, arg SetStatusPageCustomDomainParams) (StatusPage, error) {
-	row := q.db.QueryRow(ctx, setStatusPageCustomDomain,
-		arg.ID,
-		arg.CustomDomain,
-		arg.UserID,
-	)
+func (q *Queries) GetStatusPageByID(ctx context.Context, id string) (StatusPage, error) {
+	row := q.db.QueryRow(ctx, getStatusPageByID, id)
 	var i StatusPage
 	err := row.Scan(
 		&i.ID,
@@ -64,11 +52,12 @@ func (q *Queries) SetStatusPageCustomDomain(ctx context.Context, arg SetStatusPa
 		&i.Name,
 		&i.Description,
 		&i.CustomDomain,
-		&i.CustomDomainVerifiedAt,
-		&i.CustomDomainCertExpiresAt,
 		&i.Branding,
 		&i.CreatedAt,
+		&i.CustomDomainVerifiedAt,
+		&i.CustomDomainCertExpiresAt,
 		&i.UpdatedAt,
+		&i.DefaultLocale,
 	)
 	return i, err
 }
@@ -84,28 +73,24 @@ func (q *Queries) MarkCustomDomainVerified(ctx context.Context, id string) error
 	return err
 }
 
-const updateCertExpiry = `-- name: UpdateCertExpiry :exec
+const setStatusPageCustomDomain = `-- name: SetStatusPageCustomDomain :one
 UPDATE status_pages
-SET custom_domain_cert_expires_at = $2, updated_at = NOW()
-WHERE custom_domain = $1
+SET custom_domain = $2,
+    custom_domain_verified_at = NULL,
+    custom_domain_cert_expires_at = NULL,
+    updated_at = NOW()
+WHERE id = $1 AND user_id = $3
+RETURNING id, user_id, slug, name, description, custom_domain, branding, created_at, custom_domain_verified_at, custom_domain_cert_expires_at, updated_at, default_locale
 `
 
-type UpdateCertExpiryParams struct {
-	CustomDomain          string             `json:"custom_domain"`
-	CustomDomainCertExpiresAt pgtype.Timestamptz `json:"custom_domain_cert_expires_at"`
+type SetStatusPageCustomDomainParams struct {
+	ID           string  `json:"id"`
+	CustomDomain *string `json:"custom_domain"`
+	UserID       string  `json:"user_id"`
 }
 
-func (q *Queries) UpdateCertExpiry(ctx context.Context, arg UpdateCertExpiryParams) error {
-	_, err := q.db.Exec(ctx, updateCertExpiry, arg.CustomDomain, arg.CustomDomainCertExpiresAt)
-	return err
-}
-
-const getStatusPageByID = `-- name: GetStatusPageByID :one
-SELECT id, user_id, slug, name, description, custom_domain, custom_domain_verified_at, custom_domain_cert_expires_at, branding, created_at, updated_at FROM status_pages WHERE id = $1
-`
-
-func (q *Queries) GetStatusPageByID(ctx context.Context, id string) (StatusPage, error) {
-	row := q.db.QueryRow(ctx, getStatusPageByID, id)
+func (q *Queries) SetStatusPageCustomDomain(ctx context.Context, arg SetStatusPageCustomDomainParams) (StatusPage, error) {
+	row := q.db.QueryRow(ctx, setStatusPageCustomDomain, arg.ID, arg.CustomDomain, arg.UserID)
 	var i StatusPage
 	err := row.Scan(
 		&i.ID,
@@ -114,11 +99,28 @@ func (q *Queries) GetStatusPageByID(ctx context.Context, id string) (StatusPage,
 		&i.Name,
 		&i.Description,
 		&i.CustomDomain,
-		&i.CustomDomainVerifiedAt,
-		&i.CustomDomainCertExpiresAt,
 		&i.Branding,
 		&i.CreatedAt,
+		&i.CustomDomainVerifiedAt,
+		&i.CustomDomainCertExpiresAt,
 		&i.UpdatedAt,
+		&i.DefaultLocale,
 	)
 	return i, err
+}
+
+const updateCertExpiry = `-- name: UpdateCertExpiry :exec
+UPDATE status_pages
+SET custom_domain_cert_expires_at = $2, updated_at = NOW()
+WHERE custom_domain = $1
+`
+
+type UpdateCertExpiryParams struct {
+	CustomDomain              *string            `json:"custom_domain"`
+	CustomDomainCertExpiresAt pgtype.Timestamptz `json:"custom_domain_cert_expires_at"`
+}
+
+func (q *Queries) UpdateCertExpiry(ctx context.Context, arg UpdateCertExpiryParams) error {
+	_, err := q.db.Exec(ctx, updateCertExpiry, arg.CustomDomain, arg.CustomDomainCertExpiresAt)
+	return err
 }

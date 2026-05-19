@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import Link from "next/link"
 import { ChevronDown, Search, Settings2, ArrowRight, MapPin, RotateCcw } from "lucide-react"
 import { useTranslations } from "next-intl"
@@ -11,9 +11,9 @@ import { Popover, PopoverTrigger, PopoverContent } from "@/components/ui/popover
 import { Checkbox } from "@/components/ui/checkbox"
 import { cn } from "@/lib/utils"
 import { getNodes, probeHttp, probePing, probeDns, probeTcp, probeMtr, probeTraceroute } from "@/lib/api"
-import type { Node as ProbeNode } from "@/lib/api"
+import type { Node as ProbeNode, ProbeResult } from "@/lib/api"
 import { useProbePolling } from "@/hooks/useProbePolling"
-import ProbeResults from "@/components/probe/ProbeResults"
+import { ProbeResultPanel } from "@/components/probe/ProbeResultPanel"
 
 // ── 大类 tab 配置 ────────────────────────────────────────────────────────────
 
@@ -290,6 +290,23 @@ export function HeroSearch() {
   const [submitError, setSubmitError] = useState("")
   const polling = useProbePolling(taskId)
 
+  // Resolve node_id → human-readable name once on mount. ProbeResultPanel's
+  // Top rank table shows the node_name verbatim, so without this lookup the
+  // panel would show raw IDs like "nd_neN7DMrT9aBB" instead of "本地 Mac".
+  const [nodeNameById, setNodeNameById] = useState<Record<string, string>>({})
+  useEffect(() => {
+    let cancelled = false
+    getNodes()
+      .then((ns) => {
+        if (cancelled) return
+        const map: Record<string, string> = {}
+        for (const n of ns) map[n.id] = n.name || n.id
+        setNodeNameById(map)
+      })
+      .catch(() => { /* fall back to raw node_id */ })
+    return () => { cancelled = true }
+  }, [])
+
   const catConfig = CATEGORY_CONFIGS.find(c => c.key === activeCat) ?? CATEGORY_CONFIGS[1]!
 
   const resetResult = () => {
@@ -325,8 +342,38 @@ export function HeroSearch() {
   }
 
   const probeLoading = submitting || polling.isPolling
-  const hasResult = polling.taskResult !== null
   const probeError = submitError || polling.error
+
+  // Adapt the async ProbeTaskResult (single-node, agent-flat) into the
+  // synchronous ProbeResult shape ProbeResultPanel was built for (results[]
+  // with node_name/latency_ms/details). The panel's left-map + right-Top-rank
+  // + HTTP-stacked-bar layout is the source of truth for hero result UI —
+  // we feed it from polling, we don't replace the design.
+  const probeResult: ProbeResult | null = useMemo(() => {
+    const tr = polling.taskResult
+    if (!tr?.result) return null
+    const r = tr.result
+    const knownKeys = new Set(["node_id", "success", "duration_ms", "error"])
+    const details: Record<string, unknown> = Object.fromEntries(
+      Object.entries(r).filter(([k]) => !knownKeys.has(k))
+    )
+    const nodeId = typeof r.node_id === "string" ? r.node_id : "unknown"
+    const nodeName = nodeNameById[nodeId] ?? nodeId
+    return {
+      task_id: tr.task_id,
+      status: tr.status,
+      results: [{
+        node_id: nodeId,
+        node_name: nodeName,
+        success: Boolean(r.success),
+        latency_ms: typeof r.duration_ms === "number" ? r.duration_ms : undefined,
+        error: typeof r.error === "string" ? r.error : undefined,
+        details: Object.keys(details).length > 0 ? details : undefined,
+      }],
+    }
+  }, [polling.taskResult, nodeNameById])
+
+  const hasResult = probeResult !== null
 
   return (
     <>
@@ -429,14 +476,25 @@ export function HeroSearch() {
     {/* ── 拨测结果面板 ─────────────────────────────────────────── */}
     {(probeLoading || hasResult || probeError) && (
       <div className="border-b bg-background">
-        <div className="mx-auto max-w-screen-xl px-4 md:px-6 py-6">
-          <ProbeResults
-            taskId={taskId}
-            polling={polling}
-            loading={submitting}
-            error={submitError}
+        {probeError ? (
+          <div className="mx-auto max-w-screen-xl px-6 py-6 text-sm text-destructive">
+            {t("hero.probeError", { message: probeError })}
+          </div>
+        ) : probeResult ? (
+          <ProbeResultPanel
+            result={probeResult}
+            target={query}
+            probeType={activeTool}
+            isLoading={probeLoading}
           />
-        </div>
+        ) : (
+          <div className="mx-auto max-w-screen-xl px-6 py-8 space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="h-12 bg-muted/50 animate-pulse rounded-md" />
+            ))}
+            <p className="text-xs text-muted-foreground">{t("hero.probePending")}</p>
+          </div>
+        )}
       </div>
     )}
     </>

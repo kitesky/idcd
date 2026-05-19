@@ -650,8 +650,8 @@ export function MonitorDetailClient({ monitor, monitorId }: MonitorDetailClientP
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
-              <AlertDialogCancel disabled={togglingStatus}>{t("bulk.cancel")}</AlertDialogCancel>
-              <AlertDialogAction onClick={confirmToggle} disabled={togglingStatus}>
+              <AlertDialogCancel>{t("bulk.cancel")}</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmToggle}>
                 {pendingToggle === "pause"
                   ? t("confirm.confirmPause")
                   : t("confirm.confirmResume")}

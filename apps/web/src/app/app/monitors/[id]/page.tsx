@@ -58,13 +58,14 @@ async function fetchMonitor(id: string): Promise<Monitor | null> {
   try {
     // Server-side fetch runs in Node, not the browser — credentials:"include"
     // alone doesn't pull cookies the way it does from a real browser. Forward
-    // the access_token cookie explicitly via Authorization: Bearer so the API
-    // sees an authenticated request. Without this the detail page always
-    // rendered "monitor not found" even when the monitor existed.
+    // the access_token cookie explicitly so the API sees an authenticated
+    // request. Without this the detail page always rendered "monitor not
+    // found" even when the monitor existed. Matches the pattern in
+    // app/app/layout.tsx.
     const store = await cookies()
     const token = store.get("access_token")?.value
     const headers: Record<string, string> = {}
-    if (token) headers["Authorization"] = `Bearer ${token}`
+    if (token) headers["cookie"] = `access_token=${token}`
     const res = await fetch(`${API_BASE}/v1/monitors/${id}`, {
       next: { revalidate: 0 },
       credentials: API_CREDENTIALS_POLICY,

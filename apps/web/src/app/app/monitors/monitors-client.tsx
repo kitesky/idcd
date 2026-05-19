@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useTranslations } from "next-intl"
+import { toast } from "sonner"
 import {
   Activity,
   AlertCircle,
@@ -254,8 +255,10 @@ export function MonitorsClient() {
         method: "PATCH",
         body: JSON.stringify({ status: newApiStatus }),
       })
-    } catch {
-      // Roll back on failure
+    } catch (err) {
+      // Roll back on failure + surface so the user sees why the click "did nothing"
+      const msg = err instanceof Error ? err.message : t("error.updateFailed")
+      toast.error(msg)
       await fetchMonitors(page, search, statusFilter)
     }
   }
@@ -272,7 +275,9 @@ export function MonitorsClient() {
     })
     try {
       await apiRequest(`/v1/monitors/${id}`, { method: "DELETE" })
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : t("error.deleteFailed")
+      toast.error(msg)
       await fetchMonitors(page, search, statusFilter)
     }
   }
@@ -304,33 +309,22 @@ export function MonitorsClient() {
         method: "POST",
         body: JSON.stringify({ action, ids }),
       })
-    } catch {
-      // On error re-fetch to restore consistent state
+    } catch (err) {
+      const fallback = action === "delete" ? t("error.deleteFailed") : t("error.updateFailed")
+      const msg = err instanceof Error ? err.message : fallback
+      toast.error(msg)
       await fetchMonitors(page, search, statusFilter)
     }
   }
 
-  function requestBulkAction(action: "pause" | "resume" | "delete") {
-    // All three bulk operations affect many monitors at once — always confirm.
-    // Previously pause/resume executed immediately; one misclick could mute
-    // alerts for an entire fleet. Resume is included for symmetry / cognitive
-    // consistency: same flow whether you're pausing or starting checks.
-    setPendingBulkAction(action)
-  }
+  // ── Confirm flow ───────────────────────────────────────────────────────────
+  // Bulk: affects many monitors at once. Row: pause silently muting alerts for
+  // a critical service is a foot-gun. Both stage the action and execute only on
+  // explicit confirm. Resume is included for symmetry — same flow regardless of
+  // direction.
 
-  // ── Single-row destructive ops always confirm ──────────────────────────────
-  // Same reasoning as bulk: pause silently muting alerts for a critical service
-  // is a foot-gun. Stage the action, render a per-action dialog, execute on
-  // explicit confirm.
-
-  function requestPause(monitor: Monitor) {
-    setPendingRowAction({ action: "pause", monitor })
-  }
-  function requestResume(monitor: Monitor) {
-    setPendingRowAction({ action: "resume", monitor })
-  }
-  function requestDelete(monitor: Monitor) {
-    setPendingRowAction({ action: "delete", monitor })
+  function requestRowAction(action: "pause" | "resume" | "delete", monitor: Monitor) {
+    setPendingRowAction({ action, monitor })
   }
   function confirmRowAction() {
     if (!pendingRowAction) return
@@ -594,9 +588,10 @@ export function MonitorsClient() {
                         size="icon"
                         className="h-8 w-8"
                         onClick={() =>
-                          monitor.status === "PAUSED"
-                            ? requestResume(monitor)
-                            : requestPause(monitor)
+                          requestRowAction(
+                            monitor.status === "PAUSED" ? "resume" : "pause",
+                            monitor,
+                          )
                         }
                         title={
                           monitor.status === "PAUSED" ? t("actions.resume") : t("actions.pause")
@@ -630,7 +625,7 @@ export function MonitorsClient() {
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-destructive focus:text-destructive"
-                            onClick={() => requestDelete(monitor)}
+                            onClick={() => requestRowAction("delete", monitor)}
                           >
                             <Trash2 className="h-4 w-4" />
                             {t("actions.delete")}
@@ -685,7 +680,7 @@ export function MonitorsClient() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => requestBulkAction("pause")}
+              onClick={() => setPendingBulkAction("pause")}
             >
               <Pause className="h-3.5 w-3.5" />
               <span className="hidden sm:inline ml-1.5">{t("bulk.pause")}</span>
@@ -693,7 +688,7 @@ export function MonitorsClient() {
             <Button
               variant="outline"
               size="sm"
-              onClick={() => requestBulkAction("resume")}
+              onClick={() => setPendingBulkAction("resume")}
             >
               <Play className="h-3.5 w-3.5" />
               <span className="hidden sm:inline ml-1.5">{t("bulk.resume")}</span>
@@ -701,7 +696,7 @@ export function MonitorsClient() {
             <Button
               variant="destructive"
               size="sm"
-              onClick={() => requestBulkAction("delete")}
+              onClick={() => setPendingBulkAction("delete")}
             >
               <Trash2 className="h-3.5 w-3.5" />
               <span className="hidden sm:inline ml-1.5">{t("bulk.delete")}</span>
@@ -742,9 +737,7 @@ export function MonitorsClient() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setPendingBulkAction(null)}>
-              {t("bulk.cancel")}
-            </AlertDialogCancel>
+            <AlertDialogCancel>{t("bulk.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               className={
                 pendingBulkAction === "delete"

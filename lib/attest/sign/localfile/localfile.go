@@ -51,9 +51,10 @@ type PrivateKeyHolder interface {
 }
 
 type signer struct {
-	keyPath   string
-	algorithm string
-	key       *rsa.PrivateKey
+	keyPath    string
+	algorithm  string
+	key        *rsa.PrivateKey
+	keyVersion int // sha256(PEM)[0:4] masked to int32 range; cached at construction
 
 	// idempCache 单进程内 (idempotencyKey → signature) 缓存。
 	// 与 awskms / alikms 共用 idempcache.Cache：bounded FIFO + 防御性 byte copy；
@@ -74,12 +75,28 @@ func New(cfg Config) (sign.Signer, error) {
 	if err != nil {
 		return nil, err
 	}
+	// Read the PEM once at construction to compute the stable key version hash.
+	// This avoids per-call disk I/O in KeyVersion() on a hot attestation path.
+	pemData, err := os.ReadFile(cfg.KeyPath)
+	if err != nil {
+		return nil, fmt.Errorf("localfile: read key for version hash: %w", err)
+	}
+	kv := keyVersionFromPEM(pemData)
 	return &signer{
 		keyPath:    cfg.KeyPath,
 		algorithm:  alg,
 		key:        key,
+		keyVersion: kv,
 		idempCache: idempcache.New(0),
 	}, nil
+}
+
+// keyVersionFromPEM returns a stable int derived from sha256(pem)[0:4],
+// masked to the positive int32 range (DB schema uses int4).
+func keyVersionFromPEM(data []byte) int {
+	sum := sha256.Sum256(data)
+	raw := uint32(sum[0])<<24 | uint32(sum[1])<<16 | uint32(sum[2])<<8 | uint32(sum[3])
+	return int(raw & 0x7FFFFFFF)
 }
 
 // NewVerifier 构造 localfile Verifier — 读取同一份 keyfile，返回其公钥。
@@ -183,19 +200,10 @@ func parsePEMKey(data []byte) (*rsa.PrivateKey, error) {
 func (s *signer) KeyID() string     { return "localfile:" + s.keyPath }
 func (s *signer) Algorithm() string { return s.algorithm }
 
-// KeyVersion 用 keyfile 内容的 sha256 首 4 字节作为伪版本号 — 同一 key
-// 重启稳定，更换 key 则跳变。dev only。
-//
-// 高位 bit 强制清零，确保结果落在 int32 正数范围（DB schema 把
-// signature_key_version 定为 int4，超过 2^31-1 写入会 numeric overflow）。
-func (s *signer) KeyVersion(ctx context.Context) (int, error) {
-	data, err := os.ReadFile(s.keyPath)
-	if err != nil {
-		return 0, fmt.Errorf("localfile: KeyVersion read: %w", err)
-	}
-	sum := sha256.Sum256(data)
-	raw := uint32(sum[0])<<24 | uint32(sum[1])<<16 | uint32(sum[2])<<8 | uint32(sum[3])
-	return int(raw & 0x7FFFFFFF), nil
+// KeyVersion returns the version hash computed once at construction from the
+// PEM file contents. Stable across calls; changes when the key file changes.
+func (s *signer) KeyVersion(_ context.Context) (int, error) {
+	return s.keyVersion, nil
 }
 
 func (s *signer) Sign(ctx context.Context, digest []byte, idempotencyKey string) ([]byte, error) {

@@ -9,6 +9,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"math/big"
+	"net/url"
 	"strings"
 	"time"
 )
@@ -115,13 +116,18 @@ func UsedCodeKey(userID, code string) string {
 }
 
 func OTPAuthURL(issuer, account, secret string) string {
-	return fmt.Sprintf("otpauth://totp/%s:%s?secret=%s&issuer=%s", issuer, account, secret, issuer)
+	label := url.PathEscape(issuer) + ":" + url.PathEscape(account)
+	q := url.Values{}
+	q.Set("secret", secret)
+	q.Set("issuer", issuer)
+	return "otpauth://totp/" + label + "?" + q.Encode()
 }
 
 func GenerateBackupCodes() ([]string, error) {
 	const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-	codes := make([]string, 8)
-	for i := range codes {
+	seen := make(map[string]struct{}, 8)
+	codes := make([]string, 0, 8)
+	for len(codes) < 8 {
 		b := make([]byte, 8)
 		for j := range b {
 			n, err := rand.Int(rand.Reader, big.NewInt(int64(len(chars))))
@@ -130,7 +136,11 @@ func GenerateBackupCodes() ([]string, error) {
 			}
 			b[j] = chars[n.Int64()]
 		}
-		codes[i] = string(b)
+		code := string(b)
+		if _, dup := seen[code]; !dup {
+			seen[code] = struct{}{}
+			codes = append(codes, code)
+		}
 	}
 	return codes, nil
 }

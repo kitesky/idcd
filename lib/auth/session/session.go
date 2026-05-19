@@ -83,9 +83,10 @@ func (s *Service) Store(ctx context.Context, sessionID, userID string, ttl time.
 	pipe := s.redis.Pipeline()
 	pipe.Set(ctx, key, data, ttl)
 	pipe.SAdd(ctx, s.userSessionsKey(userID), sessionID)
-	// The set TTL is a generous upper bound; individual session expiry still governs.
-	// We extend the set TTL on every Store so it outlives the most-recently-created session.
-	pipe.Expire(ctx, s.userSessionsKey(userID), ttl+time.Hour)
+	// ExpireGT only updates the set TTL when the new value is larger than the
+	// current one, preventing a short-lived session from truncating the set TTL
+	// below a pre-existing long-lived session's window.
+	pipe.ExpireGT(ctx, s.userSessionsKey(userID), ttl+time.Hour)
 	if _, err := pipe.Exec(ctx); err != nil {
 		return apperr.Internal("failed to store session", err)
 	}

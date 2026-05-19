@@ -39,8 +39,16 @@ type Result struct {
 	ResetAt   time.Time // When the window resets (next oldest request expires)
 }
 
-// NewLimiter creates a new rate limiter instance.
+// NewLimiter creates a new rate limiter instance. Panics if Config fields are
+// invalid (WindowSize ≤ 0 or MaxRequests ≤ 0): misconfigured limiters would
+// silently deny all traffic, so we fail loudly at construction time.
 func NewLimiter(rdb RedisClient, cfg Config) *Limiter {
+	if cfg.WindowSize <= 0 {
+		panic(fmt.Sprintf("ratelimit.NewLimiter: WindowSize must be positive, got %v", cfg.WindowSize))
+	}
+	if cfg.MaxRequests <= 0 {
+		panic(fmt.Sprintf("ratelimit.NewLimiter: MaxRequests must be positive, got %d", cfg.MaxRequests))
+	}
 	return &Limiter{
 		rdb:    rdb,
 		config: cfg,

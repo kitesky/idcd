@@ -26,6 +26,13 @@ type Config struct {
 	Encryption    EncryptionConfig    `yaml:"encryption"`
 	Payment       PaymentConfig       `yaml:"payment"`
 	RateLimit     RateLimitConfig     `yaml:"rate_limit"`
+
+	// CertSvcURL is the base URL of cert-svc (apps/cert-svc) used by
+	// apps/api to reverse-proxy /v1/cert/* and /v1/admin/cert/* into
+	// the certificate platform. Empty disables the proxy and the
+	// stub handlers in apps/api/internal/handler/cert.go take over
+	// (list endpoints return empty arrays, mutations return 501).
+	CertSvcURL string `yaml:"cert_svc_url"`
 }
 
 // RateLimitConfig tunes the per-flow rate limiters previously hard-coded in
@@ -221,13 +228,18 @@ func (d Duration) MarshalYAML() (any, error) {
 }
 
 // parseDuration extends time.ParseDuration with "d" (days) support.
+// Accepts pure day forms ("7d") and combined forms ("7d12h", "1d30m").
 func parseDuration(s string) (time.Duration, error) {
-	if dayStr, ok := strings.CutSuffix(s, "d"); ok {
-		days, err := strconv.Atoi(dayStr)
-		if err != nil {
-			return 0, fmt.Errorf("invalid day value %q", s)
+	if idx := strings.Index(s, "d"); idx > 0 {
+		if days, err := strconv.Atoi(s[:idx]); err == nil {
+			rest := s[idx+1:]
+			if rest == "" {
+				return time.Duration(days) * 24 * time.Hour, nil
+			}
+			if sub, err := time.ParseDuration(rest); err == nil {
+				return time.Duration(days)*24*time.Hour + sub, nil
+			}
 		}
-		return time.Duration(days) * 24 * time.Hour, nil
 	}
 	return time.ParseDuration(s)
 }

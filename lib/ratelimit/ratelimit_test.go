@@ -443,3 +443,28 @@ func BenchmarkLimiter_Allow(b *testing.B) {
 		}
 	})
 }
+
+func TestNewLimiter_PanicsOnInvalidConfig(t *testing.T) {
+	s := miniredis.RunT(t)
+	rdb := redis.NewClient(&redis.Options{Addr: s.Addr()})
+
+	cases := []struct {
+		name string
+		cfg  Config
+	}{
+		{"zero WindowSize", Config{WindowSize: 0, MaxRequests: 5, KeyPrefix: "t:"}},
+		{"negative WindowSize", Config{WindowSize: -1, MaxRequests: 5, KeyPrefix: "t:"}},
+		{"zero MaxRequests", Config{WindowSize: time.Second, MaxRequests: 0, KeyPrefix: "t:"}},
+		{"negative MaxRequests", Config{WindowSize: time.Second, MaxRequests: -1, KeyPrefix: "t:"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			defer func() {
+				if r := recover(); r == nil {
+					t.Fatal("expected panic for invalid config, got none")
+				}
+			}()
+			NewLimiter(rdb, tc.cfg)
+		})
+	}
+}

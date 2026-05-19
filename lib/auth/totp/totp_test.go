@@ -3,6 +3,7 @@ package totp
 import (
 	"context"
 	"errors"
+	"net/url"
 	"strings"
 	"sync"
 	"testing"
@@ -65,21 +66,27 @@ func TestValidateCode_WrongCodeFalse(t *testing.T) {
 }
 
 func TestOTPAuthURL(t *testing.T) {
-	issuer := "idcd"
+	issuer := "My Issuer"
 	account := "user@example.com"
 	secret := "TESTSECRET"
-	url := OTPAuthURL(issuer, account, secret)
-	if !strings.HasPrefix(url, "otpauth://totp/") {
-		t.Errorf("expected otpauth:// URL, got %q", url)
+	raw := OTPAuthURL(issuer, account, secret)
+	if !strings.HasPrefix(raw, "otpauth://totp/") {
+		t.Errorf("expected otpauth:// URL, got %q", raw)
 	}
-	if !strings.Contains(url, issuer) {
-		t.Errorf("URL should contain issuer %q, got %q", issuer, url)
+	if strings.Contains(raw, " ") {
+		t.Errorf("URL must not contain unencoded spaces, got %q", raw)
 	}
-	if !strings.Contains(url, account) {
-		t.Errorf("URL should contain account %q, got %q", account, url)
+	// Parse and verify query params round-trip correctly.
+	parsed, err := url.Parse(raw)
+	if err != nil {
+		t.Fatalf("OTPAuthURL produced unparseable URL: %v", err)
 	}
-	if !strings.Contains(url, secret) {
-		t.Errorf("URL should contain secret %q, got %q", secret, url)
+	q := parsed.Query()
+	if q.Get("secret") != secret {
+		t.Errorf("secret: want %q, got %q", secret, q.Get("secret"))
+	}
+	if q.Get("issuer") != issuer {
+		t.Errorf("issuer: want %q, got %q", issuer, q.Get("issuer"))
 	}
 }
 

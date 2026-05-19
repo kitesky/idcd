@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
@@ -192,5 +193,43 @@ rate_limit:
 	}
 	if cfg.RateLimit.TwoFA.MaxRequests != 3 {
 		t.Errorf("twofa.max_requests: want 3, got %d", cfg.RateLimit.TwoFA.MaxRequests)
+	}
+}
+
+func TestDuration_CombinedDayForm(t *testing.T) {
+	// parseDuration must handle "7d12h", "1d30m", and pure "30d".
+	cases := []struct {
+		val  string
+		want time.Duration
+	}{
+		{"30d", 30 * 24 * time.Hour},
+		{"7d12h", 7*24*time.Hour + 12*time.Hour},
+		{"1d30m", 24*time.Hour + 30*time.Minute},
+	}
+	baseYAML := `
+database:
+  main:
+    dsn: "postgresql://dev:dev@localhost:5432/dev"
+redis:
+  addr: "localhost:6379"
+server:
+  port: 8080
+  env: "development"
+  admin_token: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+jwt:
+  secret: "supersecretkey_at_least_32_chars!!"
+  access_ttl: "15m"
+  refresh_ttl: "%s"
+`
+	for _, tc := range cases {
+		y := fmt.Sprintf(baseYAML, tc.val)
+		p := writeTempConfig(t, y)
+		cfg, err := config.Load(p)
+		if err != nil {
+			t.Fatalf("Load with refresh_ttl=%q: %v", tc.val, err)
+		}
+		if cfg.JWT.RefreshTTL.Duration != tc.want {
+			t.Errorf("refresh_ttl=%q: want %v, got %v", tc.val, tc.want, cfg.JWT.RefreshTTL.Duration)
+		}
 	}
 }

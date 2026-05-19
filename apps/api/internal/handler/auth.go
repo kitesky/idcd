@@ -781,7 +781,9 @@ func (h *AuthHandler) TwoFactorLogin(w http.ResponseWriter, r *http.Request) {
 		plainSecret = secretBytes
 	}
 	secret := strings.TrimSpace(string(plainSecret))
-	ok, err := totp.ValidateCode(secret, req.Code)
+	// Validate with atomic SetNX replay protection scoped to this userID.
+	vt := &totp.Validator{Replay: totp.NewRedisReplayStore(h.mfaRedis)}
+	ok, err := vt.Validate(ctx, secret, userID, req.Code)
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to validate code", err))
 		return

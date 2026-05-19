@@ -11,8 +11,12 @@ import (
 
 // Config holds connection pool configuration loaded from config/dev.env.yaml.
 type Config struct {
-	DSN             string
-	MaxOpenConns    int32
+	DSN          string
+	MaxOpenConns int32
+	// MaxIdleConns maps to pgxpool.Config.MinConns (the minimum number of
+	// always-open connections). Despite the "idle" name (inherited from
+	// database/sql), pgxpool has no max-idle concept — it only has MinConns /
+	// MaxConns. Setting this keeps a floor of warm connections.
 	MaxIdleConns    int32
 	ConnMaxLifetime time.Duration
 }

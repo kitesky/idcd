@@ -26,6 +26,8 @@ dist/
 build/
 .next/
 .turbo/
+.open-next/
+.wrangler/
 out/
 *.tsbuildinfo
 

@@ -143,7 +143,7 @@ function adminPortalGate(
   return null
 }
 
-export function proxy(request: NextRequest): NextResponse {
+export function middleware(request: NextRequest): NextResponse {
   const host = request.headers.get('host') ?? ''
   const hostname = host.split(':')[0]!
   const isDev = process.env.NODE_ENV === 'development'

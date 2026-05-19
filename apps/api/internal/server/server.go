@@ -517,7 +517,13 @@ func (s *Server) setupRouter() {
 			} else {
 				billingProvider = billing.NewStubProvider()
 			}
+			// Unified Pricing service — single source of truth for plan / verdict /
+			// future paid items. Shared across billingH / teamBillingH / verdictOrderH
+			// so promo state / cache hits coalesce.
+			pricingSvc := billing.NewDBPricing(s.pgxPool)
+
 			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).
+				WithPricing(pricingSvc).
 				WithEnqueuer(asynqBillingEnq).
 				WithVerdictPublisher(repository.NewVerdictPublisher(s.redis)).
 				WithURLs(s.config.Server.AppBaseURL, s.config.Server.PublicAPIURL)
@@ -538,7 +544,7 @@ func (s *Server) setupRouter() {
 
 			// Verdict endpoints (create paid verdict order, fetch order status,
 			// fetch generated report metadata). All require authn.
-			verdictOrderH := handler.NewVerdictOrderHandler(s.pgxPool, billingProvider)
+			verdictOrderH := handler.NewVerdictOrderHandler(s.pgxPool, billingProvider).WithPricing(pricingSvc)
 			verdictReportH := handler.NewVerdictReportHandler(s.pgxPool)
 			r.Route("/verdict", func(r chi.Router) {
 				r.Use(authnMW)
@@ -684,6 +690,7 @@ func (s *Server) setupRouter() {
 				WithAppBaseURL(s.config.Server.AppBaseURL)
 			teamKeyH := handler.NewTeamAPIKeyHandler(s.pgxPool)
 			teamBillingH := handler.NewTeamBillingHandler(s.pgxPool, billingProvider).
+				WithPricing(pricingSvc).
 				WithURLs(s.config.Server.AppBaseURL, s.config.Server.PublicAPIURL)
 			r.Route("/teams", func(r chi.Router) {
 				r.Use(authnMW)

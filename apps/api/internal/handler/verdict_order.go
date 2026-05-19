@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -33,32 +34,20 @@ import (
 type VerdictOrderHandler struct {
 	pool     BillingPool
 	provider billing.Provider
+	pricing  billing.Pricing
 }
 
 // NewVerdictOrderHandler wires a VerdictOrderHandler.
+// Pricing must be wired via WithPricing before Create — otherwise 500.
 func NewVerdictOrderHandler(pool BillingPool, provider billing.Provider) *VerdictOrderHandler {
 	return &VerdictOrderHandler{pool: pool, provider: provider}
 }
 
-// VerdictTemplatePrice maps a verdict template name to its retail price in fen
-// (single source of truth — Charge() and Get() both consume this).
-//
-// Pricing (DECISIONS §M, idcd v2 pricing sheet):
-//   - sla         ¥299
-//   - incident    ¥199
-//   - compliance  ¥499
-//   - legal       ¥999
-var VerdictTemplatePrice = map[string]int64{
-	"sla":        29900,
-	"incident":   19900,
-	"compliance": 49900,
-	"legal":      99900,
-}
-
-// ValidVerdictTemplate reports whether tpl is a recognised verdict template.
-func ValidVerdictTemplate(tpl string) bool {
-	_, ok := VerdictTemplatePrice[tpl]
-	return ok
+// WithPricing wires the unified Pricing service for verdict template pricing
+// + promo evaluation. Create 500s if nil.
+func (h *VerdictOrderHandler) WithPricing(p billing.Pricing) *VerdictOrderHandler {
+	h.pricing = p
+	return h
 }
 
 // ---- request / response types ----
@@ -72,6 +61,7 @@ type CreateVerdictOrderRequest struct {
 	TimeWindowEnd   time.Time `json:"time_window_end"`   // RFC3339
 	Channel         string    `json:"channel"`           // alipay|wechat_pay
 	ReturnURL       string    `json:"return_url,omitempty"`
+	Coupon          string    `json:"coupon,omitempty"`  // optional discount code
 }
 
 // CreateVerdictOrderResponse is returned on successful order creation.
@@ -115,10 +105,6 @@ func (h *VerdictOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// --- validation ---
-	if !ValidVerdictTemplate(req.Template) {
-		response.Error(w, r, apperr.Validation("template must be sla|incident|compliance|legal", "template"))
-		return
-	}
 	if !billing.ValidUserChannel(req.Channel) {
 		response.Error(w, r, apperr.Validation("channel must be alipay or wechat_pay", "channel"))
 		return
@@ -137,54 +123,88 @@ func (h *VerdictOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	priceFen := VerdictTemplatePrice[req.Template]
-	priceCNY := float64(priceFen) / 100
+	// Pricing service required for item-existence + price calc. Wire bug surfaces
+	// as 500 (system error), distinct from 400 user-validation failures above.
+	if h.pricing == nil {
+		response.Error(w, r, apperr.Internal("verdict pricing service not wired", nil))
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
+	if !h.pricing.ValidItem(ctx, billing.KindVerdictTemplate, req.Template) {
+		response.Error(w, r, apperr.Validation("template must be sla|incident|compliance|legal", "template"))
+		return
+	}
+
+	// Compute final price (auto-promo + coupon validation). PricingError → 400.
+	price, perr := h.pricing.EffectivePrice(ctx, billing.KindVerdictTemplate, req.Template, req.Coupon)
+	if perr != nil {
+		var pricingErr *billing.PricingError
+		if errors.As(perr, &pricingErr) {
+			response.Error(w, r, apperr.Validation(pricingErr.Reason, "coupon"))
+			return
+		}
+		response.Error(w, r, apperr.Internal("pricing lookup failed", perr))
+		return
+	}
+	priceCNY := float64(price.FinalCents) / 100
+
 	// --- persist pending order ---
 	orderID := idgen.VerdictOrder()
 	now := time.Now().UTC()
+	var promoArg any
+	if price.PromotionID != "" {
+		promoArg = price.PromotionID
+	}
 
 	if _, err := h.pool.Exec(ctx, `
 		INSERT INTO idcd_attest.verdict_order
 			(id, owner_id, template, target, time_window_start, time_window_end,
-			 status, price_cny, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8)
+			 status, price_cny, promotion_id, created_at)
+		VALUES ($1, $2, $3, $4, $5, $6, 'pending', $7, $8, $9)
 	`,
 		orderID, userID, req.Template, target,
 		req.TimeWindowStart.UTC(), req.TimeWindowEnd.UTC(),
-		priceCNY, now,
+		priceCNY, promoArg, now,
 	); err != nil {
 		response.Error(w, r, apperr.Internal("failed to persist verdict_order", err))
 		return
 	}
 
 	// --- gateway charge ---
+	metadata := map[string]string{"verdict_order_id": orderID}
+	if price.PromotionID != "" {
+		metadata["promotion_id"] = price.PromotionID
+	}
 	notifyURL := buildVerdictNotifyURL(r)
 	result, err := h.provider.Charge(ctx, billing.ChargeRequest{
 		UserID:      userID,
-		AmountCents: priceFen,
-		Currency:    "CNY",
+		AmountCents: price.FinalCents,
+		Currency:    price.Currency,
 		Channel:     req.Channel,
 		ReturnURL:   req.ReturnURL,
 		NotifyURL:   notifyURL,
 		ItemRef:     orderID,
 		Description: fmt.Sprintf("Verdict %s 报告", req.Template),
-		Metadata: map[string]string{
-			"verdict_order_id": orderID,
-		},
+		Metadata:    metadata,
 	})
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to initiate charge", err))
 		return
 	}
 
+	if price.PromotionID != "" {
+		if err := h.pricing.IncrementPromotionUsage(ctx, price.PromotionID); err != nil {
+			_ = err // best-effort
+		}
+	}
+
 	response.JSON(w, r, http.StatusOK, CreateVerdictOrderResponse{
 		OrderID:  orderID,
 		PayURL:   result.PayURL,
-		PriceCNY: priceFen / 100,
+		PriceCNY: price.FinalCents / 100,
 	})
 }
 

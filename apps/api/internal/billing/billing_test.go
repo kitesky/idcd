@@ -59,11 +59,14 @@ func TestStubProvider_Subscribe_MissingUserID(t *testing.T) {
 	assert.Contains(t, err.Error(), "user_id is required")
 }
 
-func TestStubProvider_Subscribe_UnknownPlan(t *testing.T) {
+// Unknown-plan rejection moved to billing.DBPricing.ValidItem covered by
+// pricing_test.go. Stub provider intentionally accepts any non-empty plan
+// string so unit tests don't need to keep its allow-list in sync.
+func TestStubProvider_Subscribe_MissingPlan(t *testing.T) {
 	p := newStub()
-	_, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_abc", Plan: "enterprise"})
+	_, err := p.Subscribe(ctx, billing.SubscribeRequest{UserID: "u_abc"})
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "unknown plan")
+	assert.Contains(t, err.Error(), "plan is required")
 }
 
 func TestStubProvider_Subscribe_StartsAsPending(t *testing.T) {
@@ -305,25 +308,8 @@ func TestStubProvider_ConfirmSubscription_AlreadyCancelled(t *testing.T) {
 	assert.Contains(t, err.Error(), "already cancelled")
 }
 
-// ---- PlanPrice ----
-
-func TestPlanPrice_AllDefined(t *testing.T) {
-	plans := []billing.Plan{billing.PlanFree, billing.PlanPro, billing.PlanTeam, billing.PlanBusiness}
-	for _, plan := range plans {
-		price, ok := billing.PlanPrice[plan]
-		assert.True(t, ok, "missing price for plan %s", plan)
-		assert.GreaterOrEqual(t, price, int64(0))
-	}
-}
-
-func TestPlanPrice_Values(t *testing.T) {
-	assert.Equal(t, int64(0), billing.PlanPrice[billing.PlanFree])
-	assert.Equal(t, int64(9900), billing.PlanPrice[billing.PlanPro])
-	assert.Equal(t, int64(29900), billing.PlanPrice[billing.PlanTeam])
-	assert.Equal(t, int64(99900), billing.PlanPrice[billing.PlanBusiness])
-}
-
-func TestValidPlan(t *testing.T) {
-	assert.True(t, billing.ValidPlan(billing.PlanPro))
-	assert.False(t, billing.ValidPlan("unknown"))
-}
+// PlanPrice map + ValidPlan removed (pricing now lives in pricing_items table,
+// see billing.DBPricing). Equivalent coverage in pricing_test.go:
+//   - TestDBPricing_BasePrice_Plan / _VerdictTemplate
+//   - TestDBPricing_ValidItem
+//   - seed values asserted in seedItemsRows

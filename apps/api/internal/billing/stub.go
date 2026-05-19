@@ -83,8 +83,8 @@ func (p *StubProvider) Subscribe(_ context.Context, req SubscribeRequest) (*Subs
 	if req.UserID == "" {
 		return nil, errors.New("billing/stub: Subscribe: user_id is required")
 	}
-	if !ValidPlan(req.Plan) {
-		return nil, fmt.Errorf("billing/stub: Subscribe: unknown plan %q", req.Plan)
+	if req.Plan == "" {
+		return nil, errors.New("billing/stub: Subscribe: plan is required")
 	}
 
 	subID := idgen.Subscription()

@@ -67,11 +67,17 @@ func (p *PaymentHubProvider) Subscribe(ctx context.Context, req SubscribeRequest
 	if req.UserID == "" {
 		return nil, errors.New("billing/payment_hub: Subscribe: user_id is required")
 	}
-	if !ValidPlan(req.Plan) {
-		return nil, fmt.Errorf("billing/payment_hub: Subscribe: unknown plan %q", req.Plan)
+	if req.Plan == "" {
+		return nil, errors.New("billing/payment_hub: Subscribe: plan is required")
+	}
+	if req.AmountCents <= 0 {
+		return nil, fmt.Errorf("billing/payment_hub: Subscribe: amount_cents must be positive, got %d", req.AmountCents)
 	}
 
-	currency := p.cfg.Currency
+	currency := req.Currency
+	if currency == "" {
+		currency = p.cfg.Currency
+	}
 	if currency == "" {
 		currency = "CNY"
 	}
@@ -87,27 +93,29 @@ func (p *PaymentHubProvider) Subscribe(ctx context.Context, req SubscribeRequest
 		method = "checkout"
 	}
 
-	price := PlanPrice[req.Plan]
-
 	// Generate a stable idcd subscription ID upfront; embed it in metadata so
 	// order.paid webhook events can look it up without an extra DB round-trip.
 	subID := idgen.Subscription()
 	appOrderID := idgen.Order()
 
+	// Merge caller metadata (so internal keys take precedence). Lets handler
+	// pass promotion_id / coupon_code so they round-trip via webhook.
+	metadata := make(map[string]string, len(req.Metadata)+3)
+	maps.Copy(metadata, req.Metadata)
+	metadata["idcd_sub_id"] = subID
+	metadata["user_id"] = req.UserID
+	metadata["plan"] = string(req.Plan)
+
 	resp, err := p.client.CreateOrder(ctx, &payment.CreateOrderReq{
 		AppOrderID: appOrderID,
 		Channel:    channel,
 		Method:     method,
-		Amount:     price,
+		Amount:     req.AmountCents,
 		Currency:   currency,
 		Subject:    "idcd " + string(req.Plan),
 		ProductID:  string(req.Plan),
 		ReturnURL:  req.ReturnURL,
-		Metadata: map[string]string{
-			"idcd_sub_id": subID,
-			"user_id":     req.UserID,
-			"plan":        string(req.Plan),
-		},
+		Metadata:   metadata,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("billing/payment_hub: Subscribe: %w", err)

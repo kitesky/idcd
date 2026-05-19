@@ -92,7 +92,7 @@ func TestPaymentHubProvider_Subscribe_Success(t *testing.T) {
 		createOrderFn: func(_ context.Context, req *payment.CreateOrderReq) (*payment.CreateOrderResp, error) {
 			assert.Equal(t, "paymenthub", req.Channel)
 			assert.Equal(t, "checkout", req.Method, "PaymentHub channel should auto-select checkout method")
-			assert.Equal(t, PlanPrice[PlanPro], req.Amount)
+			assert.Equal(t, int64(9900), req.Amount)
 			assert.Equal(t, "CNY", req.Currency)
 			assert.Equal(t, "u_123", req.Metadata["user_id"])
 			assert.Equal(t, "pro", req.Metadata["plan"])
@@ -107,10 +107,11 @@ func TestPaymentHubProvider_Subscribe_Success(t *testing.T) {
 
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
 	result, err := p.Subscribe(context.Background(), SubscribeRequest{
-		UserID:    "u_123",
-		Plan:      PlanPro,
-		ReturnURL: "https://app.idcd.com/billing",
-		NotifyURL: "https://api.idcd.com/v1/billing/webhook",
+		UserID:      "u_123",
+		Plan:        PlanPro,
+		ReturnURL:   "https://app.idcd.com/billing",
+		NotifyURL:   "https://api.idcd.com/v1/billing/webhook",
+		AmountCents: 9900,
 	})
 
 	require.NoError(t, err)
@@ -126,10 +127,16 @@ func TestPaymentHubProvider_Subscribe_MissingUserID(t *testing.T) {
 	assert.ErrorContains(t, err, "user_id is required")
 }
 
-func TestPaymentHubProvider_Subscribe_UnknownPlan(t *testing.T) {
+func TestPaymentHubProvider_Subscribe_MissingPlan(t *testing.T) {
 	p := newPaymentHubProviderWithClient(defaultCfg(), nil)
-	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: "enterprise"})
-	assert.ErrorContains(t, err, "unknown plan")
+	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", AmountCents: 9900})
+	assert.ErrorContains(t, err, "plan is required")
+}
+
+func TestPaymentHubProvider_Subscribe_MissingAmount(t *testing.T) {
+	p := newPaymentHubProviderWithClient(defaultCfg(), nil)
+	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
+	assert.ErrorContains(t, err, "amount_cents must be positive")
 }
 
 func TestPaymentHubProvider_Subscribe_APIError(t *testing.T) {
@@ -139,7 +146,7 @@ func TestPaymentHubProvider_Subscribe_APIError(t *testing.T) {
 		},
 	}
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
-	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
+	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro, AmountCents: 9900})
 	assert.ErrorContains(t, err, "billing/payment_hub: Subscribe")
 }
 
@@ -151,9 +158,10 @@ func TestPaymentHubProvider_Subscribe_FallbackPayURL(t *testing.T) {
 	}
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
 	result, err := p.Subscribe(context.Background(), SubscribeRequest{
-		UserID:    "u_1",
-		Plan:      PlanPro,
-		ReturnURL: "https://app.idcd.com/billing",
+		UserID:      "u_1",
+		Plan:        PlanPro,
+		ReturnURL:   "https://app.idcd.com/billing",
+		AmountCents: 9900,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "https://app.idcd.com/billing", result.PayURL)
@@ -404,7 +412,7 @@ func TestPaymentHubProvider_Subscribe_AlipayUsesPageMethod(t *testing.T) {
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
 
 	_, err := p.Subscribe(context.Background(), SubscribeRequest{
-		UserID: "u_1", Plan: PlanPro, Channel: "alipay",
+		UserID: "u_1", Plan: PlanPro, Channel: "alipay", AmountCents: 9900,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "alipay", gotChannel)
@@ -423,7 +431,7 @@ func TestPaymentHubProvider_Subscribe_WeChatUsesNativeMethod(t *testing.T) {
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
 
 	_, err := p.Subscribe(context.Background(), SubscribeRequest{
-		UserID: "u_1", Plan: PlanPro, Channel: "wechat_pay",
+		UserID: "u_1", Plan: PlanPro, Channel: "wechat_pay", AmountCents: 9900,
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "wechat_pay", gotChannel)
@@ -442,7 +450,7 @@ func TestPaymentHubProvider_Subscribe_FallsBackToConfigChannel(t *testing.T) {
 	// defaultCfg has Channel = "paymenthub" → method should be "checkout".
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
 
-	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
+	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro, AmountCents: 9900})
 	require.NoError(t, err)
 	assert.Equal(t, "paymenthub", gotChannel)
 	assert.Equal(t, "checkout", gotMethod)
@@ -462,7 +470,7 @@ func TestPaymentHubProvider_Subscribe_DefaultCurrency(t *testing.T) {
 		},
 	}
 	p := newPaymentHubProviderWithClient(cfg, mock)
-	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
+	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro, AmountCents: 9900})
 	require.NoError(t, err)
 	assert.Equal(t, "CNY", gotCurrency)
 }
@@ -481,7 +489,7 @@ func TestPaymentHubProvider_Subscribe_ExpiresAtFromResponse(t *testing.T) {
 		},
 	}
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
-	result, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
+	result, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro, AmountCents: 9900})
 	require.NoError(t, err)
 	assert.Equal(t, expiry, result.ExpiresAt.UTC().Truncate(time.Second),
 		"should use expiry time from payment platform response")
@@ -497,6 +505,6 @@ func TestPaymentHubProvider_Subscribe_ErrorWrapping(t *testing.T) {
 		},
 	}
 	p := newPaymentHubProviderWithClient(defaultCfg(), mock)
-	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro})
+	_, err := p.Subscribe(context.Background(), SubscribeRequest{UserID: "u_1", Plan: PlanPro, AmountCents: 9900})
 	assert.ErrorIs(t, err, sentinel)
 }

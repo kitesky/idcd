@@ -27,6 +27,7 @@ type TeamBillingPool interface {
 type TeamBillingHandler struct {
 	pool     TeamBillingPool
 	provider billing.Provider
+	pricing  billing.Pricing
 
 	// appBaseURL is the frontend origin used to build user-facing ReturnURL.
 	appBaseURL string
@@ -50,8 +51,15 @@ func (h *TeamBillingHandler) WithURLs(appBase, publicAPI string) *TeamBillingHan
 	return h
 }
 
+// WithPricing wires the unified Pricing service. Subscribe 500s if nil.
+func (h *TeamBillingHandler) WithPricing(p billing.Pricing) *TeamBillingHandler {
+	h.pricing = p
+	return h
+}
+
 type teamSubscribeRequest struct {
-	Plan string `json:"plan"`
+	Plan   string `json:"plan"`
+	Coupon string `json:"coupon,omitempty"`
 }
 
 // requireTeamAdmin returns a typed application error when the caller is not
@@ -105,8 +113,9 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	plan := billing.Plan(req.Plan)
-	if !billing.ValidPlan(plan) {
-		response.Error(w, r, apperr.Validation("unknown plan", "plan"))
+
+	if h.pricing == nil {
+		response.Error(w, r, apperr.Internal("team billing pricing service not wired", nil))
 		return
 	}
 
@@ -118,6 +127,22 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
+
+	if !h.pricing.ValidItem(ctx, billing.KindPlan, string(plan)) {
+		response.Error(w, r, apperr.Validation("unknown plan", "plan"))
+		return
+	}
+
+	price, perr := h.pricing.EffectivePrice(ctx, billing.KindPlan, string(plan), req.Coupon)
+	if perr != nil {
+		var pricingErr *billing.PricingError
+		if errors.As(perr, &pricingErr) {
+			response.Error(w, r, apperr.Validation(pricingErr.Reason, "coupon"))
+			return
+		}
+		response.Error(w, r, apperr.Internal("pricing lookup failed", perr))
+		return
+	}
 
 	// ReturnURL falls back to the request Origin only in non-production setups
 	// where app_base_url is unset; production deployments MUST configure it.
@@ -131,11 +156,19 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	metadata := map[string]string{"team_id": teamID}
+	if price.PromotionID != "" {
+		metadata["promotion_id"] = price.PromotionID
+	}
+
 	result, err := h.provider.Subscribe(ctx, billing.SubscribeRequest{
-		UserID:    ownerID,
-		Plan:      plan,
-		ReturnURL: returnBase + "/app/settings/team",
-		NotifyURL: h.publicAPIURL + "/v1/billing/webhook",
+		UserID:      ownerID,
+		Plan:        plan,
+		ReturnURL:   returnBase + "/app/settings/team",
+		NotifyURL:   h.publicAPIURL + "/v1/billing/webhook",
+		AmountCents: price.FinalCents,
+		Currency:    price.Currency,
+		Metadata:    metadata,
 	})
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to initiate subscription", err))
@@ -147,20 +180,35 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	if subID == "" {
 		subID = idgen.Subscription()
 	}
+	var promoArg any
+	if price.PromotionID != "" {
+		promoArg = price.PromotionID
+	}
 
 	_, dbErr := h.pool.Exec(ctx, `
 		INSERT INTO subscriptions
 			(id, user_id, plan, status, provider, ext_sub_id,
-			 current_period_start, current_period_end, created_at, updated_at)
-		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $8)
+			 current_period_start, current_period_end,
+			 amount_cents, currency, promotion_id,
+			 created_at, updated_at)
+		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $11)
 		ON CONFLICT (id) DO NOTHING
 	`,
 		subID, ownerID, string(plan), h.provider.Name(), result.ExtSubID,
-		now, result.ExpiresAt, now,
+		now, result.ExpiresAt,
+		price.FinalCents, price.Currency, promoArg,
+		now,
 	)
 	if dbErr != nil {
 		response.Error(w, r, apperr.Internal("failed to persist subscription", dbErr))
 		return
+	}
+
+	if price.PromotionID != "" {
+		if err := h.pricing.IncrementPromotionUsage(ctx, price.PromotionID); err != nil {
+			// best-effort; log via response.Error 不合适，这里直接吞 + 留 metadata
+			_ = err
+		}
 	}
 
 	response.JSON(w, r, http.StatusOK, subscribeResponse{

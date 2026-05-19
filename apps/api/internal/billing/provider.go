@@ -19,20 +19,9 @@ const (
 	PlanBusiness  Plan = "business"
 )
 
-// PlanPrice 各档位月费（分，人民币）
-var PlanPrice = map[Plan]int64{
-	PlanFree:     0,
-	PlanPro:      9900, // ¥99
-	PlanAgentPro: 29900, // ¥299
-	PlanTeam:     29900, // ¥299
-	PlanBusiness: 99900, // ¥999
-}
-
-// ValidPlan returns true if p is a recognised plan identifier.
-func ValidPlan(p Plan) bool {
-	_, ok := PlanPrice[p]
-	return ok
-}
+// 定价数据已迁移到 pricing_items 表（lib/db/migrations/idcd_main/00049），
+// 通过 billing.DBPricing 服务读取。源码内不再硬编码 PlanPrice / ValidPlan，
+// 促销活动可在 plan_promotions 表里动态配置无需发版。
 
 // User-selectable payment channels for web payments.
 // PaymentHub is intentionally excluded — it is config-only (international cards, admin-initiated).
@@ -57,13 +46,22 @@ func ValidUserChannel(ch string) bool {
 
 // SubscribeRequest 创建订阅请求
 type SubscribeRequest struct {
-	UserID  string
-	Plan    Plan
+	UserID string
+	Plan   Plan
 	// Channel is the user-chosen payment channel: "alipay" or "wechat_pay".
 	// Empty means use the provider's configured default.
-	Channel string
+	Channel   string
 	ReturnURL string // 支付完成后跳转
 	NotifyURL string // 异步通知 URL
+
+	// AmountCents 必填：caller（handler 层）通过 Pricing.EffectivePrice 算出。
+	// Provider 不再自己读价格表，确保促销/折扣集中由 Pricing 决定。
+	AmountCents int64
+	// Currency 例 "CNY" / "USD"。
+	Currency string
+	// Metadata 透传到 webhook event.Metadata，订阅场景常用于回灌 promotion_id。
+	// Provider 内会自动 merge 必要的内部 keys（如 idcd_sub_id / user_id / plan）。
+	Metadata map[string]string
 }
 
 // SubscribeResult 创建订阅结果

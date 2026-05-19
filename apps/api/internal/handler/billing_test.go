@@ -26,7 +26,9 @@ func newBillingTestHandler(t *testing.T) (*BillingHandler, pgxmock.PgxPoolIface,
 	stub := billing.NewStubProvider()
 	// WithURLs is required since the handler now refuses to build a
 	// NotifyURL from a client-supplied Origin header.
-	h := NewBillingHandler(mockPool, stub).WithURLs("http://app.test", "http://api.test")
+	h := NewBillingHandler(mockPool, stub).
+		WithPricing(fakePricing{}).
+		WithURLs("http://app.test", "http://api.test")
 	return h, mockPool, stub
 }
 
@@ -47,10 +49,15 @@ func TestBillingHandler_Subscribe_Success(t *testing.T) {
 	h, mockPool, _ := newBillingTestHandler(t)
 	defer mockPool.Close()
 
+	// 11 placeholders: id, user_id, plan, provider, ext_sub_id,
+	// current_period_start, current_period_end, amount_cents, currency,
+	// promotion_id, created_at (also reused as updated_at via $11)
 	mockPool.ExpectExec("INSERT INTO subscriptions").
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(),
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(),
 		).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -676,6 +683,13 @@ func TestBillingHandler_StubConfirm_Success(t *testing.T) {
 	mockPool.ExpectExec("UPDATE subscriptions").
 		WithArgs(res.SubscriptionID, pgxmock.AnyArg()).
 		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	// StubConfirm now reads the price snapshot from subscriptions before
+	// writing invoice/payment rows; legacy rows without snapshot fall back
+	// to pricing service (covered separately).
+	snapshotCents := int64(9900)
+	mockPool.ExpectQuery("SELECT amount_cents FROM subscriptions").
+		WithArgs(res.SubscriptionID).
+		WillReturnRows(pgxmock.NewRows([]string{"amount_cents"}).AddRow(&snapshotCents))
 	mockPool.ExpectExec("INSERT INTO invoices").
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),

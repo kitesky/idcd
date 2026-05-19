@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -45,6 +46,7 @@ type VerdictStreamPublisher interface {
 type BillingHandler struct {
 	pool             BillingPool // reuse the interface from admin_billing.go
 	provider         billing.Provider
+	pricing          billing.Pricing        // 必填：调 Subscribe 前会做 nil-check
 	enqueuer         BillingEnqueuer        // optional: nil disables automatic refund retry scheduling
 	verdictPublisher VerdictStreamPublisher // optional: nil disables verdict_generation_queue push
 
@@ -58,8 +60,17 @@ type BillingHandler struct {
 }
 
 // NewBillingHandler wires a BillingHandler with the given DB pool and payment provider.
+// Pricing must be wired separately via WithPricing — Subscribe/StubConfirm will 500
+// if it is nil. (Builder pattern preserved for backward compat with existing tests.)
 func NewBillingHandler(pool BillingPool, provider billing.Provider) *BillingHandler {
 	return &BillingHandler{pool: pool, provider: provider}
+}
+
+// WithPricing wires the unified Pricing service. Must be called before Subscribe
+// or StubConfirm reaches a handler — otherwise the handler returns 500.
+func (h *BillingHandler) WithPricing(p billing.Pricing) *BillingHandler {
+	h.pricing = p
+	return h
 }
 
 // WithURLs configures the trusted server-side base URLs used to construct
@@ -96,6 +107,10 @@ type subscribeRequest struct {
 	// Omit to use the provider's configured default.
 	// Method is determined automatically (Alipay→page QR, WeChat→native QR).
 	Channel string `json:"channel,omitempty"`
+	// Coupon is the optional discount code. When non-empty, Pricing.EffectivePrice
+	// validates it (active + not expired + applicable to this plan + not exhausted);
+	// invalid code returns 400 rather than charging full price silently.
+	Coupon string `json:"coupon,omitempty"`
 }
 
 type subscribeResponse struct {
@@ -158,18 +173,37 @@ func (h *BillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	plan := billing.Plan(req.Plan)
-	if !billing.ValidPlan(plan) {
-		response.Error(w, r, apperr.Validation("unknown plan", "plan"))
-		return
-	}
 
 	if req.Channel != "" && !billing.ValidUserChannel(req.Channel) {
 		response.Error(w, r, apperr.Validation("channel must be alipay or wechat_pay", "channel"))
 		return
 	}
 
+	if h.pricing == nil {
+		response.Error(w, r, apperr.Internal("billing pricing service not wired", nil))
+		return
+	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
+
+	if !h.pricing.ValidItem(ctx, billing.KindPlan, string(plan)) {
+		response.Error(w, r, apperr.Validation("unknown plan", "plan"))
+		return
+	}
+
+	// Compute final price (handles auto-promo + coupon validation in one call).
+	// PricingError (unknown coupon / wrong plan / exhausted) is a 4xx.
+	price, perr := h.pricing.EffectivePrice(ctx, billing.KindPlan, string(plan), req.Coupon)
+	if perr != nil {
+		var pricingErr *billing.PricingError
+		if errors.As(perr, &pricingErr) {
+			response.Error(w, r, apperr.Validation(pricingErr.Reason, "coupon"))
+			return
+		}
+		response.Error(w, r, apperr.Internal("pricing lookup failed", perr))
+		return
+	}
 
 	// ReturnURL: where the user's browser lands after pay. Falls back to the
 	// request Origin only in non-production environments so dev/test still
@@ -187,38 +221,65 @@ func (h *BillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Round-trip promotion_id via webhook metadata so the order.paid handler
+	// can correlate the payment back to the snapshot row.
+	metadata := map[string]string{}
+	if price.PromotionID != "" {
+		metadata["promotion_id"] = price.PromotionID
+	}
+
 	result, err := h.provider.Subscribe(ctx, billing.SubscribeRequest{
-		UserID:    userID,
-		Plan:      plan,
-		Channel:   req.Channel,
-		ReturnURL: returnBase + "/app/billing",
-		NotifyURL: h.publicAPIURL + "/v1/billing/webhook",
+		UserID:      userID,
+		Plan:        plan,
+		Channel:     req.Channel,
+		ReturnURL:   returnBase + "/app/billing",
+		NotifyURL:   h.publicAPIURL + "/v1/billing/webhook",
+		AmountCents: price.FinalCents,
+		Currency:    price.Currency,
+		Metadata:    metadata,
 	})
 	if err != nil {
 		response.Error(w, r, apperr.Internal("failed to initiate subscription", err))
 		return
 	}
 
-	// Persist subscription record.
+	// Persist subscription record with price snapshot (amount/currency/promo).
 	now := time.Now().UTC()
 	subID := result.SubscriptionID
 	if subID == "" {
 		subID = idgen.Subscription()
 	}
+	var promoArg any
+	if price.PromotionID != "" {
+		promoArg = price.PromotionID
+	}
 
 	_, dbErr := h.pool.Exec(ctx, `
 		INSERT INTO subscriptions
 			(id, user_id, plan, status, provider, ext_sub_id,
-			 current_period_start, current_period_end, created_at, updated_at)
-		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $8)
+			 current_period_start, current_period_end,
+			 amount_cents, currency, promotion_id,
+			 created_at, updated_at)
+		VALUES ($1, $2, $3, 'pending', $4, $5, $6, $7, $8, $9, $10, $11, $11)
 		ON CONFLICT (id) DO NOTHING
 	`,
 		subID, userID, string(plan), h.provider.Name(), result.ExtSubID,
-		now, result.ExpiresAt, now,
+		now, result.ExpiresAt,
+		price.FinalCents, price.Currency, promoArg,
+		now,
 	)
 	if dbErr != nil {
 		response.Error(w, r, apperr.Internal("failed to persist subscription", dbErr))
 		return
+	}
+
+	// Best-effort: increment promotion usage. Don't fail the user payment
+	// if the counter update hiccups — log and continue.
+	if price.PromotionID != "" {
+		if err := h.pricing.IncrementPromotionUsage(ctx, price.PromotionID); err != nil {
+			slog.WarnContext(ctx, "billing: increment promotion usage failed",
+				"promotion_id", price.PromotionID, "error", err)
+		}
 	}
 
 	response.JSON(w, r, http.StatusOK, subscribeResponse{
@@ -703,9 +764,28 @@ func (h *BillingHandler) StubConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Write a synthetic payment record.
-	price, ok := billing.PlanPrice[billing.Plan(plan)]
-	if !ok || price == 0 {
+	// Write a synthetic payment record. Use the snapshot stored on the
+	// subscription row (set by Subscribe), falling back to pricing service
+	// base price for legacy rows without snapshot.
+	var snapshotCents *int64
+	if err := h.pool.QueryRow(ctx,
+		`SELECT amount_cents FROM subscriptions WHERE id = $1`, subID,
+	).Scan(&snapshotCents); err != nil {
+		response.Error(w, r, apperr.Internal("failed to read subscription snapshot", err))
+		return
+	}
+	var price int64
+	if snapshotCents != nil {
+		price = *snapshotCents
+	} else if h.pricing != nil {
+		cents, _, perr := h.pricing.BasePrice(ctx, billing.KindPlan, plan)
+		if perr != nil {
+			response.Error(w, r, apperr.Internal("pricing lookup failed for stub confirm", perr))
+			return
+		}
+		price = cents
+	}
+	if price == 0 {
 		// Free plan — no payment record needed.
 		http.Redirect(w, r, "/app/billing?success=1", http.StatusFound)
 		return

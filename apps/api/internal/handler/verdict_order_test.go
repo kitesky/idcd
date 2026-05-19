@@ -19,12 +19,14 @@ import (
 
 // ---- helpers ----
 
+// (fakePricing 移到 pricing_fake_test.go，供本包多个 handler 测试复用)
+
 func newVerdictOrderTestHandler(t *testing.T) (*VerdictOrderHandler, pgxmock.PgxPoolIface, *billing.StubProvider) {
 	t.Helper()
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	stub := billing.NewStubProvider()
-	h := NewVerdictOrderHandler(mockPool, stub)
+	h := NewVerdictOrderHandler(mockPool, stub).WithPricing(fakePricing{})
 	return h, mockPool, stub
 }
 
@@ -69,14 +71,15 @@ func TestVerdictOrderHandler_Create_Success_AllTemplates(t *testing.T) {
 
 			mockPool.ExpectExec(`INSERT INTO idcd_attest\.verdict_order`).
 				WithArgs(
-					pgxmock.AnyArg(), // id
-					"u_test_user",    // owner_id
-					tc.template,      // template
-					"example.com",    // target
-					pgxmock.AnyArg(), // time_window_start
-					pgxmock.AnyArg(), // time_window_end
+					pgxmock.AnyArg(),     // id
+					"u_test_user",        // owner_id
+					tc.template,          // template
+					"example.com",        // target
+					pgxmock.AnyArg(),     // time_window_start
+					pgxmock.AnyArg(),     // time_window_end
 					float64(tc.priceCNY), // price_cny (yuan)
-					pgxmock.AnyArg(), // created_at
+					nil,                  // promotion_id (no promo in fakePricing)
+					pgxmock.AnyArg(),     // created_at
 				).
 				WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -109,7 +112,9 @@ func TestVerdictOrderHandler_Create_ChargeMetadataCarriesOrderID(t *testing.T) {
 	mockPool.ExpectExec(`INSERT INTO idcd_attest\.verdict_order`).
 		WithArgs(
 			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
-			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			pgxmock.AnyArg(), pgxmock.AnyArg(), pgxmock.AnyArg(),
+			nil, // promotion_id
+			pgxmock.AnyArg(),
 		).
 		WillReturnResult(pgxmock.NewResult("INSERT", 1))
 
@@ -403,23 +408,8 @@ func TestVerdictOrderHandler_Get_MissingID(t *testing.T) {
 	assert.Equal(t, http.StatusBadRequest, rr.Code)
 }
 
-// ---- VerdictTemplatePrice + ValidVerdictTemplate ----
-
-func TestValidVerdictTemplate(t *testing.T) {
-	for _, tpl := range []string{"sla", "incident", "compliance", "legal"} {
-		assert.True(t, ValidVerdictTemplate(tpl), "%s should be valid", tpl)
-	}
-	for _, tpl := range []string{"", "PREMIUM", "abc"} {
-		assert.False(t, ValidVerdictTemplate(tpl), "%s should be invalid", tpl)
-	}
-}
-
-func TestVerdictTemplatePrice_Values(t *testing.T) {
-	assert.Equal(t, int64(29900), VerdictTemplatePrice["sla"])
-	assert.Equal(t, int64(19900), VerdictTemplatePrice["incident"])
-	assert.Equal(t, int64(49900), VerdictTemplatePrice["compliance"])
-	assert.Equal(t, int64(99900), VerdictTemplatePrice["legal"])
-}
+// Pricing validation + price values now covered by
+// apps/api/internal/billing/pricing_test.go (TestDBPricing_*).
 
 func TestNewVerdictOrderHandler_NotNil(t *testing.T) {
 	h := NewVerdictOrderHandler(nil, billing.NewStubProvider())

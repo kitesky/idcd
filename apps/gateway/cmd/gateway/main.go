@@ -97,6 +97,10 @@ func main() {
 		if err != nil {
 			log.Fatalf("failed to parse PostgreSQL DSN: %v", err)
 		}
+		// See apps/api/cmd/api/main.go for rationale — recycle silently
+		// dropped idle connections before a node-cleanup tick or ws status
+		// update lands on a dead conn.
+		poolConfig.HealthCheckPeriod = 30 * time.Second
 
 		pool, err = pgxpool.NewWithConfig(ctx, poolConfig)
 		if err != nil {

@@ -70,6 +70,14 @@ func main() {
 	if cfg.Database.Main.ConnMaxLifetime.Duration > 0 {
 		poolCfg.MaxConnLifetime = cfg.Database.Main.ConnMaxLifetime.Duration
 	}
+	// Probe idle connections every 30s. pgxpool keeps connections in a free
+	// list indefinitely between calls; without this, a connection that the
+	// DB / PgBouncer / firewall silently dropped (idle timeout, restart,
+	// NAT rebinding) is only discovered when a handler tries to use it,
+	// surfacing as a one-off 5xx to a real user. HealthCheckPeriod runs a
+	// cheap Ping in the background and recycles dead connections before
+	// they reach a request.
+	poolCfg.HealthCheckPeriod = 30 * time.Second
 	pgxPool, err := pgxpool.NewWithConfig(context.Background(), poolCfg)
 	if err != nil {
 		slogLogger.Error("failed to create pgx pool", "error", err)

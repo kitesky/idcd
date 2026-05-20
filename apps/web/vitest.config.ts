@@ -8,6 +8,10 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    // 默认 include 的 *.spec.ts 会把 tests/e2e/* (Playwright) 一起扫进来,
+    // 触发 "Playwright Test did not expect test() to be called" 误报。
+    include: ['src/**/*.{test,spec}.{ts,tsx,js,jsx}'],
+    exclude: ['node_modules', '.next', '.open-next', '.wrangler', 'tests/e2e/**'],
     pool: 'forks',
     // vitest 4 移除 InlineConfig.poolOptions；并发上限改为顶层 maxWorkers。
     maxWorkers: 2,

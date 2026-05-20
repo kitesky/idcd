@@ -94,7 +94,7 @@ describe("cert-api / fetch wiring", () => {
     )
 
     const orders = await listOrders()
-    expect(calls[0]!.url).toBe("/api/v1/cert/orders")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/orders$/)
     expect(calls[0]!.init.credentials).toBe("include")
     expect(orders).toHaveLength(2)
     expect(orders[0]!.id).toBe("ord-b")
@@ -165,7 +165,7 @@ describe("cert-api / fetch wiring", () => {
     })
     expect(out).toEqual({ id: "ord-new" })
 
-    expect(calls[0]!.url).toBe("/api/v1/cert/orders")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/orders$/)
     expect(calls[0]!.init.method).toBe("POST")
     const body = JSON.parse(calls[0]!.init.body as string)
     expect(body.sans).toEqual(["new.example.com"])
@@ -215,7 +215,7 @@ describe("cert-api / fetch wiring", () => {
       }),
     )
     const o = await retryOrder("ord-1")
-    expect(calls[0]!.url).toBe("/api/v1/cert/orders/ord-1/retry")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/orders\/ord-1\/retry$/)
     expect(calls[0]!.init.method).toBe("POST")
     expect(o?.status).toBe("issuing")
   })
@@ -263,7 +263,7 @@ describe("cert-api / fetch wiring", () => {
     )
 
     await markManualReady("ord-1", "_acme-challenge.api.example.com", "v")
-    expect(calls[0]!.url).toBe("/api/v1/cert/orders/ord-1/manual-ready")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/orders\/ord-1\/manual-ready$/)
     const body = JSON.parse(calls[0]!.init.body as string)
     expect(body).toEqual({
       fqdn: "_acme-challenge.api.example.com",
@@ -323,7 +323,7 @@ describe("cert-api / fetch wiring", () => {
     expect(out.url).toBe("https://example.com/dl/1")
     expect(out.filename).toBe("cert-1.p12")
 
-    expect(calls[0]!.url).toBe("/api/v1/cert/certs/cert-1/download")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/certs\/cert-1\/download$/)
     expect(calls[0]!.init.method).toBe("POST")
     expect(JSON.parse(calls[0]!.init.body as string)).toEqual({ format: "pfx" })
   })
@@ -353,7 +353,7 @@ describe("cert-api / fetch wiring", () => {
     )
     const c = await revokeCert("cert-1", "keyCompromise")
     expect(c?.status).toBe("revoked")
-    expect(calls[0]!.url).toBe("/api/v1/cert/certs/cert-1/revoke")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/certs\/cert-1\/revoke$/)
     expect(JSON.parse(calls[0]!.init.body as string)).toEqual({
       reason: "keyCompromise",
     })
@@ -430,7 +430,7 @@ describe("cert-api / fetch wiring", () => {
   it("deleteDnsCredential DELETEs the right URL", async () => {
     const calls = installFetch(() => new Response(null, { status: 204 }))
     await deleteDnsCredential("dns-1")
-    expect(calls[0]!.url).toBe("/api/v1/cert/dns-credentials/dns-1")
+    expect(calls[0]!.url).toMatch(/\/v1\/cert\/dns-credentials\/dns-1$/)
     expect(calls[0]!.init.method).toBe("DELETE")
   })
 

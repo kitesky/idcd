@@ -14,6 +14,7 @@ import nextConfig from "eslint-config-next/core-web-vitals"
 const config = [
   ...nextConfig,
   {
+    files: ["**/*.{js,jsx,mjs,ts,tsx,mts,cts}"],
     settings: {
       "import/resolver": {
         typescript: { project: "./tsconfig.json" }
@@ -64,6 +65,17 @@ const config = [
   // 关键豁免: no-restricted-imports 不适用于测试文件
   //   测试文件 import "../page" 是合法的 (渲染并断言)，不会形成 RSC/client
   //   运行时循环 (vitest 跑的是 Node 环境，没有 Turbopack 编译图)。
+  {
+    ignores: [
+      ".next/**",
+      ".open-next/**",
+      ".wrangler/**",
+      "test-results/**",
+      "public/**",
+      "*.tsbuildinfo",
+      "pnpm-lock.yaml"
+    ]
+  },
   {
     files: [
       "**/*.test.ts",

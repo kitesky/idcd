@@ -15,7 +15,7 @@ DRY_RUN=false
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=true
 
 ts() { date '+%H:%M:%S'; }
-log() { echo "[mem-guard $(ts())] $*"; }
+log() { echo "[mem-guard $(ts)] $*"; }
 
 # ── 不能杀的进程名关键词 ─────────────────────────────────────────
 KEEP_PATTERNS=(

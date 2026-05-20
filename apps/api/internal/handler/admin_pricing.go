@@ -228,7 +228,6 @@ func (h *AdminPricingHandler) ListPromotions(w http.ResponseWriter, r *http.Requ
 	if v := strings.TrimSpace(r.URL.Query().Get("kind")); v != "" {
 		clauses = append(clauses, "(applies_kind IS NULL OR applies_kind = $"+strconv.Itoa(idx)+")")
 		args = append(args, v)
-		idx++
 	}
 	where := ""
 	if len(clauses) > 0 {

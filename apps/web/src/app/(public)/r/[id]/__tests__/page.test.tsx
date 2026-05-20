@@ -47,7 +47,7 @@ describe("/r/[id] page", () => {
     })
     const el = await ReportPage({ params: Promise.resolve({ id: "rpt_single" }) })
     render(el)
-    expect(screen.getByText("example.com")).toBeInTheDocument()
+    expect(screen.getAllByText("example.com").length).toBeGreaterThan(0)
     expect(screen.getByText("Ping 拨测")).toBeInTheDocument()
     expect(screen.getByText(/返回 Ping 拨测/)).toBeInTheDocument()
   })

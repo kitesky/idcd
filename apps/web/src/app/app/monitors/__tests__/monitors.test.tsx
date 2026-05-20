@@ -180,6 +180,9 @@ describe("MonitorsClient — 列表渲染", () => {
     // With i18n mock returning key, the title is "actions.pause" / "actions.resume"
     const pauseButtons = screen.getAllByTitle("actions.pause")
     fireEvent.click(pauseButtons[0]!)
+    // pause/resume/delete now require AlertDialog confirmation (added to avoid silent mutations)
+    const confirmBtn = await screen.findByRole("button", { name: "confirm.confirmPause" })
+    fireEvent.click(confirmBtn)
     await waitFor(() =>
       expect(screen.getAllByTitle("actions.resume").length).toBeGreaterThan(0)
     )
@@ -210,6 +213,9 @@ describe("MonitorsClient — 列表渲染", () => {
     const deleteBtn = screen.queryByText("actions.delete")
     if (deleteBtn) {
       fireEvent.click(deleteBtn)
+      // AlertDialog confirmation required since delete is destructive
+      const confirmBtn = await screen.findByRole("button", { name: "confirm.confirmDelete" })
+      fireEvent.click(confirmBtn)
       await waitFor(() =>
         expect(screen.queryByText("idcd.com 主站")).not.toBeInTheDocument()
       )
@@ -395,11 +401,14 @@ describe("MonitorDetailClient — 详情页渲染", () => {
     expect(screen.getByText("94.2%")).toBeInTheDocument()
   })
 
-  it("暂停按钮点击后变为恢复按钮", () => {
+  it("暂停按钮点击后变为恢复按钮", async () => {
     render(<MonitorDetailClient monitor={upMonitor} monitorId={upMonitor.id} />)
     const pauseBtn = screen.getByRole("button", { name: /actions\.pause/ })
     fireEvent.click(pauseBtn)
-    expect(screen.getByRole("button", { name: /actions\.resume/ })).toBeInTheDocument()
+    // Pause/Resume now goes through an AlertDialog confirm step
+    const confirmBtn = await screen.findByRole("button", { name: /confirm\.confirmPause/ })
+    fireEvent.click(confirmBtn)
+    expect(await screen.findByRole("button", { name: /actions\.resume/ })).toBeInTheDocument()
   })
 
   it("监控目标地址显示在页面上", () => {

@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.20 AS builder
+FROM golang:1.26-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -8,6 +8,8 @@ COPY go.work go.work.sum ./
 
 # Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
 COPY apps/api/go.mod apps/api/go.sum apps/api/
+COPY lib/ lib/
+COPY packages/ packages/
 RUN cd apps/api && GOWORK=off go mod download
 
 # Copy packages (workspace deps) + remaining api source
@@ -16,7 +18,7 @@ COPY apps/api/ apps/api/
 
 # Build the binary
 WORKDIR /app/apps/api
-RUN go build -o /bin/api ./cmd/api/
+RUN GOWORK=off go build -o /bin/api ./cmd/api/
 
 # Runtime stage
 FROM alpine:3.20
@@ -26,6 +28,8 @@ RUN apk add --no-cache ca-certificates tzdata wget \
  && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/api /bin/api
+COPY config/locales.json /config/locales.json
+ENV IDCD_REGISTRY_PATH=/config/locales.json
 
 # Drop root: container escape no longer escalates to host root.
 USER 10001:10001

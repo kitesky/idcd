@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.20 AS builder
+FROM golang:1.26-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -8,6 +8,7 @@ COPY go.work go.work.sum ./
 
 # Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
 COPY apps/scheduler/go.mod apps/scheduler/go.sum apps/scheduler/
+COPY lib/ lib/
 RUN cd apps/scheduler && GOWORK=off go mod download
 
 # Copy packages (workspace deps) + remaining scheduler source
@@ -16,7 +17,7 @@ COPY apps/scheduler/ apps/scheduler/
 
 # Build the binary
 WORKDIR /app/apps/scheduler
-RUN go build -o /bin/scheduler ./cmd/scheduler/
+RUN GOWORK=off go build -o /bin/scheduler ./cmd/scheduler/
 
 # Runtime stage
 FROM alpine:3.20

@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.20 AS builder
+FROM golang:1.26-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -8,6 +8,8 @@ COPY go.work go.work.sum ./
 
 # Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
 COPY apps/notifier/go.mod apps/notifier/go.sum apps/notifier/
+COPY lib/ lib/
+COPY packages/ packages/
 RUN cd apps/notifier && GOWORK=off go mod download
 
 # Copy packages (workspace deps) + remaining notifier source
@@ -16,7 +18,7 @@ COPY apps/notifier/ apps/notifier/
 
 # Build the binary
 WORKDIR /app/apps/notifier
-RUN go build -o /bin/notifier ./cmd/notifier/
+RUN GOWORK=off go build -o /bin/notifier ./cmd/notifier/
 
 # Runtime stage
 FROM alpine:3.20
@@ -25,6 +27,8 @@ RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/notifier /bin/notifier
+COPY config/locales.json /config/locales.json
+ENV IDCD_REGISTRY_PATH=/config/locales.json
 
 USER 10001:10001
 

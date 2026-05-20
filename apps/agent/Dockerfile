@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.20 AS builder
+FROM golang:1.26-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -12,6 +12,7 @@ COPY go.work go.work.sum ./
 # Use GOWORK=off so the per-module download doesn't require every workspace
 # `use` directory to be present yet.
 COPY apps/agent/go.mod apps/agent/go.sum apps/agent/
+COPY lib/ lib/
 RUN cd apps/agent && GOWORK=off go mod download
 
 # Copy packages (workspace deps) + remaining agent source
@@ -20,7 +21,7 @@ COPY apps/agent/ apps/agent/
 
 # Build the binary
 WORKDIR /app/apps/agent
-RUN go build -o /bin/agent ./cmd/agent/
+RUN GOWORK=off go build -o /bin/agent ./cmd/agent/
 
 # Runtime stage
 FROM alpine:3.20

@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.20 AS builder
+FROM golang:1.26-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -8,6 +8,7 @@ COPY go.work go.work.sum ./
 
 # Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
 COPY apps/aggregator/go.mod apps/aggregator/go.sum apps/aggregator/
+COPY lib/ lib/
 RUN cd apps/aggregator && GOWORK=off go mod download
 
 # Copy packages (workspace deps) + remaining aggregator source
@@ -16,7 +17,7 @@ COPY apps/aggregator/ apps/aggregator/
 
 # Build the binary
 WORKDIR /app/apps/aggregator
-RUN go build -o /bin/aggregator ./cmd/aggregator/
+RUN GOWORK=off go build -o /bin/aggregator ./cmd/aggregator/
 
 # Runtime stage
 FROM alpine:3.20

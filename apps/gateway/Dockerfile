@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.26-alpine3.20 AS builder
+FROM golang:1.26-alpine3.22 AS builder
 
 WORKDIR /app
 
@@ -8,6 +8,7 @@ COPY go.work go.work.sum ./
 
 # Pre-fetch dependencies in a cacheable layer (see apps/agent/Dockerfile for rationale).
 COPY apps/gateway/go.mod apps/gateway/go.sum apps/gateway/
+COPY lib/ lib/
 RUN cd apps/gateway && GOWORK=off go mod download
 
 # Copy packages (workspace deps) + remaining gateway source
@@ -16,7 +17,7 @@ COPY apps/gateway/ apps/gateway/
 
 # Build the binary
 WORKDIR /app/apps/gateway
-RUN go build -o /bin/gateway ./cmd/gateway/
+RUN GOWORK=off go build -o /bin/gateway ./cmd/gateway/
 
 # Runtime stage
 FROM alpine:3.20

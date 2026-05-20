@@ -34,11 +34,6 @@ func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 		if err != nil {
 			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
 		host := target
 		host = strings.TrimPrefix(host, "https://")
 		host = strings.TrimPrefix(host, "http://")
@@ -68,14 +63,25 @@ func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 			httpURL = "https://" + httpURL
 		}
 		var httpResult struct {
-			StatusCode int `json:"status_code"`
-			LatencyMs  int `json:"latency_ms"`
+			StatusCode int   `json:"status_code"`
+			TotalMs    int64 `json:"total_ms"`
+			DurationMs int64 `json:"duration_ms"`
+			Success    bool  `json:"success"`
 		}
-		httpBody := map[string]any{"url": httpURL}
-		if err := client.Post(ctx, "/v1/probe/http", httpBody, &httpResult); err != nil {
+		// probe/http 用 target,而且是 async — 走 polling
+		httpBody := map[string]any{"target": httpURL}
+		if err := client.PollProbeTask(ctx, "/v1/probe/http", httpBody, &httpResult); err != nil {
 			fmt.Fprintf(&sb, "[✗] HTTP: %s\n", err.Error())
 		} else {
-			fmt.Fprintf(&sb, "[✓] HTTP: %d OK (%dms)\n", httpResult.StatusCode, httpResult.LatencyMs)
+			ms := httpResult.TotalMs
+			if ms == 0 {
+				ms = httpResult.DurationMs
+			}
+			mark := "✓"
+			if !httpResult.Success {
+				mark = "✗"
+			}
+			fmt.Fprintf(&sb, "[%s] HTTP: %d (%dms)\n", mark, httpResult.StatusCode, ms)
 		}
 
 		var sslResult struct {
@@ -91,18 +97,32 @@ func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 			if len(expiry) >= 10 {
 				expiry = expiry[:10]
 			}
-			fmt.Fprintf(&sb, "[✓] SSL: valid, expires %s\n", expiry)
+			if expiry == "" {
+				fmt.Fprintf(&sb, "[?] SSL: no expiry data\n")
+			} else {
+				fmt.Fprintf(&sb, "[✓] SSL: valid, expires %s\n", expiry)
+			}
 		}
 
 		var pingResult struct {
-			AvgMs   float64 `json:"avg_ms"`
-			LossPct float64 `json:"loss_pct"`
+			AvgMs      float64 `json:"avg_ms"`
+			DurationMs float64 `json:"duration_ms"`
+			PacketLoss float64 `json:"packet_loss"`
+			Success    bool    `json:"success"`
 		}
 		pingBody := map[string]any{"target": host, "count": 3}
-		if err := client.Post(ctx, "/v1/probe/ping", pingBody, &pingResult); err != nil {
+		if err := client.PollProbeTask(ctx, "/v1/probe/ping", pingBody, &pingResult); err != nil {
 			fmt.Fprintf(&sb, "[✗] Ping: %s", err.Error())
 		} else {
-			fmt.Fprintf(&sb, "[✓] Ping: avg %.0fms, %.0f%% loss", pingResult.AvgMs, pingResult.LossPct)
+			avg := pingResult.AvgMs
+			if avg == 0 && pingResult.DurationMs > 0 {
+				avg = pingResult.DurationMs
+			}
+			mark := "✓"
+			if !pingResult.Success || pingResult.PacketLoss == 100 {
+				mark = "✗"
+			}
+			fmt.Fprintf(&sb, "[%s] Ping: avg %.1fms, %.0f%% loss", mark, avg, pingResult.PacketLoss)
 		}
 
 		return sb.String(), nil

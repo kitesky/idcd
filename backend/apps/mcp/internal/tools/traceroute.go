@@ -42,42 +42,52 @@ func handleTracerouteFunc(client *apiclient.Client) protocol.ToolHandler {
 		if v, ok := args["max_hops"].(float64); ok {
 			maxHops = validateCount(v, 30, 64)
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
+		// agent 写回的 traceroute summary,Hop 字段名实测来自 agent/probe.TracerouteHop
 		var result struct {
-			Target string `json:"target"`
-			Hops   []struct {
-				TTL     int     `json:"ttl"`
-				IP      string  `json:"ip"`
-				Latency float64 `json:"latency_ms"`
-				ASN     string  `json:"asn"`
-				ISP     string  `json:"isp"`
+			NodeID  string `json:"node_id"`
+			Success bool   `json:"success"`
+			Hops    []struct {
+				Hop      int     `json:"hop"`
+				IP       string  `json:"ip"`
+				Hostname string  `json:"hostname"`
+				RTTMs    float64 `json:"rtt_ms"`
+				Timeout  bool    `json:"timeout"`
+				Country  string  `json:"country"`
+				City     string  `json:"city"`
 			} `json:"hops"`
 		}
 
-		body := map[string]any{"target": target, "max_hops": maxHops}
-		if err := client.Post(ctx, "/v1/probe/traceroute", body, &result); err != nil {
-			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
+		body := map[string]any{"target": target, "params": map[string]any{"max_hops": maxHops}}
+		if err := client.PollProbeTask(ctx, "/v1/probe/traceroute", body, &result); err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "TRACEROUTE %s\n", target)
+		fmt.Fprintf(&sb, "TRACEROUTE %s (节点 %s)\n", target, result.NodeID)
 		for _, h := range result.Hops {
-			extra := ""
-			if h.ASN != "" || h.ISP != "" {
-				parts := []string{}
-				if h.ASN != "" {
-					parts = append(parts, h.ASN)
-				}
-				if h.ISP != "" {
-					parts = append(parts, h.ISP)
-				}
-				extra = fmt.Sprintf(" (%s)", strings.Join(parts, ", "))
+			ip := h.IP
+			if ip == "" || h.Timeout {
+				ip = "*"
 			}
-			fmt.Fprintf(&sb, "%2d. %-18s %.1fms%s\n", h.TTL, h.IP, h.Latency, extra)
+			geo := ""
+			if h.Country != "" || h.City != "" {
+				parts := []string{}
+				if h.City != "" {
+					parts = append(parts, h.City)
+				}
+				if h.Country != "" {
+					parts = append(parts, h.Country)
+				}
+				geo = fmt.Sprintf(" (%s)", strings.Join(parts, ", "))
+			}
+			if h.Timeout {
+				fmt.Fprintf(&sb, "%2d. %-18s timeout%s\n", h.Hop, ip, geo)
+			} else {
+				fmt.Fprintf(&sb, "%2d. %-18s %.1fms%s\n", h.Hop, ip, h.RTTMs, geo)
+			}
+		}
+		if len(result.Hops) == 0 {
+			fmt.Fprintf(&sb, "无 hop 数据(agent 可能不支持 traceroute 或链路全 timeout)")
 		}
 		return strings.TrimRight(sb.String(), "\n"), nil
 	}

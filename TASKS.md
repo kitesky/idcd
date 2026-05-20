@@ -572,6 +572,30 @@ Lane E: 合规底盘    backend/apps/api/internal/middleware/ + static pages
 - [x] **N3** 节点 OTA 灰度升级 — 三级灰度（1%/10%/100%），upgrade_rollouts DB + Admin API + Gateway 广播 + Agent 自更新 + 前端看板，完成 2026-05-15
 - [x] **N4** Speedtest 网速测试探针 — HTTP 大包下载/上传测速，download_mbps/upload_mbps，Agent+API+前端工具页，完成 2026-05-15
 
+### M 系列 — MCP server 专项测试发现（2026-05-20 部署到 staging 后，2026-05-21 修完）
+
+> 来源：staging 部署 mcp service + nginx mcp.idcd.com block + 调通 JSON-RPC 链路后，e2e 测试 8 个工具发现的 bug。详见 `docs/MCP-TEST-REPORT-2026-05-20.md`。
+
+- [x] **M1** mcp apiclient 不解 api 的 `data` wrapper — apiclient.do() 加 envelope 剥离 + 错误 envelope 解 code/message，3 个新单测覆盖。完成 2026-05-21
+- [x] **M2** ~mcp tools query 参数名错配~ — 误诊：mcp schema 字段（暴露给 LLM）与 api query 名本就是两层映射，所有 tool 已经正确把 `params.Set("q",...)`，无需修
+- [x] **M3** 去掉工具强制 IDCD_API_KEY 校验 — 8 个 tool handler 全部移除 HasAPIKey 反向门；旧 TestNoAPIKeyReturnsPrompt 重写为正向 contract（无 key 时仍返回工具级错误而非空 prompt）。完成 2026-05-21
+- [x] **M4** staging 拨测数据面联通 — sysctl `net.ipv4.ping_group_range=0 65535` + agent 镜像 build（顺手补 agent/go.sum 传递依赖）+ host network agent 容器 enrolled → status=active；改 gateway_url path 含 `/agent/ws`；改 prod.env.yaml 不用必须 mTLS。完成 2026-05-21
+- [x] **M5** tool 渲染层加空字段守护 — ssl renderer 三段都加 `if != ""`，ip 在 result.IP 空时回退用 args.address，diagnose 在 expiry 空时标 `[?]`。完成 2026-05-21
+- [x] **M6** deploy.sh 烟测纳入 mcp — step 5 等 idcd-mcp healthy（允许 missing 兼容老 compose），step 6 加 `/healthz` 探活。完成 2026-05-21
+- [x] **M7** probe 工具改成 task_id 轮询模式 — apiclient 加 `PollProbeTask`（默认 1s/30s），ping/http/traceroute/diagnose 全切到 polling；http 工具的 `url` → api 的 `target` 参数；count/max_hops 塞进 `params` 子对象（api ProbeRequest contract）。E2E 验证 http=17ms 完美。完成 2026-05-21
+
+### 未关 M 系列（agent 层独立问题，与 mcp 无关）
+
+- [ ] **M8** agent 在 host network + uid 10001 下 ICMP 发送失败（P2）
+  - staging agent 容器 unprivileged ICMP socket 创建 OK，但 packets_received=0
+  - alpine ping CLI 在容器内能 ping 通 1.1.1.1，但 Go x/net/icmp + udp4 收不到 reply
+  - E2E 链路其他都通：mcp → api → stream → agent ack → result 写回
+  - 修法待查：可能是 docker host network ns 下 IP 选错、ICMP id/seq 校验、或 echo reply 路由
+
+- [ ] **M9** agent traceroute 在 staging 30s 未完成（P2）
+  - mcp traceroute polling 返回 `probe task timed out`，task 一直 queued
+  - 同 M8 类似，agent 拨测能力问题；ping/http 能跑说明 stream/dispatch 链路 OK
+
 ---
 
 ## 长期推迟（不进入当前冲刺）

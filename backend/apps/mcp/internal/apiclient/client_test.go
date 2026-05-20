@@ -162,6 +162,67 @@ func TestClose_IsSafeToCallAndIdempotent(t *testing.T) {
 	c.Close()
 }
 
+// TestDo_UnwrapsDataEnvelope 守 M1: api 统一返回 {"data":..., "request_id":...},
+// 早期版本的 do() 直接 unmarshal body 进 out → 字段全零。回归。
+func TestDo_UnwrapsDataEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"data":{"ip":"1.1.1.1","country":"AU"},"request_id":"req_abc"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k")
+	var out struct {
+		IP      string `json:"ip"`
+		Country string `json:"country"`
+	}
+	if err := c.Get(context.Background(), "/v1/info/ip", nil, &out); err != nil {
+		t.Fatalf("Get err: %v", err)
+	}
+	if out.IP != "1.1.1.1" || out.Country != "AU" {
+		t.Errorf("envelope not unwrapped: %+v", out)
+	}
+}
+
+// 没 data wrapper(老接口/第三方)时仍能解析,保持兼容
+func TestDo_FallbackWhenNoEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ip":"2.2.2.2"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k")
+	var out struct {
+		IP string `json:"ip"`
+	}
+	if err := c.Get(context.Background(), "/x", nil, &out); err != nil {
+		t.Fatalf("err: %v", err)
+	}
+	if out.IP != "2.2.2.2" {
+		t.Errorf("fallback unmarshal failed: %+v", out)
+	}
+}
+
+// 错误信封带 code + message 时,err 信息要包含两者(便于 LLM/用户定位)
+func TestDo_CodedErrorEnvelope(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusBadRequest)
+		_, _ = w.Write([]byte(`{"error":{"code":"VALIDATION","message":"Missing 'q' parameter","request_id":"req_xx"},"request_id":"req_xx"}`))
+	}))
+	defer srv.Close()
+
+	c := New(srv.URL, "k")
+	err := c.Get(context.Background(), "/v1/info/ip", nil, nil)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "400") || !strings.Contains(msg, "VALIDATION") || !strings.Contains(msg, "Missing 'q'") {
+		t.Errorf("err should carry status+code+message, got: %v", err)
+	}
+}
+
 func TestDo_NoOutPointerSkipsUnmarshal(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

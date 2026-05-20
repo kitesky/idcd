@@ -142,6 +142,12 @@ func runHTTP(port int) error {
 	mux := http.NewServeMux()
 	mux.Handle("/sse", protocol.SSEHandler(srv))
 	mux.Handle("/messages", protocol.MessagesHandler(srv))
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) {
+		// 不带鉴权 — 仅给 docker / LB 探测用；不暴露任何业务状态
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"status":"ok"}`))
+	})
 
 	addr := fmt.Sprintf(":%d", port)
 	return http.ListenAndServe(addr, mux)

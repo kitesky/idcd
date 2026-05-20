@@ -3,6 +3,7 @@ package tools
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
@@ -50,40 +51,70 @@ func handleHTTPFunc(client *apiclient.Client) protocol.ToolHandler {
 				return "", fmt.Errorf("%w: unsupported method %q", protocol.ErrToolFailure, v)
 			}
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
+		// agent 写回的 http result summary(实测 schema)
 		var result struct {
-			URL         string `json:"url"`
-			StatusCode  int    `json:"status_code"`
-			StatusText  string `json:"status_text"`
-			LatencyMs   int    `json:"latency_ms"`
-			TLSVersion  string `json:"tls_version"`
-			ContentType string `json:"content_type"`
+			NodeID         string `json:"node_id"`
+			Success        bool   `json:"success"`
+			StatusCode     int    `json:"status_code"`
+			TLSVersion     string `json:"tls_version"`
+			ContentLength  int64  `json:"content_length"`
+			DurationMs     int64  `json:"duration_ms"`
+			DNSMs          int64  `json:"dns_ms"`
+			ConnectMs      int64  `json:"connect_ms"`
+			SSLMs          int64  `json:"ssl_ms"`
+			TTFBMs         int64  `json:"ttfb_ms"`
+			ServerMs       int64  `json:"server_ms"`
+			DownloadMs     int64  `json:"download_ms"`
+			TotalMs        int64  `json:"total_ms"`
 		}
 
-		body := map[string]any{"url": targetURL, "method": method}
-		if err := client.Post(ctx, "/v1/probe/http", body, &result); err != nil {
-			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
+		// api 用 `target` 接收 URL,不是 `url`(参数名跟 ping/traceroute 统一)
+		body := map[string]any{"target": targetURL, "params": map[string]any{"method": method}}
+		if err := client.PollProbeTask(ctx, "/v1/probe/http", body, &result); err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
-		tls := ""
+		var sb strings.Builder
+		fmt.Fprintf(&sb, "%s %s\n", method, targetURL)
+		fmt.Fprintf(&sb, "状态: %d", result.StatusCode)
+		if !result.Success {
+			fmt.Fprintf(&sb, " ✗")
+		}
+		total := result.TotalMs
+		if total == 0 {
+			total = result.DurationMs
+		}
+		if total > 0 {
+			fmt.Fprintf(&sb, " | 总耗时: %dms", total)
+		}
+		fmt.Fprintf(&sb, "\n")
+		// 阶段分解,信号丰富的时候列出来,缺数据时跳过
+		stages := []struct {
+			label string
+			ms    int64
+		}{
+			{"DNS", result.DNSMs},
+			{"Connect", result.ConnectMs},
+			{"SSL", result.SSLMs},
+			{"TTFB", result.TTFBMs},
+			{"Server", result.ServerMs},
+			{"Download", result.DownloadMs},
+		}
+		var stageParts []string
+		for _, s := range stages {
+			if s.ms > 0 {
+				stageParts = append(stageParts, fmt.Sprintf("%s %dms", s.label, s.ms))
+			}
+		}
+		if len(stageParts) > 0 {
+			fmt.Fprintf(&sb, "阶段: %s\n", strings.Join(stageParts, " · "))
+		}
 		if result.TLSVersion != "" {
-			tls = fmt.Sprintf(" | TLS: %s", result.TLSVersion)
+			fmt.Fprintf(&sb, "TLS: %s\n", result.TLSVersion)
 		}
-		ct := ""
-		if result.ContentType != "" {
-			ct = fmt.Sprintf("\n响应头: Content-Type: %s", result.ContentType)
+		if result.ContentLength >= 0 {
+			fmt.Fprintf(&sb, "Content-Length: %d", result.ContentLength)
 		}
-
-		return fmt.Sprintf("%s %s\n状态: %d %s | 延迟: %dms%s%s",
-			method, targetURL,
-			result.StatusCode, result.StatusText,
-			result.LatencyMs,
-			tls,
-			ct,
-		), nil
+		return strings.TrimRight(sb.String(), "\n"), nil
 	}
 }

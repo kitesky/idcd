@@ -42,43 +42,51 @@ func handlePingFunc(client *apiclient.Client) protocol.ToolHandler {
 		if v, ok := args["count"].(float64); ok {
 			count = validateCount(v, 3, 50)
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
+		// api /v1/probe/* 是 async:POST 拿 task_id → 轮询 GET /v1/probe/tasks/{id}
+		// 直到 status=completed。result 是 agent 写回的 summary,字段随 probe 类型变化。
 		var result struct {
-			Target  string `json:"target"`
-			Results []struct {
-				Node    string  `json:"node"`
-				Country string  `json:"country"`
-				AvgMs   float64 `json:"avg_ms"`
-				Loss    float64 `json:"loss_pct"`
-				Success bool    `json:"success"`
-			} `json:"results"`
-			AvgMs   float64 `json:"avg_ms"`
-			LossPct float64 `json:"loss_pct"`
+			NodeID          string  `json:"node_id"`
+			Success         bool    `json:"success"`
+			DurationMs      float64 `json:"duration_ms"`
+			PacketLoss      float64 `json:"packet_loss"`
+			PacketsSent     int     `json:"packets_sent"`
+			PacketsReceived int     `json:"packets_received"`
+			AvgMs           float64 `json:"avg_ms"`
+			MinMs           float64 `json:"min_ms"`
+			MaxMs           float64 `json:"max_ms"`
 		}
 
-		body := map[string]any{"target": target, "count": count}
-		if err := client.Post(ctx, "/v1/probe/ping", body, &result); err != nil {
-			return "", fmt.Errorf("%w: 调用失败: %s", protocol.ErrToolFailure, err.Error())
+		// api 期望 ProbeRequest{target, nodeID, nodes, params} — count 必须塞 params,
+		// 不然 agent 拿到的 options 为空,默认 count=5。
+		body := map[string]any{"target": target, "params": map[string]any{"count": count}}
+		if err := client.PollProbeTask(ctx, "/v1/probe/ping", body, &result); err != nil {
+			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
 
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "PING %s\n", target)
-		for _, r := range result.Results {
-			loc := r.Node
-			if r.Country != "" {
-				loc = fmt.Sprintf("%s %s", r.Node, r.Country)
-			}
-			status := "✓"
-			if !r.Success {
-				status = "✗"
-			}
-			fmt.Fprintf(&sb, "节点: %s — %.0fms %s\n", loc, r.AvgMs, status)
+		fmt.Fprintf(&sb, "PING %s (count=%d)\n", target, count)
+		if result.NodeID != "" {
+			fmt.Fprintf(&sb, "节点: %s\n", result.NodeID)
 		}
-		fmt.Fprintf(&sb, "平均: %.0fms | 丢包: %.0f%%", result.AvgMs, result.LossPct)
+		if result.PacketsSent > 0 {
+			fmt.Fprintf(&sb, "包: 发送 %d / 收到 %d\n", result.PacketsSent, result.PacketsReceived)
+		}
+		// avg_ms 是新版 summary;duration_ms 是老 summary 的兜底,避免 schema drift
+		avg := result.AvgMs
+		if avg == 0 && result.DurationMs > 0 {
+			avg = result.DurationMs
+		}
+		if avg > 0 {
+			fmt.Fprintf(&sb, "平均: %.1fms", avg)
+			if result.MinMs > 0 || result.MaxMs > 0 {
+				fmt.Fprintf(&sb, " (min %.1f / max %.1f)", result.MinMs, result.MaxMs)
+			}
+			fmt.Fprintf(&sb, "\n")
+		}
+		fmt.Fprintf(&sb, "丢包: %.0f%%", result.PacketLoss)
+		if !result.Success {
+			fmt.Fprintf(&sb, " ✗")
+		}
 		return sb.String(), nil
 	}
 }

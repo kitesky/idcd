@@ -34,11 +34,6 @@ func handleSSLFunc(client *apiclient.Client) protocol.ToolHandler {
 		if err != nil {
 			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
 		var result struct {
 			Domain          string `json:"domain"`
 			Issuer          string `json:"issuer"`
@@ -59,16 +54,20 @@ func handleSSLFunc(client *apiclient.Client) protocol.ToolHandler {
 			expiry = expiry[:10]
 		}
 
-		proto := result.Protocol
-		if proto == "" {
-			proto = "TLS 1.3"
-		}
-
 		var sb strings.Builder
 		fmt.Fprintf(&sb, "SSL/TLS for %s:\n", host)
-		fmt.Fprintf(&sb, "证书: %s | 颁发者: %s\n", result.Subject, result.Issuer)
-		fmt.Fprintf(&sb, "有效期: %s (还有 %d 天)\n", expiry, result.DaysUntilExpiry)
-		fmt.Fprintf(&sb, "协议: %s", proto)
-		return sb.String(), nil
+		// 每个字段独立守护:api 部分字段缺失时不渲染 "证书: " 这种半空行。
+		// 没法一刀切用 "未知" 占位 — issuer/subject 是必有项,缺了说明上游异常,
+		// 不输出比输出空更诚实。
+		if result.Subject != "" || result.Issuer != "" {
+			fmt.Fprintf(&sb, "证书: %s | 颁发者: %s\n", result.Subject, result.Issuer)
+		}
+		if expiry != "" {
+			fmt.Fprintf(&sb, "有效期: %s (还有 %d 天)\n", expiry, result.DaysUntilExpiry)
+		}
+		if result.Protocol != "" {
+			fmt.Fprintf(&sb, "协议: %s\n", result.Protocol)
+		}
+		return strings.TrimRight(sb.String(), "\n"), nil
 	}
 }

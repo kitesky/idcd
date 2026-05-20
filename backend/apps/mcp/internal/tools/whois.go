@@ -34,11 +34,6 @@ func handleWhoisFunc(client *apiclient.Client) protocol.ToolHandler {
 		if err != nil {
 			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
 		var result struct {
 			Domain       string   `json:"domain"`
 			Registrar    string   `json:"registrar"`

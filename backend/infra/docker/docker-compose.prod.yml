@@ -98,6 +98,44 @@ services:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
 
+  # S3 MCP server — HTTP/SSE transport for Anthropic MCP clients.
+  # 业务 stateless + SSE 连接 stateful（v2 D13）。pgx token validator
+  # 直读 prod.env.yaml 里的 database.main.dsn,与 api 共用同一套用户/token 库。
+  mcp:
+    image: ghcr.io/${GHCR_OWNER}/idcd-mcp:latest
+    container_name: idcd-mcp
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8082:8082"
+    volumes:
+      - /opt/idcd/config/prod.env.yaml:/config/prod.env.yaml:ro
+    environment:
+      - TZ=Asia/Shanghai
+      - IDCD_CONFIG=/config/prod.env.yaml
+      # MCP server 通过 internal docker network 调用 api,不走外网
+      - IDCD_API_URL=http://api:8080
+      # mcp 内部调 api 用的 service token（注入到 Authorization: Bearer）
+      # 当前所有 tool handler 都 enforce HasAPIKey,IDCD_API_KEY 为空时 fail
+      - IDCD_API_KEY=${MCP_INTERNAL_API_KEY:-}
+      # CORS allowlist — 留空 = fail-closed,不允许浏览器 origin 调用
+      - MCP_CORS_ORIGINS=
+      # rate limit:60 req/min/token (默认值),可按需调
+      - MCP_RATE_MAX=60
+      - MCP_RATE_WINDOW=1m
+      - MCP_SSE_HEARTBEAT=15s
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8082/healthz"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    logging:
+      driver: "json-file"
+      options: {max-size: "50m", max-file: "3"}
+
   # S2 cert platform — HTTP API, ACME worker, renewal cron.
   # Three replicas of one image; CMD selects the binary. Each reads its
   # own CERT_* env vars (config loader in backend/apps/cert-svc/internal/config).

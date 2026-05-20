@@ -48,11 +48,6 @@ func handleDNSFunc(client *apiclient.Client) protocol.ToolHandler {
 			}
 			recordType = v
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
 		var result struct {
 			Domain  string `json:"domain"`
 			Type    string `json:"type"`

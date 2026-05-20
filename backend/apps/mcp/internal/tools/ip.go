@@ -34,11 +34,6 @@ func handleIPFunc(client *apiclient.Client) protocol.ToolHandler {
 		if err != nil {
 			return "", fmt.Errorf("%w: %s", protocol.ErrToolFailure, err.Error())
 		}
-
-		if !client.HasAPIKey() {
-			return "", fmt.Errorf("%w: 需要 API key，请设置 IDCD_API_KEY 环境变量", protocol.ErrToolFailure)
-		}
-
 		var result struct {
 			IP      string `json:"ip"`
 			Country string `json:"country"`
@@ -54,7 +49,11 @@ func handleIPFunc(client *apiclient.Client) protocol.ToolHandler {
 		}
 
 		var sb strings.Builder
-		fmt.Fprintf(&sb, "IP: %s\n", result.IP)
+		if result.IP != "" {
+			fmt.Fprintf(&sb, "IP: %s\n", result.IP)
+		} else {
+			fmt.Fprintf(&sb, "IP: %s\n", address)
+		}
 		if result.ASN != "" {
 			fmt.Fprintf(&sb, "ASN: %s\n", result.ASN)
 		}

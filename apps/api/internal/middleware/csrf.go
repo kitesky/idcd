@@ -52,6 +52,8 @@ func CSRF(exemptPaths ...string) func(http.Handler) http.Handler {
 			// POSTs that write transient (7d TTL) data keyed by a client-supplied
 			// UUID. The Next.js one-click diagnose SSE route is server-side and
 			// has no CSRF cookie/header context, so it would otherwise be 403'd.
+			// "/v1/billing/webhook" 与 handler.BillingWebhookPath 同字面值;
+			// 改路由两处都要动。不能 import handler(handler 已 import 本包,反向成环)。
 			if strings.HasPrefix(path, "/v1/auth/") ||
 				strings.HasPrefix(path, "/v1/probe/") ||
 				strings.HasPrefix(path, "/v1/info/") ||

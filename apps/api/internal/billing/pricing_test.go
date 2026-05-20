@@ -296,6 +296,36 @@ func TestIncrementPromotionUsage_DBError(t *testing.T) {
 	assert.Error(t, err)
 }
 
+// 验证 increment SQL 带 `max_uses IS NULL OR used_count < max_uses` 守卫,
+// 防止 EffectivePrice→IncrementPromotionUsage 之间的 TOCTOU 让 used_count 超额。
+func TestIncrementPromotionUsage_GuardsMaxUses(t *testing.T) {
+	p, mock := newPricing(t)
+	// pgxmock.ExpectExec uses regex; match the guard clause.
+	mock.ExpectExec(`UPDATE pricing_promotions[\s\S]+used_count < max_uses`).
+		WithArgs("promo_capped").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0)) // already at limit → no rows affected
+	require.NoError(t, p.IncrementPromotionUsage(context.Background(), "promo_capped"))
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
+// ---- Invalidate ----
+
+func TestInvalidate_ForcesReloadOnNextRead(t *testing.T) {
+	p, mock := newPricing(t)
+	// 默认 5min TTL,但 Invalidate 后应强制回库二次。
+	mock.ExpectQuery(sqlSelectItems).WillReturnRows(seedItemsRows())
+	mock.ExpectQuery(sqlSelectItems).WillReturnRows(seedItemsRows())
+
+	_, _, err := p.BasePrice(context.Background(), KindPlan, "pro")
+	require.NoError(t, err)
+
+	p.Invalidate()
+
+	_, _, err = p.BasePrice(context.Background(), KindPlan, "pro")
+	require.NoError(t, err)
+	require.NoError(t, mock.ExpectationsWereMet())
+}
+
 // ---- helpers ----
 
 func strPtr(s string) *string { return &s }

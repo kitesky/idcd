@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -165,7 +166,7 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		UserID:      ownerID,
 		Plan:        plan,
 		ReturnURL:   returnBase + "/app/settings/team",
-		NotifyURL:   h.publicAPIURL + "/v1/billing/webhook",
+		NotifyURL:   h.publicAPIURL + BillingWebhookPath,
 		AmountCents: price.FinalCents,
 		Currency:    price.Currency,
 		Metadata:    metadata,
@@ -206,8 +207,8 @@ func (h *TeamBillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 
 	if price.PromotionID != "" {
 		if err := h.pricing.IncrementPromotionUsage(ctx, price.PromotionID); err != nil {
-			// best-effort; log via response.Error 不合适，这里直接吞 + 留 metadata
-			_ = err
+			slog.WarnContext(ctx, "team_billing: increment promotion usage failed",
+				"promotion_id", price.PromotionID, "team_id", teamID, "error", err)
 		}
 	}
 

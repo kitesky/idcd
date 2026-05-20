@@ -337,6 +337,71 @@ func TestAdminPricing_DeletePromotion_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, rr.Code)
 }
 
+// ---- Invalidator wiring ----
+
+// countingInvalidator 记录 Invalidate 被调用的次数,用来断言 admin 写操作
+// 完成后 cache invalidation 真的被触发了(否则会出现最长 5min stale 价格窗口)。
+type countingInvalidator struct{ n int }
+
+func (c *countingInvalidator) Invalidate() { c.n++ }
+
+func TestAdminPricing_UpdatePricingItem_TriggersInvalidate(t *testing.T) {
+	h, mock := newAdminPricingTestHandler(t)
+	defer mock.Close()
+	inv := &countingInvalidator{}
+	h = h.WithInvalidator(inv)
+
+	mock.ExpectExec(`UPDATE pricing_items`).
+		WithArgs("plan", "pro", i64Ptr(8800), nilStrPtr(), nilStrAny()).
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+	mock.ExpectQuery(`SELECT kind, item_key, price_cents, currency, updated_at, updated_by`).
+		WithArgs("plan", "pro").
+		WillReturnRows(pgxmock.NewRows([]string{"kind", "item_key", "price_cents", "currency", "updated_at", "updated_by"}).
+			AddRow("plan", "pro", int64(8800), "CNY", time.Now(), nil))
+
+	body, _ := json.Marshal(map[string]any{"price_cents": 8800})
+	rr := runWithChi(http.MethodPatch, "/v1/admin/billing/pricing-items/plan/pro", body, func(r chi.Router) {
+		r.Patch("/v1/admin/billing/pricing-items/{kind}/{item_key}", h.UpdatePricingItem)
+	})
+	require.Equal(t, http.StatusOK, rr.Code, rr.Body.String())
+	assert.Equal(t, 1, inv.n, "cache invalidate must fire after successful update")
+}
+
+func TestAdminPricing_DeletePromotion_TriggersInvalidate(t *testing.T) {
+	h, mock := newAdminPricingTestHandler(t)
+	defer mock.Close()
+	inv := &countingInvalidator{}
+	h = h.WithInvalidator(inv)
+
+	mock.ExpectExec(`UPDATE pricing_promotions SET active = FALSE`).
+		WithArgs("promo_x").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 1))
+
+	rr := runWithChi(http.MethodDelete, "/v1/admin/billing/promotions/promo_x", nil, func(r chi.Router) {
+		r.Delete("/v1/admin/billing/promotions/{id}", h.DeletePromotion)
+	})
+	require.Equal(t, http.StatusOK, rr.Code)
+	assert.Equal(t, 1, inv.n, "cache invalidate must fire after delete")
+}
+
+func TestAdminPricing_NotFoundDoesNotInvalidate(t *testing.T) {
+	// 404 时 cache 没改动,不该走 invalidate。
+	h, mock := newAdminPricingTestHandler(t)
+	defer mock.Close()
+	inv := &countingInvalidator{}
+	h = h.WithInvalidator(inv)
+
+	mock.ExpectExec(`UPDATE pricing_promotions SET active = FALSE`).
+		WithArgs("promo_ghost").
+		WillReturnResult(pgxmock.NewResult("UPDATE", 0))
+
+	rr := runWithChi(http.MethodDelete, "/v1/admin/billing/promotions/promo_ghost", nil, func(r chi.Router) {
+		r.Delete("/v1/admin/billing/promotions/{id}", h.DeletePromotion)
+	})
+	require.Equal(t, http.StatusNotFound, rr.Code)
+	assert.Equal(t, 0, inv.n, "404 must not invalidate cache")
+}
+
 // ---- helpers ----
 
 func decodeData(t *testing.T, raw []byte, into any) error {

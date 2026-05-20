@@ -21,6 +21,13 @@ import (
 	"github.com/kite365/idcd/lib/shared/pagination"
 )
 
+// BillingWebhookPath 是支付网关回调的相对路径。所有走 PaymentHub 的
+// handler(Subscribe / TeamSubscribe / VerdictOrder.Create)拼 NotifyURL 时用
+// 它,改路由不用三处同步。注意 middleware/csrf.go 也持有同字面值的白名单,
+// 跨包不能 import 这里(handler 已 import middleware,反向 import 成环),改这里
+// 时记得同步 csrf.go。
+const BillingWebhookPath = "/v1/billing/webhook"
+
 // VerdictStreamPublisher publishes a paid verdict_order onto the Redis
 // Stream `verdict_generation_queue` so the apps/attest worker can pick it up
 // (D4: webhook is the single source of truth for "payment cleared → start
@@ -233,7 +240,7 @@ func (h *BillingHandler) Subscribe(w http.ResponseWriter, r *http.Request) {
 		Plan:        plan,
 		Channel:     req.Channel,
 		ReturnURL:   returnBase + "/app/billing",
-		NotifyURL:   h.publicAPIURL + "/v1/billing/webhook",
+		NotifyURL:   h.publicAPIURL + BillingWebhookPath,
 		AmountCents: price.FinalCents,
 		Currency:    price.Currency,
 		Metadata:    metadata,
@@ -775,15 +782,21 @@ func (h *BillingHandler) StubConfirm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var price int64
-	if snapshotCents != nil {
+	switch {
+	case snapshotCents != nil:
 		price = *snapshotCents
-	} else if h.pricing != nil {
+	case h.pricing != nil:
 		cents, _, perr := h.pricing.BasePrice(ctx, billing.KindPlan, plan)
 		if perr != nil {
 			response.Error(w, r, apperr.Internal("pricing lookup failed for stub confirm", perr))
 			return
 		}
 		price = cents
+	default:
+		// 既无 snapshot 又无 pricing 服务 — 静默走 free 退出会导致用户漏开发票,
+		// 显式 warn 让 ops 看到 stub provider 在该实例上配置异常。
+		slog.WarnContext(ctx, "billing/stub-confirm: no price snapshot and no pricing service; treating as free",
+			"sub_id", subID, "plan", plan)
 	}
 	if price == 0 {
 		// Free plan — no payment record needed.

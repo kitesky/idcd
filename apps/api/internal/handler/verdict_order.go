@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"time"
 
@@ -35,6 +36,18 @@ type VerdictOrderHandler struct {
 	pool     BillingPool
 	provider billing.Provider
 	pricing  billing.Pricing
+
+	// appBaseURL 当前未使用 —— verdict order 的 ReturnURL 由客户端按单
+	// 请求传入(CreateVerdictOrderRequest.ReturnURL),并不依赖服务端默认。
+	// 保留字段 + 同名 builder 是为了和 BillingHandler / TeamBillingHandler 的
+	// WithURLs(appBase, publicAPI) 形状对齐,后续若引入服务端兜底 returnURL
+	// 不用改外部调用点。
+	appBaseURL string
+	// publicAPIURL 是 API 服务对外可达的 origin(例如 "https://api.idcd.com"),
+	// 用于拼 webhook NotifyURL。**必须**走服务端配置 —— 信任客户端 header
+	// 会让伪造 Origin 重定向支付 webhook 到攻击者 URL,把未付订单标 paid 还
+	// 推到生成队列。与 BillingHandler / TeamBillingHandler 同口径。
+	publicAPIURL string
 }
 
 // NewVerdictOrderHandler wires a VerdictOrderHandler.
@@ -47,6 +60,15 @@ func NewVerdictOrderHandler(pool BillingPool, provider billing.Provider) *Verdic
 // + promo evaluation. Create 500s if nil.
 func (h *VerdictOrderHandler) WithPricing(p billing.Pricing) *VerdictOrderHandler {
 	h.pricing = p
+	return h
+}
+
+// WithURLs 配置可信的服务端 base URL,与 BillingHandler.WithURLs 同 shape。
+// appBase 目前由客户端在请求体里传,保留入参占位以便未来加服务端兜底;
+// publicAPI 必填,Create 在 publicAPI 为空时 500。
+func (h *VerdictOrderHandler) WithURLs(appBase, publicAPI string) *VerdictOrderHandler {
+	h.appBaseURL = appBase
+	h.publicAPIURL = publicAPI
 	return h
 }
 
@@ -129,6 +151,11 @@ func (h *VerdictOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("verdict pricing service not wired", nil))
 		return
 	}
+	// NotifyURL must come from config — see security note on publicAPIURL.
+	if h.publicAPIURL == "" {
+		response.Error(w, r, apperr.Internal("verdict_order public_api_url is not configured", nil))
+		return
+	}
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
@@ -178,14 +205,13 @@ func (h *VerdictOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if price.PromotionID != "" {
 		metadata["promotion_id"] = price.PromotionID
 	}
-	notifyURL := buildVerdictNotifyURL(r)
 	result, err := h.provider.Charge(ctx, billing.ChargeRequest{
 		UserID:      userID,
 		AmountCents: price.FinalCents,
 		Currency:    price.Currency,
 		Channel:     req.Channel,
 		ReturnURL:   req.ReturnURL,
-		NotifyURL:   notifyURL,
+		NotifyURL:   h.publicAPIURL + BillingWebhookPath,
 		ItemRef:     orderID,
 		Description: fmt.Sprintf("Verdict %s 报告", req.Template),
 		Metadata:    metadata,
@@ -197,7 +223,8 @@ func (h *VerdictOrderHandler) Create(w http.ResponseWriter, r *http.Request) {
 
 	if price.PromotionID != "" {
 		if err := h.pricing.IncrementPromotionUsage(ctx, price.PromotionID); err != nil {
-			_ = err // best-effort
+			slog.WarnContext(ctx, "verdict_order: increment promotion usage failed",
+				"promotion_id", price.PromotionID, "order_id", orderID, "error", err)
 		}
 	}
 
@@ -267,11 +294,3 @@ func (h *VerdictOrderHandler) Get(w http.ResponseWriter, r *http.Request) {
 	response.JSON(w, r, http.StatusOK, resp)
 }
 
-// buildVerdictNotifyURL builds the webhook URL the gateway should POST to
-// when the charge clears.  Uses the Origin header (matches existing
-// Subscribe handler convention) so the dev / staging / prod hosts work
-// without per-env config.
-func buildVerdictNotifyURL(r *http.Request) string {
-	origin := r.Header.Get("Origin")
-	return origin + "/v1/billing/webhook"
-}

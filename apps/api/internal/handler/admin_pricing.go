@@ -18,17 +18,40 @@ import (
 	"github.com/kite365/idcd/lib/shared/apperr"
 )
 
+// PricingInvalidator 用于本进程的 in-memory 价格 cache 失效。
+// admin 改 pricing_items / pricing_promotions 后调用,避免最长 cacheTTL
+// 的 stale 价格窗口。多实例 HA 部署另需 PubSub 广播,S1 单实例可忽略。
+type PricingInvalidator interface {
+	Invalidate()
+}
+
 // AdminPricingHandler exposes CRUD over pricing_items + pricing_promotions.
 // Mounted under /v1/admin/billing/* behind the admin token middleware
 // (network-level gate; per-user admin role still TODO — same posture as
 // AdminBillingHandler refund management).
 type AdminPricingHandler struct {
-	pool BillingPool
+	pool        BillingPool
+	invalidator PricingInvalidator // optional; nil 等同于不主动 invalidate
 }
 
 // NewAdminPricingHandler wires the handler against the shared pgx pool.
 func NewAdminPricingHandler(pool BillingPool) *AdminPricingHandler {
 	return &AdminPricingHandler{pool: pool}
+}
+
+// WithInvalidator 注入 cache 失效器。建议传入与 BillingHandler 共享的
+// *billing.DBPricing,价格 / 促销变更后立即对所有支付 handler 可见。
+func (h *AdminPricingHandler) WithInvalidator(inv PricingInvalidator) *AdminPricingHandler {
+	h.invalidator = inv
+	return h
+}
+
+// invalidate 调用注入的 Invalidator(若有)。所有写操作 (UpdatePricingItem /
+// CreatePromotion / UpdatePromotion / DeletePromotion) 末尾应该调用一次。
+func (h *AdminPricingHandler) invalidate() {
+	if h.invalidator != nil {
+		h.invalidator.Invalidate()
+	}
 }
 
 // ---- pricing items ----
@@ -160,6 +183,7 @@ func (h *AdminPricingHandler) UpdatePricingItem(w http.ResponseWriter, r *http.R
 		response.Error(w, r, apperr.Internal("failed to read updated pricing_item", err))
 		return
 	}
+	h.invalidate()
 	response.JSON(w, r, http.StatusOK, it)
 }
 
@@ -320,6 +344,7 @@ func (h *AdminPricingHandler) CreatePromotion(w http.ResponseWriter, r *http.Req
 		response.Error(w, r, apperr.Internal("failed to insert promotion", err))
 		return
 	}
+	h.invalidate()
 	response.JSON(w, r, http.StatusCreated, map[string]string{"id": id})
 }
 
@@ -375,6 +400,7 @@ func (h *AdminPricingHandler) UpdatePromotion(w http.ResponseWriter, r *http.Req
 		response.Error(w, r, apperr.NotFound("promotion not found"))
 		return
 	}
+	h.invalidate()
 	response.JSON(w, r, http.StatusOK, map[string]string{"id": id, "status": "updated"})
 }
 
@@ -400,6 +426,7 @@ func (h *AdminPricingHandler) DeletePromotion(w http.ResponseWriter, r *http.Req
 		response.Error(w, r, apperr.NotFound("promotion not found"))
 		return
 	}
+	h.invalidate()
 	response.JSON(w, r, http.StatusOK, map[string]string{"id": id, "status": "deactivated"})
 }
 

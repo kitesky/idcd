@@ -26,7 +26,12 @@ func newVerdictOrderTestHandler(t *testing.T) (*VerdictOrderHandler, pgxmock.Pgx
 	mockPool, err := pgxmock.NewPool()
 	require.NoError(t, err)
 	stub := billing.NewStubProvider()
-	h := NewVerdictOrderHandler(mockPool, stub).WithPricing(fakePricing{})
+	// WithURLs required since the handler now refuses to build a NotifyURL
+	// from a client-supplied Origin header (same security fix as
+	// BillingHandler / TeamBillingHandler). appBase 当前未参与逻辑,占位即可。
+	h := NewVerdictOrderHandler(mockPool, stub).
+		WithPricing(fakePricing{}).
+		WithURLs("http://app.test", "http://api.test")
 	return h, mockPool, stub
 }
 

@@ -21,7 +21,7 @@ type PricingPool interface {
 	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
 }
 
-// ItemKind 是付费品类。新增品类时只需要在这里加常量 + 同步 migration 00048 的 CHECK。
+// ItemKind 是付费品类。新增品类时只需要在这里加常量 + 同步 migration 00049 的 CHECK。
 type ItemKind string
 
 const (
@@ -95,6 +95,15 @@ func NewDBPricing(pool PricingPool) *DBPricing {
 func (p *DBPricing) WithCacheTTL(d time.Duration) *DBPricing {
 	p.cacheTTL = d
 	return p
+}
+
+// Invalidate 清掉 in-memory cache,下一次读会强制回库。
+// admin 改价 / 改促销后调用,避免最长 cacheTTL 的 stale 窗口。
+// 多实例部署下仅本进程生效;HA 集群另需 PubSub 广播。
+func (p *DBPricing) Invalidate() {
+	p.mu.Lock()
+	p.cache = nil
+	p.mu.Unlock()
 }
 
 // snapshot 返回当前 cache；过期/未初始化则回库 reload。
@@ -310,15 +319,24 @@ func applyPromo(baseCents int64, discountType string, value int64) int64 {
 	return out
 }
 
-// IncrementPromotionUsage 订单创建成功后调用，原子 +1 used_count。
-// 不阻塞主流程：返回 error 调用方应只 log，不回滚已成功的支付。
+// IncrementPromotionUsage 订单创建成功后调用,原子 +1 used_count。
+// WHERE 条件 `max_uses IS NULL OR used_count < max_uses` 防止超额累加 ——
+// EffectivePrice 与本调用之间存在 TOCTOU 窗口,高并发下两个请求都可能通过
+// 用量检查再都来 +1。WHERE 守卫确保 used_count 永不超过 max_uses,代价是
+// RowsAffected=0 时本次支付不计数(已成功支付仍生效;用户拿到了优惠价就是赚
+// 的,DB 一致性优先于精确计数)。
+//
+// 不阻塞主流程:返回 error 调用方应只 log,不回滚已成功的支付。
 func (p *DBPricing) IncrementPromotionUsage(ctx context.Context, promotionID string) error {
 	if promotionID == "" {
 		return nil
 	}
-	_, err := p.pool.Exec(ctx,
-		`UPDATE pricing_promotions SET used_count = used_count + 1, updated_at = NOW() WHERE id = $1`,
-		promotionID)
+	_, err := p.pool.Exec(ctx, `
+		UPDATE pricing_promotions
+		SET used_count = used_count + 1, updated_at = NOW()
+		WHERE id = $1
+		  AND (max_uses IS NULL OR used_count < max_uses)
+	`, promotionID)
 	if err != nil {
 		return fmt.Errorf("billing/pricing: increment usage %s: %w", promotionID, err)
 	}

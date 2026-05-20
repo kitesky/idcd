@@ -586,7 +586,7 @@ func (s *Server) setupRouter() {
 			// fetch generated report metadata). All require authn.
 			verdictOrderH := handler.NewVerdictOrderHandler(s.pgxPool, billingProvider).
 				WithPricing(pricingSvc).
-				WithPublicAPIURL(s.config.Server.PublicAPIURL)
+				WithURLs(s.config.Server.AppBaseURL, s.config.Server.PublicAPIURL)
 			verdictReportH := handler.NewVerdictReportHandler(s.pgxPool)
 			r.Route("/verdict", func(r chi.Router) {
 				r.Use(authnMW)

@@ -8,6 +8,7 @@ import (
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/stream"
 )
 
@@ -229,6 +230,101 @@ func TestAddMonitorEvent_requiredFieldsNotOverridden(t *testing.T) {
 	}
 	if got := msgs[0].Values["event"]; got != "up" {
 		t.Errorf("event: expected %q, got %v", "up", got)
+	}
+}
+
+func TestAddProbeResultTyped(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	r := contracts.ProbeResult{
+		TaskID:     "pt_typed",
+		NodeID:     "nd_typed",
+		DurationMs: 99,
+		Success:    true,
+		MonitorID:  "m_typed",
+	}
+	id, err := c.AddProbeResultTyped(ctx, r)
+	if err != nil {
+		t.Fatalf("AddProbeResultTyped failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty stream ID")
+	}
+	msgs, err := rdb.XRange(ctx, stream.Probe, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got, err := contracts.ParseProbeResult(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseProbeResult on round-tripped message failed: %v", err)
+	}
+	if got.TaskID != r.TaskID || got.NodeID != r.NodeID || got.DurationMs != r.DurationMs ||
+		got.Success != r.Success || got.MonitorID != r.MonitorID {
+		t.Errorf("round-trip drift:\n  want %+v\n   got %+v", r, got)
+	}
+	if got.SchemaVer != contracts.ProbeResultSchemaV1 {
+		t.Errorf("expected schema_ver auto-inject = %d, got %d", contracts.ProbeResultSchemaV1, got.SchemaVer)
+	}
+}
+
+func TestAddProbeResultTyped_RespectsExplicitSchemaVer(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	r := contracts.ProbeResult{
+		SchemaVer:  contracts.ProbeResultSchemaV1, // explicit
+		TaskID:     "pt_a",
+		NodeID:     "nd_a",
+		DurationMs: 1,
+	}
+	if _, err := c.AddProbeResultTyped(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(ctx, stream.Probe, "-", "+").Result()
+	if got := msgs[0].Values["schema_ver"]; got != "1" {
+		t.Errorf("schema_ver: got %v, want '1'", got)
+	}
+}
+
+func TestAddMonitorEventTyped(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	e := contracts.MonitorEvent{
+		MonitorID: "m_typed",
+		Event:     "recovery",
+		Severity:  "info",
+		Reason:    "ping resumed",
+		ExtraJSON: []byte(`{"down_for_sec":42}`),
+	}
+	id, err := c.AddMonitorEventTyped(ctx, e)
+	if err != nil {
+		t.Fatalf("AddMonitorEventTyped failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty stream ID")
+	}
+	msgs, err := rdb.XRange(ctx, stream.Monitor, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got, err := contracts.ParseMonitorEvent(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseMonitorEvent failed: %v", err)
+	}
+	if got.MonitorID != e.MonitorID || got.Event != e.Event ||
+		got.Severity != e.Severity || got.Reason != e.Reason {
+		t.Errorf("round-trip drift:\n  want %+v\n   got %+v", e, got)
+	}
+	if string(got.ExtraJSON) != string(e.ExtraJSON) {
+		t.Errorf("ExtraJSON drift: got %s, want %s", got.ExtraJSON, e.ExtraJSON)
+	}
+	if got.TsMs == 0 {
+		t.Error("expected TsMs to be auto-set by ToStreamValues")
 	}
 }
 

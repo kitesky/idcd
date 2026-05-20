@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kite365/idcd/lib/shared/contracts"
 )
 
 // Default MAXLEN for all streams (approximate trim, efficient).
@@ -105,6 +107,11 @@ func (c *Client) Add(ctx context.Context, stream string, values map[string]any) 
 }
 
 // AddProbeResult writes a probe result to the probe.results stream.
+//
+// Deprecated: 使用 AddProbeResultTyped(ctx, contracts.ProbeResult{...}) 替代。
+// 跨 stream 边界禁止用 map[string]any 自由发挥字段名 (P0-4 决策, 见
+// docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md). 旧实现保留以兼容存量调用方,
+// 渐进迁移完成后将移除。
 func (c *Client) AddProbeResult(ctx context.Context, taskID, nodeID string, payload map[string]any) (string, error) {
 	vals := make(map[string]any, len(payload)+2)
 	maps.Copy(vals, payload)
@@ -114,6 +121,10 @@ func (c *Client) AddProbeResult(ctx context.Context, taskID, nodeID string, payl
 }
 
 // AddMonitorEvent writes a monitor state-change event.
+//
+// Deprecated: 使用 AddMonitorEventTyped(ctx, contracts.MonitorEvent{...}) 替代。
+// 注意 *Typed 版本将 extra 折叠成单 JSON 字段 (而非平铺), 是有意的契约破坏,
+// 见 contracts/doc.go. 旧实现保留以兼容存量调用方。
 func (c *Client) AddMonitorEvent(ctx context.Context, monitorID, event string, extra map[string]any) (string, error) {
 	vals := make(map[string]any, len(extra)+3)
 	maps.Copy(vals, extra)
@@ -121,6 +132,29 @@ func (c *Client) AddMonitorEvent(ctx context.Context, monitorID, event string, e
 	vals["event"] = event
 	vals["ts"] = time.Now().UnixMilli()
 	return c.Add(ctx, Monitor, vals)
+}
+
+// AddProbeResultTyped writes a probe result with a strongly-typed payload.
+//
+// 新代码必须使用此 API. 拼错字段名会编译期失败, 不会运行时静默丢数据 (P0-4).
+// SchemaVer 自动注入为 contracts.ProbeResultSchemaV1, 无需调用方设置。
+func (c *Client) AddProbeResultTyped(ctx context.Context, r contracts.ProbeResult) (string, error) {
+	if r.SchemaVer == 0 {
+		r.SchemaVer = contracts.ProbeResultSchemaV1
+	}
+	return c.Add(ctx, Probe, r.ToStreamValues())
+}
+
+// AddMonitorEventTyped writes a monitor state-change event with a typed payload.
+//
+// 与旧 AddMonitorEvent 的兼容性差异: extra 字段被合并成单个 JSON-encoded
+// stream key "extra", 消费端必须用 contracts.ParseMonitorEvent 反序列化。
+// SchemaVer / TsMs 自动注入。
+func (c *Client) AddMonitorEventTyped(ctx context.Context, e contracts.MonitorEvent) (string, error) {
+	if e.SchemaVer == 0 {
+		e.SchemaVer = contracts.MonitorEventSchemaV1
+	}
+	return c.Add(ctx, Monitor, e.ToStreamValues())
 }
 
 // AddAlertEvent writes an alert event.

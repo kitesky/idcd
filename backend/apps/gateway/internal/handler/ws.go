@@ -597,6 +597,9 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		if result.MonitorID != "" {
 			streamPayload["monitor_id"] = result.MonitorID
 		}
+		// LINT-IGNORE: stream-payload-legacy
+		// TODO(P0-4): 迁移到 streamCli.AddProbeResultTyped(ctx, contracts.ProbeResult{...})
+		// 见 backend/lib/shared/contracts/doc.go 与 docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md
 		streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, streamPayload)
 		if err != nil {
 			h.logger.Error("failed to write result to stream", "task_id", result.TaskID, "err", err)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/hibiken/asynq"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -307,7 +308,13 @@ func (s *Server) setupRouter() {
 			WithMFA(s.pgxPool, s.redis).
 			WithFieldCipher(fieldCipher).
 			WithEnqueuer(enqueuer).
-			WithAppBaseURL(s.config.Server.AppBaseURL)
+			WithAppBaseURL(s.config.Server.AppBaseURL).
+			// P1-10: wrap Register's CreateUser + OTP + session writes in a
+			// transaction so a half-registered user can never persist. See
+			// docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md.
+			WithTxPool(s.pgxPool, func(tx pgx.Tx) handler.AuthQuerier {
+				return idcdmain.New(tx)
+			})
 		acctH := handler.NewAccountHandler(q).WithSessions(sessSvc)
 		apiKeyH := handler.NewAPIKeyHandler(q)
 		patH := handler.NewPATHandler(s.pgxPool)

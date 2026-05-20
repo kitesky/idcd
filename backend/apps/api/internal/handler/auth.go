@@ -25,6 +25,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/auth/password"
 	"github.com/kite365/idcd/lib/auth/totp"
+	dbtx "github.com/kite365/idcd/lib/db"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/db/repository"
 	"github.com/kite365/idcd/lib/shared/aesenc"
@@ -90,6 +91,14 @@ type MFAPool interface {
 	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
 }
 
+// AuthQuerierFactory returns an AuthQuerier bound to the given pgx.Tx.
+// Production wires this to func(tx pgx.Tx) AuthQuerier { return idcdmain.New(tx) }
+// so each transactional handler sees a tx-scoped sqlc Queries. Tests can
+// inject a mock factory that returns a stub Querier. When nil, the handler
+// falls back to executing writes against h.q without a transaction (legacy
+// path for tests that have not opted in to tx semantics).
+type AuthQuerierFactory func(tx pgx.Tx) AuthQuerier
+
 // AuthHandler implements all auth and account endpoints.
 type AuthHandler struct {
 	q            AuthQuerier
@@ -102,6 +111,14 @@ type AuthHandler struct {
 	fieldCipher  *aesenc.Cipher
 	enqueuer     AuthEnqueuer // optional: nil disables async email dispatch
 	appBaseURL   string       // e.g. "https://app.idcd.com", used to build reset links
+
+	// Tx wiring for Register (P1-10, ARCHITECTURE-REVIEW-2026-05-21).
+	// When both fields are set, Register wraps user creation + OTP + session
+	// in db.WithTxBeginner so a partial write can never persist. Both nil =
+	// legacy non-transactional path (kept so existing unit tests that don't
+	// wire a pool keep passing). Production always wires both.
+	txPool    dbtx.TxBeginner
+	qFactory  AuthQuerierFactory
 }
 
 // NewAuthHandler creates an AuthHandler wired to the given services.
@@ -143,6 +160,17 @@ func (h *AuthHandler) WithAppBaseURL(baseURL string) *AuthHandler {
 	return h
 }
 
+// WithTxPool wires the transaction pool + sqlc Queries factory used by
+// Register so the user row, OTP, and session all commit atomically (or all
+// roll back together). Production passes (pgxpool.Pool, func(tx) AuthQuerier
+// { return idcdmain.New(tx) }). When unwired, Register falls back to the
+// legacy non-transactional code path. See ARCHITECTURE-REVIEW-2026-05-21 P1-10.
+func (h *AuthHandler) WithTxPool(pool dbtx.TxBeginner, factory AuthQuerierFactory) *AuthHandler {
+	h.txPool = pool
+	h.qFactory = factory
+	return h
+}
+
 // --- Register ---
 
 type registerRequest struct {
@@ -171,6 +199,17 @@ func writeAuthSuccess(w http.ResponseWriter, r *http.Request, status int, token,
 }
 
 // Register handles POST /v1/auth/register.
+//
+// Tx contract (P1-10, ARCHITECTURE-REVIEW-2026-05-21):
+//
+//	Three DB writes — CreateUser, CreateUserOTP, sessions.Store — used to run
+//	without a transaction, so a mid-flow failure left a half-registered row
+//	(email taken but no OTP / no session ⇒ user permanently locked out). All
+//	three now commit together via db.WithTxBeginner. The verification email
+//	is enqueued AFTER the tx commits (outbox-lite): a tx rollback must never
+//	produce a "your account was created" email when the row was rolled back.
+//	When the tx pool is unwired (some unit tests), we fall back to the legacy
+//	non-transactional path so existing fixtures keep passing.
 func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req registerRequest
@@ -206,20 +245,67 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	// etc.) sees a canonical value. Negotiate always returns a supported code.
 	locale := negotiateRegisterLocale(r, "")
 
-	user, err := h.q.CreateUser(ctx, idcdmain.CreateUserParams{
+	createParams := idcdmain.CreateUserParams{
 		ID:           userID,
 		Email:        req.Email,
 		PasswordHash: &hash,
 		DisplayName:  displayNamePtr,
 		Locale:       locale,
 		Timezone:     "Asia/Shanghai",
-	})
-	if err != nil {
-		if errors.Is(err, repository.ErrDuplicate) {
+	}
+
+	// Outputs captured from inside the tx for use after commit.
+	var (
+		user        idcdmain.User
+		issuedToken string
+		otpID       string
+		otpCode     string
+	)
+	emailWanted := h.enqueuer != nil
+
+	doWrites := func(q AuthQuerier) error {
+		u, err := q.CreateUser(ctx, createParams)
+		if err != nil {
+			return err
+		}
+		user = u
+
+		if emailWanted {
+			id, code, err := h.issueOTPWithQ(ctx, q, u.ID, otpTypeVerify, 30*time.Minute)
+			if err != nil {
+				return fmt.Errorf("issue verify OTP: %w", err)
+			}
+			otpID, otpCode = id, code
+		}
+
+		token, _, err := h.issueToken(ctx, u.ID, u.Locale)
+		if err != nil {
+			return fmt.Errorf("issue token: %w", err)
+		}
+		issuedToken = token
+		return nil
+	}
+
+	var txErr error
+	if h.txPool != nil && h.qFactory != nil {
+		txErr = dbtx.WithTxBeginner(ctx, h.txPool, func(tx pgx.Tx) error {
+			return doWrites(h.qFactory(tx))
+		})
+	} else {
+		// Legacy non-transactional path — kept so unit tests that don't wire
+		// a pool keep passing. Production always wires WithTxPool, so this
+		// branch is effectively dead in prod (see server.go).
+		txErr = doWrites(h.q)
+	}
+
+	if txErr != nil {
+		// errors.Is walks the wrap chain, so issueOTP / issueToken wrapping
+		// preserves repository.ErrDuplicate from CreateUser.
+		if errors.Is(txErr, repository.ErrDuplicate) {
 			response.ErrorCode(ctx, w, r, errcode.AccountEmailTaken, map[string]any{"email": req.Email})
 			return
 		}
-		response.Error(w, r, apperr.Internal("failed to create user", err))
+		response.Error(w, r, apperr.Internal("failed to register user", txErr))
 		return
 	}
 
@@ -227,20 +313,22 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		h.recordReferral(ctx, req.ReferralCode, user.ID)
 	}
 
-	// Send verification email asynchronously (fail-open: does not block registration).
-	if h.enqueuer != nil {
-		if otpID, code, err := h.issueOTP(ctx, user.ID, otpTypeVerify, 30*time.Minute); err == nil {
-			h.enqueueVerifyEmail(ctx, req.Email, otpID, code, user.Locale)
-		}
+	// Outbox-lite: enqueue verification email AFTER the tx has committed so a
+	// rolled-back registration never produces a confirmation email. A true
+	// outbox would write the email intent inside the tx and let a worker
+	// drain it; that's tracked as a follow-up. For now, an enqueue failure
+	// here is logged-and-swallowed: the account exists, the user can request
+	// a resend via /auth/resend-verify, so failing the request would be
+	// strictly worse for the user.
+	//
+	// TODO(outbox): persist the email intent inside the tx (e.g.
+	// outbox_emails row) and let a worker publish + delete it; see
+	// docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md P1-10.
+	if emailWanted && otpID != "" {
+		h.enqueueVerifyEmail(ctx, req.Email, otpID, otpCode, user.Locale)
 	}
 
-	token, _, err := h.issueToken(ctx, user.ID, user.Locale)
-	if err != nil {
-		response.Error(w, r, apperr.Internal("failed to issue token", err))
-		return
-	}
-
-	writeAuthSuccess(w, r, http.StatusCreated, token, user.ID)
+	writeAuthSuccess(w, r, http.StatusCreated, issuedToken, user.ID)
 }
 
 func (h *AuthHandler) recordReferral(ctx context.Context, code, referredID string) {
@@ -661,7 +749,18 @@ func negotiateRegisterLocale(r *http.Request, explicit string) string {
 	return reg.Negotiate(r.Header.Get("Accept-Language"))
 }
 
+// issueOTP creates an OTP using the handler's default (non-tx) querier.
+// Callers participating in a transaction should use issueOTPWithQ and pass a
+// tx-bound AuthQuerier so the OTP row commits / rolls back with the rest of
+// the work.
 func (h *AuthHandler) issueOTP(ctx context.Context, userID, otpType string, ttl time.Duration) (otpID, code string, err error) {
+	return h.issueOTPWithQ(ctx, h.q, userID, otpType, ttl)
+}
+
+// issueOTPWithQ is the tx-aware variant of issueOTP. The caller supplies the
+// AuthQuerier — pass h.q for non-tx flows, or h.qFactory(tx) inside a
+// db.WithTxBeginner callback so the user_otp row participates in the tx.
+func (h *AuthHandler) issueOTPWithQ(ctx context.Context, q AuthQuerier, userID, otpType string, ttl time.Duration) (otpID, code string, err error) {
 	code, err = generateOTP()
 	if err != nil {
 		return "", "", err
@@ -672,7 +771,7 @@ func (h *AuthHandler) issueOTP(ctx context.Context, userID, otpType string, ttl 
 	expiresAt := pgtype.Timestamptz{}
 	_ = expiresAt.Scan(time.Now().Add(ttl))
 
-	if _, err := h.q.CreateUserOTP(ctx, idcdmain.CreateUserOTPParams{
+	if _, err := q.CreateUserOTP(ctx, idcdmain.CreateUserOTPParams{
 		ID:        otpID,
 		UserID:    userID,
 		Type:      otpType,

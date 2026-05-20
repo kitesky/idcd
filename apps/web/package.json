@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS='--max-old-space-size=4096 --max-semi-space-size=128' next dev --turbopack",
     "dev:fresh": "rm -rf .next .turbo && pnpm dev",
+    "dev:trace-oom": "NEXT_TELEMETRY_DISABLED=1 IDCD_DEV_HEAP_DUMP=1 next dev --turbopack",
     "build": "next build",
     "build:worker": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare preview",

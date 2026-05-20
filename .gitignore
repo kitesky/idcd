@@ -83,6 +83,12 @@ apps/web/test-results/
 apps/web/playwright-report/
 apps/web/tests/e2e/.auth/
 
+# Heap snapshots / profiles (debug-only, can be hundreds of MB)
+*.heapsnapshot
+*.heapprofile
+.heap-profile/
+apps/web/.heap-profile/
+
 .devfleet-worktrees/
 .gstack/
 .claude/worktrees/

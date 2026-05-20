@@ -52,11 +52,12 @@ func (s *ICMPPingSender) SendPing(target string, timeout time.Duration, count in
 }
 
 // pingIPv4 sends ICMP Echo Requests using an IPv4 ICMP socket.
-// Uses an unprivileged datagram socket when the kernel allows it (Darwin
-// always; Linux when ping_group_range covers the agent's gid), and falls
-// back to a raw socket for hardened containers / older kernels.
+// listenICMP4 picks raw when available (production: setcap on the binary)
+// and dgram otherwise (dev / hardened containers). isRaw tells us which
+// path opened so we can match echo.id correctly per mode — see the inline
+// comment on the EchoReply branch for why dgram intentionally skips it.
 func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
-	conn, writeAddr, err := listenICMP4()
+	conn, writeAddr, isRaw, err := listenICMP4()
 	if err != nil {
 		return PingStats{PacketsSent: count}, fmt.Errorf("open icmp socket: %w", err)
 	}
@@ -103,22 +104,36 @@ func pingIPv4(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 		if err != nil {
 			continue
 		}
-		if rm.Type == ipv4.ICMPTypeEchoReply {
-			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == probeID {
-				rtt := time.Since(start)
-				rtts = append(rtts, rtt)
-				received++
-			}
+		if rm.Type != ipv4.ICMPTypeEchoReply {
+			continue
 		}
+		echo, ok := rm.Body.(*icmp.Echo)
+		if !ok {
+			continue
+		}
+		// Raw socket: many processes can share raw reads, so echo.id is what
+		// disambiguates our reply from someone else's.
+		// Dgram socket: Linux's kernel rewrites echo.id on send to
+		// sk->inet_sport and filters incoming replies on the same value, so
+		// every packet landing on this socket IS ours by construction. But
+		// userspace can only see the kernel-assigned value, never our
+		// probeID, so an `echo.ID == probeID` check is guaranteed to fail.
+		// Trusting kernel filtering here is what fixes the "packets_received=0"
+		// regression — see M8 in docs/MCP-TEST-REPORT-2026-05-20.md.
+		if isRaw && echo.ID != probeID {
+			continue
+		}
+		rtts = append(rtts, time.Since(start))
+		received++
 	}
 
 	return buildPingStats(sent, received, rtts), nil
 }
 
-// pingIPv6 sends ICMPv6 Echo Requests. See pingIPv4 for the datagram/raw
-// fallback rationale.
+// pingIPv6 sends ICMPv6 Echo Requests. See pingIPv4 for the raw/dgram echo.id
+// rationale — same kernel behaviour applies to IPv6.
 func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
-	conn, writeAddr, err := listenICMP6()
+	conn, writeAddr, isRaw, err := listenICMP6()
 	if err != nil {
 		return PingStats{PacketsSent: count}, fmt.Errorf("open icmp6 socket: %w", err)
 	}
@@ -165,13 +180,18 @@ func pingIPv6(ip net.IP, timeout time.Duration, count int) (PingStats, error) {
 		if err != nil {
 			continue
 		}
-		if rm.Type == ipv6.ICMPTypeEchoReply {
-			if echo, ok := rm.Body.(*icmp.Echo); ok && echo.ID == probeID {
-				rtt := time.Since(start)
-				rtts = append(rtts, rtt)
-				received++
-			}
+		if rm.Type != ipv6.ICMPTypeEchoReply {
+			continue
 		}
+		echo, ok := rm.Body.(*icmp.Echo)
+		if !ok {
+			continue
+		}
+		if isRaw && echo.ID != probeID {
+			continue
+		}
+		rtts = append(rtts, time.Since(start))
+		received++
 	}
 
 	return buildPingStats(sent, received, rtts), nil

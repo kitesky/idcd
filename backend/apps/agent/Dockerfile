@@ -27,10 +27,21 @@ RUN GOWORK=off go build -o /bin/agent ./cmd/agent/
 FROM alpine:3.20
 
 # wget for HEALTHCHECK on agent's loopback /health endpoint (port 9101).
-RUN apk add --no-cache ca-certificates tzdata wget \
+# libcap supplies setcap; needed to grant CAP_NET_RAW on /bin/agent so the
+# agent can open raw ICMP sockets without running as root. Linux's
+# unprivileged SOCK_DGRAM+IPPROTO_ICMP path is not enough — the kernel
+# rewrites echo.id on send (breaking reply matching) and does not deliver
+# ICMP TimeExceeded to dgram sockets (breaking traceroute outright).
+# See M8/M9 in docs/MCP-TEST-REPORT-2026-05-20.md.
+RUN apk add --no-cache ca-certificates tzdata wget libcap \
  && adduser -D -u 10001 idcd
 
 COPY --from=builder /bin/agent /bin/agent
+
+# File capabilities are dropped by COPY --from, so setcap MUST run after the
+# COPY. cap_net_raw=eip = effective+inheritable+permitted, taking effect for
+# any process that exec's this binary — including the non-root uid 10001.
+RUN setcap cap_net_raw=eip /bin/agent
 
 USER 10001:10001
 

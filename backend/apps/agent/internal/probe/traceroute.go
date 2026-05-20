@@ -16,9 +16,12 @@ const (
 )
 
 // Execute performs a traceroute probe.
-// Uses ICMP sockets (datagram preferred, raw fallback — see listenICMP4) to
-// run a real TTL-walk. Drops back to a single TCP reachability hop only when
-// every ICMP path is denied.
+// Uses ICMP sockets (raw preferred, dgram fallback — see listenICMP4) to run a
+// real TTL-walk. Drops back to a single TCP reachability hop when no raw
+// socket is available, because Linux unprivileged dgram ICMP cannot receive
+// ICMP TimeExceeded (the kernel only delivers ICMP_ECHOREPLY through
+// ping_rcv); walking TTL=1..30 in dgram mode would burn perHopTimeout *
+// maxHops (~90s) and return all-timeout hops anyway.
 func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options map[string]any) *Result {
 	start := time.Now()
 
@@ -56,14 +59,22 @@ func (p *TracerouteProbe) Execute(target string, timeout time.Duration, options 
 }
 
 // runTraceroute executes a real ICMP-based traceroute by incrementing TTL.
+// Returns an error (so Execute degrades to tcpReachabilityHop) when raw ICMP
+// is unavailable — dgram sockets cannot observe the TimeExceeded packets that
+// every intermediate hop replies with, so the TTL walk would yield 30 timeout
+// rows over 90+ seconds. Better to fail fast and let the caller surface a
+// single-hop reachability result inside the original probe deadline.
 func runTraceroute(dst net.IP, maxHops int, timeout time.Duration) ([]TracerouteHop, error) {
-	recv, _, err := listenICMP4()
+	recv, _, isRaw, err := listenICMP4()
 	if err != nil {
 		return nil, fmt.Errorf("open recv socket: %w", err)
 	}
 	defer recv.Close()
+	if !isRaw {
+		return nil, fmt.Errorf("traceroute requires raw ICMP socket (CAP_NET_RAW); dgram ICMP cannot receive TimeExceeded")
+	}
 
-	send, writeAddr, err := listenICMP4()
+	send, writeAddr, _, err := listenICMP4()
 	if err != nil {
 		return nil, fmt.Errorf("open send socket: %w", err)
 	}

@@ -4,7 +4,7 @@
 
 ## 一句话结论
 
-**协议层 + 工具层全绿;agent 拨测层留 2 个独立问题**。MCP server 镜像 build + Bearer 鉴权 + JSON-RPC + SSE + nginx mcp.idcd.com 反代全通;7 个工具(dns/ip/whois/ssl/http + 多步 diagnose 中的 4 项)返回真实数据;ping/traceroute 链路通到 agent 但 agent ICMP 发包失败(M8/M9,独立 task)。
+**协议层 + 工具层 + agent ICMP 全绿**。MCP server 镜像 build + Bearer 鉴权 + JSON-RPC + SSE + nginx mcp.idcd.com 反代全通;8 个工具(dns/ip/whois/ssl/http/ping/traceroute/diagnose)在 SG staging 全部返回真实数据。M8/M9 后续修完 — 详见下方修复对照表 + 2026-05-21 二轮 E2E。
 
 ---
 
@@ -19,10 +19,12 @@
 | M5 | P2 | tool 渲染层缺空字段守护,半空字符串 | ssl/ip/diagnose 渲染加 `if != ""` | ✅ |
 | M6 | P2 | deploy.sh 没把 mcp 纳入烟测 | step 5 等 idcd-mcp healthy(允许 missing) + step 6 加 `/healthz` 探活 | ✅ |
 | M7 | P0 | probe 工具按 sync 解析但 api 是 async | apiclient 加 `PollProbeTask`(1s/30s);ping/http/traceroute/diagnose 切 polling;参数名 + params 子对象修正 | ✅ |
-| M8 | P2 | agent host network 下 ICMP socket OK 但 packets_received=0 | 留作独立任务 | 🔍 |
-| M9 | P2 | agent traceroute 30s 未完成 | 同 M8 | 🔍 |
+| M8 | P2 | agent host network 下 ICMP socket OK 但 packets_received=0 | 根因 Linux dgram ICMP 重写 echo.id；`listenICMP4` 改 raw 优先 + `isRaw` 标志；dgram 路径信任 kernel id 过滤、跳过 ID 检查；`Dockerfile` `setcap cap_net_raw=eip`。SG ping 5/5 验证通过。 | ✅ |
+| M9 | P2 | agent traceroute 30s 未完成 | 同根因延伸：dgram ICMP 不投递 TimeExceeded；M8 setcap 让 raw socket 路径生效，traceroute 在 dgram fallback 时短路退化为 TCP 单跳。SG 9 跳 8.25s 到达 1.1.1.1。 | ✅ |
 
-## E2E 复测结果(2026-05-21 修后)
+## E2E 复测结果
+
+### 第一轮（2026-05-21 上半天，修完 M1-M7）
 
 ```
 [100] dns        ✓ DNS github.com (A): A: 20.205.243.166 (TTL: 1)
@@ -36,7 +38,21 @@
 [110] ping       △ 节点 nd_WqYjSR8Lpux2 / 发送 5 收到 0 / 100% loss (M8 agent bug)
 ```
 
-**结论:7/8 工具协议+渲染层 100% 干净,1 个工具(traceroute)被 M9 卡;ping 渲染对了但底层 agent 拿不到 ICMP reply(M8)。**
+### 第二轮（2026-05-21 晚，修完 M8/M9 + setcap 镜像重建）
+
+```
+agent startup log: "icmp socket mode: raw (CAP_NET_RAW effective; traceroute + ping full functionality)"
+
+[110] ping 1.1.1.1, count=5    ✓ packets_sent=5 / packets_received=5 / loss=0% / 1ms avg (修前 received=0)
+[121] traceroute 1.1.1.1       ✓ 9 跳到达 one.one.one.one. / 8.25s 完成（修前 30s+ timeout）
+                                  hop 4: 10.196.7.65 1.5ms
+                                  hop 5-6: 162.158.160.24 (Cloudflare)
+                                  hop 7-8: 172.69.117.x (Cloudflare)
+                                  hop 9: 1.1.1.1 1.08ms
+[120] http https://example.com ✓ 200 TLS1.3 35ms (回归无破坏)
+```
+
+**结论：8/8 工具 + 协议层 + agent ICMP 全绿。**
 
 ---
 

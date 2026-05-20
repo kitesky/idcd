@@ -584,17 +584,11 @@ Lane E: 合规底盘    backend/apps/api/internal/middleware/ + static pages
 - [x] **M6** deploy.sh 烟测纳入 mcp — step 5 等 idcd-mcp healthy（允许 missing 兼容老 compose），step 6 加 `/healthz` 探活。完成 2026-05-21
 - [x] **M7** probe 工具改成 task_id 轮询模式 — apiclient 加 `PollProbeTask`（默认 1s/30s），ping/http/traceroute/diagnose 全切到 polling；http 工具的 `url` → api 的 `target` 参数；count/max_hops 塞进 `params` 子对象（api ProbeRequest contract）。E2E 验证 http=17ms 完美。完成 2026-05-21
 
-### 未关 M 系列（agent 层独立问题，与 mcp 无关）
+### M 系列收尾（agent ICMP/raw socket）
 
-- [ ] **M8** agent 在 host network + uid 10001 下 ICMP 发送失败（P2）
-  - staging agent 容器 unprivileged ICMP socket 创建 OK，但 packets_received=0
-  - alpine ping CLI 在容器内能 ping 通 1.1.1.1，但 Go x/net/icmp + udp4 收不到 reply
-  - E2E 链路其他都通：mcp → api → stream → agent ack → result 写回
-  - 修法待查：可能是 docker host network ns 下 IP 选错、ICMP id/seq 校验、或 echo reply 路由
+- [x] **M8** agent 在 host network + uid 10001 下 ICMP 发送失败 — 根因：Linux unprivileged SOCK_DGRAM ICMP socket 在发送时把 `echo.id` 覆写为 `sk->inet_sport`，userspace 永远读不到自己写入的 `probeID`，所以 `echo.ID == probeID` 永远 false → received=0。修法：`icmp_listen.go` 改 raw 优先 + 返回 `isRaw`；`icmp_ping.go` 在 dgram 模式下信任 kernel 已按 id 过滤、跳过 ID 检查；`Dockerfile` 加 `apk add libcap` + `setcap cap_net_raw=eip /bin/agent`，让非 root uid 10001 拿到 effective CAP_NET_RAW 走 raw 路径。SG E2E 验证 ping 5/5 received（之前 0/5）。完成 2026-05-21
 
-- [ ] **M9** agent traceroute 在 staging 30s 未完成（P2）
-  - mcp traceroute polling 返回 `probe task timed out`，task 一直 queued
-  - 同 M8 类似，agent 拨测能力问题；ping/http 能跑说明 stream/dispatch 链路 OK
+- [x] **M9** agent traceroute 在 staging 30s 未完成 — 同根因延伸：Linux 内核 `ping_rcv()` 只路由 `ICMP_ECHOREPLY` 进 dgram socket，**TimeExceeded 不投递**，所以 dgram 模式下中间跳全 timeout，30 跳 × 3s = 90s 远超 polling 30s 窗口。M8 的 setcap 修复同时解决：raw socket 能正常收 TimeExceeded。`traceroute.go` 在 dgram fallback 时短路退化为 `tcpReachabilityHop`，避免空转 90s。SG E2E 验证 9 跳到达 1.1.1.1（Cloudflare ASN 路径完整），8.25s 完成。完成 2026-05-21
 
 ---
 

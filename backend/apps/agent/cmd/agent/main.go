@@ -78,6 +78,16 @@ func main() {
 	log := logger.New("production")
 	log.Info("starting idcd agent", "node_id", cfg.NodeID, "version", version())
 
+	// Surface raw ICMP availability up-front so a missing CAP_NET_RAW shows
+	// in startup logs instead of being silently discovered when the first
+	// traceroute task arrives and times out. See M8/M9 in
+	// docs/MCP-TEST-REPORT-2026-05-20.md.
+	if probe.SupportsRawICMP() {
+		log.Info("icmp socket mode: raw (CAP_NET_RAW effective; traceroute + ping full functionality)")
+	} else {
+		log.Warn("icmp socket mode: dgram fallback (no CAP_NET_RAW) — traceroute will degrade to single-hop TCP reachability; ping still works")
+	}
+
 	telCfg := telemetry.Config{
 		ServiceName:    "idcd-agent",
 		ServiceVersion: version(),

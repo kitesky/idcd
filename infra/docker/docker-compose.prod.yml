@@ -45,6 +45,7 @@ services:
     environment:
       - TZ=Asia/Shanghai
       - IDCD_CONFIG=/config/prod.env.yaml
+      - AGGREGATOR_CONFIG=/config/prod.env.yaml
     depends_on:
       api:
         condition: service_healthy
@@ -113,7 +114,7 @@ services:
       - /opt/idcd/config/cert-svc.env
     command: ["/bin/cert-svc"]
     healthcheck:
-      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/healthz"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -134,6 +135,15 @@ services:
     depends_on:
       cert-svc:
         condition: service_healthy
+    # cert-worker 不监听 HTTP，必须覆盖镜像级 HEALTHCHECK（wget /healthz），
+    # 否则进程活着但 healthcheck 永远 fail → container 一直 unhealthy。
+    # 用 pidof 兜底：进程在 = liveness ok。
+    healthcheck:
+      test: ["CMD-SHELL", "pidof cert-worker >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
@@ -150,6 +160,14 @@ services:
     depends_on:
       cert-svc:
         condition: service_healthy
+    # cert-renewer 是 cron 调度,同 cert-worker 一样不监听 HTTP,
+    # 必须覆盖镜像级 HEALTHCHECK。
+    healthcheck:
+      test: ["CMD-SHELL", "pidof cert-renewer >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     logging:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
@@ -167,6 +185,14 @@ services:
     depends_on:
       api:
         condition: service_healthy
+    # nginx:alpine 镜像无 HEALTHCHECK; 用 pid 文件 + 进程双重判断。
+    # 不走 wget hit 本机 default_server,因为没 Host header 会被 444 干掉。
+    healthcheck:
+      test: ["CMD-SHELL", "[ -f /var/run/nginx.pid ] && pidof nginx >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
     logging:
       driver: "json-file"
       options: {max-size: "50m", max-file: "5"}

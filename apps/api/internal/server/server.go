@@ -6,6 +6,8 @@ import (
 	"crypto/tls"
 	"log/slog"
 	"net/http"
+	"net/http/httputil"
+	"net/url"
 	"strconv"
 	"time"
 
@@ -34,6 +36,33 @@ import (
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
+
+// newCertSvcProxy returns an http.Handler that reverse-proxies requests
+// to the cert-svc upstream identified by rawURL. The proxy preserves the
+// Authorization header (cert-svc validates the platform JWT itself), and
+// surfaces upstream connectivity failures as 502 with a stable message
+// rather than Go's default "http: proxy error" text. Mirror of
+// apps/gateway/internal/server.newCertSvcProxy — kept duplicated so the
+// two services stay decoupled.
+func newCertSvcProxy(rawURL string, logger *slog.Logger) (http.Handler, error) {
+	target, err := url.Parse(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	if target.Scheme == "" || target.Host == "" {
+		return nil, &url.Error{Op: "parse", URL: rawURL, Err: http.ErrAbortHandler}
+	}
+	proxy := httputil.NewSingleHostReverseProxy(target)
+	proxy.ErrorHandler = func(w http.ResponseWriter, r *http.Request, err error) {
+		if logger != nil {
+			logger.Error("cert-svc upstream unreachable",
+				"method", r.Method, "path", r.URL.Path,
+				"upstream", target.String(), "error", err)
+		}
+		http.Error(w, "bad gateway: cert-svc unreachable", http.StatusBadGateway)
+	}
+	return proxy, nil
+}
 
 // Server represents the HTTP server with its dependencies.
 type Server struct {
@@ -494,9 +523,15 @@ func (s *Server) setupRouter() {
 				r.With(authnMW).Get("/{id}/agent-obs/checks", agentObsH.ListChecks)
 			})
 
+			// Unified Pricing service — single source of truth for plan / verdict /
+			// future paid items. Shared across billingH / teamBillingH / verdictOrderH
+			// so promo state / cache hits coalesce. 同时注入 adminPricingH 用于
+			// admin 改价后立即 invalidate 本进程 cache(否则最长 cacheTTL=5min 内拿到 stale 价)。
+			pricingSvc := billing.NewDBPricing(s.pgxPool)
+
 			// Admin billing endpoints — require admin token via Authorization: Bearer header.
 			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool).WithEnqueuer(asynqBillingEnq)
-			adminPricingH := handler.NewAdminPricingHandler(s.pgxPool)
+			adminPricingH := handler.NewAdminPricingHandler(s.pgxPool).WithInvalidator(pricingSvc)
 			billingAdminAuthH := s.newAdminHandler()
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(billingAdminAuthH.AdminAuthMiddleware)
@@ -527,11 +562,6 @@ func (s *Server) setupRouter() {
 			} else {
 				billingProvider = billing.NewStubProvider()
 			}
-			// Unified Pricing service — single source of truth for plan / verdict /
-			// future paid items. Shared across billingH / teamBillingH / verdictOrderH
-			// so promo state / cache hits coalesce.
-			pricingSvc := billing.NewDBPricing(s.pgxPool)
-
 			billingH := handler.NewBillingHandler(s.pgxPool, billingProvider).
 				WithPricing(pricingSvc).
 				WithEnqueuer(asynqBillingEnq).
@@ -554,7 +584,9 @@ func (s *Server) setupRouter() {
 
 			// Verdict endpoints (create paid verdict order, fetch order status,
 			// fetch generated report metadata). All require authn.
-			verdictOrderH := handler.NewVerdictOrderHandler(s.pgxPool, billingProvider).WithPricing(pricingSvc)
+			verdictOrderH := handler.NewVerdictOrderHandler(s.pgxPool, billingProvider).
+				WithPricing(pricingSvc).
+				WithPublicAPIURL(s.config.Server.PublicAPIURL)
 			verdictReportH := handler.NewVerdictReportHandler(s.pgxPool)
 			r.Route("/verdict", func(r chi.Router) {
 				r.Use(authnMW)
@@ -563,27 +595,44 @@ func (s *Server) setupRouter() {
 				r.Get("/reports/{id}", verdictReportH.Get)
 			})
 
-			// Cert module endpoints (minimal stubs — list endpoints return empty,
-			// mutations return 501. Frontend at apps/web/src/app/app/cert/* renders
-			// against this contract; full ACME issuance pipeline lives elsewhere.)
-			certH := handler.NewCertHandler()
-			r.Route("/cert", func(r chi.Router) {
-				r.Use(authnMW)
-				r.Get("/orders", certH.ListOrders)
-				r.Post("/orders", certH.CreateOrder)
-				r.Get("/orders/{id}", certH.GetOrder)
-				r.Post("/orders/{id}/retry", certH.RetryOrder)
-				r.Post("/orders/{id}/manual-ready", certH.ManualReady)
-				r.Get("/certs", certH.ListCerts)
-				r.Get("/certs/{id}", certH.GetCert)
-				r.Post("/certs/{id}/download", certH.DownloadCert)
-				r.Post("/certs/{id}/revoke", certH.RevokeCert)
-				r.Get("/dns-credentials", certH.ListDnsCredentials)
-				r.Post("/dns-credentials", certH.CreateDnsCredential)
-				r.Delete("/dns-credentials/{id}", certH.DeleteDnsCredential)
-				r.Post("/dns-credentials/{id}/health-check", certH.HealthCheckDnsCredential)
-				r.Get("/quota", certH.Quota)
-			})
+			// Cert module endpoints. When CertSvcURL is configured we
+			// reverse-proxy the whole /v1/cert/* surface to cert-svc — the
+			// real ACME issuance pipeline lives there, the in-package
+			// CertHandler stubs only exist for environments without the
+			// service deployed (frontend at apps/web/src/app/app/cert/*
+			// renders against the contract either way). cert-svc enforces
+			// its own Bearer JWT auth, so the proxy intentionally skips
+			// authnMW — duplicating it here would break /healthz-style
+			// unauthenticated probes mounted by cert-svc directly.
+			if s.config.CertSvcURL != "" {
+				if proxy, err := newCertSvcProxy(s.config.CertSvcURL, s.logger); err == nil {
+					r.Handle("/cert/*", proxy)
+					r.Handle("/cert", proxy)
+					s.logger.Info("cert-svc reverse proxy enabled", "upstream", s.config.CertSvcURL)
+				} else {
+					s.logger.Error("cert-svc reverse proxy disabled — invalid CertSvcURL",
+						"url", s.config.CertSvcURL, "error", err)
+				}
+			} else {
+				certH := handler.NewCertHandler()
+				r.Route("/cert", func(r chi.Router) {
+					r.Use(authnMW)
+					r.Get("/orders", certH.ListOrders)
+					r.Post("/orders", certH.CreateOrder)
+					r.Get("/orders/{id}", certH.GetOrder)
+					r.Post("/orders/{id}/retry", certH.RetryOrder)
+					r.Post("/orders/{id}/manual-ready", certH.ManualReady)
+					r.Get("/certs", certH.ListCerts)
+					r.Get("/certs/{id}", certH.GetCert)
+					r.Post("/certs/{id}/download", certH.DownloadCert)
+					r.Post("/certs/{id}/revoke", certH.RevokeCert)
+					r.Get("/dns-credentials", certH.ListDnsCredentials)
+					r.Post("/dns-credentials", certH.CreateDnsCredential)
+					r.Delete("/dns-credentials/{id}", certH.DeleteDnsCredential)
+					r.Post("/dns-credentials/{id}/health-check", certH.HealthCheckDnsCredential)
+					r.Get("/quota", certH.Quota)
+				})
+			}
 
 			// Quota status endpoint
 			quotaH := handler.NewQuotaHandler(s.pgxPool, apiRateLimiter)

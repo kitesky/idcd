@@ -35,7 +35,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/api/Dockerfile
+          file: backend/apps/api/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -63,7 +63,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/aggregator/Dockerfile
+          file: backend/apps/aggregator/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -91,7 +91,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/notifier/Dockerfile
+          file: backend/apps/notifier/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -119,7 +119,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/gateway/Dockerfile
+          file: backend/apps/gateway/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -147,7 +147,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/scheduler/Dockerfile
+          file: backend/apps/scheduler/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -175,7 +175,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/cert-svc/Dockerfile
+          file: backend/apps/cert-svc/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -203,7 +203,7 @@ jobs:
       - uses: docker/build-push-action@v6
         with:
           context: .
-          file: apps/agent/Dockerfile
+          file: backend/apps/agent/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -232,7 +232,7 @@ jobs:
           GOOSE_DSN: ${{ secrets.PROD_DB_DSN }}
         run: |
           go run github.com/pressly/goose/v3/cmd/goose@latest \
-            -dir lib/db/migrations/idcd_main \
+            -dir backend/lib/db/migrations/idcd_main \
             postgres "$GOOSE_DSN" up
 
   # ── SSH 部署到云服务器 ────────────────────────────────────────
@@ -251,9 +251,9 @@ jobs:
           host: ${{ secrets.DEPLOY_HOST }}
           username: ${{ secrets.DEPLOY_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
-          source: "infra/docker/docker-compose.prod.yml,infra/nginx/nginx.conf"
+          source: "backend/infra/docker/docker-compose.prod.yml,backend/infra/nginx/nginx.conf"
           target: /opt/idcd/
-          strip_components: 2
+          strip_components: 3
 
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
@@ -304,20 +304,20 @@ jobs:
         with:
           node-version: '22'
           cache: 'pnpm'
-          cache-dependency-path: apps/web/pnpm-lock.yaml
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Build for Cloudflare Workers
-        working-directory: apps/web
+        working-directory: frontend
         env:
           NEXT_PUBLIC_API_URL: https://api.idcd.com
         run: pnpm build:worker
 
       - name: Deploy to Cloudflare Workers
-        working-directory: apps/web
+        working-directory: frontend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}

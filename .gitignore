@@ -43,11 +43,11 @@ pnpm-debug.log*
 vendor/
 
 # Config (actual env files; *.example.yaml is tracked)
-config/*.env.yaml
-!config/*.env.example.yaml
-config/*.local.yaml
-config/aggregator.yaml
-!config/aggregator.example.yaml
+backend/config/*.env.yaml
+!backend/config/*.env.example.yaml
+backend/config/*.local.yaml
+backend/config/aggregator.yaml
+!backend/config/aggregator.example.yaml
 
 # Secrets / certs (never commit)
 *.pem
@@ -57,37 +57,39 @@ config/aggregator.yaml
 *.crt
 *.jks
 
-# GeoIP databases (download via scripts/download-geolite2.sh — license-bound)
+# GeoIP databases (download via backend/scripts/download-geolite2.sh — license-bound)
 *.mmdb
-infra/terraform/.terraform/
-infra/terraform/terraform.tfstate*
-infra/terraform/*.tfvars
-!infra/terraform/*.tfvars.example
+backend/infra/terraform/.terraform/
+backend/infra/terraform/terraform.tfstate*
+backend/infra/terraform/*.tfvars
+!backend/infra/terraform/*.tfvars.example
 
-# Binary artifacts
+# Binary artifacts (Go service builds; both top-level legacy and backend/-rooted)
 bin/
 dist-agent/
-/agent
-/aggregator
-/scheduler
-/gateway
-/notifier
-/api
+backend/agent
+backend/aggregator
+backend/scheduler
+backend/gateway
+backend/notifier
+backend/api
+backend/bin/
+backend/dist-agent/
 
 # Misc
 .turbo
 .vercel
 
 # Playwright artifacts (E2E test outputs, not source)
-apps/web/test-results/
-apps/web/playwright-report/
-apps/web/tests/e2e/.auth/
+frontend/test-results/
+frontend/playwright-report/
+frontend/tests/e2e/.auth/
 
 # Heap snapshots / profiles (debug-only, can be hundreds of MB)
 *.heapsnapshot
 *.heapprofile
 .heap-profile/
-apps/web/.heap-profile/
+frontend/.heap-profile/
 
 .devfleet-worktrees/
 .gstack/

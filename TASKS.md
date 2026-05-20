@@ -20,10 +20,10 @@ S1 四条 Lane 可同时推进，文件无冲突：
 
 ```
 Lane A: 基础设施    infra/ + packages/db/
-Lane B: 后端服务    apps/api/ + apps/scheduler/ + apps/gateway/
-Lane C: 节点系统    apps/agent/ + infra/terraform/ + infra/ansible/
-Lane D: 前端站点    apps/web/ + apps/docs/ + packages/ui/
-Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
+Lane B: 后端服务    backend/apps/api/ + backend/apps/scheduler/ + backend/apps/gateway/
+Lane C: 节点系统    backend/apps/agent/ + backend/infra/terraform/ + infra/ansible/
+Lane D: 前端站点    frontend/ + apps/docs/ + packages/ui/
+Lane E: 合规底盘    backend/apps/api/internal/middleware/ + static pages
 ```
 
 ---
@@ -39,11 +39,11 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 **优先级最高，其他 Lane 依赖此 Lane 完成。**
 
-- [x] **A1** `infra/docker/docker-compose.core.yml`
+- [x] **A1** `backend/infra/docker/docker-compose.core.yml`
   - PG 18 + TimescaleDB 2.27.0 + Redis 7.4 已在远端服务器运行（开发不用本地 Docker）
   - docker-compose.core.yml 作为 Production/Staging 参考已建立
   - config/dev.env.yaml（gitignore）+ config/dev.env.example.yaml（tracked）
-  - `make dev-up` → `scripts/check-connections.sh` 验证通过，TimescaleDB 2.27.0 ✓
+  - `make dev-up` → `backend/scripts/check-connections.sh` 验证通过，TimescaleDB 2.27.0 ✓
   - *deps: 无* | *lane: A* | *完成 2026-05-13*
 
 - [x] **A2** monorepo 骨架
@@ -64,7 +64,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **A4** GitHub Actions CI/CD 基础
   - `.github/workflows/ci.yml`：golangci-lint + eslint + tsc + go test + vitest
   - `.github/workflows/deploy.yml`：build docker image → push GHCR → staging deploy
-  - lint 规则：`scripts/lint-cross-schema-fk.sh`（D1）+ `scripts/lint-attestation-words.sh`（D-Concern1）
+  - lint 规则：`backend/scripts/lint-cross-schema-fk.sh`（D1）+ `backend/scripts/lint-attestation-words.sh`（D-Concern1）
   - *deps: A2* | *lane: A*
 
 - [-] **A5** Cloudflare 配置
@@ -93,20 +93,20 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### Lane B — 后端服务
 
-- [x] **B1** `apps/api/` — API Gateway 骨架
+- [x] **B1** `backend/apps/api/` — API Gateway 骨架
   - chi v5 router + 中间件链（Recover→RequestID→Logger→SecurityHeaders→CORS）
   - 统一响应格式 JSON()/Error()，apperr code+status 映射
   - GET /health（版本）、GET /health/deep（PG+Redis）、GET /metrics（Prometheus）
   - 49 个测试全部通过，覆盖率 ≥ 90%
   - *deps: A3, A6, A7* | *lane: B* | *完成 2026-05-13*
 
-- [x] **B2** `apps/api/` — 限速模块
+- [x] **B2** `backend/apps/api/` — 限速模块
   - Redis 滑动窗口，多维度：单 IP / 单用户 / 单目标域名
   - 免登录用户：HTTP 拨测 30/h，Ping 60/h（Turnstile 通过后放宽）
   - 登录 Free 用户：API 100 calls/day
   - *deps: B1* | *lane: B*
 
-- [x] **B3** `apps/api/` — 账号接口
+- [x] **B3** `backend/apps/api/` — 账号接口
   - `POST /v1/auth/register`（邮箱 + 密码）
   - `POST /v1/auth/login` / `POST /v1/auth/logout`
   - `POST /v1/auth/verify-email`（6 位 OTP，Redis 10min TTL）
@@ -116,7 +116,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 密码哈希：Argon2id（已决策 §4.11 合规）
   - *deps: B1, A7* | *lane: B*
 
-- [x] **B4** `apps/api/` — 公开拨测接口（核心 API）
+- [x] **B4** `backend/apps/api/` — 公开拨测接口（核心 API）
   - `POST /v1/probe/http` — 多地 HTTP/HTTPS 拨测
   - `POST /v1/probe/ping` — 多地 ICMP Ping
   - `POST /v1/probe/tcp` — TCPing
@@ -127,7 +127,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 拨测报告持久化 + 分享 token（30 天过期，未登录用户）
   - *deps: B1, B2, C2* | *lane: B*
 
-- [x] **B5** `apps/api/` — 网络信息查询接口
+- [x] **B5** `backend/apps/api/` — 网络信息查询接口
   - `GET /v1/info/ip?q=` — IP 归属 + ASN + ISP + 地理
   - `GET /v1/info/whois?q=` — 域名/IP WHOIS
   - `GET /v1/info/dns?q=&type=` — DNS 记录（A/AAAA/MX/TXT/CNAME/NS/CAA/DMARC/SPF）
@@ -135,28 +135,28 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - `GET /v1/info/icp?q=` — ICP 备案查询（国内特色）
   - *deps: B1, B2* | *lane: B*
 
-- [x] **B6** `apps/scheduler/` — 调度器骨架（S1 最简版）
+- [x] **B6** `backend/apps/scheduler/` — 调度器骨架（S1 最简版）
   - 接收拨测任务 → 节点筛选 + 打分 → 任务下发 → ack / 完成处理
   - Redis leader election（S1 用 Redis，S2 迁 etcd，见 D16）
   - 优先级队列 P0-P5
   - 超时重试（路由到候补节点）
   - *deps: A3, A6, C1* | *lane: B*
 
-- [x] **B7** `apps/aggregator/` — 聚合器
+- [x] **B7** `backend/apps/aggregator/` — 聚合器
   - 消费 `probe.results` Redis Stream
   - 幂等设计（同 task_id 重复处理无副作用）
   - 写 TimescaleDB `probe_result` hypertable
   - 更新诊断报告状态
   - *deps: A3, A6* | *lane: B*
 
-- [x] **B8** `apps/notifier/` — 通知服务骨架（S1 仅邮件）
+- [x] **B8** `backend/apps/notifier/` — 通知服务骨架（S1 仅邮件）
   - 邮件通道 adapter（SMTP STARTTLS/TLS + SES stub）
   - 验证码邮件 / 欢迎邮件 / 密码重置邮件模板（响应式 HTML）
   - asynq 队列消费（default/critical 双优先级，指数退避重试）
   - 26 个测试全部通过，go build ✓
   - *deps: A6* | *lane: B* | *完成 2026-05-13*
 
-- [x] **K2** `lib/auth/totp/` + `apps/api/` + `apps/web/` — 2FA TOTP（RFC 6238 自实现）
+- [x] **K2** `backend/lib/auth/totp/` + `backend/apps/api/` + `frontend/` — 2FA TOTP（RFC 6238 自实现）
   - 纯标准库 TOTP（SHA-1 HOTP，6 位，30s 窗口，±1 容差）
   - `POST /v1/account/2fa/setup` — 生成 secret，暂存 Redis 10min
   - `POST /v1/account/2fa/verify` — 验证 code，启用 2FA，返回 8 个备用码
@@ -172,7 +172,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### Lane C — 节点系统
 
-- [x] **C1** `apps/agent/` — Agent 1.0 二进制
+- [x] **C1** `backend/apps/agent/` — Agent 1.0 二进制
   - 5 种 probe：HTTP(TLS/重定向) / Ping(ICMP接口化) / TCP / DNS / Traceroute(30跳)
   - 水印签名 HMAC-SHA256(node_id:task_id:target:timestamp)
   - SQLite 本地缓冲 D17：Cleanup 按 created_at，500MB 上限
@@ -180,7 +180,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 102 个测试全部通过
   - *deps: A2, A6* | *lane: C* | *完成 2026-05-13*
 
-- [x] **C2** `apps/gateway/` — Agent Gateway
+- [x] **C2** `backend/apps/gateway/` — Agent Gateway
   - WSS 接入（mTLS）
   - 心跳处理（30s timeout → drain）
   - 任务下发（来自 Scheduler）+ 结果上报（推 Aggregator）
@@ -188,7 +188,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 单实例承载 5000-10000 Agent 连接
   - *deps: A6, A7* | *lane: C*
 
-- [-] **C3** `infra/terraform/` — 节点 IaC
+- [-] **C3** `backend/infra/terraform/` — 节点 IaC
   - Hetzner / Vultr / RackNerd / DMIT / BWG 节点模板
   - 变量：厂商 / 地区 / 规格 / tag（tier1_cn / tier1_overseas）
   - `terraform apply` 一键创建 VPS
@@ -216,7 +216,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 
 ### Lane D — 前端站点
 
-- [x] **D1** `apps/web/` — Next.js 16 骨架
+- [x] **D1** `frontend/` — Next.js 16 骨架
   - App Router + TypeScript strict，深色模式默认
   - shadcn/ui blue theme CSS 变量，Tailwind v4
   - Geist Sans + Geist Mono + PingFang SC fallback
@@ -237,7 +237,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - 组件：拨测表单 + 实时结果展示（SSE 或 polling）+ 节点选择器
   - Turnstile 集成（无登录用户拨测前校验）
   - SEO：`<title>` + `<meta description>` + Schema.org + hreflang
-  - `apps/web/src/app/tools/[slug]/` 动态路由 + `tools-config.ts` 50+ 工具元数据
+  - `frontend/src/app/tools/[slug]/` 动态路由 + `tools-config.ts` 50+ 工具元数据
   - 5 类 client 组件（probe/text/converter/generator/lookup），116 测试 ✓
   - *deps: D1, B4, B5* | *lane: D* | *完成 2026-05-14*
 
@@ -350,11 +350,11 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 ### M5 — 监控模块
 
 - [x] **F1** 数据库扩展
-  - `lib/db/migrations/idcd_main/00007_monitors.sql`：monitors + monitor_checks（TimescaleDB hypertable）
-  - `lib/db/queries/idcd_main/monitor.sql`：7 个 sqlc 查询 + `lib/db/repository/monitor.go`
+  - `backend/lib/db/migrations/idcd_main/00007_monitors.sql`：monitors + monitor_checks（TimescaleDB hypertable）
+  - `backend/lib/db/queries/idcd_main/monitor.sql`：7 个 sqlc 查询 + `backend/lib/db/repository/monitor.go`
   - *deps: A3* | *完成 2026-05-14*
 
-- [x] **F2** `apps/api/` — 监控 CRUD 接口
+- [x] **F2** `backend/apps/api/` — 监控 CRUD 接口
   - `POST/GET/PATCH/DELETE /v1/monitors` + pause/resume，7 个 handler，26 测试 ✓
   - SSRF 校验、ownership 检查、Bearer token 鉴权
   - *deps: B1, F1* | *完成 2026-05-14*
@@ -362,7 +362,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **F3** 监控调度集成
   - Scheduler `monitorPoller` goroutine（30s 轮询 ListActiveMonitorsDue）
   - Aggregator `Process()` 写 monitor_checks + 推进 next_check_at
-  - 492 tests ✓（api+scheduler+aggregator+lib/db）
+  - 492 tests ✓（api+scheduler+aggregator+backend/lib/db）
   - *deps: B6, B7, F1* | *完成 2026-05-14*
 
 - [x] **F4** 控制台监控界面（`/app/monitors`）
@@ -375,17 +375,17 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 ### M6 — 告警模块
 
 - [x] **G1** 数据库扩展
-  - `lib/db/migrations/idcd_main/00008_alerts.sql`：alert_channels / alert_policies / alert_events / alert_notifications
+  - `backend/lib/db/migrations/idcd_main/00008_alerts.sql`：alert_channels / alert_policies / alert_events / alert_notifications
   - D1 合规，无 cross-schema FK
   - *deps: A3, F1* | *完成 2026-05-14*
 
-- [x] **G2** `apps/notifier/` — 告警通道扩展
-  - `apps/notifier/internal/channel/`：Channel 接口 + Webhook / 企业微信 / 钉钉 / 飞书 四个 adapter
+- [x] **G2** `backend/apps/notifier/` — 告警通道扩展
+  - `backend/apps/notifier/internal/channel/`：Channel 接口 + Webhook / 企业微信 / 钉钉 / 飞书 四个 adapter
   - `HandleAlertNotification` handler 路由到各 adapter，asynq 队列
   - 48 tests ✓（httptest mock 外部 HTTP）
   - *deps: B8, G1* | *完成 2026-05-14*
 
-- [x] **G3** `apps/api/` — 告警策略接口
+- [x] **G3** `backend/apps/api/` — 告警策略接口
   - 11 个 endpoint（channels/policies/events/ack），30 测试 ✓
   - Bearer token 鉴权，`?monitor_id=` 过滤，D1 compliant
   - *deps: B1, G1* | *完成 2026-05-14*
@@ -400,12 +400,12 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 ### M7 — 计费 + 状态页 + Evidence 准备
 
 - [x] **H1** 数据库扩展
-  - `lib/db/migrations/idcd_main/00009_billing.sql`：subscriptions / invoices / payments / status_pages
+  - `backend/lib/db/migrations/idcd_main/00009_billing.sql`：subscriptions / invoices / payments / status_pages
   - payments 含 refund_retry_count + partial index WHERE status='refund_failed'（D5）
   - *deps: A3, F1* | *完成 2026-05-14*
 
 - [x] **H2** 支付接口层（provider-agnostic stub，待接聚合支付）
-  - `apps/api/internal/billing/`：`Provider` 接口 + `StubProvider`（内存模拟）
+  - `backend/apps/api/internal/billing/`：`Provider` 接口 + `StubProvider`（内存模拟）
   - `migration 00010`：ext_* 字段迁移为通用 ext_* + payment_providers 配置表
   - billing API：POST /v1/billing/subscribe|cancel + GET subscription|invoices + webhook + stub-confirm
   - 22 provider tests + 25 handler tests（534 total ✓）
@@ -413,7 +413,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
   - *deps: B1, H1* | *完成 2026-05-14*
 
 - [x] **H3** 配额执行
-  - `apps/api/internal/quota/`：`PlanLimits` + `Limits()` + 5 个 Check 函数
+  - `backend/apps/api/internal/quota/`：`PlanLimits` + `Limits()` + 5 个 Check 函数
   - `APIRateLimiter`：Redis INCR 日限，fail-open，clock 可 mock
   - monitor/alert handler 注入配额检查，超额返回 HTTP 402 + upgrade_url
   - `GET /v1/account/quota`：返回当前用量 JSON
@@ -470,8 +470,8 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 ### M9 — S2 验收补全
 
 - [x] **J1** Test/Sandbox API Key — `sk_test_` 前缀 + 配额豁免，DB migration 00013 + sqlc 手动更新 + handler 支持 type 字段 + 前端 Badge/Select，628 Go tests + 405 前端 tests ✓，完成 2026-05-14
-- [x] **J2** Email 告警通道 — `apps/notifier/internal/channel/email.go`，EmailChannel 实现 Channel 接口，HTML 告警邮件（FIRING/RESOLVED），`buildChannel` 路由 `type=email`，12 tests ✓，完成 2026-05-14
-- [x] **J3** Alert 事件触发器 — `apps/aggregator/internal/processor/alert_trigger.go`，AlertTrigger 检测连续 N 次失败创建 alert_event(firing)、恢复时 resolved、幂等防重复，asynq enqueue 到 notifier 队列，集成到 Process() 主流程，26 aggregator tests ✓，完成 2026-05-14
+- [x] **J2** Email 告警通道 — `backend/apps/notifier/internal/channel/email.go`，EmailChannel 实现 Channel 接口，HTML 告警邮件（FIRING/RESOLVED），`buildChannel` 路由 `type=email`，12 tests ✓，完成 2026-05-14
+- [x] **J3** Alert 事件触发器 — `backend/apps/aggregator/internal/processor/alert_trigger.go`，AlertTrigger 检测连续 N 次失败创建 alert_event(firing)、恢复时 resolved、幂等防重复，asynq enqueue 到 notifier 队列，集成到 Process() 主流程，26 aggregator tests ✓，完成 2026-05-14
 - [x] **J4** SLA 月报基础 — `GET /v1/reports/sla`（Bearer token 认证，months 参数最大 12），TimescaleDB hypertable 聚合查询，`/app/reports` 前端页面（shadcn/ui Card + Table + Badge 颜色编码），侧边栏"月度报告"导航项，9 Go tests + 8 前端 tests ✓，完成 2026-05-14
 - [x] **J5** Monitor SSE 实时推送 — `GET /v1/monitors/{id}/stream`（Bearer token 认证，ownership check，每 5s 轮询 monitor_checks 最新记录，每 15s ping 心跳），`MonitorStreamHandler` + `MonitorStreamPool` 接口，路由注册到 `/monitors/{id}/stream`，前端 `useEffect` + `EventSource` 连接 + `latestCheck` state 实时显示最新状态/延迟/相对时间，全局 `MockEventSource` jsdom setup，4 Go tests + 405 前端 tests ✓，完成 2026-05-14
 - [x] **J6** 自定义仪表盘 v1 — `GET /v1/dashboard/summary` 真实 SQL 统计数据（monitors/checks/incidents/alerts/status_pages），`GET|PUT /v1/dashboard/pins` Redis 置顶监控（最多 6 个），前端 Client Component + Skeleton loading + 置顶监控 Sheet 选择器，7 Go tests + 8 前端 tests ✓，完成 2026-05-14
@@ -481,29 +481,29 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 - [x] **J12** X-RateLimit 响应头 + /app/usage 真实配额数据 — `APIQuotaMiddleware` 注入 `X-RateLimit-Limit/Remaining/Used/Reset`（test key → -1），`QuotaStatusResponse` 新增 `api_calls.reset_at` 字段，`/app/usage` 前端接真实 `/v1/account/quota` API（useEffect + fetch，Skeleton loading，趋势图保持演示数据），3 Go header tests + 7 前端 tests ✓，完成 2026-05-14
 - [x] **J10** Monitor 检查历史图表（真实数据）— `GET /v1/monitors/{id}/checks`（Bearer token 认证，hours 参数最大 168，resolution=30m，TimescaleDB time_bucket 聚合，ownership 403 校验），`MonitorChecksHandler` + `MonitorChecksPool` 接口，路由注册到 `/monitors/{id}/checks`，前端 `useEffect` + `fetch` 替换 mock 数据，Skeleton loading，真实 bucket 颜色（up/down/degraded/empty），hover tooltip 显示时间/成功失败数/平均延迟，6 Go tests + 4 前端 tests ✓，完成 2026-05-14
 - [x] **J11** 监控批量操作 — `POST /v1/monitors/bulk`（pause/resume/delete，最多 50 条，ownership 校验，不属于当前用户 id 放入 failed），`BulkPool` 接口 + `BulkAction` handler + 路由注册（`/bulk` 在 `/{id}` 之前），前端 Checkbox 列（全选/单选）+ 浮动操作栏（selectedIds.size > 0 时出现）+ AlertDialog 删除确认，7 Go tests + 3 前端 tests ✓，完成 2026-05-14
-- [x] **J13** MCP server 骨架 — `apps/mcp/` 新 Go module（CGO_ENABLED=0），JSON-RPC 2.0 over stdio，8 tools（ping/http/dns/traceroute/ssl/diagnose/ip/whois）stub 实现，`protocol.Server` 读 stdin/写 stdout 循环，Tool 注册表 + Handler 接口，initialize/tools/list/tools/call 方法，7 Go tests ✓，go.work 已更新，完成 2026-05-14
+- [x] **J13** MCP server 骨架 — `backend/apps/mcp/` 新 Go module（CGO_ENABLED=0），JSON-RPC 2.0 over stdio，8 tools（ping/http/dns/traceroute/ssl/diagnose/ip/whois）stub 实现，`protocol.Server` 读 stdin/写 stdout 循环，Tool 注册表 + Handler 接口，initialize/tools/list/tools/call 方法，7 Go tests ✓，go.work 已更新，完成 2026-05-14
 - [x] **J14** IPv6 检测/转换工具页 — `tool-functions.ts` 新增 `checkIPv6`（valid/expanded/compressed/type/isIPv4Mapped）、`ipv4ToIPv6Mapped`、`ipv6ToPTR`（.ip6.arpa PTR 记录），`Ipv6CheckClient` 升级显示完整类型+IPv4映射标识，`ipv6-check.test.ts`（12 tests）+ `ipv6-convert.test.ts`（14 tests），460 前端 tests ✓，完成 2026-05-14
 - [x] **J15** Anchor 锚定基准 + 偏差实时告警 — DB migration 00015（`monitor_baselines` + `anchor_deviations`），`BaselineUpdater`（7天窗口 percentile_cont，rate-limited：6h 或 100-sample boundary），`AnchorChecker`（p95 延迟 2x/3x warning/critical，success_rate 95%阈值，open 去重，resolved 恢复），processor.Process() 接入，`AnchorHandler`（GET `/v1/monitors/{id}/baseline` + `/{id}/deviations`），server.go 路由注册，14 aggregator tests + 7 API tests ✓，完成 2026-05-14
-- [x] **J16** 节点高级诊断 API + 前端 — `GET /v1/nodes/{id}/diagnostics`（公开，无认证，NodeDiagPool 接口，404 节点不存在，nil pool 返回 stub），`NodeDiagnosticsHandler` + 路由注册（server.go），`apps/web/src/app/nodes/[id]/page.tsx` 节点详情页（SSR，延迟分布 CSS 柱状图，24h 健康趋势 sparkline，节点基本信息），`/nodes` 列表增加"查看诊断"链接，修复 monitor_stream_test.go 重复 errRow 类型定义，8 Go tests + 7 前端 tests ✓，完成 2026-05-14
-- [x] **J17** 官方 Go SDK — `packages/sdk-go/`，module `github.com/kite365/idcd-go`，零外部依赖（仅标准库），全 API 覆盖（probe/info/monitor/alert/billing/dashboard/sla），`client.go`（New/do/Option 模式）+ 7 个方法文件 + `types.go`（50+ 请求/响应类型），`client_test.go`（9 tests：ProbeHTTP success/apiError/ListMonitors/CreateMonitor/GetIPInfo/WithOptions/GetSLAReport/DeleteMonitor/BulkAction），go.work 已更新，`go build ./packages/sdk-go/...` + `go test` 全绿，完成 2026-05-14
-- [x] **J18** CLI 工具 — `apps/cli/`，module `github.com/kite365/idcd/apps/cli`，唯一外部依赖 `github.com/spf13/cobra v1.10.2`，6 命令（ping/http/dns/diagnose/monitor/config），API key 读取链（--api-key flag > IDCD_API_KEY env > ~/.idcd/config.yaml），API 不可用时 stub 优雅降级，`CGO_ENABLED=0` 交叉编译友好，11 Go tests（httptest.NewServer mock，ping/http/dns/config set-key/read/get/permissions）全绿，go.work 已更新，完成 2026-05-14
+- [x] **J16** 节点高级诊断 API + 前端 — `GET /v1/nodes/{id}/diagnostics`（公开，无认证，NodeDiagPool 接口，404 节点不存在，nil pool 返回 stub），`NodeDiagnosticsHandler` + 路由注册（server.go），`frontend/src/app/nodes/[id]/page.tsx` 节点详情页（SSR，延迟分布 CSS 柱状图，24h 健康趋势 sparkline，节点基本信息），`/nodes` 列表增加"查看诊断"链接，修复 monitor_stream_test.go 重复 errRow 类型定义，8 Go tests + 7 前端 tests ✓，完成 2026-05-14
+- [x] **J17** 官方 Go SDK — `backend/packages/sdk-go/`，module `github.com/kite365/idcd-go`，零外部依赖（仅标准库），全 API 覆盖（probe/info/monitor/alert/billing/dashboard/sla），`client.go`（New/do/Option 模式）+ 7 个方法文件 + `types.go`（50+ 请求/响应类型），`client_test.go`（9 tests：ProbeHTTP success/apiError/ListMonitors/CreateMonitor/GetIPInfo/WithOptions/GetSLAReport/DeleteMonitor/BulkAction），go.work 已更新，`go build ./backend/packages/sdk-go/...` + `go test` 全绿，完成 2026-05-14
+- [x] **J18** CLI 工具 — `backend/apps/cli/`，module `github.com/kite365/idcd/apps/cli`，唯一外部依赖 `github.com/spf13/cobra v1.10.2`，6 命令（ping/http/dns/diagnose/monitor/config），API key 读取链（--api-key flag > IDCD_API_KEY env > ~/.idcd/config.yaml），API 不可用时 stub 优雅降级，`CGO_ENABLED=0` 交叉编译友好，11 Go tests（httptest.NewServer mock，ping/http/dns/config set-key/read/get/permissions）全绿，go.work 已更新，完成 2026-05-14
 - [x] **J19** Agent obs 监控类型（M21/M22/M23 LLM endpoint/Tool API/RAG），DB migration 00016 + 9 handler tests，完成 2026-05-14
 - [x] **J20** 推荐返利系统（referral code + 奖励记录 + /app/referral），DB migration 00017 + handler tests，完成 2026-05-14
 - [x] **K3** MCP tools 真实 API 接入 — `apiclient.Client`（零外部依赖，Bearer token，POST/GET），8 tools 全部接真实 `/v1/probe/*` + `/v1/info/*` API，graceful degradation（无 API key 时提示 IDCD_API_KEY），HTTP+SSE transport（`--transport http --port 8082`，`/sse` + `/messages` 端点），21 Go tests（protocol 9 + integration 4 + apiclient 0 + tools 0）全绿，完成 2026-05-14
 
 - [x] **K4** 钉钉/飞书 OAuth 登录 — `handler/oauth.go`（DingTalkLogin/Callback + FeishuLogin/Callback），CSRF state 存 Redis（5min TTL，crypto/rand 16字节），`findOrCreateOAuthUser` 走 `user_credential` 表，`handler/oauth_state.go`（redisStateStore），config `OAuth{}` 扩展，路由注册 `/v1/auth/dingtalk` + `/v1/auth/feishu` 及 callback，前端登录页第三方按钮 + `oauth-callback/page.tsx`，9 Go tests + 4 前端 tests 全绿，完成 2026-05-14
 
-- [x] **K7** MCP 文档站 — `apps/docs/pages/mcp/` MCP 专区：概述/quickstart/authentication + 8 个 tool 独立文档（ping/http/dns/traceroute/ssl/ip/whois/diagnose，参数与 `apps/mcp/internal/tools/` 实际 inputSchema 对齐）+ 3 个集成示例（Cursor/Claude Code/Python），`_meta.js` 导航注册，`next.config.mjs` 修复 Next.js 16 turbopack/webpack 兼容，`package.json` build 脚本加 `--webpack` 标志，`pnpm -F docs build` 全部 22 页面构建通过，完成 2026-05-14
+- [x] **K7** MCP 文档站 — `apps/docs/pages/mcp/` MCP 专区：概述/quickstart/authentication + 8 个 tool 独立文档（ping/http/dns/traceroute/ssl/ip/whois/diagnose，参数与 `backend/apps/mcp/internal/tools/` 实际 inputSchema 对齐）+ 3 个集成示例（Cursor/Claude Code/Python），`_meta.js` 导航注册，`next.config.mjs` 修复 Next.js 16 turbopack/webpack 兼容，`package.json` build 脚本加 `--webpack` 标志，`pnpm -F docs build` 全部 22 页面构建通过，完成 2026-05-14
 
 - [x] **L4** 英文国际化基础 — `next-intl@3.26.5` 依赖，`src/i18n/config.ts`（zh/en locales），`src/i18n/messages/{zh,en}.json`（tools + common + leaderboard 全部 key），`src/i18n/en-tools-meta.ts`（10 个工具英文 SEO meta），`/en/tools/[slug]` SSG 路由（英文 title/description/hreflang/Schema.org），`/en/` 英文落地页，leaderboard 中英双语 toggle（useState，tabs/列头/说明/声明全部双语），Nav 语言切换组件（中/EN 按钮，Globe icon），23 i18n tests + 5 leaderboard 语言切换 tests，543 前端 tests ✓，完成 2026-05-14
 
 - [x] **L2** 状态页订阅推送 — DB migration 00027（`status_page_subscriptions`：id/status_page_id/channel_type/endpoint/verified/verify_token/events），`handler/status_subscription.go`（5 端点：POST subscribe / GET verify / DELETE unsubscribe + 认证 GET list + DELETE），`idgen.StatusSubscription()`（ssub_ 前缀），email 类型 verified=false + crypto/rand 32字节 verify_token，webhook/wecom/dingtalk 直接 verified=true，`processor/subscription_notifier.go`（NotifySubscribers：查 status_page → 查 verified 订阅 → enqueue），alert_trigger.go 接入（firing→incident / resolved→recovery），server.go 路由注册（5条路由），状态页前端订阅区域（Email Input + 订阅按钮 + 发送成功提示 + 4种通道 Badge），7 handler tests + 2 notifier tests 全绿，完成 2026-05-14
 
-- [x] **L1** On-Call 排班系统 — DB migration 00024（`oncall_schedules`/`oncall_participants`/`oncall_overrides` 三表），`idgen.OncallSchedule/Participant/Override()`（sch_/par_/ovr_ 前缀），`apps/api/internal/oncall/calculator.go`（`CurrentOnCall`：override 优先 → 轮换计算，`nextRotationUser`：epoch 2024-01-01 + 周期整除幂等），`apps/api/internal/handler/oncall.go`（7 端点：POST/GET schedules + GET detail + POST/DELETE participants + POST overrides + GET current），server.go 路由注册（`/v1/oncall/schedules`），`alert_trigger.go` 接入 `sendOncallNotification`（monitor team → oncall schedule → 当前值班人邮箱 → enqueue，失败不阻断主流程），前端 `/app/oncall` 页面（当前值班 Card + 7天预览 + 创建排班 Dialog + 临时换班 Dialog），侧边栏"监控"组添加 On-Call 导航项（UserCheck icon），修复 `status_subscription.go` 类型名冲突（subscribeRequest→statusSubRequest 等），6 calculator tests + 5 handler tests + 7 前端 tests 全绿，完成 2026-05-14
+- [x] **L1** On-Call 排班系统 — DB migration 00024（`oncall_schedules`/`oncall_participants`/`oncall_overrides` 三表），`idgen.OncallSchedule/Participant/Override()`（sch_/par_/ovr_ 前缀），`backend/apps/api/internal/oncall/calculator.go`（`CurrentOnCall`：override 优先 → 轮换计算，`nextRotationUser`：epoch 2024-01-01 + 周期整除幂等），`backend/apps/api/internal/handler/oncall.go`（7 端点：POST/GET schedules + GET detail + POST/DELETE participants + POST overrides + GET current），server.go 路由注册（`/v1/oncall/schedules`），`alert_trigger.go` 接入 `sendOncallNotification`（monitor team → oncall schedule → 当前值班人邮箱 → enqueue，失败不阻断主流程），前端 `/app/oncall` 页面（当前值班 Card + 7天预览 + 创建排班 Dialog + 临时换班 Dialog），侧边栏"监控"组添加 On-Call 导航项（UserCheck icon），修复 `status_subscription.go` 类型名冲突（subscribeRequest→statusSubRequest 等），6 calculator tests + 5 handler tests + 7 前端 tests 全绿，完成 2026-05-14
 
-- [x] **L5** 故障复盘自动起草 — DB migration 00028（`incident_postmortems`：id/alert_event_id/monitor_id/user_id/title/status/severity/impact/timeline/root_cause/resolution/action_items），`apps/api/internal/postmortem/generator.go`（`GenerateDraft`：Severity 四档/Title/Impact/Timeline/RootCause/Resolution/ActionItems，http→3条/dns→3条/其他→2条），`apps/api/internal/handler/postmortem.go`（4 端点：POST draft / GET postmortem / PATCH postmortem / GET incidents），server.go 路由注册（4条路由，全带 authnMW），前端 `apps/web/src/app/app/incidents/page.tsx`（故障记录列表 + 生成复盘 Dialog + 5条 mock），`/app/incidents/[id]/page.tsx`（复盘详情 Server Component），侧边栏"监控"组添加"故障记录"（FileWarning icon），9 generator tests + 6 handler tests + 10 前端 tests 全绿，go build ✓，完成 2026-05-14
+- [x] **L5** 故障复盘自动起草 — DB migration 00028（`incident_postmortems`：id/alert_event_id/monitor_id/user_id/title/status/severity/impact/timeline/root_cause/resolution/action_items），`backend/apps/api/internal/postmortem/generator.go`（`GenerateDraft`：Severity 四档/Title/Impact/Timeline/RootCause/Resolution/ActionItems，http→3条/dns→3条/其他→2条），`backend/apps/api/internal/handler/postmortem.go`（4 端点：POST draft / GET postmortem / PATCH postmortem / GET incidents），server.go 路由注册（4条路由，全带 authnMW），前端 `frontend/src/app/app/incidents/page.tsx`（故障记录列表 + 生成复盘 Dialog + 5条 mock），`/app/incidents/[id]/page.tsx`（复盘详情 Server Component），侧边栏"监控"组添加"故障记录"（FileWarning icon），9 generator tests + 6 handler tests + 10 前端 tests 全绿，go build ✓，完成 2026-05-14
 
-- [x] **L6** Transparency 公开仪表盘 — `GET /v1/transparency`（stub 数据：overall_status / platform_uptime 30d/90d/365d / nodes / kms / tsa.providers / recent_incidents / appeal_stats），`apps/api/internal/handler/transparency.go`（TransparencyHandler），server.go 路由注册（无 authnMW），`handler/transparency_test.go`（1 Go test 全绿，447 handler tests ✓），前端 `apps/web/src/app/transparency/page.tsx`（Server Component，shadcn/ui 全组件：状态总览 Badge / 可用率 3 列 Card + 30方块图 / 节点 Card / KMS Card / TSA 2列 Card / 事故 Table / 申诉统计），Footer 新增"透明度报告"链接，`transparency/__tests__/transparency.test.tsx`（5 tests 全绿），`go build ./apps/api/...` ✓，完成 2026-05-14
+- [x] **L6** Transparency 公开仪表盘 — `GET /v1/transparency`（stub 数据：overall_status / platform_uptime 30d/90d/365d / nodes / kms / tsa.providers / recent_incidents / appeal_stats），`backend/apps/api/internal/handler/transparency.go`（TransparencyHandler），server.go 路由注册（无 authnMW），`handler/transparency_test.go`（1 Go test 全绿，447 handler tests ✓），前端 `frontend/src/app/transparency/page.tsx`（Server Component，shadcn/ui 全组件：状态总览 Badge / 可用率 3 列 Card + 30方块图 / 节点 Card / KMS Card / TSA 2列 Card / 事故 Table / 申诉统计），Footer 新增"透明度报告"链接，`transparency/__tests__/transparency.test.tsx`（5 tests 全绿），`go build ./backend/apps/api/...` ✓，完成 2026-05-14
 
 - [x] **L7** 移动端响应式优化 — dashboard 统计卡片 `grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6`；monitors-client 表格外层 `overflow-x-auto`、次要列（目标/最后检查/可用率）`hidden md:table-cell`、批量操作浮动栏按钮文字 `hidden sm:inline`、浮动栏 `max-w-[calc(100vw-2rem)]` 防溢出；leaderboard CDN 表格与 ISP 表格 `overflow-x-auto` + P50次要列/地区/SLA/机房数 `hidden md:table-cell`；alerts-client 事件/策略/静默三表 `overflow-x-auto` + 次要列 `hidden md:table-cell`；主站 Nav hamburger 已完善（backdrop + Sheet panel），完成 2026-05-14
 
@@ -582,7 +582,7 @@ Lane E: 合规底盘    apps/api/internal/middleware/ + static pages
 [-] API 公开 GA + SDK + CLI               → S3，M8-M9
 [x] K1 Team/Org 基础（teams + memberships + invitations + /app/settings/team）
 [x] K5 团队级 API Key + Agent Pro 订阅（team-scoped keys + /v1/teams/{id}/billing）
-[x] K6 WebAuthn / Passkey（FIDO2 注册/认证 + passkey 管理 + 安全设置页扩展，DB migration 00022，lib/auth/webauthn，6 API endpoints，10 Go tests，14 前端 security tests，完成 2026-05-14）
+[x] K6 WebAuthn / Passkey（FIDO2 注册/认证 + passkey 管理 + 安全设置页扩展，DB migration 00022，backend/lib/auth/webauthn，6 API endpoints，10 Go tests，14 前端 security tests，完成 2026-05-14）
 [-] 团队 / 多用户 / 角色权限（完整 S3）   → S3，M12+
 [x] K8 众包节点申请 + 积分系统（node_applications + node_points + point_redemptions，DB migration 00023，6 API endpoints + 7 Go tests，/nodes/apply 申请页 + PointsBalanceCard + 兑换 Dialog，8 前端 tests，738 Go + 515 前端 tests ✓，完成 2026-05-14）
 [-] 管理台完整功能                        → S2 末/S3

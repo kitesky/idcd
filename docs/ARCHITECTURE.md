@@ -142,7 +142,7 @@ idcd/
 
 ### 2.4 Agent 节点二进制
 
-- 路径:`apps/agent/`,Go 静态二进制,通过 systemd 启动
+- 路径:`backend/apps/agent/`,Go 静态二进制,通过 systemd 启动
 - 部署:Ansible + Terraform,初版 100+ 节点(Tier1 自有 + 海外 VPS)
 - 升级:**OTA 3 级灰度**(K-架构 + 14 §13.3):L1 (1%) 1h → L2 (10%) 4h → L3 (100%)
 - 任何阶段错误率 > 基线 2x → 自动回滚 + P1 + 暂停后续灰度
@@ -172,8 +172,8 @@ idcd/
 
 | 项 | 实施细节 |
 |---|---|
-| **DDL** | `lib/db/migrations/` 三个 schema 各自 migration 目录(`idcd_main/` / `idcd_attest/` / `idcd_mcp/`)。**所有 v2 表的 `owner_id` / `verdict_report_id` 等跨 schema 列不写 `REFERENCES`**;同 schema FK(如 `verdict_report.order_id → verdict_order.id`)保留。详 15 §4.X 序言。 |
-| **应用层 join** | `lib/db/repository/` 提供 `GetByOwnerId(ctx, id)` / `GetReport(ctx, reportId)` 类抽象;**service 代码不直接 SQL join 跨 schema**,统一走 Repository。 |
+| **DDL** | `backend/lib/db/migrations/` 三个 schema 各自 migration 目录(`idcd_main/` / `idcd_attest/` / `idcd_mcp/`)。**所有 v2 表的 `owner_id` / `verdict_report_id` 等跨 schema 列不写 `REFERENCES`**;同 schema FK(如 `verdict_report.order_id → verdict_order.id`)保留。详 15 §4.X 序言。 |
+| **应用层 join** | `backend/lib/db/repository/` 提供 `GetByOwnerId(ctx, id)` / `GetReport(ctx, reportId)` 类抽象;**service 代码不直接 SQL join 跨 schema**,统一走 Repository。 |
 | **DBA 权限** | PostgreSQL role 按 schema 分级:`idcd_main_rw` / `idcd_attest_rw` / `idcd_mcp_rw`;attest-* worker 仅授予 idcd_attest 权限,bug 不会跨写。 |
 | **S4 升级路径** | 拆分时:导出 schema → 导入独立 cluster → 改 service 连接串(`DATABASE_URL_ATTEST` 替换);**代码 0 行修改**。 |
 
@@ -190,8 +190,8 @@ idcd/
 | 项 | 实施细节 |
 |---|---|
 | **`attestation_record` 充 WAL** | DDL:`UNIQUE(report_id, action)` + `status` enum (`pending` / `success` / `failure`)。每 step 完成后 worker 写一条 `(report_id, action, status=success, external_id, idempotency_key)`。详 15 §4.X.3。 |
-| **Worker 续跑逻辑** | `apps/attest/internal/service/`:进入每 step 前先 `SELECT action FROM attestation_record WHERE report_id=$1 AND status='success'`;已成功的 step 跳过并复用 external_id。代码模式参考 `lib/attest/record/` 提供的 `IsStepDone(reportId, action) bool` 接口。 |
-| **KMS idempotency** | `lib/attest/sign/`:`Sign(keyId, hash, idempotencyKey)` 必传 token(AWS KMS / 阿里云 KMS 均支持);token 写入 `attestation_record.idempotency_key` 持久化。 |
+| **Worker 续跑逻辑** | `backend/apps/attest/internal/service/`:进入每 step 前先 `SELECT action FROM attestation_record WHERE report_id=$1 AND status='success'`;已成功的 step 跳过并复用 external_id。代码模式参考 `backend/lib/attest/record/` 提供的 `IsStepDone(reportId, action) bool` 接口。 |
+| **KMS idempotency** | `backend/lib/attest/sign/`:`Sign(keyId, hash, idempotencyKey)` 必传 token(AWS KMS / 阿里云 KMS 均支持);token 写入 `attestation_record.idempotency_key` 持久化。 |
 | **失败上限** | `retry_count` 字段 ≤ 3,超出转 DLQ;DLQ 告警 5 分钟内必到。 |
 
 **验证**(S2 上线前**必演示**):staging 注入 KMS / TSA / S3 / Self-verify 各 step 失败率 50%(toxiproxy + 自家 chaos script),验证:
@@ -211,10 +211,10 @@ idcd/
 
 | 项 | 实施细节 |
 |---|---|
-| **`attest-refund` 独立 Worker** | 路径:`apps/attest/refund-worker/`。监听 verdict 失败事件,调 聚合支付 refund。 |
+| **`attest-refund` 独立 Worker** | 路径:`backend/apps/attest/refund-worker/`。监听 verdict 失败事件,调 聚合支付 refund。 |
 | **retry queue 策略** | 5min retry → 30min retry → 仍失败 → `verdict_order.status=refund_failed` + P0 告警(创始人本人手机)。 |
 | **30min 强制道歉邮箱** | **无论 refund API 是否成功,30min 内必发**:"由于 [类别] 无法生成报告,已发起全额退款 ¥XXX。若 1-3 工作日内未到账,请回复此邮件,我们手动处理。" → 写 `verdict_order.refund_apology_sent_at`。 |
-| **admin dashboard** | `apps/web/src/app/admin/refund-failed/` 页面,可查 / 手动处理所有 refund_failed 订单。详 11 §15.4。 |
+| **admin dashboard** | `frontend/src/app/admin/refund-failed/` 页面,可查 / 手动处理所有 refund_failed 订单。详 11 §15.4。 |
 
 **验证**:staging 注入 支付通道 50% refund 失败率,验证 30min 内用户收到道歉邮箱 + admin dashboard 出现该订单。
 
@@ -228,9 +228,9 @@ idcd/
 
 | 隔离层 | 落地 |
 |---|---|
-| **不同进程** | `apps/attest/verifier/` 独立 main.go,独立 docker container,独立 docker compose service(见 `infra/docker/docker-compose.attest-verify.yml`)。 |
+| **不同进程** | `backend/apps/attest/verifier/` 独立 main.go,独立 docker container,独立 docker compose service(见 `backend/infra/docker/docker-compose.attest-verify.yml`)。 |
 | **不同 VPC subnet** | Terraform 配置中 `attest/verifier` 部署在独立 subnet,与 `attest/generator` 之间**仅暴露 attest.idcd.com/verify HTTPS 接口**;内部 RPC 防火墙阻断。 |
-| **独立 KMS 客户端实例** | `attest/verifier` 用自己的 `lib/attest/sign/` 实例化(独立 config / IAM role / 客户端缓存);**不复用** `attest/generator` 的 sign 客户端。 |
+| **独立 KMS 客户端实例** | `attest/verifier` 用自己的 `backend/lib/attest/sign/` 实例化(独立 config / IAM role / 客户端缓存);**不复用** `attest/generator` 的 sign 客户端。 |
 | **公开 verify 路径** | `attest/verifier` 通过 `https://attest.idcd.com/verify` 公开接口验签,**与外部第三方走完全一致的代码路径**。 |
 
 **验证**:部署后展示
@@ -253,7 +253,7 @@ idcd/
 |---|---|
 | **硬件** | SoftHSM(¥1000+)或 YubiHSM2(¥3000+),冷启动笔记本(air-gap)+ USB HSM;**物理放离线保险柜**。 |
 | **重组方式** | **1-of-1**(创始人物理获取 + 解锁密码);密码与 Shamir 切片**独立保管**(不同保险柜)。 |
-| **代码** | `lib/attest/sign/`:与云 KMS 同一接口(`Sign / GetPublicKey`),仅 backend 不同。 |
+| **代码** | `backend/lib/attest/sign/`:与云 KMS 同一接口(`Sign / GetPublicKey`),仅 backend 不同。 |
 | **触发条件** | 主路径 12h SOP 已启动 + ≥3 Shamir 持有人 4h 内仍无法联系 → 启用 Backup HSM。 |
 | **限制** | 仅一次性紧急 sign key 轮换,不参与日常签名;启用后 **7 天内必须补做完整 Shamir 仪式**。 |
 | **演练** | **S4 启用前必须演练 1 次**,记录耗时基线。 |
@@ -277,7 +277,7 @@ idcd/
 | **heartbeat** | 30s 内无数据 → 发 keepalive event;断开重连由客户端负责。 |
 | **横向扩展** | 一致性哈希(token_id → instance);新增实例 / 实例下线时 minimal connection migration。 |
 
-→ 落地代码:`apps/mcp/internal/` + `packages/mcp-protocol/`。
+→ 落地代码:`backend/apps/mcp/internal/` + `packages/mcp-protocol/`。
 
 ---
 
@@ -310,8 +310,8 @@ idcd/
 | `service` | **90d** | 同 workspace | **强制**(无白名单不签发) |
 
 代码层:
-- `lib/auth/mcp_token.go`:`Validate(tokenHash) (ownerId, scope, expiresAt, err)` + `Renew(tokenId) error`
-- `apps/mcp/internal/auth/`:每次 tool call 进入前查 `expires_at`;< 24h 触发 renewal
+- `backend/lib/auth/mcp_token.go`:`Validate(tokenHash) (ownerId, scope, expiresAt, err)` + `Renew(tokenId) error`
+- `backend/apps/mcp/internal/auth/`:每次 tool call 进入前查 `expires_at`;< 24h 触发 renewal
 - `mcp_token` 表:`expires_at NOT NULL`(无永久);`auto_renew bool`;`last_renewed_at timestamptz`
 - **配额池完全独立**:`MCP units/day` 与 `API calls/day` 是两条独立 progress bar(详 19 §3.5)
 
@@ -321,22 +321,22 @@ idcd/
 
 | D | 概要 | 实施位置 |
 |---|---|---|
-| D3 | `docs.mcp.idcd.com` 独立子域 + `mcp.idcd.com/docs` 302 | `apps/web/src/app/docs/mcp/` + Cloudflare Pages 配置 |
-| D7 | `agent_obs_monitor.total_cost_this_month_usd` 原子 UPDATE + `mcp_tool_call(session_id)` 索引 + 失败 case 7d 原 payload | `lib/db/repository/agent_obs.go` 原子事务 + DDL 索引 |
+| D3 | `docs.mcp.idcd.com` 独立子域 + `mcp.idcd.com/docs` 302 | `frontend/src/app/docs/mcp/` + Cloudflare Pages 配置 |
+| D7 | `agent_obs_monitor.total_cost_this_month_usd` 原子 UPDATE + `mcp_tool_call(session_id)` 索引 + 失败 case 7d 原 payload | `backend/lib/db/repository/agent_obs.go` 原子事务 + DDL 索引 |
 | D8 | LLM 复盘 eval bootstrap 50 条 | `packages/llm/eval/datasets/bootstrap-2026/`(TODO-5) |
-| D10 | Anchor 阈值 placeholder + S2 前 30 天 baseline 校准 | `apps/scheduler/internal/anchor/`;TODO-4 |
-| D12 | 3 档工单 SLA:纯自动 / 1h 仅 P0(KMS/节点失窃)/ 24h 常规 | `apps/web/src/app/admin/` + API 端点;详 11 §15.4 |
+| D10 | Anchor 阈值 placeholder + S2 前 30 天 baseline 校准 | `backend/apps/scheduler/internal/anchor/`;TODO-4 |
+| D12 | 3 档工单 SLA:纯自动 / 1h 仅 P0(KMS/节点失窃)/ 24h 常规 | `frontend/src/app/admin/` + API 端点;详 11 §15.4 |
 | D14 | TimescaleDB → ClickHouse 触发指标:>10GB/d 或 P99>100ms(持续 1 周)| Prometheus alert rule;TODO 在 17-roadmap S3 末 |
 
 ### 3.10 第二轮架构审查决策(D17-D21)
 
 | D | 概要 | 实施位置 |
 |---|---|---|
-| D17 | Agent SQLite 24h buffer:进程重启不丢数据;回放去重 `(node_id, task_id, timestamp) ON CONFLICT DO NOTHING` | `apps/agent/internal/buffer/sqlite.go`;buffer.db 500MB 上限 |
-| D18 | Redis Streams MAXLEN ~500k:`XADD ... MAXLEN ~ 500000` 所有 probe/monitor/alert streams | `lib/shared/stream/` + 每处 XADD 调用 |
-| D19 | S1 ECS 升至 8C/16G(全栈内存 4.5-6GB+overhead,原 4C/8G 过紧)| `infra/docker/docker-compose.core.yml` + Ansible inventory |
-| D20 | attest/generator retry 1-4-16s 指数退步 + ±25% jitter | `apps/attest/internal/service/retry.go` |
-| D21 | MCP token 续期:ON CONFLICT DO UPDATE + Redis SETNX 30s lock 防并发重复续期 | `lib/auth/mcp_token.go:Renew()` |
+| D17 | Agent SQLite 24h buffer:进程重启不丢数据;回放去重 `(node_id, task_id, timestamp) ON CONFLICT DO NOTHING` | `backend/apps/agent/internal/buffer/sqlite.go`;buffer.db 500MB 上限 |
+| D18 | Redis Streams MAXLEN ~500k:`XADD ... MAXLEN ~ 500000` 所有 probe/monitor/alert streams | `backend/lib/shared/stream/` + 每处 XADD 调用 |
+| D19 | S1 ECS 升至 8C/16G(全栈内存 4.5-6GB+overhead,原 4C/8G 过紧)| `backend/infra/docker/docker-compose.core.yml` + Ansible inventory |
+| D20 | attest/generator retry 1-4-16s 指数退步 + ±25% jitter | `backend/apps/attest/internal/service/retry.go` |
+| D21 | MCP token 续期:ON CONFLICT DO UPDATE + Redis SETNX 30s lock 防并发重复续期 | `backend/lib/auth/mcp_token.go:Renew()` |
 
 ---
 
@@ -362,7 +362,7 @@ idcd/
 ```
 
 **关键点**:
-- 所有 core service 同机 docker compose(`infra/docker/docker-compose.core.yml`)
+- 所有 core service 同机 docker compose(`backend/infra/docker/docker-compose.core.yml`)
 - 国内/海外用户走 Cloudflare 就近接入
 - 主→备 流式复制(streaming replication,< 30s lag)
 - 100+ 节点纯 Ansible + Terraform
@@ -370,13 +370,13 @@ idcd/
 ### 4.2 S2 部署(M5-M8,Evidence 上线)
 
 新增:
-- **attest.idcd.com 独立 docker compose 栈**(`infra/docker/docker-compose.attest.yml` + `docker-compose.attest-verify.yml`)
+- **attest.idcd.com 独立 docker compose 栈**(`backend/infra/docker/docker-compose.attest.yml` + `docker-compose.attest-verify.yml`)
   - attest-api(多实例,LB)
   - attest/generator(单实例起步,S3+ 改 Worker 池)
   - **attest/verifier 独立 subnet**(D6)
   - attest/refund-worker(独立 container)
 - **KMS**:云 KMS(AWS / 阿里云,根据收款主体地区)
-- **TSA Client**:DigiCert + GlobalSign 双家(`lib/attest/tsa/`)
+- **TSA Client**:DigiCert + GlobalSign 双家(`backend/lib/attest/tsa/`)
 - **应用层多实例水平扩展**:api / aggregator / notifier 各 2+ 实例
 - **Redis Cluster 起步**(3 主 3 从)
 - **read replica**:报表查询走从库
@@ -384,7 +384,7 @@ idcd/
 ### 4.3 S3 部署(M9-M14,MCP 上线 + 多区)
 
 新增:
-- **mcp.idcd.com 独立部署**(`infra/docker/docker-compose.mcp.yml`)
+- **mcp.idcd.com 独立部署**(`backend/infra/docker/docker-compose.mcp.yml`)
   - mcp 多实例 + Cloudflare LB sticky session
   - 兼容性 smoke test(Cursor / Claude Code / Codex)发布前必跑
 - **多区主控**:亚太 / 北美 / 欧洲
@@ -515,16 +515,16 @@ make dev-web             # next dev
 
 | 我想做什么 | 入口 |
 |---|---|
-| 新增公开 API 端点 | `apps/api/internal/handlers/` + 同步更新 `packages/api-spec/openapi.yaml` |
-| 新增 MCP tool | `apps/mcp/internal/tools/` + 注册到 `tools/registry.go` + 计费配置 `mcp_tool_call.units_charged` |
-| 新增监控类型(M21-M24) | `apps/scheduler/internal/probes/` + `04-monitoring §3` + DDL `agent_obs_monitor.endpoint_config jsonb` |
-| 新增 Verdict 模板(SLA/Incident/Compliance/Legal) | `apps/attest/internal/service/templates/` + 加 unit test 验证 PDF 渲染 + 法律边界硬编码段落 |
+| 新增公开 API 端点 | `backend/apps/api/internal/handlers/` + 同步更新 `packages/api-spec/openapi.yaml` |
+| 新增 MCP tool | `backend/apps/mcp/internal/tools/` + 注册到 `tools/registry.go` + 计费配置 `mcp_tool_call.units_charged` |
+| 新增监控类型(M21-M24) | `backend/apps/scheduler/internal/probes/` + `04-monitoring §3` + DDL `agent_obs_monitor.endpoint_config jsonb` |
+| 新增 Verdict 模板(SLA/Incident/Compliance/Legal) | `backend/apps/attest/internal/service/templates/` + 加 unit test 验证 PDF 渲染 + 法律边界硬编码段落 |
 | 新增告警通道(钉钉/飞书/Webhook/Email/SMS/...) | `packages/notifier/channels/` 实现 `Send(payload) -> Result` 接口 |
 | 新增 LLM Provider | `packages/llm/{provider}/` + 注册 `packages/llm/registry.go` + 添加 per-Provider prompt + eval 数据集 |
-| 新增 schema 迁移 | `lib/db/migrations/{schema}/NNN_xxx.up.sql` + `.down.sql`;**严禁跨 schema REFERENCES** |
-| 新增数据库查询 | `lib/db/queries/*.sql` → `sqlc generate` → 在 `lib/db/repository/` 包装 |
+| 新增 schema 迁移 | `backend/lib/db/migrations/{schema}/NNN_xxx.up.sql` + `.down.sql`;**严禁跨 schema REFERENCES** |
+| 新增数据库查询 | `backend/lib/db/queries/*.sql` → `sqlc generate` → 在 `backend/lib/db/repository/` 包装 |
 | 新增 prod 配置 | `infra/ansible/group_vars/prod/` + secrets 走 Vault(不入 git) |
-| 修 Agent 二进制 | `apps/agent/` + 走 OTA 3 级灰度;dev 模式可 `make agent-local` 单机跑 |
+| 修 Agent 二进制 | `backend/apps/agent/` + 走 OTA 3 级灰度;dev 模式可 `make agent-local` 单机跑 |
 | Hot fix prod 单 service | `git tag v{x.y.z}-{service}` → CI 触发该 service 单 build & deploy(不触发 monorepo 全量) |
 
 ### 6.3 第一周新人 checklist
@@ -568,7 +568,7 @@ make dev-web             # next dev
 
 ### 7.3 关键 Dashboard(Eng Review Failure Modes 补齐)
 
-`apps/web/src/app/admin/` + Grafana JSON `infra/grafana/dashboards/`:
+`frontend/src/app/admin/` + Grafana JSON `infra/grafana/dashboards/`:
 
 | Dashboard | 用途 | 对应 D / Concern |
 |---|---|---|
@@ -600,7 +600,7 @@ make dev-web             # next dev
 | 节点失窃 / 异常上报 | `docs/RUNBOOKS/node-compromise.md` + 10 §6.5 + CRL/OCSP 撤销 + Anchor 偏差告警 |
 | MCP token 异常突增 | 12 §22 + 用户控制台一键撤销 + Redis broadcast 断 SSE |
 | Verdict 自检失败 | `docs/RUNBOOKS/verdict-self-verify-fail.md` + **立即停止新生成** + P0 |
-| Agent OTA 灰度失败 | 自动回滚已触发,P1;查 `apps/scheduler/internal/ota/` 灰度日志 |
+| Agent OTA 灰度失败 | 自动回滚已触发,P1;查 `backend/apps/scheduler/internal/ota/` 灰度日志 |
 | TSA 三家全挂 | P0 + 报告生成暂停;切 NTSC(若 S3 已接入);通知用户延迟 |
 | LLM 复盘 eval 跌破 4.0 | 暂停该 (provider, version) prompt;回退上版本;调查数据集 |
 
@@ -717,21 +717,21 @@ make dev-web             # next dev
 
 | 模块 PRD | 主要 app / package 实施 |
 |---|---|
-| 01-branding | `apps/web/` 设计 token + `packages/ui/` |
-| 02-public-tools | `apps/web/` SSG + `apps/api/internal/handlers/probe/` |
-| 03-account-system | `apps/api/internal/handlers/account/` + `lib/auth/` |
-| 04-monitoring | `apps/scheduler/internal/probes/` + `apps/aggregator/` + DDL Hypertable |
-| 05-alerting | `apps/notifier/` + `packages/notifier/channels/` |
-| 06-status-pages | `apps/web/src/app/status/`(Next.js 多租户)+ ACME + LLM 起草 Worker |
-| 07-reports | `apps/api/internal/handlers/reports/` + LLM 复盘(`packages/llm/`)|
-| 08-open-api | `apps/api/` + `packages/api-spec/` + `packages/sdk-js/` |
-| 09-billing | `apps/api/internal/handlers/billing/` + payment-go-sdk + KMS |
-| 10-nodes-and-agents | `apps/gateway/` + `apps/agent/` + mTLS CA + CRL/OCSP + `infra/terraform/` |
-| 11-admin | `apps/web/src/app/admin/` + audit + KMS 仪式后台 + Verdict 工单 |
-| 12-compliance | `apps/api/` Gateway 限速 + CF + audit + 权威测评白名单 + KMS 应急 SOP |
-| 13-content-seo | `apps/web/` SSG + `/leaderboard` 生成器 |
-| **18-evidence (v2)** | `apps/attest/` + `lib/attest/` + S3 WORM |
-| **19-ai-agent (v2)** | `apps/mcp/` + `packages/llm/` + MCP token store |
+| 01-branding | `frontend/` 设计 token + `packages/ui/` |
+| 02-public-tools | `frontend/` SSG + `backend/apps/api/internal/handlers/probe/` |
+| 03-account-system | `backend/apps/api/internal/handlers/account/` + `backend/lib/auth/` |
+| 04-monitoring | `backend/apps/scheduler/internal/probes/` + `backend/apps/aggregator/` + DDL Hypertable |
+| 05-alerting | `backend/apps/notifier/` + `packages/notifier/channels/` |
+| 06-status-pages | `frontend/src/app/status/`(Next.js 多租户)+ ACME + LLM 起草 Worker |
+| 07-reports | `backend/apps/api/internal/handlers/reports/` + LLM 复盘(`packages/llm/`)|
+| 08-open-api | `backend/apps/api/` + `packages/api-spec/` + `packages/sdk-js/` |
+| 09-billing | `backend/apps/api/internal/handlers/billing/` + payment-go-sdk + KMS |
+| 10-nodes-and-agents | `backend/apps/gateway/` + `backend/apps/agent/` + mTLS CA + CRL/OCSP + `backend/infra/terraform/` |
+| 11-admin | `frontend/src/app/admin/` + audit + KMS 仪式后台 + Verdict 工单 |
+| 12-compliance | `backend/apps/api/` Gateway 限速 + CF + audit + 权威测评白名单 + KMS 应急 SOP |
+| 13-content-seo | `frontend/` SSG + `/leaderboard` 生成器 |
+| **18-evidence (v2)** | `backend/apps/attest/` + `backend/lib/attest/` + S3 WORM |
+| **19-ai-agent (v2)** | `backend/apps/mcp/` + `packages/llm/` + MCP token store |
 
 ---
 
@@ -751,7 +751,7 @@ make dev-web             # next dev
 - **S1 末**:30 天 Anchor baseline 数据采集报告(TODO-4 输入)
 
 ### S2(M5-M8,Evidence + 商业化)
-- 控制台 CSR(`apps/web/` 登录后)
+- 控制台 CSR(`frontend/` 登录后)
 - Application Services 拆分(同进程 module)
 - Worker Pool 完善(river + asynq)+ Read Replica
 - status 多租户 + ACME
@@ -773,9 +773,9 @@ make dev-web             # next dev
 - K3s / Nomad 评估
 - 服务拆分(按热点)
 - **v2 NEW**:
-  - `apps/mcp/` alpha(M9)→ GA(M12)
+  - `backend/apps/mcp/` alpha(M9)→ GA(M12)
   - MCP Auth + Tool Dispatcher + 独立计量
-  - `apps/web/src/app/docs/mcp/` 独立子域上线
+  - `frontend/src/app/docs/mcp/` 独立子域上线
   - 第三家 TSA(NTSC)接入
   - Agent obs 子系统(M21/M22/M23)
   - 区块链锚定 alpha(可选 add-on)

@@ -12,6 +12,9 @@ jobs:
   go-lint:
     name: Go Lint
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     if: |
       contains(github.event.head_commit.modified, '.go') ||
       contains(github.event.head_commit.added, '.go') ||
@@ -47,6 +50,9 @@ jobs:
   go-test:
     name: Go Test
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -81,7 +87,7 @@ jobs:
       - name: Upload coverage
         uses: codecov/codecov-action@v4
         with:
-          files: ./coverage.out
+          files: ./backend/coverage.out
           flags: unittests
           name: codecov-umbrella
         continue-on-error: true
@@ -89,6 +95,9 @@ jobs:
   go-build:
     name: Go Build
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -112,8 +121,8 @@ jobs:
     name: Frontend Lint
     runs-on: ubuntu-latest
     if: |
-      contains(github.event.head_commit.modified, 'apps/web/') ||
-      contains(github.event.head_commit.added, 'apps/web/') ||
+      contains(github.event.head_commit.modified, 'frontend/') ||
+      contains(github.event.head_commit.added, 'frontend/') ||
       github.event_name == 'pull_request'
     steps:
       - name: Checkout code
@@ -130,11 +139,11 @@ jobs:
           version: '10'
 
       - name: Install dependencies
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Lint frontend
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm lint
 
   frontend-test:
@@ -155,11 +164,11 @@ jobs:
           version: '10'
 
       - name: Install dependencies
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Run tests
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm test --passWithNoTests
 
   frontend-build:
@@ -180,11 +189,11 @@ jobs:
           version: '10'
 
       - name: Install dependencies
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm install --frozen-lockfile
 
       - name: Build frontend
-        working-directory: apps/web
+        working-directory: frontend
         run: pnpm build
 
   schema-lint:
@@ -199,7 +208,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run cross-schema FK check
-        run: bash scripts/lint-cross-schema-fk.sh
+        run: bash backend/scripts/lint-cross-schema-fk.sh
 
       - name: Run attestation words check
-        run: bash scripts/lint-attestation-words.sh
+        run: bash backend/scripts/lint-attestation-words.sh

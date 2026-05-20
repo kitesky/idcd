@@ -3,7 +3,7 @@
 `TestLetsEncrypt_Integration_Pebble` exercises the full ACME flow (newOrder →
 DNS-01 → finalize → revoke) against a local [Pebble](https://github.com/letsencrypt/pebble)
 server + `pebble-challtestsrv` mock DNS. The harness lives in
-`lib/cert/ca/internal/pebble`.
+`backend/lib/cert/ca/internal/pebble`.
 
 When the host environment can't run the integration the harness returns
 `pebble.ErrSkip` and the test calls `t.Skip` — `go test ./...` stays green
@@ -19,7 +19,7 @@ docker pull letsencrypt/pebble:latest
 docker pull letsencrypt/pebble-challtestsrv:latest
 
 # Run the test; harness brings up + tears down its own containers
-go test ./lib/cert/ca/letsencrypt/... -run TestLetsEncrypt_Integration_Pebble -v
+go test ./backend/lib/cert/ca/letsencrypt/... -run TestLetsEncrypt_Integration_Pebble -v
 ```
 
 Total wall-clock ~15-25s including `docker pull` cache hits and Pebble's
@@ -28,7 +28,7 @@ account-registration round trip.
 ### CI / Mac / Windows (external Pebble via docker-compose)
 
 ```bash
-docker compose -f lib/cert/ca/internal/pebble/docker-compose.yml up -d
+docker compose -f backend/lib/cert/ca/internal/pebble/docker-compose.yml up -d
 
 # Tell the harness to use the already-running pair
 export PEBBLE_DIRECTORY_URL=https://127.0.0.1:14000/dir
@@ -36,13 +36,13 @@ export PEBBLE_CHALLTESTSRV_URL=http://127.0.0.1:8055
 export PEBBLE_DNS_SERVER=127.0.0.1:8053
 
 # Trust Pebble's self-signed CA root
-docker compose -f lib/cert/ca/internal/pebble/docker-compose.yml \
+docker compose -f backend/lib/cert/ca/internal/pebble/docker-compose.yml \
     exec -T pebble cat /test/certs/pebble.minica.pem > /tmp/pebble.minica.pem
 export LEGO_CA_CERTIFICATES=/tmp/pebble.minica.pem
 
-go test ./lib/cert/ca/letsencrypt/... -run TestLetsEncrypt_Integration_Pebble -v
+go test ./backend/lib/cert/ca/letsencrypt/... -run TestLetsEncrypt_Integration_Pebble -v
 
-docker compose -f lib/cert/ca/internal/pebble/docker-compose.yml down
+docker compose -f backend/lib/cert/ca/internal/pebble/docker-compose.yml down
 ```
 
 ## Environment requirements

@@ -310,7 +310,7 @@
 
 | # | 决策 | 锁定结论 | 影响模块 |
 |---|------|---------|---------|
-| D17 | Agent 24h 缓冲存储 | ✅ SQLite 本地持久化(modernc.org/sqlite cgo-free);进程重启后缓冲不丢失;replay 时 Aggregator ingest 侧按 `(node_id, task_id, timestamp)` 去重 | apps/agent/ |
+| D17 | Agent 24h 缓冲存储 | ✅ SQLite 本地持久化(modernc.org/sqlite cgo-free);进程重启后缓冲不丢失;replay 时 Aggregator ingest 侧按 `(node_id, task_id, timestamp)` 去重 | backend/apps/agent/ |
 | D18 | Redis Streams MAXLEN | ✅ `probe.results` / `monitor.events` / `alert.events` 等全部 Streams 设 `XADD ... MAXLEN ~ 500000`;超出丢弃最旧数据,保护 Redis 内存 | 14 §5.3, 10 事件总线 |
 | D19 | S1 ECS 规格 | ✅ 主控 ECS 升至 **8C/16G**（原 4C/8G 全栈内存 4.5-6GB+overhead 过紧）;法兰克福热备维持 2C/4G(轻量备份用途) | 14 §7, ARCHITECTURE §4.1 |
 | D20 | attest-worker retry 退步 | ✅ 每步重试间隔 **1s → 4s → 16s 指数退步 + ±25% jitter**;AWS KMS 默认 5 TPS/key,立即三连重试必触限速;Go `time.Sleep` 即可 | apps/attest-worker/ |
@@ -430,8 +430,8 @@
 |---|---|---|---|---|
 | **D-FC-01** | S1 是否仅 Let's Encrypt | **A) 仅 LE** | ✅ 已锁定(S1) | apps/cert-svc S1 单 CA;S2 多 CA Router 在 §6 §8 |
 | **D-FC-02** | 私钥下载策略 | **B) 加密落库可下载** | ✅ 已锁定 | KMS 信封 → key_kms_handle;一次性签名 URL(W5 已上) |
-| **D-FC-03** | DNS provider 实现 | **B) 全用 lego** | ✅ 已锁定 | lib/cert/dns/* 桥接 go-acme/lego v4(详 §8) |
-| **D-FC-04** | KMS 选型 | **A+B+C 三路径**:阿里 KMS(国内)+ AWS KMS(海外)+ HashiCorp Vault(自托管) | ✅ 已锁定(S2 W4 完成) | lib/cert/vault/{alikms,awskms,hashivault} |
+| **D-FC-03** | DNS provider 实现 | **B) 全用 lego** | ✅ 已锁定 | backend/lib/cert/dns/* 桥接 go-acme/lego v4(详 §8) |
+| **D-FC-04** | KMS 选型 | **A+B+C 三路径**:阿里 KMS(国内)+ AWS KMS(海外)+ HashiCorp Vault(自托管) | ✅ 已锁定(S2 W4 完成) | backend/lib/cert/vault/{alikms,awskms,hashivault} |
 | **D-FC-05** | 是否做 HTTP-01 challenge | **B) 不做,仅 DNS-01** | ✅ 已锁定 | 用户零运维 + 所有场景覆盖;减少安全面 |
 | **D-FC-06** | 续期失败兜底 | **B) 3 次后停 + 强告警** | ✅ 已锁定(S2 W7) | renewal_jobs.attempt_count;notifier 推强告警邮件 |
 | **D-FC-07** | 域名黑名单维护 | **B) 配置中心动态拉** | ✅ 已锁定 | abuse_blocklist 表 + admin 后台维护(运营可改不发版) |

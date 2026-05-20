@@ -167,7 +167,7 @@
 复用现有 MCP server(§19),让 copilot **作为另一个 MCP client** 通过内部 endpoint 调用:
 
 ```go
-// apps/api/internal/copilot/orchestrator.go
+// backend/apps/api/internal/copilot/orchestrator.go
 type Orchestrator struct {
     llm  LLMClient        // qwen / deepseek wrapper
     mcp  MCPClient        // 内部 SSE client → mcp.idcd.com

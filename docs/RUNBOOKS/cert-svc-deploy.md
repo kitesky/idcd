@@ -1,7 +1,7 @@
 # cert-svc 部署 Runbook
 
 > 适用 S2 W8 收尾后的首次生产部署。后续版本升级走 CI/CD `deploy.yml` 自动化即可。
-> 关联：`docs/prd/20-free-cert.md`、`infra/docker/docker-compose.prod.yml`、`apps/cert-svc/`
+> 关联：`docs/prd/20-free-cert.md`、`backend/infra/docker/docker-compose.prod.yml`、`backend/apps/cert-svc/`
 
 ---
 
@@ -19,7 +19,7 @@
 S2 W8 push 到 main 后 CI 的 `migrate` job 会自动执行：
 
 ```sql
--- lib/db/migrations/idcd_main/00042_cert_init.sql
+-- backend/lib/db/migrations/idcd_main/00042_cert_init.sql
 -- 创建 cert.* schema 下 8 张表
 ```
 
@@ -211,7 +211,7 @@ docker compose up -d cert-svc cert-worker cert-renewer
 DB migration 不可单步回滚（cert schema 只增不减）；如必须回滚 schema：
 
 ```bash
-goose -dir lib/db/migrations/idcd_main postgres "$PROD_DB_DSN" down-to 41
+goose -dir backend/lib/db/migrations/idcd_main postgres "$PROD_DB_DSN" down-to 41
 ```
 
 ⚠️ 这会丢失 cert 数据；仅紧急情况使用。

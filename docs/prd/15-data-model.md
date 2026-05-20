@@ -1446,9 +1446,9 @@ CREATE TABLE leaderboard_optout_request (
 
 ### 4.X.15 cert.* schema(v2 免费证书模块, S2 上线)
 
-> 完整 DDL 见 `lib/db/migrations/idcd_main/00042_cert_init.sql`。详 [`20-free-cert.md §5`](./20-free-cert.md#5-领域模型与数据表)。
+> 完整 DDL 见 `backend/lib/db/migrations/idcd_main/00042_cert_init.sql`。详 [`20-free-cert.md §5`](./20-free-cert.md#5-领域模型与数据表)。
 >
-> **D1 跨 schema 不写 FK 说明**:`cert.orders.account_id` / `cert.dns_credentials.account_id` / `cert.certs.account_id` 等列指向 `account.users.id` 但**不**声明 FK,走 Repository 应用层 join(`apps/cert-svc/internal/repo/*.go`)。`cert.orders.cert_id` / `cert.renewal_jobs.cert_id` / `cert.renewal_jobs.new_order_id` 这类同 schema 引用也保持无 FK 风格,与全库迁移耦合策略一致。
+> **D1 跨 schema 不写 FK 说明**:`cert.orders.account_id` / `cert.dns_credentials.account_id` / `cert.certs.account_id` 等列指向 `account.users.id` 但**不**声明 FK,走 Repository 应用层 join(`backend/apps/cert-svc/internal/repo/*.go`)。`cert.orders.cert_id` / `cert.renewal_jobs.cert_id` / `cert.renewal_jobs.new_order_id` 这类同 schema 引用也保持无 FK 风格,与全库迁移耦合策略一致。
 >
 > **付费档兼容**:`cert.orders` 的 `tier` / `sans_unicode` / `common_name` / `validity_days` / `reseller_channel` / `reseller_order_ref` / `organization_id` / `billing_invoice_id` 字段从 S1 day-1 就建好,S3 付费 CA 接入零 schema 改动(详 20-free-cert §20)。
 

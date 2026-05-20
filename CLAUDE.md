@@ -29,7 +29,7 @@
 **始终先读 `docs/DESIGN.md` 再做任何视觉 / UI 决策。**
 
 - 完整采用 shadcn/ui 官方体系（new-york style，不自定义间距/圆角/字体）
-- **主题唯一入口 = `apps/web/src/styles/theme.css`**（OKLCH 色彩空间，改这里换全局主题）
+- **主题唯一入口 = `frontend/src/styles/theme.css`**（OKLCH 色彩空间，改这里换全局主题）
 - Base Color = **Zinc**（深色偏蓝灰），shadcn/ui 官方预设
 - 字体 = Geist Sans + Geist Mono（Next.js / shadcn 默认）
 - 中文字体 fallback = PingFang SC / Microsoft YaHei
@@ -84,11 +84,11 @@
 - 每个新包/函数必须有对应 `_test.go`，行覆盖率目标 ≥ 90%
 - 纯计算函数（ID 生成、错误类型、Duration 解析等）目标 100%
 - 数据库 / Redis 操作用 **miniredis**（stream）/ **pgx mock** 或测试库隔离，不依赖真实环境
-- 测试命令：`go test ./...`（在项目根运行，通过 go.work 覆盖所有 module）
+- 测试命令：`cd backend && go test ./...`（go.work 在 backend/，覆盖所有 module）
 
-### 前端（Next.js / TypeScript）—— 唯一前端项目 `apps/web`
+### 前端（Next.js / TypeScript）—— 唯一前端项目 `frontend/`
 
-**所有前端内容统一在 `apps/web` 一个 Next.js 项目中，无单独子应用。**
+**所有前端内容统一在 `frontend/` 一个 Next.js 项目中，无单独子应用。**
 
 路由分组架构（不影响 URL 路径）：
 - `app/(public)/` — 公开页面（带 Nav + Footer）：首页、工具、文档入口
@@ -101,15 +101,15 @@
 测试：
 - 每个 utility 函数必须有 Vitest 单元测试
 - 组件测试用 Testing Library（关键交互路径）
-- 测试命令：`pnpm --filter @idcd/web test`
+- 测试命令：`pnpm --filter @idcd/web test`（pnpm filter 仍按 package name，不受目录改动影响）
 
 ### 提交前检查清单
 
 ```
-□ go test ./... 全绿（无 FAIL）
+□ (cd backend && go test ./...) 全绿（无 FAIL）
 □ 新文件有配套 _test.go（或 .test.ts）
-□ scripts/lint-cross-schema-fk.sh 通过（DB 迁移改动时）
-□ scripts/lint-attestation-words.sh 通过（probe 模块改动时）
+□ backend/scripts/lint-cross-schema-fk.sh 通过（DB 迁移改动时）
+□ backend/scripts/lint-attestation-words.sh 通过（probe 模块改动时）
 ```
 
 ---
@@ -119,7 +119,7 @@
 使用 `Agent(isolation: "worktree", run_in_background: true)` 并发多个 agent 时，必须遵守：
 
 1. **文件集合互不相交**：规划任务时列出每个 agent 修改的文件，确认零重叠再派发
-2. **不写绝对路径**：prompt 里写 `文件: apps/web/...`（相对路径），而非 `/Volumes/Workspace/code/idcd/...`，否则 isolation 的 worktree 隔离失效，agent 直接写主 repo
+2. **不写绝对路径**：prompt 里写 `文件: frontend/...` 或 `文件: backend/apps/.../...`（相对路径），而非 `/Volumes/Workspace/code/idcd/...`，否则 isolation 的 worktree 隔离失效，agent 直接写主 repo
 3. **同一文件只能一个 agent 改**：需要多处修改同一文件时，合并成单个 agent 或顺序执行
 4. **sidebar-data.ts 是反例**：批次五两个 agent 都改了它，靠运气（后者先读再追加）没丢数据，但不可依赖
 

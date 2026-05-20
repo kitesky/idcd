@@ -24,7 +24,7 @@ WORKDIR /app/apps/agent
 RUN GOWORK=off go build -o /bin/agent ./cmd/agent/
 
 # Runtime stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 # wget for HEALTHCHECK on agent's loopback /health endpoint (port 9101).
 # libcap supplies setcap; needed to grant CAP_NET_RAW on /bin/agent so the

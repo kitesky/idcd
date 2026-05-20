@@ -21,7 +21,7 @@ WORKDIR /app/apps/mcp
 RUN GOWORK=off go build -o /bin/mcp ./cmd/mcp/
 
 # Runtime stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates tzdata wget \
  && adduser -D -u 10001 idcd

@@ -23,7 +23,7 @@ RUN go build -o /bin/cert-svc ./cmd/server/ \
  && go build -o /bin/cert-renewer ./cmd/renewer/
 
 # Runtime stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates tzdata wget \
  && adduser -D -u 10001 idcd

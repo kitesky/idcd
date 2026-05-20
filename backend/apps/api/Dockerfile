@@ -21,7 +21,7 @@ WORKDIR /app/apps/api
 RUN GOWORK=off go build -o /bin/api ./cmd/api/
 
 # Runtime stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 # wget for HEALTHCHECK; ca-certificates / tzdata for TLS + Asia/Shanghai TZ.
 RUN apk add --no-cache ca-certificates tzdata wget \

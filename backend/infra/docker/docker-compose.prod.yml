@@ -115,7 +115,8 @@ services:
       # MCP server 通过 internal docker network 调用 api,不走外网
       - IDCD_API_URL=http://api:8080
       # mcp 内部调 api 用的 service token（注入到 Authorization: Bearer）
-      # 当前所有 tool handler 都 enforce HasAPIKey,IDCD_API_KEY 为空时 fail
+      # 可选 — D2 双池独立后 tool handler 不再强制；留空时 mcp 走匿名调用，
+      # 配置后用于内部反代（api 端按 token 校验配额池）。
       - IDCD_API_KEY=${MCP_INTERNAL_API_KEY:-}
       # CORS allowlist — 留空 = fail-closed,不允许浏览器 origin 调用
       - MCP_CORS_ORIGINS=

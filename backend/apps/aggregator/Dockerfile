@@ -20,7 +20,7 @@ WORKDIR /app/apps/aggregator
 RUN GOWORK=off go build -o /bin/aggregator ./cmd/aggregator/
 
 # Runtime stage
-FROM alpine:3.20
+FROM alpine:3.22
 
 RUN apk add --no-cache ca-certificates tzdata \
  && adduser -D -u 10001 idcd

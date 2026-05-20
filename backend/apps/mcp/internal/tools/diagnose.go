@@ -110,7 +110,9 @@ func handleDiagnoseFunc(client *apiclient.Client) protocol.ToolHandler {
 			PacketLoss float64 `json:"packet_loss"`
 			Success    bool    `json:"success"`
 		}
-		pingBody := map[string]any{"target": host, "count": 3}
+		// count 必须放 params 子对象，与 ping.go 契约保持一致；
+		// 顶层 count 会被 api 忽略，agent 拿到的 options 为空，回退默认 5 包。
+		pingBody := map[string]any{"target": host, "params": map[string]any{"count": 3}}
 		if err := client.PollProbeTask(ctx, "/v1/probe/ping", pingBody, &pingResult); err != nil {
 			fmt.Fprintf(&sb, "[✗] Ping: %s", err.Error())
 		} else {

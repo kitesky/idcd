@@ -259,6 +259,13 @@ func (s *Server) setupRouter() {
 	leaderboardH := handler.NewLeaderboardHandler(s.pgxPool)
 	r.Get("/v1/leaderboard/cdn", leaderboardH.CDNLeaderboard)
 
+	// idcd.com/status — public, no auth required.
+	// Powered by the StatusCollector + DailyAggregator background jobs
+	// (see apps/api/internal/job/). Cache-Control 60s on every response.
+	publicStatusH := handler.NewPublicStatusHandler(s.pgxPool)
+	r.Get("/v1/public/status/overview", publicStatusH.Overview)
+	r.Get("/v1/public/status/incidents", publicStatusH.Incidents)
+
 	// Prometheus metrics are served on a separate internal port (see startMetricsServer).
 	// Do NOT expose /metrics on the public router.
 
@@ -532,6 +539,7 @@ func (s *Server) setupRouter() {
 			// Admin billing endpoints — require admin token via Authorization: Bearer header.
 			adminBillingH := handler.NewAdminBillingHandler(s.pgxPool).WithEnqueuer(asynqBillingEnq)
 			adminPricingH := handler.NewAdminPricingHandler(s.pgxPool).WithInvalidator(pricingSvc)
+			adminStatusIncidentsH := handler.NewAdminStatusIncidentsHandler(s.pgxPool)
 			billingAdminAuthH := s.newAdminHandler()
 			r.Route("/admin", func(r chi.Router) {
 				r.Use(billingAdminAuthH.AdminAuthMiddleware)
@@ -546,6 +554,12 @@ func (s *Server) setupRouter() {
 				r.Get("/billing/promotions/{id}", adminPricingH.GetPromotion)
 				r.Patch("/billing/promotions/{id}", adminPricingH.UpdatePromotion)
 				r.Delete("/billing/promotions/{id}", adminPricingH.DeletePromotion)
+
+				// Status page incidents CRUD (manual v1; auto-from-alertmanager is v2).
+				r.Get("/status-incidents", adminStatusIncidentsH.List)
+				r.Post("/status-incidents", adminStatusIncidentsH.Create)
+				r.Patch("/status-incidents/{id}", adminStatusIncidentsH.Update)
+				r.Delete("/status-incidents/{id}", adminStatusIncidentsH.Delete)
 			})
 
 			// Billing endpoints (subscribe, cancel, invoices, webhook, stub-confirm)

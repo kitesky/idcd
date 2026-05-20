@@ -41,14 +41,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const t = await getT("admin", locale)
 
   const NAV = [
-    { href: "/admin/metrics",          label: t("nav.metrics") },
-    { href: "/admin/users",            label: t("nav.users") },
-    { href: "/admin/nodes",            label: t("nav.nodes") },
+    { href: "/admin/metrics",           label: t("nav.metrics") },
+    { href: "/admin/users",             label: t("nav.users") },
+    { href: "/admin/nodes",             label: t("nav.nodes") },
     { href: "/admin/node-applications", label: t("nav.nodeApplications") },
-    { href: "/admin/refund-failed",    label: t("nav.refundFailed") },
-    { href: "/admin/beta-invitations", label: t("nav.betaInvitations") },
-    { href: "/admin/upgrades",         label: t("nav.upgrades") },
-    { href: "/admin/cert",             label: t("nav.cert") },
+    { href: "/admin/refund-failed",     label: t("nav.refundFailed") },
+    { href: "/admin/beta-invitations",  label: t("nav.betaInvitations") },
+    { href: "/admin/upgrades",          label: t("nav.upgrades") },
+    { href: "/admin/cert",              label: t("nav.cert") },
+    { href: "/admin/status-incidents",  label: t("nav.statusIncidents") },
   ]
 
   return (

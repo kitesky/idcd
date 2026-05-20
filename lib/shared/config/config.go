@@ -26,6 +26,7 @@ type Config struct {
 	Encryption    EncryptionConfig    `yaml:"encryption"`
 	Payment       PaymentConfig       `yaml:"payment"`
 	RateLimit     RateLimitConfig     `yaml:"rate_limit"`
+	StatusProbe   StatusProbeConfig   `yaml:"status_probe"`
 
 	// CertSvcURL is the base URL of cert-svc (apps/cert-svc) used by
 	// apps/api to reverse-proxy /v1/cert/* and /v1/admin/cert/* into
@@ -33,6 +34,23 @@ type Config struct {
 	// stub handlers in apps/api/internal/handler/cert.go take over
 	// (list endpoints return empty arrays, mutations return 501).
 	CertSvcURL string `yaml:"cert_svc_url"`
+}
+
+// StatusProbeConfig drives the idcd.com/status data collector. The collector
+// HTTP-probes each entry in Services every Interval and writes one row per
+// service to status_uptime_5min. Disabled by default so dev environments
+// without all services running don't accumulate junk uptime data.
+type StatusProbeConfig struct {
+	Enabled  bool              `yaml:"enabled"`
+	Interval Duration          `yaml:"interval"` // default 5m if unset
+	Timeout  Duration          `yaml:"timeout"`  // per-probe HTTP timeout, default 3s
+	// Services maps service_key → probe URL. Common keys:
+	//   api / cert-svc / gateway / aggregator / notifier / web
+	// 2xx response = operational, slow (> degraded_ms) = degraded, else outage.
+	Services map[string]string `yaml:"services"`
+	// DegradedMs is the response-time threshold above which a 2xx response is
+	// classified degraded instead of operational. Default 1000ms.
+	DegradedMs int `yaml:"degraded_ms"`
 }
 
 // RateLimitConfig tunes the per-flow rate limiters previously hard-coded in

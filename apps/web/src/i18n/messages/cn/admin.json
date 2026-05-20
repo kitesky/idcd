@@ -8,7 +8,8 @@
     "betaInvitations": "内测邀请",
     "refundFailed": "退款失败",
     "nodeApplications": "节点申请",
-    "cert": "证书管理"
+    "cert": "证书管理",
+    "statusIncidents": "状态事件"
   },
   "home": {
     "title": "管理首页",

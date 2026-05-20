@@ -18,6 +18,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	acmemgr "github.com/kite365/idcd/apps/api/internal/acme"
+	"github.com/kite365/idcd/apps/api/internal/job"
 	"github.com/kite365/idcd/apps/api/internal/server"
 	"github.com/kite365/idcd/lib/shared/config"
 	"github.com/kite365/idcd/lib/shared/logger"
@@ -120,6 +121,35 @@ func main() {
 	if mgr := wireACME(pgxPool, slogLogger); mgr != nil {
 		srv.MountACME(mgr)
 		srv.StartACMEHTTPListener(mgr, acmeHTTPAddr())
+	}
+
+	// Start the idcd.com/status data collector (writes status_uptime_5min).
+	// Disabled by default in dev — opt in via config.status_probe.enabled.
+	// Its lifetime is bound to a background context cancelled at shutdown.
+	jobCtx, jobCancel := context.WithCancel(context.Background())
+	defer jobCancel()
+	if cfg.StatusProbe.Enabled {
+		collector := job.New(pgxPool, job.Options{
+			Interval:   cfg.StatusProbe.Interval.Duration,
+			Timeout:    cfg.StatusProbe.Timeout.Duration,
+			DegradedMs: cfg.StatusProbe.DegradedMs,
+			Services:   cfg.StatusProbe.Services,
+			Logger:     slogLogger,
+		})
+		go func() {
+			if err := collector.Run(jobCtx); err != nil {
+				slogLogger.Error("status collector exited", "err", err)
+			}
+		}()
+
+		// Roll 5min buckets into status_uptime_daily once a day at 00:05 UTC.
+		// Lives alongside the collector so both share the same on/off switch.
+		daily := job.NewDailyAggregator(pgxPool, job.DailyOptions{Logger: slogLogger})
+		go func() {
+			if err := daily.Run(jobCtx); err != nil {
+				slogLogger.Error("daily aggregator exited", "err", err)
+			}
+		}()
 	}
 
 	// Start server in a goroutine

@@ -63,6 +63,7 @@ export function Footer() {
         { name: t("footer.sections.about.docs"), href: "/docs/api" },
         { name: t("footer.sections.about.agent"), href: "/agent" },
         { name: t("footer.sections.about.transparency"), href: "/transparency" },
+        { name: t("footer.sections.about.status"), href: "/status" },
         { name: t("footer.sections.about.join"), href: "/about" },
       ],
     },

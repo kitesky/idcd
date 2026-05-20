@@ -8,7 +8,8 @@
     "betaInvitations": "Beta Invitations",
     "refundFailed": "Refund Failed",
     "nodeApplications": "Node Applications",
-    "cert": "Cert Admin"
+    "cert": "Cert Admin",
+    "statusIncidents": "Status Incidents"
   },
   "home": {
     "title": "Admin Home",

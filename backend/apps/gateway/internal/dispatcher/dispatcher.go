@@ -75,6 +75,12 @@ type Dispatcher struct {
 	// reclaimCursor tracks progressive XAutoClaim scanning so large PELs drain
 	// across multiple 30s ticks rather than only reading the first batchSize entries.
 	reclaimCursor string
+
+	// epoch validates the scheduler-issued fencing token on each message and
+	// drops writes from a deposed leader. See epoch_validator.go for the full
+	// scheme and docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md P0-2 for the
+	// motivating split-brain scenario.
+	epoch *epochValidator
 }
 
 // New creates a Dispatcher. consumerName should be unique per gateway instance
@@ -99,6 +105,7 @@ func New(rdb redis.Cmdable, h *hub.Hub, logger *slog.Logger) *Dispatcher {
 		group:        group,
 		consumerName: consumerName(),
 		logger:       logger,
+		epoch:        newEpochValidator(rdb, logger),
 	}
 }
 
@@ -167,6 +174,35 @@ func (d *Dispatcher) Run(ctx context.Context) {
 //     return value couldn't provide on its own (that only signalled "queued
 //     in process buffer", not "wrote to socket").
 func (d *Dispatcher) dispatchAndAck(ctx context.Context, msg redis.XMessage) {
+	// Fencing-token gate: any message whose epoch is below our high-water
+	// mark came from a deposed scheduler leader (see epoch_validator.go and
+	// docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md P0-2). Drop + ACK so the
+	// PEL doesn't accumulate; the current leader will re-issue the task on
+	// its next monitor poll under its own (higher) epoch.
+	decision, observed := d.epoch.validate(ctx, msg.Values)
+	switch decision {
+	case epochDropStale:
+		metricsStaleEpoch.WithLabelValues("stale").Inc()
+		d.logger.Warn("dispatcher: dropping stale-epoch task (split-brain defence)",
+			"msg_id", msg.ID,
+			"task_id", msg.Values["task_id"],
+			"node_id", msg.Values["node_id"],
+			"observed_epoch", observed)
+		d.ack(ctx, msg.ID)
+		return
+	case epochAcceptMissing:
+		// Backward-compat: older schedulers haven't been redeployed yet and
+		// don't tag their writes. Accept but track via the counter so we can
+		// verify the field is universal before tightening this branch to a
+		// drop. See epoch_validator.go header for the migration plan.
+		if _, hasEpoch := msg.Values["epoch"]; !hasEpoch {
+			metricsStaleEpoch.WithLabelValues("missing").Inc()
+			d.logger.Warn("dispatcher: probe.task missing epoch field, accepting (legacy compat)",
+				"msg_id", msg.ID, "task_id", msg.Values["task_id"])
+		}
+		// fall through to normal dispatch
+	}
+
 	nodeID, ok := msg.Values["node_id"].(string)
 	if !ok || nodeID == "" {
 		d.logger.Warn("dispatcher: message missing node_id, discarding", "msg_id", msg.ID)

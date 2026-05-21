@@ -330,6 +330,95 @@ func TestMonitorPoller_stopsOnContextCancel(t *testing.T) {
 	}
 }
 
+// TestPollMonitors_attachesEpoch verifies the scheduler tags every
+// probe.tasks stream message with the fencing-token epoch supplied via
+// Config.Epoch. This is what the gateway dispatcher relies on to detect a
+// deposed leader (split-brain defence — docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md
+// P0-2).
+func TestPollMonitors_attachesEpoch(t *testing.T) {
+	_, rdb := setupRedis(t)
+	ctx := context.Background()
+
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+	l := leader.New(rdb, "test:leader_epoch", 10*time.Second, "node1")
+	if ok, err := l.Acquire(ctx); err != nil || !ok {
+		t.Fatalf("l.Acquire: %v ok=%v", err, ok)
+	}
+
+	store := &mockMonitorStore{
+		monitors: []DueMonitor{
+			{ID: "mon_epoch_1", Type: "http", Target: "epoch.test", IntervalS: 60, NodeCount: 1},
+		},
+	}
+
+	s := New(Config{
+		Leader:       l,
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+		Epoch:        leader.FencingToken(7),
+	})
+
+	s.pollMonitors(ctx)
+
+	entries, err := rdb.XRange(ctx, ProbeTasksStream, "-", "+").Result()
+	if err != nil {
+		t.Fatalf("XRange: %v", err)
+	}
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	got, ok := entries[0].Values["epoch"].(string)
+	if !ok {
+		t.Fatalf("epoch field missing or non-string in stream payload: %#v", entries[0].Values)
+	}
+	if got != "7" {
+		t.Errorf("epoch = %q, want %q (Config.Epoch=7)", got, "7")
+	}
+}
+
+// TestPollMonitors_zeroEpochSerialisesAsZero verifies the default-Config
+// path: when no epoch is supplied (Config.Epoch zero value), the stream
+// payload still has the field set to "0". Consumers treat "0" as
+// backward-compat (accept + warn) rather than reject — exercising that
+// branch from the producer side keeps the contract explicit.
+func TestPollMonitors_zeroEpochSerialisesAsZero(t *testing.T) {
+	_, rdb := setupRedis(t)
+	ctx := context.Background()
+
+	streamClient := stream.New(rdb)
+	selector := &mockNodeSelector{nodeID: "nd_test_01"}
+	l := leader.New(rdb, "test:leader_zero_epoch", 10*time.Second, "node1")
+	if ok, err := l.Acquire(ctx); err != nil || !ok {
+		t.Fatalf("l.Acquire: %v ok=%v", err, ok)
+	}
+
+	store := &mockMonitorStore{
+		monitors: []DueMonitor{
+			{ID: "mon_zero", Type: "http", Target: "x.test", NodeCount: 1},
+		},
+	}
+
+	s := New(Config{
+		Leader:       l,
+		Selector:     selector,
+		Stream:       streamClient,
+		MonitorStore: store,
+		// Epoch omitted on purpose
+	})
+
+	s.pollMonitors(ctx)
+
+	entries, _ := rdb.XRange(ctx, ProbeTasksStream, "-", "+").Result()
+	if len(entries) != 1 {
+		t.Fatalf("entries = %d, want 1", len(entries))
+	}
+	if got := entries[0].Values["epoch"]; got != "0" {
+		t.Errorf("epoch field = %v, want \"0\" (default zero-value)", got)
+	}
+}
+
 // TestRun_stopsWhenLeadershipLost is the headline test for the leader race
 // fix. Run() is invoked, leadership is then yanked out from under it (via a
 // second instance acquiring the lock after the first one's lease expires),

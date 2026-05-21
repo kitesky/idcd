@@ -81,6 +81,20 @@ type Scheduler struct {
 	monitorStore MonitorStore
 	nodeID       string // optional, used to label scheduler_is_leader{node}
 	logger       *slog.Logger
+
+	// epoch is the fencing token claimed at scheduler startup (see
+	// leader.AcquireEpoch). Tagged onto every probe.tasks stream message so
+	// the gateway dispatcher can reject writes from a "deposed" leader that
+	// hasn't yet noticed it lost the Redis lock (split-brain defence —
+	// docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md P0-2).
+	//
+	// Zero is treated as "not set" by downstream consumers (backward-compat
+	// window for older schedulers that haven't been redeployed yet). Once all
+	// schedulers in a cluster have been upgraded, the consumer-side
+	// "missing epoch = accept" branch can be tightened to "missing epoch =
+	// reject" — track via the idcd_gateway_stale_epoch_total{reason="missing"}
+	// counter dropping to zero.
+	epoch leader.FencingToken
 }
 
 // Config holds Scheduler configuration.
@@ -98,6 +112,12 @@ type Config struct {
 	// nil it falls back to slog.Default() so existing callers (and tests) keep
 	// working without forcing them to wire a logger.
 	Logger *slog.Logger
+	// Epoch is the fencing token claimed by main.go via leader.AcquireEpoch
+	// before constructing the Scheduler. Optional — when zero the scheduler
+	// will still run but stream messages will be tagged with epoch=0, which
+	// downstream consumers treat as "legacy, accept + warn" during the
+	// backward-compat window.
+	Epoch leader.FencingToken
 }
 
 // New creates a Scheduler instance.
@@ -114,6 +134,7 @@ func New(cfg Config) *Scheduler {
 		monitorStore: cfg.MonitorStore,
 		nodeID:       cfg.NodeID,
 		logger:       lg,
+		epoch:        cfg.Epoch,
 	}
 }
 
@@ -338,6 +359,13 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		}
 		task.NodeID = nodeID
 
+		// LINT-IGNORE: stream-payload-legacy
+		// probe.tasks has no typed contract yet (only ProbeResult / MonitorEvent
+		// are typed under lib/shared/contracts). When that contract lands we
+		// will fold "epoch" into the strongly-typed payload — for now it
+		// rides as a plain string field next to the other map values.
+		// "epoch" is the scheduler fencing token; see leader.AcquireEpoch and
+		// the consumer-side check in gateway dispatcher.
 		vals := map[string]any{
 			"task_id":    taskID,
 			"type":       probeType,
@@ -346,6 +374,7 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 			"priority":   queue.P2,
 			"monitor_id": m.ID,
 			"params":     string(paramsJSON),
+			"epoch":      s.epoch.String(),
 		}
 		if _, err := s.stream.Add(ctx, ProbeTasksStream, vals); err != nil {
 			s.logger.Error("dispatch monitor task: push to stream failed", "monitor_id", m.ID, "err", err)

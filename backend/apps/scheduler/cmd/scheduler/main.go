@@ -120,6 +120,22 @@ func run() error {
 	}
 
 	leaderElection := leader.New(rdb, cfg.Leader.Key, cfg.Leader.TTL, nodeID)
+
+	// Claim a fencing token for this scheduler process before we ever touch
+	// the probe.tasks stream. Tagged onto every stream write so the gateway
+	// dispatcher can reject messages from a deposed leader that hasn't yet
+	// noticed it lost the Redis lock. Failure here is fatal — running without
+	// a token would re-enable the split-brain we're trying to prevent.
+	// See backend/apps/scheduler/internal/leader/fencing.go for the full
+	// rationale and Redis-persistence requirements.
+	epochCtx, epochCancel := context.WithTimeout(ctx, 5*time.Second)
+	epoch, err := leader.AcquireEpoch(epochCtx, rdb, leader.DefaultEpochKey)
+	epochCancel()
+	if err != nil {
+		return fmt.Errorf("acquire fencing epoch: %w", err)
+	}
+	mainLog.Info("acquired fencing epoch", "epoch", epoch.Int64(), "key", leader.DefaultEpochKey)
+
 	streamClient := stream.New(rdb)
 
 	// Use DBNodeSelector when a DB pool is available (production).
@@ -149,6 +165,7 @@ func run() error {
 		MonitorStore: monitorStore,
 		NodeID:       nodeID,
 		Logger:       baseLogger.With("component", "scheduler", "subsystem", "loop"),
+		Epoch:        epoch,
 	})
 
 	// Start Prometheus /metrics listener. Runs in a goroutine so it doesn't

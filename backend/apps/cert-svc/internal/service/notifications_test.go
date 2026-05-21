@@ -101,12 +101,10 @@ func TestProcessOrderEvents_EmitsIssuedEvent(t *testing.T) {
 	assert.Equal(t, "42", entries[0]["account_id"])
 	assert.Equal(t, "77", entries[0]["cert_id"])
 	assert.Equal(t, "100", entries[0]["order_id"])
-	assert.NotEmpty(t, entries[0]["payload"])
-
-	var pl map[string]any
-	require.NoError(t, json.Unmarshal([]byte(entries[0]["payload"]), &pl))
-	assert.Contains(t, pl["subject"], "签发成功")
-	assert.Equal(t, "lets-encrypt", pl["ca"])
+	// P0-4 W2: wire layout 改为 flat — 字段直接在 stream values 顶层, 不再有 payload JSON.
+	assert.Contains(t, entries[0]["subject"], "签发成功")
+	assert.Equal(t, "lets-encrypt", entries[0]["ca"])
+	assert.Equal(t, "1", entries[0]["schema_ver"])
 
 	// Cursor advanced to last event id.
 	v, err := env.rdb.Get(ctx, DefaultNotificationCursorKey).Result()
@@ -134,11 +132,8 @@ func TestProcessOrderEvents_EmitsFailedEvent(t *testing.T) {
 	require.Len(t, entries, 1)
 	assert.Equal(t, EventCertFailed, entries[0]["event"])
 	assert.Equal(t, "200", entries[0]["order_id"])
-
-	var pl map[string]any
-	require.NoError(t, json.Unmarshal([]byte(entries[0]["payload"]), &pl))
-	assert.Equal(t, "dns01 challenge: nxdomain", pl["error_message"])
-	assert.Contains(t, pl["subject"], "签发失败")
+	assert.Equal(t, "dns01 challenge: nxdomain", entries[0]["error_message"])
+	assert.Contains(t, entries[0]["subject"], "签发失败")
 }
 
 func TestProcessOrderEvents_EmitsRevokedEvent(t *testing.T) {
@@ -252,10 +247,8 @@ func TestProcessExpiringCerts_EmitsAndDedupes(t *testing.T) {
 	entries := env.readStream(t)
 	require.Len(t, entries, 1)
 	assert.Equal(t, EventCertExpiring, entries[0]["event"])
-
-	var pl map[string]any
-	require.NoError(t, json.Unmarshal([]byte(entries[0]["payload"]), &pl))
-	assert.EqualValues(t, 30, pl["days_to_expire"])
+	// P0-4 W2: days_to_expire 现在直接在顶层 (string-encoded), 而非 payload JSON 内。
+	assert.Equal(t, "30", entries[0]["days_to_expire"])
 
 	// SETNX marker should now exist.
 	exists, err := env.rdb.Exists(ctx, "cert:expiring:notified:11:30").Result()
@@ -316,10 +309,7 @@ func TestProcessRenewalFailures_EmitsAndDedupes(t *testing.T) {
 	entries := env.readStream(t)
 	require.Len(t, entries, 1)
 	assert.Equal(t, EventCertRenewalFailed, entries[0]["event"])
-
-	var pl map[string]any
-	require.NoError(t, json.Unmarshal([]byte(entries[0]["payload"]), &pl))
-	assert.Equal(t, "rate limit exceeded", pl["error_message"])
+	assert.Equal(t, "rate limit exceeded", entries[0]["error_message"])
 
 	exists, err := env.rdb.Exists(ctx, "cert:renewal_failed:notified:500").Result()
 	require.NoError(t, err)
@@ -469,10 +459,9 @@ func TestXAddNotification_FormatsCorrectly(t *testing.T) {
 	assert.Equal(t, "2", entries[0]["cert_id"])
 	assert.Equal(t, "3", entries[0]["order_id"])
 	assert.Equal(t, env.now.Format(time.RFC3339), entries[0]["emitted_at"])
-
-	var pl map[string]any
-	require.NoError(t, json.Unmarshal([]byte(entries[0]["payload"]), &pl))
-	assert.Equal(t, notAfter.Format(time.RFC3339), pl["not_after"])
+	// P0-4 W2: not_after 现在直接在顶层 (RFC3339 string), 而非 payload JSON 内。
+	assert.Equal(t, notAfter.Format(time.RFC3339), entries[0]["not_after"])
+	assert.Equal(t, "1", entries[0]["schema_ver"])
 }
 
 // ptrInt64 is a tiny helper to take the address of an int64 literal in

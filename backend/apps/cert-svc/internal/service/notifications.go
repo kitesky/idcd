@@ -41,6 +41,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
+	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/rediskey"
 	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
@@ -98,6 +99,7 @@ type NotificationPool interface {
 type NotificationWatcher struct {
 	repos        *repo.Repos
 	rdb          *redis.Client
+	streamClient *sharedstream.Client // lazy-init from rdb in xaddNotification
 	pool         NotificationPool
 	stream       string
 	cursorKey    string
@@ -393,45 +395,44 @@ func (w *NotificationWatcher) emitOrderEvent(ctx context.Context, r orderEventRo
 	return w.xaddNotification(ctx, eventType, data, r.OccurredAt)
 }
 
-// xaddNotification renders the templates and writes one Stream entry.
+// xaddNotification renders the templates and writes one Stream entry via
+// the strongly-typed contracts.CertNotificationEvent helper (P0-4 W2).
+//
+// 历史 wire layout 用 `payload` 顶层字段塞 JSON 二层 (内含 sans/ca/days/...);
+// 新 layout 把所有字段平铺为 stream values 顶层 (sans 仍是 JSON 单字段),
+// 与 lib/shared/contracts/cert_notification_event.go 定义一致。consumer
+// (apps/notifier/internal/worker/cert_consumer.go) 同步升级 — 没有灰度兼容期,
+// 该流流量极小, 旧 in-flight 消息可接受被丢弃。
 func (w *NotificationWatcher) xaddNotification(ctx context.Context, eventType string, data NotificationData, occurredAt time.Time) error {
 	subject, body := RenderNotification(data)
-
-	payload := map[string]any{
-		"account_id":     data.AccountID,
-		"cert_id":        data.CertID,
-		"order_id":       data.OrderID,
-		"sans":           data.SANs,
-		"ca":             data.CA,
-		"days_to_expire": data.DaysToExpire,
-		"error_message":  data.ErrorMsg,
-		"subject":        subject,
-		"body":           body,
-	}
-	if data.NotAfter != nil {
-		payload["not_after"] = data.NotAfter.UTC().Format(time.RFC3339)
-	}
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		return fmt.Errorf("marshal payload: %w", err)
-	}
 
 	if occurredAt.IsZero() {
 		occurredAt = w.clock()
 	}
 
-	values := map[string]any{
-		"event":      eventType,
-		"account_id": data.AccountID,
-		"cert_id":    strconv.FormatInt(data.CertID, 10),
-		"order_id":   strconv.FormatInt(data.OrderID, 10),
-		"payload":    string(raw),
-		"emitted_at": occurredAt.UTC().Format(time.RFC3339),
+	evt := contracts.CertNotificationEvent{
+		EventType:    eventType,
+		AccountID:    data.AccountID,
+		CertID:       data.CertID,
+		OrderID:      data.OrderID,
+		SANs:         data.SANs,
+		CA:           data.CA,
+		DaysToExpire: data.DaysToExpire,
+		ErrorMessage: data.ErrorMsg,
+		Subject:      subject,
+		Body:         body,
+		EmittedAt:    occurredAt.UTC(),
 	}
-	if _, err := w.rdb.XAdd(ctx, &redis.XAddArgs{
-		Stream: w.stream,
-		Values: values,
-	}).Result(); err != nil {
+	if data.NotAfter != nil {
+		evt.NotAfter = data.NotAfter.UTC()
+	}
+
+	// Lazy-init the stream.Client wrapper. We can't do this at construction
+	// time without changing every call site of NewNotificationWatcher.
+	if w.streamClient == nil {
+		w.streamClient = sharedstream.New(w.rdb)
+	}
+	if _, err := w.streamClient.AddCertNotificationTyped(ctx, evt); err != nil {
 		return fmt.Errorf("xadd: %w", err)
 	}
 	return nil

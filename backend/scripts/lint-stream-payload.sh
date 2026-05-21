@@ -2,8 +2,15 @@
 # P0-4 (ARCHITECTURE-REVIEW-2026-05-21.md):
 # 跨 stream 边界禁止用 map[string]any 自由发挥字段名。
 #
-# 新代码必须改用 stream.Client.{AddProbeResultTyped,AddMonitorEventTyped}
-# 配合 backend/lib/shared/contracts 中的 ProbeResult / MonitorEvent 强类型。
+# 新代码必须改用以下 typed API + lib/shared/contracts 强类型 payload:
+#   * stream.Client.AddProbeResultTyped       (W1)
+#   * stream.Client.AddMonitorEventTyped      (W1)
+#   * stream.Client.AddCertNotificationTyped  (W2)
+#
+# 受保护的 stream 名 (出现在 XAdd Stream 参数里就报警):
+#   * "probe.results"      (W1)
+#   * "monitor.events"     (W1)
+#   * "cert:notifications" (W2 — 钱相关 / 合规相关)
 #
 # 旧代码渐进迁移: 在调用上一行加注释 `// LINT-IGNORE: stream-payload-legacy`,
 # 脚本会跳过, CI 不阻塞。每次迁移一个 caller 就删掉注释。
@@ -29,6 +36,25 @@ candidates=$(
   | grep -v '_test\.go:' \
   || true
 )
+
+# 额外检查 cert:notifications (W2) — 该流没有非 Typed 的 stream.Client 方法,
+# 旧调用方直接 rdb.XAdd(Stream: "cert:notifications", ...). 直接 grep raw XAdd
+# 对该 stream 的引用, 排除 stream.Client.AddCertNotificationTyped 自己内部的
+# 那次调用 (走的是 c.Add() 间接 XAdd, 不会匹配字符串)。
+cert_candidates=$(
+  grep -rn -F 'cert:notifications' \
+    --include='*.go' \
+    --exclude-dir='lib/shared/stream' \
+    --exclude-dir='lib/shared/contracts' \
+    "$REPO_ROOT" 2>/dev/null \
+  | grep -E 'XAdd\(' \
+  | grep -v 'AddCertNotificationTyped' \
+  | grep -v '_test\.go:' \
+  || true
+)
+if [ -n "$cert_candidates" ]; then
+  candidates="${candidates}${cert_candidates}"$'\n'
+fi
 
 if [ -z "$candidates" ]; then
   echo "OK — 未发现非 Typed 调用"
@@ -60,8 +86,9 @@ if [ -n "$(echo -n "$violations")" ]; then
   echo "ERROR: 发现非 Typed stream 调用 (P0-4 违规):"
   echo "$violations"
   echo ""
-  echo "选项 1 (推荐 - 新代码): 改用 AddProbeResultTyped / AddMonitorEventTyped"
+  echo "选项 1 (推荐 - 新代码): 改用 AddProbeResultTyped / AddMonitorEventTyped / AddCertNotificationTyped"
   echo "  c.AddProbeResultTyped(ctx, contracts.ProbeResult{TaskID: \"...\", ...})"
+  echo "  c.AddCertNotificationTyped(ctx, contracts.CertNotificationEvent{EventType: \"cert.issued\", ...})"
   echo ""
   echo "选项 2 (旧代码渐进迁移): 在调用上一行加注释"
   echo "  // LINT-IGNORE: stream-payload-legacy"

@@ -166,6 +166,23 @@ func (c *Client) AddMonitorEventTyped(ctx context.Context, e contracts.MonitorEv
 	return c.Add(ctx, Monitor, e.ToStreamValues())
 }
 
+// AddCertNotificationTyped writes a cert notification event with a typed payload.
+//
+// 新代码必须使用此 API. P0-4 W2 — cert:notifications 是钱相关 / 合规相关流,
+// 字段拼写错会导致用户收不到证书签发邮件、续签失败漏报 → 编译期发现 > 运行时
+// 静默. SchemaVer 自动注入为 contracts.CertNotificationEventSchemaV1。
+//
+// 与历史 cert-svc.NotificationWatcher 直接 rdb.XAdd 的 wire 兼容性差异:
+// 旧 layout 用 `payload` 顶层字段塞 JSON 二层 (内含 sans/ca/days/...), 新 layout
+// 把所有字段平铺为 stream values 顶层 (sans 仍 JSON 单字段, 因为 stream value
+// 必须是 scalar). 没有灰度兼容期 — 该流流量极小, producer 与 consumer 同时升级。
+func (c *Client) AddCertNotificationTyped(ctx context.Context, e contracts.CertNotificationEvent) (string, error) {
+	if e.SchemaVer == 0 {
+		e.SchemaVer = contracts.CertNotificationEventSchemaV1
+	}
+	return c.Add(ctx, CertNotifications, e.ToStreamValues())
+}
+
 // AddAlertEvent writes an alert event.
 func (c *Client) AddAlertEvent(ctx context.Context, alertEventID, monitorID, kind string) (string, error) {
 	return c.Add(ctx, Alert, map[string]any{

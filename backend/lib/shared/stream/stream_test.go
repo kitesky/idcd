@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -293,6 +294,80 @@ func TestAddProbeResultTyped_RespectsExplicitSchemaVer(t *testing.T) {
 	}
 }
 
+func TestAddCertNotificationTyped(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	notAfter := time.Date(2026, 8, 18, 12, 0, 0, 0, time.UTC)
+	emitted := time.Date(2026, 5, 21, 8, 30, 0, 0, time.UTC)
+	e := contracts.CertNotificationEvent{
+		EventType:    "cert.issued",
+		AccountID:    "42",
+		CertID:       77,
+		OrderID:      100,
+		SANs:         []string{"a.example.com"},
+		CA:           "lets-encrypt",
+		DaysToExpire: 14,
+		NotAfter:     notAfter,
+		Subject:      "[idcd] cert ready",
+		Body:         "Hello world",
+		EmittedAt:    emitted,
+	}
+	id, err := c.AddCertNotificationTyped(ctx, e)
+	if err != nil {
+		t.Fatalf("AddCertNotificationTyped failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty stream ID")
+	}
+	msgs, err := rdb.XRange(ctx, stream.CertNotifications, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got, err := contracts.ParseCertNotificationEvent(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseCertNotificationEvent failed: %v", err)
+	}
+	if got.EventType != e.EventType || got.AccountID != e.AccountID ||
+		got.CertID != e.CertID || got.OrderID != e.OrderID ||
+		got.CA != e.CA || got.DaysToExpire != e.DaysToExpire ||
+		got.Subject != e.Subject || got.Body != e.Body {
+		t.Errorf("round-trip drift:\n  want %+v\n   got %+v", e, got)
+	}
+	if !got.NotAfter.Equal(e.NotAfter) {
+		t.Errorf("NotAfter drift: got %s, want %s", got.NotAfter, e.NotAfter)
+	}
+	if !got.EmittedAt.Equal(e.EmittedAt) {
+		t.Errorf("EmittedAt drift: got %s, want %s", got.EmittedAt, e.EmittedAt)
+	}
+	if got.SchemaVer != contracts.CertNotificationEventSchemaV1 {
+		t.Errorf("expected schema_ver auto-inject = %d, got %d",
+			contracts.CertNotificationEventSchemaV1, got.SchemaVer)
+	}
+	if len(got.SANs) != 1 || got.SANs[0] != "a.example.com" {
+		t.Errorf("SANs drift: got %v, want [a.example.com]", got.SANs)
+	}
+}
+
+func TestAddCertNotificationTyped_RespectsExplicitSchemaVer(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	e := contracts.CertNotificationEvent{
+		SchemaVer: contracts.CertNotificationEventSchemaV1,
+		EventType: "cert.issued",
+		AccountID: "1",
+	}
+	if _, err := c.AddCertNotificationTyped(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(ctx, stream.CertNotifications, "-", "+").Result()
+	if got := msgs[0].Values["schema_ver"]; got != "1" {
+		t.Errorf("schema_ver: got %v, want '1'", got)
+	}
+}
+
 func TestAddMonitorEventTyped(t *testing.T) {
 	c, rdb := newTestClientWithRDB(t)
 	ctx := context.Background()
@@ -452,18 +527,20 @@ func TestStreamConstants(t *testing.T) {
 	// Ensure constants haven't been accidentally changed — these names are
 	// shared across services and changing them would break consumers.
 	cases := map[string]string{
-		"Probe":   stream.Probe,
-		"Monitor": stream.Monitor,
-		"Alert":   stream.Alert,
-		"Audit":   stream.Audit,
-		"Usage":   stream.Usage,
+		"Probe":             stream.Probe,
+		"Monitor":           stream.Monitor,
+		"Alert":             stream.Alert,
+		"Audit":             stream.Audit,
+		"Usage":             stream.Usage,
+		"CertNotifications": stream.CertNotifications,
 	}
 	expected := map[string]string{
-		"Probe":   "probe.results",
-		"Monitor": "monitor.events",
-		"Alert":   "alert.events",
-		"Audit":   "audit.events",
-		"Usage":   "usage.events",
+		"Probe":             "probe.results",
+		"Monitor":           "monitor.events",
+		"Alert":             "alert.events",
+		"Audit":             "audit.events",
+		"Usage":             "usage.events",
+		"CertNotifications": "cert:notifications",
 	}
 	for name, got := range cases {
 		if got != expected[name] {

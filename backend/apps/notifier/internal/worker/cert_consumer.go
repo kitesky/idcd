@@ -2,15 +2,29 @@
 // for the `cert:notifications` stream produced by apps/cert-svc.
 //
 // Producer side (apps/cert-svc/internal/service/notifications.go) XADDs one
-// entry per cert event with a fixed field schema:
+// entry per cert event using lib/shared/contracts.CertNotificationEvent
+// (P0-4 W2). The wire layout is flat — all fields live at the top level of
+// the stream values map (sans is JSON-encoded as a single field because
+// Redis stream values must be scalar):
 //
-//	event       — "cert.issued" | "cert.failed" | "cert.expiring" | "cert.renewal_failed" | "cert.revoked"
-//	account_id  — string-encoded int64 owner of the cert / order
-//	cert_id     — string-encoded int64 (may be 0 when not yet persisted)
-//	order_id    — string-encoded int64
-//	payload     — JSON blob carrying sans / ca / days_to_expire / error_message /
-//	              not_after / subject / body
-//	emitted_at  — RFC3339 timestamp the producer chose
+//	schema_ver       — int, current = 1
+//	event            — "cert.issued" | "cert.failed" | "cert.expiring" | "cert.renewal_failed" | "cert.revoked"
+//	account_id       — string (UUID / numeric — producer-defined)
+//	cert_id          — string-encoded int64 (may be 0 when not yet persisted)
+//	order_id         — string-encoded int64
+//	sans             — JSON-encoded []string (omitted when empty)
+//	ca               — string (omitted when empty)
+//	days_to_expire   — string-encoded int (omitted when zero)
+//	error_message    — string (omitted when empty)
+//	not_after        — RFC3339 (omitted when zero)
+//	subject          — pre-rendered email subject (optional)
+//	body             — pre-rendered plain-text body (optional)
+//	emitted_at       — RFC3339 timestamp the producer chose
+//
+// Old wire layout (pre P0-4 W2) wrapped everything except event/ids/emitted_at
+// in a `payload` JSON string. That format is no longer supported; both
+// producer and consumer migrated atomically because the stream's in-flight
+// volume is low enough that loss of unprocessed legacy messages is acceptable.
 //
 // This consumer:
 //  1. Creates the consumer group on demand (BUSYGROUP is ignored — idempotent).
@@ -30,7 +44,6 @@ package worker
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -43,6 +56,7 @@ import (
 
 	"github.com/kite365/idcd/apps/notifier/internal/email"
 	"github.com/kite365/idcd/apps/notifier/internal/template"
+	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/i18n"
 )
 
@@ -567,7 +581,11 @@ func (c *CertConsumer) orderDashboardURL(orderID int64) string {
 	return fmt.Sprintf("%s/app/cert/orders/%d", c.dashboardBase, orderID)
 }
 
-// certEvent is the parsed view of a single cert:notifications stream entry.
+// certEvent is the consumer-side view of a single cert:notifications stream
+// entry. Underneath this is a thin adapter around contracts.CertNotificationEvent
+// — the same fields, but with AccountID coerced from string to int64 because
+// every notifier code path downstream (EmailLookup, log structured fields,
+// dashboard deep links) needs the numeric form.
 type certEvent struct {
 	EventType    string
 	AccountID    int64
@@ -590,68 +608,39 @@ func (e certEvent) primaryDomain() string {
 	return ""
 }
 
-// parseCertEvent decodes a single XMessage.Values map into a certEvent. The
-// payload field carries the canonical JSON; the top-level event / account_id
-// / cert_id / order_id fields are kept as redundant copies for fast Redis
-// indexing on the producer side.
+// parseCertEvent decodes a single XMessage.Values map into a certEvent by
+// delegating to contracts.ParseCertNotificationEvent (the SSOT for the
+// cert:notifications wire format, see lib/shared/contracts/cert_notification_event.go).
+//
+// P0-4 W2 migration: 旧的 `payload` JSON 二层 wire format 已不再支持 —
+// producer (cert-svc NotificationWatcher) 同步迁移到 flat layout, 旧 in-flight
+// 消息因 missing 顶层字段会被本函数拒绝并进入 dead-letter (deadStream)。
 func parseCertEvent(values map[string]any) (certEvent, error) {
-	var evt certEvent
-
-	eventType := stringField(values, "event")
-	if eventType == "" {
-		return evt, errors.New("missing 'event' field")
+	parsed, err := contracts.ParseCertNotificationEvent(values)
+	if err != nil {
+		// Surface the contract error verbatim so dead-letter `_dead_reason`
+		// strings stay informative ("event is required" / "cert_id: ..." / etc).
+		return certEvent{}, err
 	}
-	evt.EventType = eventType
-	evt.AccountID = int64Field(values, "account_id")
-	evt.CertID = int64Field(values, "cert_id")
-	evt.OrderID = int64Field(values, "order_id")
-
-	if emitted := stringField(values, "emitted_at"); emitted != "" {
-		if t, err := time.Parse(time.RFC3339, emitted); err == nil {
-			evt.EmittedAt = t
-		}
+	evt := certEvent{
+		EventType:    parsed.EventType,
+		CertID:       parsed.CertID,
+		OrderID:      parsed.OrderID,
+		SANs:         parsed.SANs,
+		CA:           parsed.CA,
+		DaysToExpire: parsed.DaysToExpire,
+		ErrorMessage: parsed.ErrorMessage,
+		NotAfter:     parsed.NotAfter,
+		Subject:      parsed.Subject,
+		Body:         parsed.Body,
+		EmittedAt:    parsed.EmittedAt,
 	}
-
-	rawPayload := stringField(values, "payload")
-	if rawPayload == "" {
-		// The top-level fields alone aren't enough to render the email — the
-		// payload carries SANs / CA / domain / days. Treat this as malformed.
-		return evt, errors.New("missing 'payload' field")
-	}
-
-	var p struct {
-		AccountID    int64    `json:"account_id"`
-		CertID       int64    `json:"cert_id"`
-		OrderID      int64    `json:"order_id"`
-		SANs         []string `json:"sans"`
-		CA           string   `json:"ca"`
-		DaysToExpire int      `json:"days_to_expire"`
-		ErrorMessage string   `json:"error_message"`
-		NotAfter     string   `json:"not_after"`
-		Subject      string   `json:"subject"`
-		Body         string   `json:"body"`
-	}
-	if err := json.Unmarshal([]byte(rawPayload), &p); err != nil {
-		return evt, fmt.Errorf("decode payload: %w", err)
-	}
-	if evt.AccountID == 0 {
-		evt.AccountID = p.AccountID
-	}
-	if evt.CertID == 0 {
-		evt.CertID = p.CertID
-	}
-	if evt.OrderID == 0 {
-		evt.OrderID = p.OrderID
-	}
-	evt.SANs = p.SANs
-	evt.CA = p.CA
-	evt.DaysToExpire = p.DaysToExpire
-	evt.ErrorMessage = p.ErrorMessage
-	evt.Subject = p.Subject
-	evt.Body = p.Body
-	if p.NotAfter != "" {
-		if t, err := time.Parse(time.RFC3339, p.NotAfter); err == nil {
-			evt.NotAfter = t
+	// AccountID is string on the wire (UUID-safe); parse to int64 for the
+	// consumer code path. Empty / non-numeric strings degrade to 0, matching
+	// the historical int64Field behavior.
+	if parsed.AccountID != "" {
+		if n, perr := strconv.ParseInt(parsed.AccountID, 10, 64); perr == nil {
+			evt.AccountID = n
 		}
 	}
 	return evt, nil

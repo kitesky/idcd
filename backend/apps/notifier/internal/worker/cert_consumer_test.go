@@ -10,6 +10,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -100,31 +101,85 @@ func newTestConsumer(t *testing.T, rdb *redis.Client, sender email.Sender, looku
 
 // addEvent xADDs a synthetic cert notification matching the producer's
 // schema. Returns the assigned stream ID.
+//
+// P0-4 W2: wire layout flat — 字段都在 stream values 顶层, sans 单独 JSON encode。
+// `payload` 入参里的字段 (sans/ca/days_to_expire/error_message/not_after/subject/body)
+// 会被 promote 到 stream 顶层, 与 contracts.CertNotificationEvent.ToStreamValues 对齐。
 func addEvent(t *testing.T, rdb *redis.Client, stream string, eventType string, accountID, certID, orderID int64, payload map[string]any) string {
 	t.Helper()
-	raw, err := json.Marshal(payload)
-	if err != nil {
-		t.Fatalf("json.Marshal payload: %v", err)
+	values := map[string]any{
+		"schema_ver": "1",
+		"event":      eventType,
+		"account_id": strconv.FormatInt(accountID, 10),
+		"cert_id":    strconv.FormatInt(certID, 10),
+		"order_id":   strconv.FormatInt(orderID, 10),
+		"emitted_at": time.Now().UTC().Format(time.RFC3339),
+	}
+	// Backwards-compatible call sites still pass accountID=42 with override
+	// via payload — preserve "42" default when caller passes 0.
+	if accountID == 0 {
+		values["account_id"] = "42"
+	}
+	for k, v := range payload {
+		switch k {
+		case "sans":
+			if sans, ok := v.([]string); ok {
+				raw, _ := json.Marshal(sans)
+				values["sans"] = string(raw)
+			} else if s, ok := v.(string); ok && s != "" {
+				values["sans"] = s
+			}
+		case "ca", "error_message", "subject", "body", "not_after":
+			if s, ok := v.(string); ok && s != "" {
+				values[k] = s
+			}
+		case "days_to_expire":
+			switch x := v.(type) {
+			case int:
+				if x != 0 {
+					values[k] = strconv.Itoa(x)
+				}
+			case int64:
+				if x != 0 {
+					values[k] = strconv.FormatInt(x, 10)
+				}
+			}
+		case "account_id":
+			// Allow callers to override account_id via the payload map (legacy
+			// shape — early happy-path tests passed it there).
+			switch x := v.(type) {
+			case int:
+				values["account_id"] = strconv.Itoa(x)
+			case int64:
+				values["account_id"] = strconv.FormatInt(x, 10)
+			case string:
+				if x != "" {
+					values["account_id"] = x
+				}
+			}
+		case "cert_id":
+			switch x := v.(type) {
+			case int:
+				values["cert_id"] = strconv.Itoa(x)
+			case int64:
+				values["cert_id"] = strconv.FormatInt(x, 10)
+			}
+		case "order_id":
+			switch x := v.(type) {
+			case int:
+				values["order_id"] = strconv.Itoa(x)
+			case int64:
+				values["order_id"] = strconv.FormatInt(x, 10)
+			}
+		}
 	}
 	id, err := rdb.XAdd(context.Background(), &redis.XAddArgs{
 		Stream: stream,
-		Values: map[string]any{
-			"event":      eventType,
-			"account_id": "42",
-			"cert_id":    "0",
-			"order_id":   "0",
-			"payload":    string(raw),
-			"emitted_at": time.Now().UTC().Format(time.RFC3339),
-		},
+		Values: values,
 	}).Result()
 	if err != nil {
 		t.Fatalf("XADD: %v", err)
 	}
-	// Override the redundant top-level fields when caller passes non-default
-	// values; this keeps the happy-path call sites short.
-	_ = accountID
-	_ = certID
-	_ = orderID
 	return id
 }
 
@@ -604,12 +659,14 @@ func TestCertConsumer_MalformedPayload_DeadLetters(t *testing.T) {
 		t.Fatalf("XGroupCreateMkStream: %v", err)
 	}
 
-	// Missing payload field — parseCertEvent must reject.
+	// Missing event field — parseCertEvent must reject (event is the only
+	// required field in contracts.CertNotificationEvent, so we drop it to
+	// trigger the dead-letter path).
 	if _, err := rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: c.Stream(),
 		Values: map[string]any{
-			"event":      EventCertIssued,
 			"account_id": "42",
+			"cert_id":    "99",
 		},
 	}).Result(); err != nil {
 		t.Fatalf("XADD: %v", err)
@@ -723,25 +780,24 @@ func TestCertConsumer_DashboardURLs(t *testing.T) {
 	}
 }
 
+// TestParseCertEvent_HappyPath exercises the P0-4 W2 flat wire layout: all
+// fields live at the stream values top level, sans is JSON-encoded into a
+// single key (because Redis stream values must be scalar).
 func TestParseCertEvent_HappyPath(t *testing.T) {
 	t.Parallel()
-	rawPayload, _ := json.Marshal(map[string]any{
-		"account_id":     42,
-		"cert_id":        99,
-		"order_id":       7,
-		"sans":           []string{"a.example.com", "b.example.com"},
+	sansRaw, _ := json.Marshal([]string{"a.example.com", "b.example.com"})
+	evt, err := parseCertEvent(map[string]any{
+		"schema_ver":     "1",
+		"event":          EventCertExpiring,
+		"account_id":     "42",
+		"cert_id":        "99",
+		"order_id":       "7",
+		"sans":           string(sansRaw),
 		"ca":             "lets-encrypt",
-		"days_to_expire": 14,
+		"days_to_expire": "14",
 		"error_message":  "boom",
 		"not_after":      time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC).Format(time.RFC3339),
-	})
-	evt, err := parseCertEvent(map[string]any{
-		"event":      EventCertExpiring,
-		"account_id": "42",
-		"cert_id":    "99",
-		"order_id":   "7",
-		"payload":    string(rawPayload),
-		"emitted_at": "2026-05-17T08:00:00Z",
+		"emitted_at":     "2026-05-17T08:00:00Z",
 	})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
@@ -769,6 +825,8 @@ func TestParseCertEvent_HappyPath(t *testing.T) {
 	}
 }
 
+// TestParseCertEvent_Errors covers the contract's required-field validation
+// and bad-input rejection paths.
 func TestParseCertEvent_Errors(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
@@ -778,18 +836,18 @@ func TestParseCertEvent_Errors(t *testing.T) {
 	}{
 		{
 			"missing event",
-			map[string]any{"account_id": "42", "payload": "{}"},
-			"missing 'event'",
+			map[string]any{"account_id": "42"},
+			"event is required",
 		},
 		{
-			"missing payload",
-			map[string]any{"event": "cert.issued", "account_id": "42"},
-			"missing 'payload'",
+			"bad cert_id",
+			map[string]any{"event": "cert.issued", "cert_id": "not-a-number"},
+			"cert_id",
 		},
 		{
-			"bad payload json",
-			map[string]any{"event": "cert.issued", "account_id": "42", "payload": "{not json"},
-			"decode payload",
+			"bad sans json",
+			map[string]any{"event": "cert.issued", "sans": "{not-json"},
+			"sans",
 		},
 	}
 	for _, tc := range tests {
@@ -803,27 +861,21 @@ func TestParseCertEvent_Errors(t *testing.T) {
 	}
 }
 
-func TestParseCertEvent_TopLevelIDsZeroFallsBackToPayload(t *testing.T) {
+// TestParseCertEvent_AccountIDNonNumeric verifies that a non-numeric
+// account_id (which contracts.CertNotificationEvent allows — string-typed)
+// degrades gracefully to AccountID == 0 in the consumer-side view, matching
+// the historical int64Field behavior.
+func TestParseCertEvent_AccountIDNonNumeric(t *testing.T) {
 	t.Parallel()
-	// Top-level account_id zero → parser must pick up payload.account_id.
-	raw, _ := json.Marshal(map[string]any{
-		"account_id": 7,
-		"cert_id":    11,
-		"order_id":   13,
-		"sans":       []string{"x.example.com"},
-	})
 	evt, err := parseCertEvent(map[string]any{
 		"event":      EventCertIssued,
-		"account_id": "0",
-		"cert_id":    "0",
-		"order_id":   "0",
-		"payload":    string(raw),
+		"account_id": "acct_uuid_abc",
 	})
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	if evt.AccountID != 7 || evt.CertID != 11 || evt.OrderID != 13 {
-		t.Errorf("ids = %d/%d/%d, want 7/11/13", evt.AccountID, evt.CertID, evt.OrderID)
+	if evt.AccountID != 0 {
+		t.Errorf("AccountID = %d, want 0 for non-numeric account_id", evt.AccountID)
 	}
 }
 

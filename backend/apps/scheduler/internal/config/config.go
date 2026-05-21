@@ -17,17 +17,10 @@ import (
 // the sole live path; concurrency there is fixed by the poll cadence, not by
 // a worker pool size. See scheduler package doc.
 type Config struct {
-	Redis         RedisConfig                      `yaml:"redis"`
+	Redis         sharedconfig.RedisConfig         `yaml:"redis"`
 	Database      DatabaseConfig                   `yaml:"database"`
 	Leader        LeaderConfig                     `yaml:"leader"`
 	Observability sharedconfig.ObservabilityConfig `yaml:"observability"`
-}
-
-// RedisConfig holds Redis connection settings.
-type RedisConfig struct {
-	Addr     string `yaml:"addr"`
-	Password string `yaml:"password"`
-	DB       int    `yaml:"db"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings.
@@ -89,7 +82,7 @@ func DefaultPath() string {
 }
 
 func (c *Config) validate() error {
-	if c.Redis.Addr == "" {
+	if c.Redis.Addr == "" && (c.Redis.MasterName == "" || len(c.Redis.SentinelAddrs) == 0) {
 		return fmt.Errorf("redis.addr is required")
 	}
 	if c.Database.DSN == "" {

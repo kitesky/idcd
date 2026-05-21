@@ -502,13 +502,13 @@ func overallStatus(monitors []publicMonitor) string {
 // `redis.Nil` (key missing) is converted to (empty string, nil err) — the
 // handler treats those identically as "cache miss, proceed to DB".
 type redisStatusPageCache struct {
-	rdb *redis.Client
+	rdb redis.UniversalClient
 }
 
 // NewRedisStatusPageCache returns a cache-adapter for *redis.Client. Pass nil
 // to opt out of caching (the constructor returns nil so StatusPagePublicHandler.WithCache
 // is a no-op).
-func NewRedisStatusPageCache(rdb *redis.Client) statusPageCache {
+func NewRedisStatusPageCache(rdb redis.UniversalClient) statusPageCache {
 	if rdb == nil {
 		return nil
 	}

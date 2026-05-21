@@ -125,12 +125,12 @@ const redisBlocklistPrefix = "jwt:bl:" // jti
 
 // RedisBlocklist stores revoked JTIs in Redis with native key TTLs.
 type RedisBlocklist struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
 // NewRedisBlocklist returns a Redis-backed blocklist. The caller owns the
 // client lifecycle.
-func NewRedisBlocklist(client *redis.Client) *RedisBlocklist {
+func NewRedisBlocklist(client redis.UniversalClient) *RedisBlocklist {
 	return &RedisBlocklist{client: client}
 }
 

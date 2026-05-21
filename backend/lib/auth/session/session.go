@@ -22,13 +22,13 @@ type SessionData struct {
 
 // Service provides session storage operations using Redis.
 type Service struct {
-	redis  *redis.Client
+	redis  redis.UniversalClient
 	logger *slog.Logger
 }
 
 // NewService creates a new session service with the given Redis client.
 // Uses slog.Default() for logging; call SetLogger to override.
-func NewService(redisClient *redis.Client) *Service {
+func NewService(redisClient redis.UniversalClient) *Service {
 	return &Service{redis: redisClient, logger: slog.Default()}
 }
 

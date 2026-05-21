@@ -26,6 +26,9 @@ const (
 	envS3Bucket     = "ATTEST_S3_BUCKET" // WORM archive bucket; empty disables archival
 	envRedisPasswd  = "ATTEST_REDIS_PASSWORD"
 	envRedisDB      = "ATTEST_REDIS_DB"
+	envRedisMasterName     = "ATTEST_REDIS_MASTER_NAME"
+	envRedisSentinelAddrs  = "ATTEST_REDIS_SENTINEL_ADDRS"
+	envRedisSentinelPasswd = "ATTEST_REDIS_SENTINEL_PASSWORD"
 
 	envSignBackend = "ATTEST_SIGN_BACKEND" // "aws" | "aliyun"
 
@@ -89,11 +92,14 @@ type Config struct {
 	Env      string
 	LogLevel string
 
-	DatabaseDSN   string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
-	S3Bucket      string
+	DatabaseDSN           string
+	RedisAddr             string
+	RedisPassword         string
+	RedisDB               int
+	RedisMasterName       string
+	RedisSentinelAddrs    []string
+	RedisSentinelPassword string
+	S3Bucket              string
 
 	SignBackend string // "aws" | "aliyun"
 
@@ -182,6 +188,19 @@ func Load() (*Config, error) {
 	}
 	if v := strings.TrimSpace(os.Getenv(envS3Bucket)); v != "" {
 		cfg.S3Bucket = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisMasterName)); v != "" {
+		cfg.RedisMasterName = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisSentinelAddrs)); v != "" {
+		for _, addr := range strings.Split(v, ",") {
+			if a := strings.TrimSpace(addr); a != "" {
+				cfg.RedisSentinelAddrs = append(cfg.RedisSentinelAddrs, a)
+			}
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisSentinelPasswd)); v != "" {
+		cfg.RedisSentinelPassword = v
 	}
 
 	cfg.SignBackend = strings.ToLower(strings.TrimSpace(os.Getenv(envSignBackend)))

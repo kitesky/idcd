@@ -57,7 +57,7 @@ type DownloadTokenPayload struct {
 // DownloadTokenManager mints and consumes one-shot download tokens.
 // Safe for concurrent use; all state lives in Redis.
 type DownloadTokenManager struct {
-	rdb    *redis.Client
+	rdb    redis.UniversalClient
 	secret []byte
 	ttl    time.Duration
 	// now and randRead are seams the tests poke for deterministic output.
@@ -80,7 +80,7 @@ func WithDownloadTTL(d time.Duration) DownloadOption {
 
 // NewDownloadTokenManager constructs a manager. secret must be non-empty;
 // the cert-svc boot path is responsible for failing fast when it is.
-func NewDownloadTokenManager(rdb *redis.Client, secret []byte, opts ...DownloadOption) *DownloadTokenManager {
+func NewDownloadTokenManager(rdb redis.UniversalClient, secret []byte, opts ...DownloadOption) *DownloadTokenManager {
 	m := &DownloadTokenManager{
 		rdb:      rdb,
 		secret:   append([]byte(nil), secret...),

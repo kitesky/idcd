@@ -154,6 +154,16 @@ type RedisConfig struct {
 	Addr     string `yaml:"addr"`
 	Password string `yaml:"password"`
 	DB       int    `yaml:"db"`
+	// Sentinel mode (optional). When MasterName and SentinelAddrs are both
+	// set, clients should use FailoverClient instead of single-node Client.
+	MasterName       string   `yaml:"master_name"`
+	SentinelAddrs    []string `yaml:"sentinel_addrs"`
+	SentinelPassword string   `yaml:"sentinel_password"`
+	// Optional connection tuning (zero values → go-redis defaults).
+	DialTimeout  Duration `yaml:"dial_timeout"`
+	ReadTimeout  Duration `yaml:"read_timeout"`
+	WriteTimeout Duration `yaml:"write_timeout"`
+	PoolSize     int      `yaml:"pool_size"`
 }
 
 type ServerConfig struct {

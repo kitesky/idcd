@@ -23,6 +23,11 @@ func Load() *Config {
 		cfg.RedisPassword = shared.Redis.Password
 		cfg.RedisDB = shared.Redis.DB
 	}
+	if shared.Redis.MasterName != "" {
+		cfg.RedisMasterName = shared.Redis.MasterName
+		cfg.RedisSentinelAddrs = shared.Redis.SentinelAddrs
+		cfg.RedisSentinelPassword = shared.Redis.SentinelPassword
+	}
 	if shared.Database.Main.DSN != "" {
 		cfg.PGDSN = shared.Database.Main.DSN
 	}
@@ -69,13 +74,16 @@ func loadGatewayExtras(path string) (gatewayExtras, bool) {
 
 // Config holds the Gateway service configuration.
 type Config struct {
-	ListenAddr       string                           `yaml:"listen_addr"`
-	TLSCert          string                           `yaml:"tls_cert"`
-	TLSKey           string                           `yaml:"tls_key"`
-	RedisAddr        string                           `yaml:"redis_addr"`
-	RedisPassword    string                           `yaml:"redis_password"`
-	RedisDB          int                              `yaml:"redis_db"`
-	PGDSN            string                           `yaml:"pg_dsn"`
+	ListenAddr             string                           `yaml:"listen_addr"`
+	TLSCert                string                           `yaml:"tls_cert"`
+	TLSKey                 string                           `yaml:"tls_key"`
+	RedisAddr              string                           `yaml:"redis_addr"`
+	RedisPassword          string                           `yaml:"redis_password"`
+	RedisDB                int                              `yaml:"redis_db"`
+	RedisMasterName        string                           `yaml:"redis_master_name"`
+	RedisSentinelAddrs     []string                         `yaml:"redis_sentinel_addrs"`
+	RedisSentinelPassword  string                           `yaml:"redis_sentinel_password"`
+	PGDSN                  string                           `yaml:"pg_dsn"`
 	HeartbeatTimeout time.Duration                    `yaml:"heartbeat_timeout"`
 	MaxConnections   int                              `yaml:"max_connections"`
 	Env              string                           `yaml:"env"`

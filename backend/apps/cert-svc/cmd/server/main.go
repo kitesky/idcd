@@ -26,6 +26,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/config"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/apps/cert-svc/internal/handler"
 	"github.com/kite365/idcd/apps/cert-svc/internal/metrics"
 	certmw "github.com/kite365/idcd/apps/cert-svc/internal/middleware"
@@ -97,10 +99,13 @@ func main() {
 
 	// Redis. Used for the JWT session store AND for the order stream
 	// publisher inside Service. Same instance, two consumer surfaces.
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddr,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
+	rdb := redisutil.NewClientFromConfig(sharedconfig.RedisConfig{
+		Addr:                 cfg.RedisAddr,
+		Password:             cfg.RedisPassword,
+		DB:                   cfg.RedisDB,
+		MasterName:           cfg.RedisMasterName,
+		SentinelAddrs:        cfg.RedisSentinelAddrs,
+		SentinelPassword:     cfg.RedisSentinelPassword,
 	})
 	defer func() { _ = rdb.Close() }()
 
@@ -473,6 +478,6 @@ type pgxPinger struct{ pool *pgxpool.Pool }
 
 func (p pgxPinger) Ping(ctx context.Context) error { return p.pool.Ping(ctx) }
 
-type redisPinger struct{ client *redis.Client }
+type redisPinger struct{ client redis.UniversalClient }
 
 func (p redisPinger) Ping(ctx context.Context) error { return p.client.Ping(ctx).Err() }

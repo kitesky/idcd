@@ -15,13 +15,13 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/aggregator/internal/config"
 	"github.com/kite365/idcd/apps/aggregator/internal/consumer"
 	"github.com/kite365/idcd/apps/aggregator/internal/dedup"
 	"github.com/kite365/idcd/apps/aggregator/internal/processor"
 	"github.com/kite365/idcd/lib/db"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
@@ -61,13 +61,13 @@ func main() {
 	}
 	defer pool.Close()
 
-	// Redis client. Read password from the shared Redis section so authenticated
-	// remote dev Redis (e.g. 8.163.70.123:6379 with AUTH) works out of the box.
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.Aggregator.RedisAddr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
+	// Redis client. In Sentinel mode cfg.Redis.MasterName takes over;
+	// otherwise Aggregator.RedisAddr is used (backward-compatible).
+	redisCfg := cfg.Redis
+	if redisCfg.MasterName == "" {
+		redisCfg.Addr = cfg.Aggregator.RedisAddr
+	}
+	rdb := redisutil.NewClientFromConfig(redisCfg)
 	if err := rdb.Ping(context.Background()).Err(); err != nil {
 		logger.Error("failed to connect to Redis", "err", err)
 		os.Exit(1)

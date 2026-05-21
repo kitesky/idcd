@@ -33,9 +33,10 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/apps/attest/internal/handler/paymenthub"
 	"github.com/kite365/idcd/apps/attest/internal/handler/verify"
 	// P1-11: importing the metrics package side-effects the promauto
@@ -124,11 +125,13 @@ func main() {
 	if cfg.PaymentHubWebhookSecret == "" {
 		log.Warn("attest-server: ATTEST_PAYMENT_HUB_WEBHOOK_SECRET unset; /webhooks/paymenthub disabled")
 	} else {
-		rdb := redis.NewClient(&redis.Options{
-			Addr:         cfg.RedisAddr,
-			DialTimeout:  5 * time.Second,
-			ReadTimeout:  3 * time.Second,
-			WriteTimeout: 3 * time.Second,
+		rdb := redisutil.NewClientFromConfig(sharedconfig.RedisConfig{
+			Addr:                 cfg.RedisAddr,
+			Password:             cfg.RedisPassword,
+			DB:                   cfg.RedisDB,
+			MasterName:           cfg.RedisMasterName,
+			SentinelAddrs:        cfg.RedisSentinelAddrs,
+			SentinelPassword:     cfg.RedisSentinelPassword,
 		})
 		defer func() { _ = rdb.Close() }()
 

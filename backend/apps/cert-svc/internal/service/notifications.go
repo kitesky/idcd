@@ -98,7 +98,7 @@ type NotificationPool interface {
 // of the ACME orchestrator (separate goroutine, separate cursor).
 type NotificationWatcher struct {
 	repos        *repo.Repos
-	rdb          *redis.Client
+	rdb          redis.UniversalClient
 	streamClient *sharedstream.Client // lazy-init from rdb in xaddNotification
 	pool         NotificationPool
 	stream       string
@@ -183,7 +183,7 @@ func withClock(f func() time.Time) NotificationOption {
 // NewNotificationWatcher constructs a watcher with sensible defaults.
 // The Pool is required for processOrderEvents / processExpiringCerts /
 // processRenewalFailures; without it those passes are skipped.
-func NewNotificationWatcher(repos *repo.Repos, rdb *redis.Client, opts ...NotificationOption) *NotificationWatcher {
+func NewNotificationWatcher(repos *repo.Repos, rdb redis.UniversalClient, opts ...NotificationOption) *NotificationWatcher {
 	w := &NotificationWatcher{
 		repos:        repos,
 		rdb:          rdb,

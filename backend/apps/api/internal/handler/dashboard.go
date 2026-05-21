@@ -22,11 +22,11 @@ type DashboardPool interface {
 // DashboardHandler handles dashboard endpoints.
 type DashboardHandler struct {
 	pool  DashboardPool
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
 // NewDashboardHandler creates a DashboardHandler.
-func NewDashboardHandler(pool DashboardPool, rdb *redis.Client) *DashboardHandler {
+func NewDashboardHandler(pool DashboardPool, rdb redis.UniversalClient) *DashboardHandler {
 	return &DashboardHandler{pool: pool, redis: rdb}
 }
 

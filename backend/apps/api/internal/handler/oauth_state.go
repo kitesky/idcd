@@ -10,11 +10,11 @@ import (
 
 // redisStateStore implements OAuthStateStore using Redis.
 type redisStateStore struct {
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
 // NewRedisStateStore creates an OAuthStateStore backed by Redis.
-func NewRedisStateStore(r *redis.Client) OAuthStateStore {
+func NewRedisStateStore(r redis.UniversalClient) OAuthStateStore {
 	return &redisStateStore{redis: r}
 }
 

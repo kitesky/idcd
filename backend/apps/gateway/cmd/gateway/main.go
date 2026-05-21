@@ -17,7 +17,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/gateway/internal/config"
 	"github.com/kite365/idcd/apps/gateway/internal/dispatcher"
@@ -25,6 +24,7 @@ import (
 	"github.com/kite365/idcd/apps/gateway/internal/scheduler"
 	"github.com/kite365/idcd/apps/gateway/internal/server"
 	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
@@ -72,16 +72,20 @@ func main() {
 		_ = shutdownTelemetry(ctx)
 	}()
 
-	// Setup Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr:         cfg.RedisAddr,
-		Password:     cfg.RedisPassword,
-		DB:           cfg.RedisDB,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 3 * time.Second,
-		PoolSize:     10,
-	})
+	// Setup Redis client (Sentinel or single-node per config).
+	redisCfg := sharedconfig.RedisConfig{
+		Addr:     cfg.RedisAddr,
+		Password: cfg.RedisPassword,
+		DB:       cfg.RedisDB,
+	}
+	redisCfg.MasterName = cfg.RedisMasterName
+	redisCfg.SentinelAddrs = cfg.RedisSentinelAddrs
+	redisCfg.SentinelPassword = cfg.RedisSentinelPassword
+	redisCfg.DialTimeout.Duration = 5 * time.Second
+	redisCfg.ReadTimeout.Duration = 10 * time.Second
+	redisCfg.WriteTimeout.Duration = 3 * time.Second
+	redisCfg.PoolSize = 10
+	rdb := redisutil.NewClientFromConfig(redisCfg)
 
 	// Ping Redis to verify connection
 	ctx := context.Background()

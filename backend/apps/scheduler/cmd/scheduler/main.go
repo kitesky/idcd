@@ -14,13 +14,13 @@ import (
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/scheduler/internal/config"
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
 	"github.com/kite365/idcd/apps/scheduler/internal/scheduler"
 	"github.com/kite365/idcd/lib/db"
 	"github.com/kite365/idcd/lib/shared/logger"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
@@ -81,16 +81,21 @@ func run() error {
 		_ = shutdownTelemetry(ctx)
 	}()
 
-	// Create Redis client
-	rdb := redis.NewClient(&redis.Options{
-		Addr:         cfg.Redis.Addr,
-		Password:     cfg.Redis.Password,
-		DB:           cfg.Redis.DB,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 3 * time.Second,
-		PoolSize:     20,
-	})
+	// Create Redis client (Sentinel or single-node per config).
+	redisCfg := cfg.Redis
+	if redisCfg.DialTimeout.Duration == 0 {
+		redisCfg.DialTimeout.Duration = 5 * time.Second
+	}
+	if redisCfg.ReadTimeout.Duration == 0 {
+		redisCfg.ReadTimeout.Duration = 3 * time.Second
+	}
+	if redisCfg.WriteTimeout.Duration == 0 {
+		redisCfg.WriteTimeout.Duration = 3 * time.Second
+	}
+	if redisCfg.PoolSize == 0 {
+		redisCfg.PoolSize = 20
+	}
+	rdb := redisutil.NewClientFromConfig(redisCfg)
 	defer rdb.Close()
 
 	// Test Redis connection

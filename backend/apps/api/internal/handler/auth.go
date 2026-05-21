@@ -108,7 +108,7 @@ type AuthHandler struct {
 	otpSecret    []byte // HMAC key for OTP hashing
 	referralPool ReferralPool
 	mfaPool      MFAPool
-	mfaRedis     *redis.Client
+	mfaRedis     redis.UniversalClient
 	fieldCipher  *aesenc.Cipher
 	enqueuer     AuthEnqueuer // optional: nil disables async email dispatch
 	appBaseURL   string       // e.g. "https://app.idcd.com", used to build reset links
@@ -135,7 +135,7 @@ func (h *AuthHandler) WithReferralPool(pool ReferralPool) *AuthHandler {
 }
 
 // WithMFA wires a pgx pool and Redis client for MFA support.
-func (h *AuthHandler) WithMFA(pool MFAPool, rdb *redis.Client) *AuthHandler {
+func (h *AuthHandler) WithMFA(pool MFAPool, rdb redis.UniversalClient) *AuthHandler {
 	h.mfaPool = pool
 	h.mfaRedis = rdb
 	return h

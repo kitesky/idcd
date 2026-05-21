@@ -35,7 +35,7 @@ type VerdictPublisher struct {
 
 // NewVerdictPublisher constructs a VerdictPublisher writing to the canonical
 // `verdict_generation_queue` stream on the given *redis.Client.
-func NewVerdictPublisher(client *redis.Client) *VerdictPublisher {
+func NewVerdictPublisher(client redis.UniversalClient) *VerdictPublisher {
 	return &VerdictPublisher{
 		client: client,
 		stream: VerdictStreamName,

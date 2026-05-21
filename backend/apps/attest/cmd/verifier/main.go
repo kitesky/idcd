@@ -35,11 +35,12 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/apps/attest/internal/selfverify"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
@@ -104,12 +105,14 @@ func main() {
 	// worker still runs — recordFailure just skips the enqueue. Same
 	// fail-open posture as the PaymentHub webhook on cmd/server.
 	var refundEnq selfverify.RefundEnqueuer
-	if addr := strings.TrimSpace(cfg.RedisAddr); addr != "" {
-		rdb := redis.NewClient(&redis.Options{
-			Addr:         addr,
-			DialTimeout:  5 * time.Second,
-			ReadTimeout:  3 * time.Second,
-			WriteTimeout: 3 * time.Second,
+	if addr := strings.TrimSpace(cfg.RedisAddr); addr != "" || (cfg.RedisMasterName != "" && len(cfg.RedisSentinelAddrs) > 0) {
+		rdb := redisutil.NewClientFromConfig(sharedconfig.RedisConfig{
+			Addr:                 cfg.RedisAddr,
+			Password:             cfg.RedisPassword,
+			DB:                   cfg.RedisDB,
+			MasterName:           cfg.RedisMasterName,
+			SentinelAddrs:        cfg.RedisSentinelAddrs,
+			SentinelPassword:     cfg.RedisSentinelPassword,
 		})
 		defer func() { _ = rdb.Close() }()
 		// P0-4 W3: wrap rdb in sharedstream.Client so EnqueueRefund writes

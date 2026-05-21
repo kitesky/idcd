@@ -15,13 +15,13 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	acmemgr "github.com/kite365/idcd/apps/api/internal/acme"
 	"github.com/kite365/idcd/apps/api/internal/job"
 	"github.com/kite365/idcd/apps/api/internal/server"
 	"github.com/kite365/idcd/lib/shared/config"
 	"github.com/kite365/idcd/lib/shared/logger"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
@@ -94,12 +94,8 @@ func main() {
 	}
 	slogLogger.Info("connected to PostgreSQL", "dsn", maskDSN(cfg.Database.Main.DSN))
 
-	// Connect to Redis
-	redisClient := redis.NewClient(&redis.Options{
-		Addr:     cfg.Redis.Addr,
-		Password: cfg.Redis.Password,
-		DB:       cfg.Redis.DB,
-	})
+	// Connect to Redis (Sentinel or single-node per config).
+	redisClient := redisutil.NewClientFromConfig(cfg.Redis)
 
 	// Test Redis connection
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)

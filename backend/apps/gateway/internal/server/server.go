@@ -27,14 +27,14 @@ type Server struct {
 	router     chi.Router
 	httpServer *http.Server
 	hub        *hub.Hub
-	redis      *redis.Client
+	redis      redis.UniversalClient
 	pgxPool    handler.NodeAuthPool
 	streamCli  *stream.Client
 	logger     *slog.Logger
 }
 
 // New creates a new Gateway server.
-func New(cfg *config.Config, h *hub.Hub, rdb *redis.Client, pool handler.NodeAuthPool, streamCli *stream.Client, logger *slog.Logger) *Server {
+func New(cfg *config.Config, h *hub.Hub, rdb redis.UniversalClient, pool handler.NodeAuthPool, streamCli *stream.Client, logger *slog.Logger) *Server {
 	s := &Server{
 		config:    cfg,
 		hub:       h,

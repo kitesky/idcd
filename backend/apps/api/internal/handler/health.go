@@ -24,11 +24,11 @@ type PgPinger interface {
 // HealthHandler handles health check endpoints.
 type HealthHandler struct {
 	db    PgPinger
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
 // NewHealthHandler creates a new health handler.
-func NewHealthHandler(db *pgxpool.Pool, redis *redis.Client) *HealthHandler {
+func NewHealthHandler(db *pgxpool.Pool, redis redis.UniversalClient) *HealthHandler {
 	var p PgPinger
 	if db != nil {
 		p = db

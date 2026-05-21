@@ -34,7 +34,7 @@ import (
 // newJWTTestServer builds a Server with only the fields buildJWTService
 // touches — no router, no DB, no pgx pool. Pass nil to skip the redis
 // wiring (covers the legacy "no blocklist" branch).
-func newJWTTestServer(t *testing.T, rdb *redis.Client) *Server {
+func newJWTTestServer(t *testing.T, rdb redis.UniversalClient) *Server {
 	t.Helper()
 	return &Server{
 		redis:  rdb,

@@ -72,7 +72,7 @@ type Server struct {
 	logger     *slog.Logger
 	config     *config.Config
 	pgxPool    *pgxpool.Pool
-	redis      *redis.Client
+	redis      redis.UniversalClient
 
 	// Prometheus metrics
 	requestsTotal   *prometheus.CounterVec
@@ -80,7 +80,7 @@ type Server struct {
 }
 
 // New creates a new server instance with all middleware and routes configured.
-func New(cfg *config.Config, pgxPool *pgxpool.Pool, redis *redis.Client, logger *slog.Logger) *Server {
+func New(cfg *config.Config, pgxPool *pgxpool.Pool, redis redis.UniversalClient, logger *slog.Logger) *Server {
 	s := &Server{
 		config:  cfg,
 		pgxPool: pgxPool,
@@ -147,7 +147,7 @@ func (s *Server) setupMetrics() {
 
 // redisBlocklistAdapter adapts *redis.Client to the IPBlocklistStore and BlocklistStore interfaces.
 type redisBlocklistAdapter struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
 func (a *redisBlocklistAdapter) SIsMember(ctx context.Context, key, member string) (bool, error) {

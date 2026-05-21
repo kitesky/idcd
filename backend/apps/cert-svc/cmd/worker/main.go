@@ -17,9 +17,10 @@ import (
 	"syscall"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/cert-svc/internal/config"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
 	"github.com/kite365/idcd/lib/cert/ca"
@@ -59,10 +60,13 @@ func main() {
 	}
 	defer pool.Close()
 
-	rdb := redis.NewClient(&redis.Options{
-		Addr:     cfg.RedisAddr,
-		Password: cfg.RedisPassword,
-		DB:       cfg.RedisDB,
+	rdb := redisutil.NewClientFromConfig(sharedconfig.RedisConfig{
+		Addr:                 cfg.RedisAddr,
+		Password:             cfg.RedisPassword,
+		DB:                   cfg.RedisDB,
+		MasterName:           cfg.RedisMasterName,
+		SentinelAddrs:        cfg.RedisSentinelAddrs,
+		SentinelPassword:     cfg.RedisSentinelPassword,
 	})
 	defer func() { _ = rdb.Close() }()
 

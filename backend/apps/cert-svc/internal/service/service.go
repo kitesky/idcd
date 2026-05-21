@@ -42,7 +42,7 @@ var (
 // field is required.
 type Config struct {
 	Repos        *repo.Repos
-	Redis        *redis.Client
+	Redis        redis.UniversalClient
 	Vault        vault.Vault
 	DNSReg       *dns.Registry
 	Router       *Router

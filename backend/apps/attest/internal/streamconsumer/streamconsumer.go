@@ -54,7 +54,7 @@ type Handler func(ctx context.Context, fields map[string]any) error
 type Config struct {
 	// Redis is the go-redis client to use. Must already be configured
 	// (Addr, password, TLS, etc.) — Consumer does not own the client.
-	Redis *redis.Client
+	Redis redis.UniversalClient
 
 	// Stream is the Redis Streams key to consume from.
 	Stream string

@@ -34,9 +34,10 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/apps/attest/internal/service"
 	"github.com/kite365/idcd/apps/attest/internal/serviceadapter"
@@ -198,13 +199,13 @@ func main() {
 	})
 
 	// --- Redis Stream consumer ---------------------------------------
-	rdb := redis.NewClient(&redis.Options{
-		Addr:         cfg.RedisAddr,
-		Password:     cfg.RedisPassword,
-		DB:           cfg.RedisDB,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  6 * time.Second, // > consumer BLOCK (5s) so we don't time out the read.
-		WriteTimeout: 3 * time.Second,
+	rdb := redisutil.NewClientFromConfig(sharedconfig.RedisConfig{
+		Addr:                 cfg.RedisAddr,
+		Password:             cfg.RedisPassword,
+		DB:                   cfg.RedisDB,
+		MasterName:           cfg.RedisMasterName,
+		SentinelAddrs:        cfg.RedisSentinelAddrs,
+		SentinelPassword:     cfg.RedisSentinelPassword,
 	})
 	defer func() { _ = rdb.Close() }()
 

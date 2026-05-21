@@ -18,10 +18,13 @@ const (
 	envPort         = "CERT_SVC_PORT"
 	envMetricsPort  = "CERT_SVC_METRICS_PORT"
 	envDB           = "CERT_DB_DSN"
-	envRedis         = "CERT_REDIS_URL"
-	envRedisAddr     = "CERT_REDIS_ADDR"
-	envRedisPassword = "CERT_REDIS_PASSWORD"
-	envRedisDB       = "CERT_REDIS_DB"
+	envRedis               = "CERT_REDIS_URL"
+	envRedisAddr           = "CERT_REDIS_ADDR"
+	envRedisPassword       = "CERT_REDIS_PASSWORD"
+	envRedisDB             = "CERT_REDIS_DB"
+	envRedisMasterName     = "CERT_REDIS_MASTER_NAME"
+	envRedisSentinelAddrs  = "CERT_REDIS_SENTINEL_ADDRS"
+	envRedisSentinelPasswd = "CERT_REDIS_SENTINEL_PASSWORD"
 	envLogLevel     = "CERT_LOG_LEVEL"
 	envEnv          = "CERT_ENV"
 	envLEEnv        = "CERT_LE_ENV"
@@ -85,10 +88,13 @@ type Config struct {
 	// the user-facing API surface. Defaults to 9090.
 	MetricsPort  int
 	DatabaseDSN  string
-	RedisURL      string
-	RedisAddr     string
-	RedisPassword string
-	RedisDB       int
+	RedisURL             string
+	RedisAddr            string
+	RedisPassword        string
+	RedisDB              int
+	RedisMasterName      string
+	RedisSentinelAddrs   []string
+	RedisSentinelPassword string
 	LogLevel     string
 	Env          string
 	LEEnv        string
@@ -228,6 +234,19 @@ func Load() (*Config, error) {
 			return nil, fmt.Errorf("config: %s out of range: %d", envRedisDB, db)
 		}
 		cfg.RedisDB = db
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisMasterName)); v != "" {
+		cfg.RedisMasterName = v
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisSentinelAddrs)); v != "" {
+		for _, addr := range strings.Split(v, ",") {
+			if a := strings.TrimSpace(addr); a != "" {
+				cfg.RedisSentinelAddrs = append(cfg.RedisSentinelAddrs, a)
+			}
+		}
+	}
+	if v := strings.TrimSpace(os.Getenv(envRedisSentinelPasswd)); v != "" {
+		cfg.RedisSentinelPassword = v
 	}
 	if v := strings.TrimSpace(os.Getenv(envLogLevel)); v != "" {
 		cfg.LogLevel = strings.ToLower(v)

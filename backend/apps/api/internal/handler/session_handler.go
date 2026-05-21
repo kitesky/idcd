@@ -42,11 +42,11 @@ type listSessionsResponse struct {
 // SessionHandler implements the session management endpoints.
 type SessionHandler struct {
 	svc   SessionService
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
 // NewSessionHandler creates a SessionHandler.
-func NewSessionHandler(svc SessionService, rdb *redis.Client) *SessionHandler {
+func NewSessionHandler(svc SessionService, rdb redis.UniversalClient) *SessionHandler {
 	return &SessionHandler{svc: svc, redis: rdb}
 }
 

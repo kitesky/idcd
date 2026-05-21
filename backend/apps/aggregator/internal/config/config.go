@@ -92,8 +92,9 @@ func (c *Config) validate() error {
 
 	// Validate aggregator-specific config
 	agg := c.Aggregator
-	if agg.RedisAddr == "" {
-		return fmt.Errorf("aggregator.redis_addr is required")
+	sentinelConfigured := c.Config != nil && c.Config.Redis.MasterName != "" && len(c.Config.Redis.SentinelAddrs) > 0
+	if agg.RedisAddr == "" && !sentinelConfigured {
+		return fmt.Errorf("aggregator.redis_addr is required (or configure redis.master_name + redis.sentinel_addrs for sentinel mode)")
 	}
 	if agg.PGDSN == "" {
 		return fmt.Errorf("aggregator.pg_dsn is required")

@@ -14,12 +14,12 @@ import (
 // HealthHandler handles health check endpoints.
 type HealthHandler struct {
 	hub    *hub.Hub
-	redis  *redis.Client
+	redis  redis.UniversalClient
 	logger *slog.Logger
 }
 
 // NewHealthHandler creates a new health handler.
-func NewHealthHandler(h *hub.Hub, rdb *redis.Client, logger *slog.Logger) *HealthHandler {
+func NewHealthHandler(h *hub.Hub, rdb redis.UniversalClient, logger *slog.Logger) *HealthHandler {
 	return &HealthHandler{
 		hub:    h,
 		redis:  rdb,

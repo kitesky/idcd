@@ -48,6 +48,8 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
+	"github.com/kite365/idcd/lib/shared/redisutil"
 	attestmetrics "github.com/kite365/idcd/apps/attest/internal/metrics"
 	"github.com/kite365/idcd/apps/attest/internal/refund"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
@@ -105,11 +107,13 @@ func main() {
 	repos := repo.New(pool)
 
 	// D6: brand-new Redis client, NOT shared with verifier or generator.
-	rdb := redis.NewClient(&redis.Options{
-		Addr:         cfg.RedisAddr,
-		DialTimeout:  5 * time.Second,
-		ReadTimeout:  3 * time.Second,
-		WriteTimeout: 3 * time.Second,
+	rdb := redisutil.NewClientFromConfig(sharedconfig.RedisConfig{
+		Addr:                 cfg.RedisAddr,
+		Password:             cfg.RedisPassword,
+		DB:                   cfg.RedisDB,
+		MasterName:           cfg.RedisMasterName,
+		SentinelAddrs:        cfg.RedisSentinelAddrs,
+		SentinelPassword:     cfg.RedisSentinelPassword,
 	})
 	defer func() { _ = rdb.Close() }()
 
@@ -274,7 +278,7 @@ func runTickLoop(ctx context.Context, h *refund.Handler, interval time.Duration,
 //
 // Errors are logged but never fatal — a Redis blip must not bring down
 // the refund worker; the next tick will refresh the gauge.
-func runQueueLengthSampler(ctx context.Context, rdb *redis.Client, key string, interval time.Duration, log *slog.Logger) {
+func runQueueLengthSampler(ctx context.Context, rdb redis.UniversalClient, key string, interval time.Duration, log *slog.Logger) {
 	if strings.TrimSpace(key) == "" {
 		key = refund.DefaultDelayZoneKey
 	}
@@ -293,7 +297,7 @@ func runQueueLengthSampler(ctx context.Context, rdb *redis.Client, key string, i
 	}
 }
 
-func sampleQueueLength(ctx context.Context, rdb *redis.Client, key string, log *slog.Logger) {
+func sampleQueueLength(ctx context.Context, rdb redis.UniversalClient, key string, log *slog.Logger) {
 	zcardCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
 	n, err := rdb.ZCard(zcardCtx, key).Result()

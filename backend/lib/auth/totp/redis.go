@@ -11,11 +11,11 @@ import (
 // RedisReplayStore implements ReplayStore using Redis SET NX for atomic
 // single-use enforcement of TOTP codes within the replay window.
 type RedisReplayStore struct {
-	client *redis.Client
+	client redis.UniversalClient
 }
 
 // NewRedisReplayStore returns a replay store backed by Redis.
-func NewRedisReplayStore(client *redis.Client) *RedisReplayStore {
+func NewRedisReplayStore(client redis.UniversalClient) *RedisReplayStore {
 	return &RedisReplayStore{client: client}
 }
 

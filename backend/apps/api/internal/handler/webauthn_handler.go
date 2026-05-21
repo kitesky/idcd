@@ -33,14 +33,14 @@ type WebAuthnPool interface {
 
 type WebAuthnHandler struct {
 	pool    WebAuthnPool
-	redis   *redis.Client
+	redis   redis.UniversalClient
 	rpID    string
 	origins []string
 	jwtSvc  JWTSigner
 	sessSvc SessionStorer
 }
 
-func NewWebAuthnHandler(pool *pgxpool.Pool, rdb *redis.Client, rpID string) *WebAuthnHandler {
+func NewWebAuthnHandler(pool *pgxpool.Pool, rdb redis.UniversalClient, rpID string) *WebAuthnHandler {
 	if rpID == "" {
 		rpID = webauthnDefaultRPID
 	}

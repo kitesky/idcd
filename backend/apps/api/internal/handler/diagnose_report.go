@@ -18,11 +18,11 @@ const diagnoseTTL = 7 * 24 * time.Hour // 7 days
 
 // DiagnoseReportHandler handles saving and retrieving diagnose reports via Redis.
 type DiagnoseReportHandler struct {
-	redis *redis.Client
+	redis redis.UniversalClient
 }
 
 // NewDiagnoseReportHandler creates a new DiagnoseReportHandler.
-func NewDiagnoseReportHandler(rdb *redis.Client) *DiagnoseReportHandler {
+func NewDiagnoseReportHandler(rdb redis.UniversalClient) *DiagnoseReportHandler {
 	return &DiagnoseReportHandler{redis: rdb}
 }
 

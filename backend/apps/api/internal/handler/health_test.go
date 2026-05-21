@@ -167,7 +167,7 @@ func TestCheckPostgreSQL(t *testing.T) {
 func TestCheckRedis(t *testing.T) {
 	tests := []struct {
 		name           string
-		redis          *redis.Client
+		redis          redis.UniversalClient
 		expectedStatus string
 		expectError    bool
 	}{

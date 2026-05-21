@@ -34,11 +34,11 @@ type TOTPPool interface {
 
 type TOTPHandler struct {
 	pool   TOTPPool
-	redis  *redis.Client
+	redis  redis.UniversalClient
 	cipher *aesenc.Cipher
 }
 
-func NewTOTPHandler(pool *pgxpool.Pool, rdb *redis.Client, cipher *aesenc.Cipher) *TOTPHandler {
+func NewTOTPHandler(pool *pgxpool.Pool, rdb redis.UniversalClient, cipher *aesenc.Cipher) *TOTPHandler {
 	return &TOTPHandler{pool: pool, redis: rdb, cipher: cipher}
 }
 

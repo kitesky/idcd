@@ -36,6 +36,9 @@ import (
 	"github.com/kite365/idcd/apps/attest-verify/internal/poller"
 )
 
+// Compile-time sanity check: schemeFetcher implements poller.PDFFetcher.
+var _ poller.PDFFetcher = (*schemeFetcher)(nil)
+
 const httpShutdownGrace = 5 * time.Second
 
 func main() {
@@ -76,10 +79,16 @@ func main() {
 		},
 	}
 
+	fetcher, err := newSchemeFetcher(ctx, cfg, httpClient)
+	if err != nil {
+		log.Error("attest-verify: fetcher init failed", "err", err)
+		os.Exit(1)
+	}
+
 	p := poller.New(poller.Config{
 		Lister:         &dbLister{pool: pool},
 		Writer:         &dbWriter{pool: pool},
-		Fetcher:        &httpFetcher{client: httpClient},
+		Fetcher:        fetcher,
 		VerifyEndpoint: cfg.VerifyEndpoint,
 		HTTPClient:     httpClient,
 		PollInterval:   cfg.PollInterval,
@@ -207,11 +216,16 @@ type dbWriter struct {
 	pool *pgxpool.Pool
 }
 
+// insertLogSQL writes one verification result. The UNIQUE constraint on
+// record_id (migration 00008) means a second worker tick attempting to
+// re-verify the same record is a no-op — preventing both monitoring
+// double-counts and the StatusError lockout (a single error row would
+// otherwise hide the record from listPendingSQL forever).
 const insertLogSQL = `
     INSERT INTO idcd_attest.self_verify_log
         (id, record_id, verified_at, status, latency_ms, error)
     VALUES ($1, $2, $3, $4, $5, NULLIF($6, ''))
-    ON CONFLICT (id) DO NOTHING
+    ON CONFLICT (record_id) DO NOTHING
 `
 
 func (w *dbWriter) WriteLog(ctx context.Context, e *poller.LogEntry) error {
@@ -223,17 +237,62 @@ func (w *dbWriter) WriteLog(ctx context.Context, e *poller.LogEntry) error {
 	return nil
 }
 
-// httpFetcher retrieves PDF bytes via HTTP/HTTPS or the local file:// scheme
-// (file:// is useful in development and CI for injecting test PDFs).
+// schemeFetcher dispatches Fetch by URL scheme: s3:// → s3Fetcher
+// (production), http(s):// → httpFetcher, file:// → fileFetcher (dev only,
+// gated by cfg.AllowFileURLs).
+//
+// The split exists because s3archiver.go writes s3:// URLs in production
+// (s3archiver.go:126) and localArchiver writes file:// URLs in dev
+// (localarchiver.go:40). A verifier that only speaks http would
+// silently lose visibility into every production record — and a verifier
+// that speaks file:// unconditionally would let any future code path
+// that writes pdf_url turn this service into an arbitrary-file reader.
+type schemeFetcher struct {
+	http *httpFetcher
+	s3   *s3Fetcher // nil when cfg.S3Region is empty
+	file *fileFetcher // nil when cfg.AllowFileURLs is false
+}
+
+func newSchemeFetcher(ctx context.Context, cfg *config.Config, httpClient *http.Client) (*schemeFetcher, error) {
+	sf := &schemeFetcher{http: &httpFetcher{client: httpClient}}
+	if cfg.S3Region != "" {
+		s3f, err := newS3FetcherFromRegion(ctx, cfg.S3Region, cfg.S3Endpoint)
+		if err != nil {
+			return nil, fmt.Errorf("schemeFetcher: s3 init: %w", err)
+		}
+		sf.s3 = s3f
+	}
+	if cfg.AllowFileURLs {
+		sf.file = &fileFetcher{}
+	}
+	return sf, nil
+}
+
+func (f *schemeFetcher) Fetch(ctx context.Context, pdfURL string) ([]byte, error) {
+	switch {
+	case strings.HasPrefix(pdfURL, "s3://"):
+		if f.s3 == nil {
+			return nil, fmt.Errorf("schemeFetcher: s3:// URL but %s is not set", "ATTEST_VERIFIER_S3_REGION")
+		}
+		return f.s3.Fetch(ctx, pdfURL)
+	case strings.HasPrefix(pdfURL, "file://"):
+		if f.file == nil {
+			return nil, fmt.Errorf("schemeFetcher: file:// URL but ATTEST_VERIFIER_ALLOW_FILE_URLS is not enabled")
+		}
+		return f.file.Fetch(ctx, pdfURL)
+	case strings.HasPrefix(pdfURL, "http://"), strings.HasPrefix(pdfURL, "https://"):
+		return f.http.Fetch(ctx, pdfURL)
+	default:
+		return nil, fmt.Errorf("schemeFetcher: unsupported URL scheme: %q", pdfURL)
+	}
+}
+
+// httpFetcher retrieves PDF bytes from an http:// or https:// URL.
 type httpFetcher struct {
 	client *http.Client
 }
 
 func (f *httpFetcher) Fetch(ctx context.Context, pdfURL string) ([]byte, error) {
-	if strings.HasPrefix(pdfURL, "file://") {
-		path := strings.TrimPrefix(pdfURL, "file://")
-		return os.ReadFile(path)
-	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, pdfURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("httpFetcher.Fetch newrequest: %w", err)
@@ -248,4 +307,14 @@ func (f *httpFetcher) Fetch(ctx context.Context, pdfURL string) ([]byte, error) 
 	}
 	// Cap at 64 MiB — same as apps/attest cmd/verifier.
 	return io.ReadAll(io.LimitReader(resp.Body, 64<<20))
+}
+
+// fileFetcher reads PDF bytes from a file:// URL on the local disk.
+// Only constructed when cfg.AllowFileURLs=true (development only —
+// localArchiver writes file:// during dev/CI).
+type fileFetcher struct{}
+
+func (fileFetcher) Fetch(_ context.Context, pdfURL string) ([]byte, error) {
+	path := strings.TrimPrefix(pdfURL, "file://")
+	return os.ReadFile(path)
 }

@@ -196,6 +196,192 @@ rate_limit:
 	}
 }
 
+// TestLoadRaw_CertSvcAndAttestSections pins the YAML tag mapping for
+// every field in CertSvcServiceConfig and AttestServiceConfig that
+// applyYAML (in apps/cert-svc and apps/attest) reads. A typo in any
+// yaml struct tag would silently produce zero values in production and
+// the test below would catch it before the bad config ships.
+func TestLoadRaw_CertSvcAndAttestSections(t *testing.T) {
+	yaml := `
+cert_svc:
+  port: 8081
+  metrics_port: 9192
+  env: "staging"
+  le_env: "production"
+  log_level: "DEBUG"
+  acme_account_email: "ops@example.com"
+  database:
+    dsn: "postgres://cert:secret@db/cert"
+  redis:
+    addr: "redis:6379"
+    password: "rp"
+    db: 2
+    master_name: "mymaster"
+    sentinel_addrs: ["s1:26379", "s2:26379"]
+    sentinel_password: "sp"
+  vault:
+    backend: "awskms"
+    alikms:
+      region_id: "cn-hangzhou"
+      access_key_id: "ali-akid"
+      access_key_secret: "ali-secret"
+      key_id: "ali-key"
+    awskms:
+      region: "us-east-1"
+      access_key_id: "aws-akid"
+      secret_access_key: "aws-secret"
+      key_id: "aws-key"
+    hashivault:
+      address: "https://vault.example.com"
+      token: "hv-token"
+      namespace: "ns"
+      key_name: "kn"
+      mount_path: "transit"
+  zerossl_eab_kid: "kid"
+  zerossl_eab_hmac_key: "hmac"
+  buypass_env: "production"
+
+attest:
+  port: 8090
+  env: "staging"
+  log_level: "INFO"
+  database:
+    dsn: "postgres://att:secret@db/att"
+  redis:
+    addr: "redis:6379"
+    password: "rp2"
+    db: 3
+    master_name: "att-master"
+    sentinel_addrs: ["s3:26379"]
+    sentinel_password: "ap"
+  sign_backend: "aliyun"
+  awskms:
+    region: "us-west-1"
+    access_key_id: "akid"
+    secret_access_key: "asec"
+    key_id: "akey"
+    algorithm: "ECDSA_SHA_256"
+  alikms:
+    region_id: "cn-shanghai"
+    access_key_id: "ali"
+    access_key_secret: "alisec"
+    key_id: "alikey"
+    algorithm: "ECDSA_SHA_256"
+  local_key_path: "/keys/dev.pem"
+  local_algorithm: "RSASSA_PKCS1_V1_5_SHA_256"
+  tsa:
+    providers: ["digicert", "globalsign"]
+  s3:
+    endpoint: "https://s3.example.com"
+    bucket: "att-archive"
+    region: "ap-southeast-1"
+    access_key: "ak"
+    secret_key: "sk"
+    object_lock_mode: "COMPLIANCE"
+    object_lock_days: 3650
+    key_prefix: "verdicts/"
+  verify_endpoint: "https://attest.example.com/verify"
+  archiver_backend: "s3"
+  local_archive_dir: "/var/lib/attest"
+  refund:
+    initiate_stream: "rstream"
+    retry_stream: "rretry"
+    delay_zone_key: "rdelay"
+    group: "rgroup"
+    consumer: "rconsumer"
+    notifier_addr: "naddr"
+    notifier_queue: "nqueue"
+`
+	p := writeTempConfig(t, yaml)
+	cfg, err := config.LoadRaw(p)
+	if err != nil {
+		t.Fatalf("LoadRaw: %v", err)
+	}
+
+	cs := cfg.CertSvc
+	if cs.Port != 8081 || cs.MetricsPort != 9192 || cs.Env != "staging" {
+		t.Errorf("cert_svc scalars: %+v", cs)
+	}
+	if cs.LEEnv != "production" || cs.LogLevel != "DEBUG" || cs.AccountEmail != "ops@example.com" {
+		t.Errorf("cert_svc strings: %+v", cs)
+	}
+	if cs.Database.DSN != "postgres://cert:secret@db/cert" {
+		t.Errorf("cert_svc.database.dsn: %q", cs.Database.DSN)
+	}
+	if cs.Redis.MasterName != "mymaster" || len(cs.Redis.SentinelAddrs) != 2 ||
+		cs.Redis.SentinelPassword != "sp" {
+		t.Errorf("cert_svc.redis sentinel: %+v", cs.Redis)
+	}
+	if cs.Vault.Backend != "awskms" {
+		t.Errorf("vault.backend: %q", cs.Vault.Backend)
+	}
+	if cs.Vault.AliKMS.RegionID != "cn-hangzhou" || cs.Vault.AliKMS.KeyID != "ali-key" {
+		t.Errorf("vault.alikms: %+v", cs.Vault.AliKMS)
+	}
+	if cs.Vault.AWSKMS.Region != "us-east-1" || cs.Vault.AWSKMS.SecretAccessKey != "aws-secret" {
+		t.Errorf("vault.awskms: %+v", cs.Vault.AWSKMS)
+	}
+	if cs.Vault.HashiVault.Address != "https://vault.example.com" ||
+		cs.Vault.HashiVault.Token != "hv-token" ||
+		cs.Vault.HashiVault.MountPath != "transit" {
+		t.Errorf("vault.hashivault: %+v", cs.Vault.HashiVault)
+	}
+	if cs.ZeroSSLEABKID != "kid" || cs.ZeroSSLEABHMACKey != "hmac" || cs.BuypassEnv != "production" {
+		t.Errorf("cert_svc external: %+v", cs)
+	}
+
+	at := cfg.Attest
+	if at.Port != 8090 || at.Env != "staging" || at.LogLevel != "INFO" {
+		t.Errorf("attest scalars: %+v", at)
+	}
+	if at.Database.DSN != "postgres://att:secret@db/att" {
+		t.Errorf("attest.database.dsn: %q", at.Database.DSN)
+	}
+	if at.Redis.MasterName != "att-master" || len(at.Redis.SentinelAddrs) != 1 {
+		t.Errorf("attest.redis sentinel: %+v", at.Redis)
+	}
+	if at.SignBackend != "aliyun" {
+		t.Errorf("attest.sign_backend: %q", at.SignBackend)
+	}
+	if at.AWSKMS.Region != "us-west-1" || at.AWSKMS.KeyID != "akey" || at.AWSKMS.Algorithm != "ECDSA_SHA_256" {
+		t.Errorf("attest.awskms: %+v", at.AWSKMS)
+	}
+	if at.AliKMS.RegionID != "cn-shanghai" || at.AliKMS.KeyID != "alikey" {
+		t.Errorf("attest.alikms: %+v", at.AliKMS)
+	}
+	if at.LocalKeyPath != "/keys/dev.pem" || at.LocalAlgorithm != "RSASSA_PKCS1_V1_5_SHA_256" {
+		t.Errorf("attest.local: path=%q alg=%q", at.LocalKeyPath, at.LocalAlgorithm)
+	}
+	if len(at.TSA.Providers) != 2 || at.TSA.Providers[0] != "digicert" {
+		t.Errorf("attest.tsa.providers: %+v", at.TSA.Providers)
+	}
+	if at.S3.Bucket != "att-archive" || at.S3.Region != "ap-southeast-1" ||
+		at.S3.ObjectLockMode != "COMPLIANCE" || at.S3.ObjectLockDays != 3650 ||
+		at.S3.KeyPrefix != "verdicts/" || at.S3.Endpoint != "https://s3.example.com" {
+		t.Errorf("attest.s3: %+v", at.S3)
+	}
+	if at.VerifyEndpoint != "https://attest.example.com/verify" {
+		t.Errorf("attest.verify_endpoint: %q", at.VerifyEndpoint)
+	}
+	if at.ArchiverBackend != "s3" || at.LocalArchiveDir != "/var/lib/attest" {
+		t.Errorf("attest archiver: backend=%q dir=%q", at.ArchiverBackend, at.LocalArchiveDir)
+	}
+	r := at.Refund
+	if r.InitiateStream != "rstream" || r.RetryStream != "rretry" || r.DelayZoneKey != "rdelay" ||
+		r.Group != "rgroup" || r.Consumer != "rconsumer" || r.NotifierAddr != "naddr" || r.NotifierQueue != "nqueue" {
+		t.Errorf("attest.refund: %+v", r)
+	}
+}
+
+// TestLoadRaw_MissingFile ensures the dedicated raw loader surfaces
+// fs errors instead of silently returning a zero-value Config.
+func TestLoadRaw_MissingFile(t *testing.T) {
+	_, err := config.LoadRaw("/nonexistent/path.yaml")
+	if err == nil {
+		t.Fatal("expected error for missing file")
+	}
+}
+
 func TestDuration_CombinedDayForm(t *testing.T) {
 	// parseDuration must handle "7d12h", "1d30m", and pure "30d".
 	cases := []struct {

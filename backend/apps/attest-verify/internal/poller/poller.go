@@ -234,8 +234,10 @@ func (p *Poller) VerifyOne(ctx context.Context, rec *PendingRecord) error {
 			fmt.Sprintf("status %d: %s", resp.StatusCode, string(snippet)))
 	}
 
+	// Bound the response so a misbehaving /verify can't drive the verifier
+	// OOM. 1 MiB is two orders of magnitude over VerifyResponse's natural size.
 	var vr VerifyResponse
-	if err := json.NewDecoder(resp.Body).Decode(&vr); err != nil {
+	if err := json.NewDecoder(io.LimitReader(resp.Body, maxVerifyBodyBytes)).Decode(&vr); err != nil {
 		return p.writeLog(ctx, rec.RecordID, start, StatusError, latencyMS,
 			"decode: "+err.Error())
 	}
@@ -245,17 +247,30 @@ func (p *Poller) VerifyOne(ctx context.Context, rec *PendingRecord) error {
 			"verify rejected: "+vr.Reason)
 	}
 
-	// Cross-check: if both sides recorded a hash, they must agree.
-	// A mismatch means the archived PDF differs from what was signed.
-	if rec.ContentHash != "" && vr.ContentSHA256 != "" &&
-		vr.ContentSHA256 != rec.ContentHash {
-		return p.writeLog(ctx, rec.RecordID, start, StatusFail, latencyMS,
-			fmt.Sprintf("hash mismatch: expected %s got %s",
-				rec.ContentHash, vr.ContentSHA256))
+	// Hash cross-check is the entire reason this service exists (D6):
+	// when the record carries a hash, the /verify response MUST also
+	// carry one. A server that returns valid=true with an empty
+	// content_sha256 is either misconfigured or attacker-controlled —
+	// either way, accepting it would defeat the audit purpose.
+	if rec.ContentHash != "" {
+		switch {
+		case vr.ContentSHA256 == "":
+			return p.writeLog(ctx, rec.RecordID, start, StatusFail, latencyMS,
+				"verify endpoint omitted content_sha256; cross-check impossible")
+		case vr.ContentSHA256 != rec.ContentHash:
+			return p.writeLog(ctx, rec.RecordID, start, StatusFail, latencyMS,
+				fmt.Sprintf("hash mismatch: expected %s got %s",
+					rec.ContentHash, vr.ContentSHA256))
+		}
 	}
 
 	return p.writeLog(ctx, rec.RecordID, start, StatusPass, latencyMS, "")
 }
+
+// maxVerifyBodyBytes caps the /verify response. VerifyResponse is a tiny
+// JSON object (~200 bytes); 1 MiB leaves room for future fields without
+// allowing unbounded allocation.
+const maxVerifyBodyBytes = 1 << 20
 
 func (p *Poller) writeLog(ctx context.Context, recordID string, at time.Time,
 	status string, latencyMS int64, errMsg string) error {

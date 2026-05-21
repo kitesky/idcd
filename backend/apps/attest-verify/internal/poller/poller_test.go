@@ -3,6 +3,7 @@ package poller_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -197,6 +198,119 @@ func TestVerifyOne_NilRecord(t *testing.T) {
 	err := p.VerifyOne(context.Background(), nil)
 	if err == nil {
 		t.Fatal("expected error for nil record")
+	}
+}
+
+// errFetcher always returns an error — exercises the pre-/verify
+// fetch-failure branch in VerifyOne.
+type errFetcher struct{ err error }
+
+func (e *errFetcher) Fetch(_ context.Context, _ string) ([]byte, error) {
+	return nil, e.err
+}
+
+// errLister always returns an error — exercises the tick() degraded path
+// where the DB is briefly unavailable.
+type errLister struct{ err error }
+
+func (e *errLister) ListPending(_ context.Context, _ int) ([]*poller.PendingRecord, error) {
+	return nil, e.err
+}
+
+func TestVerifyOne_Error_FetchFail(t *testing.T) {
+	w := &stubWriter{}
+	p := poller.New(poller.Config{
+		Lister:         &stubLister{},
+		Writer:         w,
+		Fetcher:        &errFetcher{err: errors.New("connection refused")},
+		VerifyEndpoint: "http://unused",
+		PollInterval:   time.Minute,
+	})
+	rec := makeRecord("att_fetchfail", "expected_hash")
+
+	if err := p.VerifyOne(context.Background(), rec); err == nil {
+		t.Fatal("expected error from fetch failure")
+	}
+	if len(w.entries) != 1 {
+		t.Fatalf("expected 1 log entry, got %d", len(w.entries))
+	}
+	if got := w.entries[0]; got.Status != poller.StatusError {
+		t.Errorf("expected status=%q, got %q", poller.StatusError, got.Status)
+	}
+	if !strings.HasPrefix(w.entries[0].Err, "fetch:") {
+		t.Errorf("expected err to start with 'fetch:', got %q", w.entries[0].Err)
+	}
+}
+
+func TestVerifyOne_Error_MalformedJSON(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("not json at all"))
+	}))
+	defer srv.Close()
+
+	p, w := makePoller(t, srv.URL)
+	rec := makeRecord("att_malformed", "")
+
+	if err := p.VerifyOne(context.Background(), rec); err == nil {
+		t.Fatal("expected error for malformed JSON")
+	}
+	if len(w.entries) != 1 || w.entries[0].Status != poller.StatusError {
+		t.Fatalf("expected one StatusError entry, got %+v", w.entries)
+	}
+	if !strings.Contains(w.entries[0].Err, "decode:") {
+		t.Errorf("expected err to contain 'decode:', got %q", w.entries[0].Err)
+	}
+}
+
+// TestVerifyOne_Fail_ServerOmitsHash documents the security-critical
+// behaviour: a /verify response with valid=true but no content_sha256
+// MUST NOT pass when the caller has a recorded hash to cross-check.
+// Accepting it would defeat the D6 audit purpose — the server could be
+// compromised or replaced by a stub.
+func TestVerifyOne_Fail_ServerOmitsHash(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		json.NewEncoder(w).Encode(poller.VerifyResponse{
+			Valid: true,
+			// ContentSHA256 intentionally absent.
+		})
+	}))
+	defer srv.Close()
+
+	p, w := makePoller(t, srv.URL)
+	rec := makeRecord("att_serveromit", "expected_hash")
+
+	if err := p.VerifyOne(context.Background(), rec); err == nil {
+		t.Fatal("expected error when server omits content_sha256 but record has hash")
+	}
+	if got := w.entries[0]; got.Status != poller.StatusFail {
+		t.Errorf("expected status=%q, got %q", poller.StatusFail, got.Status)
+	}
+	if !strings.Contains(w.entries[0].Err, "omitted content_sha256") {
+		t.Errorf("expected err to mention omitted hash, got %q", w.entries[0].Err)
+	}
+}
+
+func TestTick_ListerError(t *testing.T) {
+	// Drive one tick where the lister fails. The poller should log the
+	// error and continue (no panic, no log entry written) so the next
+	// tick can retry. This is the failure mode during a brief DB blip.
+	w := &stubWriter{}
+	p := poller.New(poller.Config{
+		Lister:         &errLister{err: errors.New("db unreachable")},
+		Writer:         w,
+		Fetcher:        &stubFetcher{},
+		VerifyEndpoint: "http://unused",
+		PollInterval:   10 * time.Millisecond,
+	})
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if err := p.Run(ctx); err != nil {
+		t.Fatalf("Run returned unexpected error: %v", err)
+	}
+	if len(w.entries) != 0 {
+		t.Errorf("expected 0 log entries on lister failure, got %d", len(w.entries))
 	}
 }
 

@@ -5,6 +5,7 @@ use (
 	./apps/aggregator
 	./apps/api
 	./apps/attest
+	./apps/attest-verify
 	./apps/cert-svc
 	./apps/cli
 	./apps/gateway

@@ -328,6 +328,51 @@
 - **Self-Verify Worker 独立 docker compose service** + 独立监控告警 + 独立资源池
 - 归档 S3/WORM(对象存储)只增不删,6 年合规
 
+### 4.9.1 attest-verify — 独立自验服务部署拓扑（D6 落地）
+
+> 本节对应 `DECISIONS.md §M D6`，描述 `backend/apps/attest-verify/` 独立模块的拓扑与边界。
+
+#### 模块独立性边界
+
+```
+┌──────────────────────┐         HTTPS POST /verify          ┌──────────────────────────┐
+│   apps/attest-verify  │ ─────────────────────────────────▶  │   attest.idcd.com/verify  │
+│  (独立 Go 模块)       │                                      │   (apps/attest server)    │
+│                      │                                      │                          │
+│  • 独立 go.mod       │                                      │  • 独立 KMS 客户端        │
+│  • 独立 Docker 容器   │         读 idcd_attest DB             │  • 独立进程/容器           │
+│  • 无共享代码         │ ◀─────── idcd_attest.attestation_record                         │
+│  • 无 KMS 凭证       │         (action=s3_archived)         └──────────────────────────┘
+│                      │                                      
+│  写 self_verify_log  │ ─────────▶ idcd_attest.self_verify_log
+└──────────────────────┘
+```
+
+#### 与 apps/attest 的关系
+
+| 维度 | apps/attest | apps/attest-verify |
+|---|---|---|
+| Go 模块 | `apps/attest` | `apps/attest-verify`（**独立**）|
+| 进程 | attest-server / generator / verifier | 独立 attest-verify 进程 |
+| KMS 客户端 | 有（sign + verify） | **无** — 不持有任何密钥材料 |
+| 数据库写入 | verdict_report, attestation_record 等 | **仅写** self_verify_log |
+| 数据库读取 | 全量 idcd_attest.* | attestation_record + verdict_report（只读）|
+| 验签方式 | 内部 KMS Verifier 调用 | **公开 HTTP POST /verify**（与第三方相同路径）|
+
+#### 为何独立很重要
+
+- 如果 attest-verify 与 attest-server 共享代码，验签器中的 bug 也存在于自验器中，自验永远 pass，故障无法检测。
+- 独立 Go 模块使编译器在构建阶段强制执行边界：`apps/attest-verify` 不能 import `apps/attest` 的任何内部包。
+- 仅调用公开 `/verify` 端点保证了 Self-Verify Worker 与企业审计员、终端用户的调用路径完全一致。
+
+#### 部署要求
+
+- **独立 Docker 容器**：`idcd-attest-verify`（区别于 `idcd-attest-server`）
+- **独立 VPC subnet**（推荐，S2 起）：两服务间仅需 HTTPS 出向到 `attest.idcd.com` 及共享 PG 连接
+- **独立配置前缀** `ATTEST_VERIFIER_*`：与 attest-server 的 `ATTEST_*` 变量完全分离
+- **端口** `:8090`（可通过 `ATTEST_VERIFIER_BIND_ADDR` 覆盖）
+- 详见 `docs/RUNBOOKS/attest-verify-deploy.md`
+
 ### 4.10 MCP Server(v2 NEW, 详 19 §3 + D13 stateless protocol + stateful connection)
 
 **职责**:把 idcd 所有拨测/监控/Verdict 能力包为 MCP 协议接口,Agent 端可直接 import

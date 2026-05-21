@@ -211,6 +211,28 @@ services:
       driver: "json-file"
       options: {max-size: "50m", max-file: "3"}
 
+  # S2 attest-verify — D6 独立自验服务。
+  # 独立 Go 模块 (apps/attest-verify)，独立容器，无 KMS 凭证。
+  # 仅通过公开 HTTPS POST /verify 与 attest-server 交互（D6）。
+  # healthcheck 用 pidof 兜底，因为该服务不对外暴露 HTTP 端口（通过内网调用）。
+  attest-verify:
+    image: ghcr.io/${GHCR_OWNER}/idcd-attest-verify:latest
+    container_name: idcd-attest-verify
+    restart: unless-stopped
+    environment:
+      - TZ=Asia/Shanghai
+    env_file:
+      - /opt/idcd/config/attest-verify.env
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/healthz"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options: {max-size: "50m", max-file: "3"}
+
   nginx:
     image: nginx:alpine
     container_name: idcd-nginx

@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/kite365/idcd/apps/api/internal/response"
+	dbtx "github.com/kite365/idcd/lib/db"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
 	sharedi18n "github.com/kite365/idcd/lib/shared/i18n"
@@ -55,6 +56,11 @@ type OAuthQuerier interface {
 	GetUserByID(ctx context.Context, id string) (idcdmain.User, error)
 }
 
+// OAuthQuerierFactory returns an OAuthQuerier bound to the given pgx.Tx.
+// Production wires this to func(tx pgx.Tx) OAuthQuerier { return idcdmain.New(tx) }
+// so each transactional handler sees a tx-scoped sqlc Queries.
+type OAuthQuerierFactory func(tx pgx.Tx) OAuthQuerier
+
 // OAuthHandler handles DingTalk and Feishu OAuth flows.
 type OAuthHandler struct {
 	q              OAuthQuerier
@@ -71,6 +77,14 @@ type OAuthHandler struct {
 	dingtalkUserURL  string
 	feishuTokenURL   string
 	feishuUserURL    string
+
+	// Tx wiring for findOrCreateOAuthUser (P1-10).
+	// When both fields are set, new-user creation wraps CreateUser +
+	// CreateUserCredential in db.WithTxBeginner so a partial write can never
+	// persist. Both nil = legacy non-transactional path (kept so existing
+	// unit tests that don't wire a pool keep passing).
+	txPool   dbtx.TxBeginner
+	qFactory OAuthQuerierFactory
 }
 
 // OAuthConfig carries the third-party app credentials needed by OAuthHandler.
@@ -100,6 +114,15 @@ func NewOAuthHandler(cfg OAuthConfig, q OAuthQuerier, jwtSvc JWTSigner, sessSvc 
 		feishuTokenURL:   feishuTokenDef,
 		feishuUserURL:    feishuUserDef,
 	}
+}
+
+// WithTxPool wires the transaction pool + sqlc Queries factory used by
+// findOrCreateOAuthUser so CreateUser + CreateUserCredential commit
+// atomically (or both roll back). See ARCHITECTURE-REVIEW-2026-05-21 P1-10.
+func (h *OAuthHandler) WithTxPool(pool dbtx.TxBeginner, factory OAuthQuerierFactory) *OAuthHandler {
+	h.txPool = pool
+	h.qFactory = factory
+	return h
 }
 
 // --- DingTalk ---
@@ -424,6 +447,11 @@ func (h *OAuthHandler) fetchFeishuUser(ctx context.Context, accessToken string) 
 // findOrCreateOAuthUser returns the user id and their persisted short locale
 // code. Newly provisioned users get a locale negotiated from the inbound
 // Accept-Language header; existing users keep whatever locale is on file.
+//
+// Tx contract (P1-10): the new-user path does CreateUser + CreateUserCredential
+// inside db.WithTxBeginner so a partial write (user without credential) can
+// never persist. When txPool is unwired (some unit tests), we fall back to the
+// legacy non-transactional path.
 func (h *OAuthHandler) findOrCreateOAuthUser(ctx context.Context, r *http.Request, provider, externalID, name, email string) (userID, locale string, err error) {
 	extID := externalID
 	cred, err := h.q.GetUserCredentialByTypeAndExternal(ctx, idcdmain.GetUserCredentialByTypeAndExternalParams{
@@ -431,7 +459,6 @@ func (h *OAuthHandler) findOrCreateOAuthUser(ctx context.Context, r *http.Reques
 		ExternalID: &extID,
 	})
 	if err == nil {
-		// Existing user — load locale so JWT claim stays accurate.
 		existing, err := h.q.GetUserByID(ctx, cred.UserID)
 		if err != nil {
 			return "", "", fmt.Errorf("load oauth user: %w", err)
@@ -452,33 +479,51 @@ func (h *OAuthHandler) findOrCreateOAuthUser(ctx context.Context, r *http.Reques
 		namePtr = &name
 	}
 
-	// i18n: persist the short registry code (cn/en) so JWT + email + UI all
-	// agree on the same value across the user's lifetime.
 	provisionedLocale := sharedi18n.MustDefault().Negotiate(r.Header.Get("Accept-Language"))
 
-	user, err := h.q.CreateUser(ctx, idcdmain.CreateUserParams{
-		ID:          newID,
-		Email:       finalEmail,
-		DisplayName: namePtr,
-		Locale:      provisionedLocale,
-		Timezone:    "Asia/Shanghai",
-	})
-	if err != nil {
-		return "", "", fmt.Errorf("create user: %w", err)
+	var createdUser idcdmain.User
+
+	doWrites := func(q OAuthQuerier) error {
+		user, err := q.CreateUser(ctx, idcdmain.CreateUserParams{
+			ID:          newID,
+			Email:       finalEmail,
+			DisplayName: namePtr,
+			Locale:      provisionedLocale,
+			Timezone:    "Asia/Shanghai",
+		})
+		if err != nil {
+			return fmt.Errorf("create user: %w", err)
+		}
+
+		credID := idgen.New("cred")
+		if _, err := q.CreateUserCredential(ctx, idcdmain.CreateUserCredentialParams{
+			ID:         credID,
+			UserID:     user.ID,
+			Type:       provider,
+			ExternalID: &extID,
+			Metadata:   []byte("{}"),
+		}); err != nil {
+			return fmt.Errorf("create credential: %w", err)
+		}
+
+		createdUser = user
+		return nil
 	}
 
-	credID := idgen.New("cred")
-	if _, err := h.q.CreateUserCredential(ctx, idcdmain.CreateUserCredentialParams{
-		ID:         credID,
-		UserID:     user.ID,
-		Type:       provider,
-		ExternalID: &extID,
-		Metadata:   []byte("{}"),
-	}); err != nil {
-		return "", "", fmt.Errorf("create credential: %w", err)
+	var txErr error
+	if h.txPool != nil && h.qFactory != nil {
+		txErr = dbtx.WithTxBeginner(ctx, h.txPool, func(tx pgx.Tx) error {
+			return doWrites(h.qFactory(tx))
+		})
+	} else {
+		txErr = doWrites(h.q)
 	}
 
-	return user.ID, user.Locale, nil
+	if txErr != nil {
+		return "", "", txErr
+	}
+
+	return createdUser.ID, createdUser.Locale, nil
 }
 
 func (h *OAuthHandler) issueOAuthToken(ctx context.Context, userID, locale string) (string, error) {

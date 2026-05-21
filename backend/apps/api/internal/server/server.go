@@ -378,7 +378,10 @@ func (s *Server) setupRouter() {
 					CallbackBase:   s.config.OAuth.CallbackBase,
 				}
 				stateStore := handler.NewRedisStateStore(s.redis)
-				oauthH := handler.NewOAuthHandler(oauthCfg, q, jwtSvc, sessSvc, stateStore)
+				oauthH := handler.NewOAuthHandler(oauthCfg, q, jwtSvc, sessSvc, stateStore).
+					WithTxPool(s.pgxPool, func(tx pgx.Tx) handler.OAuthQuerier {
+						return idcdmain.New(tx)
+					})
 				r.Get("/dingtalk", oauthH.DingTalkLogin)
 				r.Get("/dingtalk/callback", oauthH.DingTalkCallback)
 				r.Get("/feishu", oauthH.FeishuLogin)

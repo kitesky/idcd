@@ -348,3 +348,142 @@ func TestFeishuCallback_missingParams(t *testing.T) {
 		t.Errorf("expected 400 for missing state, got %d", rr.Code)
 	}
 }
+
+// --- Transaction tests ---
+
+// failCredentialQuerier wraps mockOAuthQuerier but fails on CreateUserCredential.
+type failCredentialQuerier struct {
+	*mockOAuthQuerier
+}
+
+func (f *failCredentialQuerier) CreateUserCredential(_ context.Context, _ idcdmain.CreateUserCredentialParams) (idcdmain.UserCredential, error) {
+	return idcdmain.UserCredential{}, fmt.Errorf("simulated credential write failure")
+}
+
+// mockTx implements pgx.Tx for testing.
+type mockOAuthTx struct {
+	pgx.Tx
+	committed  bool
+	rolledBack bool
+}
+
+func (m *mockOAuthTx) Commit(_ context.Context) error   { m.committed = true; return nil }
+func (m *mockOAuthTx) Rollback(_ context.Context) error  { m.rolledBack = true; return nil }
+
+// mockTxBeginner implements dbtx.TxBeginner for testing.
+type mockOAuthTxBeginner struct {
+	tx *mockOAuthTx
+}
+
+func (m *mockOAuthTxBeginner) Begin(_ context.Context) (pgx.Tx, error) {
+	m.tx = &mockOAuthTx{}
+	return m.tx, nil
+}
+
+func TestFindOrCreateOAuthUser_TxRollbackOnCredentialFailure(t *testing.T) {
+	baseQ := newMockOAuthQuerier()
+	failQ := &failCredentialQuerier{mockOAuthQuerier: newMockOAuthQuerier()}
+	txBeginner := &mockOAuthTxBeginner{}
+
+	cfg := OAuthConfig{
+		DingTalkAppID:  "app",
+		DingTalkSecret: "secret",
+		CallbackBase:   "http://localhost",
+	}
+	h := NewOAuthHandler(cfg, baseQ, &mockJWT{token: "tok"}, &mockSession{}, newMockStateStore())
+	h.WithTxPool(txBeginner, func(_ pgx.Tx) OAuthQuerier {
+		return failQ
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	_, _, err := h.findOrCreateOAuthUser(req.Context(), req, "dingtalk", "ext_001", "Test", "test@example.com")
+
+	if err == nil {
+		t.Fatal("expected error when credential creation fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "simulated credential write failure") {
+		t.Errorf("expected credential failure error, got: %v", err)
+	}
+	if txBeginner.tx == nil {
+		t.Fatal("expected transaction to be started")
+	}
+	if txBeginner.tx.committed {
+		t.Error("transaction should NOT have been committed after credential failure")
+	}
+	if !txBeginner.tx.rolledBack {
+		t.Error("transaction should have been rolled back after credential failure")
+	}
+
+	if len(baseQ.users) != 0 {
+		t.Error("user should not exist in base querier after tx rollback")
+	}
+}
+
+func TestFindOrCreateOAuthUser_TxCommitOnSuccess(t *testing.T) {
+	baseQ := newMockOAuthQuerier()
+	txQ := newMockOAuthQuerier()
+	txBeginner := &mockOAuthTxBeginner{}
+
+	cfg := OAuthConfig{
+		DingTalkAppID:  "app",
+		DingTalkSecret: "secret",
+		CallbackBase:   "http://localhost",
+	}
+	h := NewOAuthHandler(cfg, baseQ, &mockJWT{token: "tok"}, &mockSession{}, newMockStateStore())
+	h.WithTxPool(txBeginner, func(_ pgx.Tx) OAuthQuerier {
+		return txQ
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	userID, locale, err := h.findOrCreateOAuthUser(req.Context(), req, "dingtalk", "ext_002", "User2", "user2@example.com")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userID == "" {
+		t.Error("expected non-empty userID")
+	}
+	if locale == "" {
+		t.Error("expected non-empty locale")
+	}
+	if txBeginner.tx == nil {
+		t.Fatal("expected transaction to be started")
+	}
+	if !txBeginner.tx.committed {
+		t.Error("transaction should have been committed on success")
+	}
+
+	if len(txQ.users) != 1 {
+		t.Errorf("expected 1 user in tx querier, got %d", len(txQ.users))
+	}
+	if len(txQ.creds) != 1 {
+		t.Errorf("expected 1 credential in tx querier, got %d", len(txQ.creds))
+	}
+}
+
+func TestFindOrCreateOAuthUser_LegacyPathWithoutTxPool(t *testing.T) {
+	baseQ := newMockOAuthQuerier()
+
+	cfg := OAuthConfig{
+		DingTalkAppID:  "app",
+		DingTalkSecret: "secret",
+		CallbackBase:   "http://localhost",
+	}
+	h := NewOAuthHandler(cfg, baseQ, &mockJWT{token: "tok"}, &mockSession{}, newMockStateStore())
+
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	userID, _, err := h.findOrCreateOAuthUser(req.Context(), req, "feishu", "ext_003", "User3", "user3@example.com")
+
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userID == "" {
+		t.Error("expected non-empty userID")
+	}
+	if len(baseQ.users) != 1 {
+		t.Errorf("expected 1 user in base querier (legacy path), got %d", len(baseQ.users))
+	}
+	if len(baseQ.creds) != 1 {
+		t.Errorf("expected 1 credential in base querier (legacy path), got %d", len(baseQ.creds))
+	}
+}

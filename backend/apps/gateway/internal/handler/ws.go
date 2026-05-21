@@ -19,6 +19,7 @@ import (
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/idgen"
 	"github.com/kite365/idcd/lib/shared/stream"
 	"github.com/kite365/idcd/lib/shared/wstimeouts"
@@ -582,25 +583,18 @@ func (h *WSHandler) handleResult(c *hub.Connection, payload json.RawMessage) err
 		// duration / success / error / signature land as scalar fields so
 		// processor.parseResult can decode them without unwrapping JSON.
 		rawJSON, _ := json.Marshal(result.Data)
-		streamPayload := map[string]any{
-			"raw":         string(rawJSON),
-			"summary":     string(rawJSON),
-			"duration_ms": result.DurationMs,
-			"success":     result.Success,
-			"error":       result.Error,
-			"signature":   result.Watermark,
+		pr := contracts.ProbeResult{
+			TaskID:      result.TaskID,
+			NodeID:      c.NodeID,
+			RawJSON:     string(rawJSON),
+			SummaryJSON: string(rawJSON),
+			DurationMs:  result.DurationMs,
+			Success:     result.Success,
+			Error:       result.Error,
+			Signature:   result.Watermark,
+			MonitorID:   result.MonitorID,
 		}
-		// monitor_id is only set when the original task came from the scheduler's
-		// monitor poller. Aggregator branches on its presence to write monitor_checks
-		// and advance next_check_at — without this field, monitor pipelines silently
-		// hang at next_check_at == created_at and scheduler re-dispatches forever.
-		if result.MonitorID != "" {
-			streamPayload["monitor_id"] = result.MonitorID
-		}
-		// LINT-IGNORE: stream-payload-legacy
-		// TODO(P0-4): 迁移到 streamCli.AddProbeResultTyped(ctx, contracts.ProbeResult{...})
-		// 见 backend/lib/shared/contracts/doc.go 与 docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md
-		streamID, err := h.streamCli.AddProbeResult(ctx, result.TaskID, c.NodeID, streamPayload)
+		streamID, err := h.streamCli.AddProbeResultTyped(ctx, pr)
 		if err != nil {
 			h.logger.Error("failed to write result to stream", "task_id", result.TaskID, "err", err)
 			continue

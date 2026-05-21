@@ -212,3 +212,34 @@ jobs:
 
       - name: Run attestation words check
         run: bash backend/scripts/lint-attestation-words.sh
+
+  openapi-coverage:
+    name: OpenAPI Coverage
+    runs-on: ubuntu-latest
+    # P0-5: spec ↔ chi router drift gate. Always runs on PRs and on
+    # any push that touches the spec, server router, or cert/attest
+    # handlers — anywhere new routes can appear without spec updates.
+    if: |
+      github.event_name == 'pull_request' ||
+      contains(github.event.head_commit.modified, 'docs/prd/16-api-spec.yaml') ||
+      contains(github.event.head_commit.modified, 'backend/apps/api/internal/server/server.go') ||
+      contains(github.event.head_commit.modified, 'backend/apps/attest/') ||
+      contains(github.event.head_commit.modified, 'backend/scripts/openapi-coverage/')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+          cache: false  # helper has no deps; module cache would just be noise
+
+      - name: Run OpenAPI coverage check
+        run: bash backend/scripts/check-openapi-coverage.sh
+
+      - name: Run helper unit tests
+        working-directory: backend/scripts/openapi-coverage
+        env:
+          GOWORK: off
+        run: go test ./...

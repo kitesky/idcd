@@ -49,7 +49,7 @@ seed:
 	fi
 
 # ── Lint ─────────────────────────────────────────────────────
-lint: lint-go lint-sql lint-attestation lint-ts
+lint: lint-go lint-sql lint-attestation lint-openapi-coverage lint-ts
 
 lint-go:
 	@echo "$(BOLD)→ golangci-lint$(RESET)"
@@ -62,6 +62,10 @@ lint-sql:
 lint-attestation:
 	@echo "$(BOLD)→ attestation words check (D-Concern1)$(RESET)"
 	@bash scripts/lint-attestation-words.sh
+
+lint-openapi-coverage:
+	@echo "$(BOLD)→ OpenAPI ↔ chi router coverage (P0-5)$(RESET)"
+	@bash scripts/check-openapi-coverage.sh
 
 lint-ts:
 	@echo "$(BOLD)→ ESLint + tsc$(RESET)"

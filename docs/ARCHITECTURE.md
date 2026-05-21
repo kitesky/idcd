@@ -158,6 +158,30 @@ idcd/
 > **9 Go services + 4 Workers + 1 Next.js app + 1 Agent 二进制 = 15 个可部署单元**。
 > 加上 `lib/*` 5 个共享包 + `packages/*` 2 个 SDK 包,monorepo 总计 **~20 个一级目录**。
 
+### 2.6 已知单实例约束:Agent Gateway(P1-6)
+
+> ⚠️ **已知约束,跟踪于 `docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md` P1-6**。
+
+**当前状态**:gateway（`backend/apps/gateway/`）在 S1-S2 阶段为**单实例部署**（一个进程）。
+
+**约束影响**:
+
+| 约束 | 说明 |
+|---|---|
+| **WebSocket 连接不跨实例路由** | 所有 Agent 的 WebSocket 连接都落在同一 gateway 进程,`connections: map[string]*Connection` 纯内存 map,无 cross-instance 同步。 |
+| **gateway 宕机 = 全部 Agent 连接中断** | 单实例挂了,100+ 节点的 Agent 同时断连,直到进程恢复后 Agent 自动重连（30s 内）。 |
+| **不能直接加副本** | 新增 gateway 实例后,Agent 重连可能落到不同实例,新实例不知道之前实例的任务进度,回执无法路由。 |
+
+**短期缓解措施**（当前已执行）:
+- 监控告警:gateway 进程 restart / OOM / 端口不可达 → P0 oncall
+- Agent 客户端内置 reconnect:断连后指数退避重连,30s 内恢复
+- 运维手册:`docs/RUNBOOKS/gateway-single-instance.md`
+
+**长期修复方案**（P1-6 触发条件:gateway 需扩到 2+ 副本时）:
+- Redis HASH `agent_routes`:`agent_id → gateway_instance_id`,TTL 跟 WS ping 同步刷新
+- Sticky LB:Cloudflare LB 按 `agent_id` hash 路由,同一 Agent 始终落同一实例
+- 共享状态:任务回执通过 Redis Pub-Sub 跨实例广播
+
 ---
 
 ## 3. 关键架构决策的实施落地
@@ -606,6 +630,7 @@ make dev-web             # next dev
 | MCP token 异常突增 | 12 §22 + 用户控制台一键撤销 + Redis broadcast 断 SSE |
 | Verdict 自检失败 | `docs/RUNBOOKS/verdict-self-verify-fail.md` + **立即停止新生成** + P0 |
 | Agent OTA 灰度失败 | 自动回滚已触发,P1;查 `backend/apps/scheduler/internal/ota/` 灰度日志 |
+| Gateway 宕机 / Agent 大面积断连 | `docs/RUNBOOKS/gateway-single-instance.md` + 检查 container 状态 + 确认 Agent 30s 内重连(P1-6 单实例约束)|
 | TSA 三家全挂 | P0 + 报告生成暂停;切 NTSC(若 S3 已接入);通知用户延迟 |
 | LLM 复盘 eval 跌破 4.0 | 暂停该 (provider, version) prompt;回退上版本;调查数据集 |
 
@@ -619,6 +644,7 @@ make dev-web             # next dev
 - `key-ceremony.md` — 首次部署 + 周期性 sign key 轮换
 - `agent-mass-rollback.md` — OTA 灰度大面积失败
 - `data-poisoning-recovery.md` — Anchor 偏差检出后数据污染恢复
+- `gateway-single-instance.md` — Gateway 单实例约束 + 故障恢复(关联 P1-6)
 
 → 详细故障 SOP 索引在 `docs/TROUBLESHOOTING.md`
 

@@ -670,3 +670,62 @@ func TestAddRefundRetryTyped_RespectsExplicitSchemaVer(t *testing.T) {
 		t.Errorf("schema_ver: got %v, want '1'", got)
 	}
 }
+
+func TestAddAlertEventTyped(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	// Whole-millisecond timestamp so UnixMilli round-trip is clean.
+	ts := time.UnixMilli(time.Date(2026, 5, 21, 8, 30, 0, 0, time.UTC).UnixMilli()).UTC()
+	e := contracts.AlertEvent{
+		AlertEventID: "ae_typed_xyz",
+		MonitorID:    "mon_typed_abc",
+		Kind:         "down",
+		TsMs:         ts,
+	}
+	id, err := c.AddAlertEventTyped(ctx, e)
+	if err != nil {
+		t.Fatalf("AddAlertEventTyped failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty stream ID")
+	}
+	msgs, err := rdb.XRange(ctx, stream.Alert, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got, err := contracts.ParseAlertEvent(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseAlertEvent on round-tripped message failed: %v", err)
+	}
+	if got.AlertEventID != e.AlertEventID || got.MonitorID != e.MonitorID || got.Kind != e.Kind {
+		t.Errorf("round-trip drift:\n  want %+v\n   got %+v", e, got)
+	}
+	if !got.TsMs.Equal(e.TsMs) {
+		t.Errorf("TsMs drift: got %s, want %s", got.TsMs, e.TsMs)
+	}
+	if got.SchemaVer != contracts.AlertEventSchemaV1 {
+		t.Errorf("expected schema_ver auto-inject = %d, got %d",
+			contracts.AlertEventSchemaV1, got.SchemaVer)
+	}
+}
+
+func TestAddAlertEventTyped_RespectsExplicitSchemaVer(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	e := contracts.AlertEvent{
+		SchemaVer:    contracts.AlertEventSchemaV1, // explicit
+		AlertEventID: "ae_a",
+		MonitorID:    "mon_a",
+		Kind:         "down",
+	}
+	if _, err := c.AddAlertEventTyped(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(ctx, stream.Alert, "-", "+").Result()
+	if got := msgs[0].Values["schema_ver"]; got != "1" {
+		t.Errorf("schema_ver: got %v, want '1'", got)
+	}
+}

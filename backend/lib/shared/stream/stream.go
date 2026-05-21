@@ -230,6 +230,10 @@ func (c *Client) AddRefundRetryTyped(ctx context.Context, e contracts.RefundRetr
 }
 
 // AddAlertEvent writes an alert event.
+//
+// Deprecated: 使用 AddAlertEventTyped(ctx, contracts.AlertEvent{...}) 替代.
+// 内部仍用 map[string]any 是 P0-4 W4 之前的实现; 新代码必须用 Typed 版本.
+// 该 stream 当前无 production caller, 旧 API 保留以备未来流量上线后渐进迁移。
 func (c *Client) AddAlertEvent(ctx context.Context, alertEventID, monitorID, kind string) (string, error) {
 	return c.Add(ctx, Alert, map[string]any{
 		"alert_event_id": alertEventID,
@@ -237,6 +241,19 @@ func (c *Client) AddAlertEvent(ctx context.Context, alertEventID, monitorID, kin
 		"kind":           kind,
 		"ts":             time.Now().UnixMilli(),
 	})
+}
+
+// AddAlertEventTyped writes an alert event with a strongly-typed payload.
+//
+// 新代码必须用此 API. P0-4 W4 — alert.events 流字段拼写错 → 用户该收到的
+// 告警通知静默丢失. 编译期发现.
+// SchemaVer 自动注入为 contracts.AlertEventSchemaV1.
+// TsMs zero 时 ToStreamValues 自动填 time.Now() (与旧 AddAlertEvent 行为一致).
+func (c *Client) AddAlertEventTyped(ctx context.Context, e contracts.AlertEvent) (string, error) {
+	if e.SchemaVer == 0 {
+		e.SchemaVer = contracts.AlertEventSchemaV1
+	}
+	return c.Add(ctx, Alert, e.ToStreamValues())
 }
 
 // AddAuditEvent writes an audit entry to the audit.events stream.

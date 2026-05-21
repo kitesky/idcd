@@ -8,6 +8,7 @@
 #   * stream.Client.AddCertNotificationTyped  (W2)
 #   * stream.Client.AddRefundInitiateTyped    (W3 — 钱相关 / D5 退款入口)
 #   * stream.Client.AddRefundRetryTyped       (W3 — 钱相关 / D5 retry ladder)
+#   * stream.Client.AddAlertEventTyped        (W4 — 告警通知)
 #
 # 受保护的 stream 名 (出现在 XAdd Stream 参数里就报警):
 #   * "probe.results"          (W1)
@@ -15,6 +16,7 @@
 #   * "cert:notifications"     (W2 — 钱相关 / 合规相关)
 #   * "refund_initiate_queue"  (W3 — Self-Verify → refund-worker)
 #   * "refund_retry_queue"     (W3 — PaymentHub webhook → refund-worker)
+#   * "alert.events"           (W4 — 告警通知, 字段拼写错 → 用户漏收告警)
 #
 # 旧代码渐进迁移: 在调用上一行加注释 `// LINT-IGNORE: stream-payload-legacy`,
 # 脚本会跳过, CI 不阻塞。每次迁移一个 caller 就删掉注释。
@@ -28,15 +30,15 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 echo "P0-4 检查: 禁用裸 map[string]any 跨 stream 边界..."
 
-# 找出 AddProbeResult/AddMonitorEvent 的调用 (不带 Typed 后缀, 不在 stream/ 包自身, 不是测试)
-# grep 输出格式: file:line:content
+# 找出 AddProbeResult/AddMonitorEvent/AddAlertEvent 的调用 (不带 Typed 后缀,
+# 不在 stream/ 包自身, 不是测试). grep 输出格式: file:line:content
 candidates=$(
-  grep -rn -E '\.(AddProbeResult|AddMonitorEvent)\(' \
+  grep -rn -E '\.(AddProbeResult|AddMonitorEvent|AddAlertEvent)\(' \
     --include='*.go' \
     --exclude-dir='lib/shared/stream' \
     --exclude-dir='lib/shared/contracts' \
     "$REPO_ROOT" 2>/dev/null \
-  | grep -v -E 'AddProbeResultTyped|AddMonitorEventTyped' \
+  | grep -v -E 'AddProbeResultTyped|AddMonitorEventTyped|AddAlertEventTyped' \
   | grep -v '_test\.go:' \
   || true
 )
@@ -78,6 +80,23 @@ if [ -n "$refund_candidates" ]; then
   candidates="${candidates}${refund_candidates}"$'\n'
 fi
 
+# 额外检查 alert.events (W4) — 类似 cert:notifications, 防止有人绕过
+# stream.Client 方法直接 rdb.XAdd(Stream: "alert.events", ...).
+alert_candidates=$(
+  grep -rn -F 'alert.events' \
+    --include='*.go' \
+    --exclude-dir='lib/shared/stream' \
+    --exclude-dir='lib/shared/contracts' \
+    "$REPO_ROOT" 2>/dev/null \
+  | grep -E 'XAdd\(' \
+  | grep -v 'AddAlertEventTyped' \
+  | grep -v '_test\.go:' \
+  || true
+)
+if [ -n "$alert_candidates" ]; then
+  candidates="${candidates}${alert_candidates}"$'\n'
+fi
+
 if [ -z "$candidates" ]; then
   echo "OK — 未发现非 Typed 调用"
   exit 0
@@ -108,9 +127,10 @@ if [ -n "$(echo -n "$violations")" ]; then
   echo "ERROR: 发现非 Typed stream 调用 (P0-4 违规):"
   echo "$violations"
   echo ""
-  echo "选项 1 (推荐 - 新代码): 改用 AddProbeResultTyped / AddMonitorEventTyped / AddCertNotificationTyped"
+  echo "选项 1 (推荐 - 新代码): 改用 AddProbeResultTyped / AddMonitorEventTyped / AddCertNotificationTyped / AddAlertEventTyped"
   echo "  c.AddProbeResultTyped(ctx, contracts.ProbeResult{TaskID: \"...\", ...})"
   echo "  c.AddCertNotificationTyped(ctx, contracts.CertNotificationEvent{EventType: \"cert.issued\", ...})"
+  echo "  c.AddAlertEventTyped(ctx, contracts.AlertEvent{AlertEventID: \"ae_...\", MonitorID: \"...\", Kind: \"down\"})"
   echo ""
   echo "选项 2 (旧代码渐进迁移): 在调用上一行加注释"
   echo "  // LINT-IGNORE: stream-payload-legacy"

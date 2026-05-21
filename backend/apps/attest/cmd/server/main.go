@@ -47,6 +47,7 @@ import (
 	"github.com/kite365/idcd/lib/attest/sign"
 	"github.com/kite365/idcd/lib/attest/sign/alikms"
 	"github.com/kite365/idcd/lib/attest/sign/awskms"
+	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
 // maxVerifyPDFBytes caps multipart upload size at 32 MiB — see
@@ -135,7 +136,10 @@ func main() {
 			Secret: []byte(cfg.PaymentHubWebhookSecret),
 			Lookup: &extOrderLookupAdapter{pool: pool},
 			Orders: repos.Orders,
-			Redis:  rdb,
+			// P0-4 W3: wrap rdb in sharedstream.Client so enqueueRetry writes
+			// a strongly-typed contracts.RefundRetryEvent. 字段拼写错编译期
+			// 失败, 不再静默丢退款 retry 单。
+			Redis:  sharedstream.New(rdb),
 			Logger: log,
 		}
 		mux.Handle("/webhooks/paymenthub", ph)

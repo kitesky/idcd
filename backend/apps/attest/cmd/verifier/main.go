@@ -40,6 +40,7 @@ import (
 	"github.com/kite365/idcd/apps/attest/internal/config"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/apps/attest/internal/selfverify"
+	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
 // defaultVerifyEndpoint is the production /verify URL. D6 requires the
@@ -111,7 +112,10 @@ func main() {
 			WriteTimeout: 3 * time.Second,
 		})
 		defer func() { _ = rdb.Close() }()
-		refundEnq = &redisRefundEnqueuer{rdb: rdb, stream: refundInitiateStream}
+		// P0-4 W3: wrap rdb in sharedstream.Client so EnqueueRefund writes
+		// a strongly-typed contracts.RefundInitiateEvent (字段名拼错编译期
+		// 失败, 不再静默丢退款单).
+		refundEnq = &redisRefundEnqueuer{stream: sharedstream.New(rdb)}
 		log.Info("attest-verifier: refund enqueue wired", "stream", refundInitiateStream)
 	} else {
 		log.Warn("attest-verifier: ATTEST_REDIS_ADDR unset; refund-on-fail disabled")

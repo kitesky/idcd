@@ -56,6 +56,18 @@ const (
 	// 生产者: cert-svc NotificationWatcher；消费者: notifier cert consumer。
 	// 命名沿用 cert-svc 服务前缀（":" 分隔约定）。
 	CertNotifications = "cert:notifications"
+
+	// RefundInitiateQueue — Self-Verify 命中 bad PDF 时入队的退款流。
+	// 生产者: apps/attest/cmd/verifier (redisRefundEnqueuer);
+	// 消费者: apps/attest/cmd/refund-worker (refund.Handler.HandleInitiate).
+	// 命名沿用 attest 历史 "_queue" 后缀 (与 refund_retry_queue 一致)。
+	RefundInitiateQueue = "refund_initiate_queue"
+
+	// RefundRetryQueue — PaymentHub webhook 处理失败后进入的 retry 流。
+	// 生产者: apps/attest/internal/handler/paymenthub.Handler.enqueueRetry;
+	// 消费者: apps/attest/cmd/refund-worker (refund.Handler.HandleRetryEnqueue).
+	// D5 5min/30min retry ladder 第一档入口。
+	RefundRetryQueue = "refund_retry_queue"
 )
 
 // Well-known Redis key names (非 stream，但同样需要跨服务一致命名).
@@ -181,6 +193,40 @@ func (c *Client) AddCertNotificationTyped(ctx context.Context, e contracts.CertN
 		e.SchemaVer = contracts.CertNotificationEventSchemaV1
 	}
 	return c.Add(ctx, CertNotifications, e.ToStreamValues())
+}
+
+// AddRefundInitiateTyped writes a refund-initiate event with a typed payload.
+//
+// 新代码必须使用此 API. P0-4 W3 — refund_initiate_queue 是钱相关 / 合规相关流,
+// 字段拼写错会导致 refund-worker 收不到退款单 → 用户付钱后没退款 → D5 道歉
+// 邮箱也发不出去 → 客诉 → 投诉合规. SchemaVer 自动注入为
+// contracts.RefundInitiateEventSchemaV1。
+//
+// 与历史 verifier-side redisRefundEnqueuer.EnqueueRefund 直接 rdb.XAdd 的
+// wire 兼容性差异: 旧 layout 只写 report_id / reason / enqueued_at 三字段,
+// 新 layout 加了 schema_ver 顶层。
+func (c *Client) AddRefundInitiateTyped(ctx context.Context, e contracts.RefundInitiateEvent) (string, error) {
+	if e.SchemaVer == 0 {
+		e.SchemaVer = contracts.RefundInitiateEventSchemaV1
+	}
+	return c.Add(ctx, RefundInitiateQueue, e.ToStreamValues())
+}
+
+// AddRefundRetryTyped writes a refund-retry-enqueue event with a typed payload.
+//
+// 新代码必须使用此 API. P0-4 W3 — refund_retry_queue 是钱相关流, 字段拼写错
+// 会导致 tick worker 收不到 retry → 用户付钱但 PaymentHub 5xx → 没收到道歉
+// 邮箱. SchemaVer 自动注入为 contracts.RefundRetryEventSchemaV1。
+//
+// 与历史 paymenthub.Handler.enqueueRetry 直接 rdb.XAdd 的 wire 兼容性差异:
+// 旧 layout 只写 order_id / ext_event_id / attempt / scheduled_at 四字段,
+// 新 layout 加了 schema_ver 顶层; attempt wire 仍是 string (strconv.Itoa)
+// 与旧 producer 字面量 "1" 一致, scheduled_at 仍是 RFC3339Nano。
+func (c *Client) AddRefundRetryTyped(ctx context.Context, e contracts.RefundRetryEvent) (string, error) {
+	if e.SchemaVer == 0 {
+		e.SchemaVer = contracts.RefundRetryEventSchemaV1
+	}
+	return c.Add(ctx, RefundRetryQueue, e.ToStreamValues())
 }
 
 // AddAlertEvent writes an alert event.

@@ -527,24 +527,146 @@ func TestStreamConstants(t *testing.T) {
 	// Ensure constants haven't been accidentally changed — these names are
 	// shared across services and changing them would break consumers.
 	cases := map[string]string{
-		"Probe":             stream.Probe,
-		"Monitor":           stream.Monitor,
-		"Alert":             stream.Alert,
-		"Audit":             stream.Audit,
-		"Usage":             stream.Usage,
-		"CertNotifications": stream.CertNotifications,
+		"Probe":               stream.Probe,
+		"Monitor":             stream.Monitor,
+		"Alert":               stream.Alert,
+		"Audit":               stream.Audit,
+		"Usage":               stream.Usage,
+		"CertNotifications":   stream.CertNotifications,
+		"RefundInitiateQueue": stream.RefundInitiateQueue,
+		"RefundRetryQueue":    stream.RefundRetryQueue,
 	}
 	expected := map[string]string{
-		"Probe":             "probe.results",
-		"Monitor":           "monitor.events",
-		"Alert":             "alert.events",
-		"Audit":             "audit.events",
-		"Usage":             "usage.events",
-		"CertNotifications": "cert:notifications",
+		"Probe":               "probe.results",
+		"Monitor":             "monitor.events",
+		"Alert":               "alert.events",
+		"Audit":               "audit.events",
+		"Usage":               "usage.events",
+		"CertNotifications":   "cert:notifications",
+		"RefundInitiateQueue": "refund_initiate_queue",
+		"RefundRetryQueue":    "refund_retry_queue",
 	}
 	for name, got := range cases {
 		if got != expected[name] {
 			t.Errorf("%s constant: expected %q, got %q", name, expected[name], got)
 		}
+	}
+}
+
+func TestAddRefundInitiateTyped(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	enqueued := time.Date(2026, 5, 21, 9, 30, 15, 0, time.UTC)
+	e := contracts.RefundInitiateEvent{
+		ReportID:   "vr_typed",
+		Reason:     "bad signature on PDF",
+		EnqueuedAt: enqueued,
+	}
+	id, err := c.AddRefundInitiateTyped(ctx, e)
+	if err != nil {
+		t.Fatalf("AddRefundInitiateTyped failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty stream ID")
+	}
+	msgs, err := rdb.XRange(ctx, stream.RefundInitiateQueue, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got, err := contracts.ParseRefundInitiateEvent(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseRefundInitiateEvent failed: %v", err)
+	}
+	if got.ReportID != e.ReportID || got.Reason != e.Reason {
+		t.Errorf("round-trip drift:\n  want %+v\n   got %+v", e, got)
+	}
+	if !got.EnqueuedAt.Equal(e.EnqueuedAt) {
+		t.Errorf("EnqueuedAt drift: got %s, want %s", got.EnqueuedAt, e.EnqueuedAt)
+	}
+	if got.SchemaVer != contracts.RefundInitiateEventSchemaV1 {
+		t.Errorf("expected schema_ver auto-inject = %d, got %d",
+			contracts.RefundInitiateEventSchemaV1, got.SchemaVer)
+	}
+}
+
+func TestAddRefundInitiateTyped_RespectsExplicitSchemaVer(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	e := contracts.RefundInitiateEvent{
+		SchemaVer: contracts.RefundInitiateEventSchemaV1,
+		ReportID:  "vr_a",
+	}
+	if _, err := c.AddRefundInitiateTyped(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(ctx, stream.RefundInitiateQueue, "-", "+").Result()
+	if got := msgs[0].Values["schema_ver"]; got != "1" {
+		t.Errorf("schema_ver: got %v, want '1'", got)
+	}
+}
+
+func TestAddRefundRetryTyped(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	scheduled := time.Date(2026, 5, 21, 10, 35, 0, 0, time.UTC)
+	e := contracts.RefundRetryEvent{
+		OrderID:     "v_abc",
+		ExtEventID:  "evt_x",
+		Attempt:     1,
+		ScheduledAt: scheduled,
+	}
+	id, err := c.AddRefundRetryTyped(ctx, e)
+	if err != nil {
+		t.Fatalf("AddRefundRetryTyped failed: %v", err)
+	}
+	if id == "" {
+		t.Fatal("expected non-empty stream ID")
+	}
+	msgs, err := rdb.XRange(ctx, stream.RefundRetryQueue, "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+	got, err := contracts.ParseRefundRetryEvent(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseRefundRetryEvent failed: %v", err)
+	}
+	if got.OrderID != e.OrderID || got.ExtEventID != e.ExtEventID || got.Attempt != e.Attempt {
+		t.Errorf("round-trip drift:\n  want %+v\n   got %+v", e, got)
+	}
+	if !got.ScheduledAt.Equal(e.ScheduledAt) {
+		t.Errorf("ScheduledAt drift: got %s, want %s", got.ScheduledAt, e.ScheduledAt)
+	}
+	if got.SchemaVer != contracts.RefundRetryEventSchemaV1 {
+		t.Errorf("expected schema_ver auto-inject = %d, got %d",
+			contracts.RefundRetryEventSchemaV1, got.SchemaVer)
+	}
+	// Pin wire-level attempt encoding so future "Attempt: int → JSON number"
+	// drift fails CI rather than silently breaking the consumer's strconv.Atoi.
+	if rawAttempt := msgs[0].Values["attempt"]; rawAttempt != "1" {
+		t.Errorf("attempt wire format: got %v (%T), want \"1\"", rawAttempt, rawAttempt)
+	}
+}
+
+func TestAddRefundRetryTyped_RespectsExplicitSchemaVer(t *testing.T) {
+	c, rdb := newTestClientWithRDB(t)
+	ctx := context.Background()
+	e := contracts.RefundRetryEvent{
+		SchemaVer:   contracts.RefundRetryEventSchemaV1,
+		OrderID:     "v_a",
+		Attempt:     1,
+		ScheduledAt: time.Now().UTC(),
+	}
+	if _, err := c.AddRefundRetryTyped(ctx, e); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(ctx, stream.RefundRetryQueue, "-", "+").Result()
+	if got := msgs[0].Values["schema_ver"]; got != "1" {
+		t.Errorf("schema_ver: got %v, want '1'", got)
 	}
 }

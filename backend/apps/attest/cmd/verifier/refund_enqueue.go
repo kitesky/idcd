@@ -5,7 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/kite365/idcd/lib/shared/contracts"
+	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
 // refundInitiateStream is the Redis Stream the Refund Worker consumes
@@ -16,32 +17,36 @@ import (
 // The consumer is apps/attest/cmd/refund-worker. It calls the PaymentHub
 // refund API, persists outcomes on verdict_order, and drives the D5
 // 5min / 30min retry ladder via a shared delay-zone ZSET.
-const refundInitiateStream = "refund_initiate_queue"
+//
+// 真值集中在 lib/shared/stream.RefundInitiateQueue — 此处只是本地常量别名,
+// 避免 cmd 层调用方再 import shared/stream 两次。
+const refundInitiateStream = sharedstream.RefundInitiateQueue
 
-// redisRefundEnqueuer satisfies selfverify.RefundEnqueuer. Each call
-// XAdds one entry; the Refund Worker drains the stream and calls PaymentHub.
-type redisRefundEnqueuer struct {
-	rdb    redisXAdder
-	stream string
+// streamEnqueuer is the narrow surface redisRefundEnqueuer needs from
+// *sharedstream.Client. Keeps the test fixture independent of go-redis and
+// avoids drag-in for what is conceptually just "one method writes one event".
+type streamEnqueuer interface {
+	AddRefundInitiateTyped(ctx context.Context, e contracts.RefundInitiateEvent) (string, error)
 }
 
-// redisXAdder is the narrow surface we exercise; both *redis.Client and
-// test fakes satisfy it without dragging the full client into tests.
-type redisXAdder interface {
-	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
+// redisRefundEnqueuer satisfies selfverify.RefundEnqueuer. Each call writes
+// one typed RefundInitiateEvent via stream.Client.AddRefundInitiateTyped;
+// the Refund Worker drains the stream and calls PaymentHub.
+//
+// P0-4 W3: switched from raw rdb.XAdd → typed contract; field-name typos
+// now fail at compile time instead of silently dropping refund tickets.
+type redisRefundEnqueuer struct {
+	stream streamEnqueuer
 }
 
 func (e *redisRefundEnqueuer) EnqueueRefund(ctx context.Context, reportID, reason string) error {
-	cmd := e.rdb.XAdd(ctx, &redis.XAddArgs{
-		Stream: e.stream,
-		Values: map[string]any{
-			"report_id":   reportID,
-			"reason":      reason,
-			"enqueued_at": time.Now().UTC().Format(time.RFC3339Nano),
-		},
-	})
-	if err := cmd.Err(); err != nil {
-		return fmt.Errorf("refund enqueue %s: %w", e.stream, err)
+	evt := contracts.RefundInitiateEvent{
+		ReportID:   reportID,
+		Reason:     reason,
+		EnqueuedAt: time.Now().UTC(),
+	}
+	if _, err := e.stream.AddRefundInitiateTyped(ctx, evt); err != nil {
+		return fmt.Errorf("refund enqueue %s: %w", sharedstream.RefundInitiateQueue, err)
 	}
 	return nil
 }

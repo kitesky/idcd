@@ -19,6 +19,9 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kite365/idcd/lib/shared/contracts"
+	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
 type fakeLookup struct {
@@ -39,12 +42,12 @@ func (f *fakeLookup) LookupByExtOrderID(_ context.Context, extOrderID string) (s
 }
 
 type fakeOrders struct {
-	mu       sync.Mutex
-	err      error
-	called   int
-	gotID    string
-	gotFrom  string
-	gotTo    string
+	mu           sync.Mutex
+	err          error
+	called       int
+	gotID        string
+	gotFrom      string
+	gotTo        string
 	gotErrReason *string
 }
 
@@ -59,12 +62,16 @@ func (f *fakeOrders) UpdateStatus(_ context.Context, id, from, to string, errRea
 	return f.err
 }
 
-func newRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client) {
+// newRedis returns the miniredis fixture, raw *redis.Client (for XRange
+// readbacks inside tests), and a *sharedstream.Client wrapper that
+// satisfies the post-W3 RetryEnqueuer interface. Tests pass the wrapper
+// to newHandler and use the raw rdb only for assertion-side reads.
+func newRedis(t *testing.T) (*miniredis.Miniredis, *redis.Client, *sharedstream.Client) {
 	t.Helper()
 	mr := miniredis.RunT(t)
 	rdb := redis.NewClient(&redis.Options{Addr: mr.Addr()})
 	t.Cleanup(func() { _ = rdb.Close() })
-	return mr, rdb
+	return mr, rdb, sharedstream.New(rdb)
 }
 
 const testSecret = "whsec_test"
@@ -78,13 +85,13 @@ func sign(t *testing.T, secret, timestamp string, body []byte) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
-func newHandler(t *testing.T, lookup OrderLookup, orders OrderStatusUpdater, rdb RetryEnqueuer, now time.Time) *Handler {
+func newHandler(t *testing.T, lookup OrderLookup, orders OrderStatusUpdater, enq RetryEnqueuer, now time.Time) *Handler {
 	t.Helper()
 	return &Handler{
 		Secret: []byte(testSecret),
 		Lookup: lookup,
 		Orders: orders,
-		Redis:  rdb,
+		Redis:  enq,
 		Logger: slog.New(slog.NewTextHandler(io.Discard, nil)),
 		Now:    func() time.Time { return now },
 	}
@@ -134,8 +141,8 @@ func TestServeHTTP_HappyPath(t *testing.T) {
 			now := time.Unix(1_700_000_000, 0).UTC()
 			lookup := &fakeLookup{orderID: "v_abc", status: "paid"}
 			orders := &fakeOrders{}
-			mr, rdb := newRedis(t)
-			h := newHandler(t, lookup, orders, rdb, now)
+			mr, _, sc := newRedis(t)
+			h := newHandler(t, lookup, orders, sc, now)
 
 			body := refundBody(tc.eventType, "evt_1", "pad_123")
 			rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -160,8 +167,8 @@ func TestServeHTTP_DeliveredAlsoTransitions(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{orderID: "v_abc", status: "delivered"}
 	orders := &fakeOrders{}
-	_, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	_, _, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := refundBody(EventTransactionRefunded, "evt_d", "pad_d")
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -178,8 +185,8 @@ func TestServeHTTP_UpdateStatusFailsEnqueuesRetry(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{orderID: "v_abc", status: "paid"}
 	orders := &fakeOrders{err: errors.New("db transient")}
-	mr, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	mr, rdb, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := refundBody(EventTransactionRefunded, "evt_x", "pad_x")
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -197,18 +204,32 @@ func TestServeHTTP_UpdateStatusFailsEnqueuesRetry(t *testing.T) {
 	if len(entries) != 1 {
 		t.Fatalf("entry count: got %d want 1", len(entries))
 	}
-	got := entries[0].Values
-	if got["order_id"] != "v_abc" {
-		t.Errorf("order_id: %v", got["order_id"])
+	// P0-4 W3: parse via the typed contract so a future field-name drift in
+	// enqueueRetry fails CI here instead of only at the consumer.
+	parsed, err := contracts.ParseRefundRetryEvent(entries[0].Values)
+	if err != nil {
+		t.Fatalf("ParseRefundRetryEvent: %v", err)
 	}
-	if got["ext_event_id"] != "evt_x" {
-		t.Errorf("ext_event_id: %v", got["ext_event_id"])
+	if parsed.OrderID != "v_abc" {
+		t.Errorf("order_id: %q", parsed.OrderID)
 	}
-	if got["attempt"] != "1" {
-		t.Errorf("attempt: %v", got["attempt"])
+	if parsed.ExtEventID != "evt_x" {
+		t.Errorf("ext_event_id: %q", parsed.ExtEventID)
 	}
-	if got["scheduled_at"] == nil || got["scheduled_at"] == "" {
+	if parsed.Attempt != 1 {
+		t.Errorf("attempt: %d", parsed.Attempt)
+	}
+	if parsed.ScheduledAt.IsZero() {
 		t.Errorf("scheduled_at missing")
+	}
+	// Pin the producer-side delay (5min default per D5) so a future change
+	// to retryFirstDelay fails this assertion explicitly.
+	wantScheduled := now.Add(retryFirstDelay).UTC()
+	if !parsed.ScheduledAt.Equal(wantScheduled) {
+		t.Errorf("scheduled_at: got %s, want %s", parsed.ScheduledAt, wantScheduled)
+	}
+	if parsed.SchemaVer != contracts.RefundRetryEventSchemaV1 {
+		t.Errorf("schema_ver: got %d, want %d", parsed.SchemaVer, contracts.RefundRetryEventSchemaV1)
 	}
 }
 
@@ -216,8 +237,8 @@ func TestServeHTTP_LookupFailsEnqueuesRetry(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{err: errors.New("db transient")}
 	orders := &fakeOrders{}
-	mr, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	mr, _, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := refundBody(EventTransactionRefunded, "evt_y", "pad_y")
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -237,8 +258,8 @@ func TestServeHTTP_InvalidSignature(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{orderID: "v_abc", status: "paid"}
 	orders := &fakeOrders{}
-	mr, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	mr, _, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := refundBody(EventTransactionRefunded, "evt_bad", "pad_bad")
 	hdr := http.Header{
@@ -314,8 +335,8 @@ func TestServeHTTP_UnknownEventType(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{}
 	orders := &fakeOrders{}
-	mr, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	mr, _, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := []byte(`{"event_id":"evt","event_type":"transaction.created","data":{"ext_order_id":"pad"}}`)
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -335,8 +356,8 @@ func TestServeHTTP_UnknownExtOrderID(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{err: ErrOrderNotFound}
 	orders := &fakeOrders{}
-	mr, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	mr, _, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := refundBody(EventTransactionRefunded, "evt", "pad_unknown")
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -356,8 +377,8 @@ func TestServeHTTP_MissingExtOrderID(t *testing.T) {
 	now := time.Unix(1_700_000_000, 0).UTC()
 	lookup := &fakeLookup{}
 	orders := &fakeOrders{}
-	mr, rdb := newRedis(t)
-	h := newHandler(t, lookup, orders, rdb, now)
+	mr, _, sc := newRedis(t)
+	h := newHandler(t, lookup, orders, sc, now)
 
 	body := []byte(`{"event_id":"evt","event_type":"transaction.refunded","data":{}}`)
 	rec := doRequest(t, h, http.MethodPost, body, signedHeaders(t, body, now))
@@ -450,12 +471,12 @@ func TestVerifySignature_TableDriven(t *testing.T) {
 
 func TestHandler_LoggerDefaultsAndNowDefaults(t *testing.T) {
 	// Handler with Logger == nil and Now == nil should still serve OK.
-	mr, rdb := newRedis(t)
+	mr, _, sc := newRedis(t)
 	h := &Handler{
 		Secret: []byte(testSecret),
 		Lookup: &fakeLookup{orderID: "v_x", status: "paid"},
 		Orders: &fakeOrders{},
-		Redis:  rdb,
+		Redis:  sc,
 	}
 	// Use the handler's own clock so signature verification passes.
 	ts := strconv.FormatInt(time.Now().Unix(), 10)
@@ -478,9 +499,10 @@ func TestHandler_LoggerDefaultsAndNowDefaults(t *testing.T) {
 }
 
 // nopEnqueuer satisfies RetryEnqueuer without touching a real Redis
-// instance. Use only in tests that expect zero enqueue calls.
+// instance. Use only in tests that expect zero enqueue calls; calling
+// AddRefundRetryTyped returns a fake stream id and never persists.
 type nopEnqueuer struct{}
 
-func (n *nopEnqueuer) XAdd(_ context.Context, _ *redis.XAddArgs) *redis.StringCmd {
-	return redis.NewStringResult("", nil)
+func (n *nopEnqueuer) AddRefundRetryTyped(_ context.Context, _ contracts.RefundRetryEvent) (string, error) {
+	return "0-0", nil
 }

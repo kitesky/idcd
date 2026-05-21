@@ -24,7 +24,8 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/redis/go-redis/v9"
+	"github.com/kite365/idcd/lib/shared/contracts"
+	sharedstream "github.com/kite365/idcd/lib/shared/stream"
 )
 
 // Recognised PaymentHub event types. Anything else is acked with 200 and
@@ -43,7 +44,10 @@ const (
 // entry into a delay-zone ZSET member keyed by (order_id, attempt) and
 // runs the D5 5min / 30min retry ladder + apology email + refund_failed
 // flip from there.
-const RefundRetryStream = "refund_retry_queue"
+//
+// 真值集中在 lib/shared/stream.RefundRetryQueue — 此处只是本地别名,
+// 兼容 tests + 外部包对 paymenthub.RefundRetryStream 的引用。
+const RefundRetryStream = sharedstream.RefundRetryQueue
 
 // retryFirstDelay is the 5-minute delay applied to the first retry,
 // matching D5.
@@ -76,12 +80,16 @@ type OrderStatusUpdater interface {
 	UpdateStatus(ctx context.Context, id, fromStatus, toStatus string, errReason *string) error
 }
 
-// RetryEnqueuer pushes one entry onto the refund_retry_queue Redis
-// Stream. *redis.Client satisfies it via XAdd; the interface exists to
-// keep tests miniredis-friendly without forcing the package to know the
-// concrete *redis.Client type at every call site.
+// RetryEnqueuer pushes one entry onto the refund_retry_queue Redis Stream.
+// *sharedstream.Client satisfies it via AddRefundRetryTyped; the interface
+// keeps tests miniredis-friendly without forcing the package to know the
+// concrete client type at every call site.
+//
+// P0-4 W3: switched from raw redis.XAdd → typed contract. Field-name
+// typos in the producer now fail at compile time instead of silently
+// dropping retry tickets (钱 / 合规关键路径, D5).
 type RetryEnqueuer interface {
-	XAdd(ctx context.Context, a *redis.XAddArgs) *redis.StringCmd
+	AddRefundRetryTyped(ctx context.Context, e contracts.RefundRetryEvent) (string, error)
 }
 
 // Handler implements POST /webhooks/paymenthub.
@@ -182,26 +190,27 @@ func (h *Handler) processRefund(ctx context.Context, evt *event) {
 		"order_id", orderID, "ext_order_id", extOrderID)
 }
 
-// enqueueRetry pushes one entry onto refund_retry_queue. The scheduler
-// (separate service) consumes from this stream and drives 5min/30min
-// retries plus the T+15min apology email.
+// enqueueRetry pushes one entry onto refund_retry_queue via the typed
+// contracts.RefundRetryEvent path. The refund-worker (separate process)
+// consumes from this stream and drives 5min/30min retries plus the
+// T+15min apology email per D5.
+//
+// P0-4 W3: prior to the typed contract, this called rdb.XAdd directly with
+// a map[string]any literal. A field-name typo (e.g. "ext_evnt_id") would
+// silently slip past tests until a real retry produced a malformed entry
+// that the consumer dropped. Now the field set lives in contracts.RefundRetryEvent
+// and any drift fails at compile time.
 func (h *Handler) enqueueRetry(ctx context.Context, orderID, extEventID string) {
 	now := h.now()
-	scheduledAt := now.Add(retryFirstDelay).UTC().Format(time.RFC3339Nano)
-	cmd := h.Redis.XAdd(ctx, &redis.XAddArgs{
-		Stream: RefundRetryStream,
-		Values: map[string]any{
-			"order_id":        orderID,
-			"ext_event_id": extEventID,
-			"attempt":         "1",
-			"scheduled_at":    scheduledAt,
-		},
-	})
-	if cmd != nil {
-		if err := cmd.Err(); err != nil {
-			h.logger().Error("paymenthub webhook: enqueue refund_retry_queue failed",
-				"order_id", orderID, "err", err)
-		}
+	evt := contracts.RefundRetryEvent{
+		OrderID:     orderID,
+		ExtEventID:  extEventID,
+		Attempt:     1,
+		ScheduledAt: now.Add(retryFirstDelay).UTC(),
+	}
+	if _, err := h.Redis.AddRefundRetryTyped(ctx, evt); err != nil {
+		h.logger().Error("paymenthub webhook: enqueue refund_retry_queue failed",
+			"order_id", orderID, "err", err)
 	}
 }
 

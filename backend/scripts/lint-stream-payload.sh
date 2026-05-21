@@ -6,11 +6,15 @@
 #   * stream.Client.AddProbeResultTyped       (W1)
 #   * stream.Client.AddMonitorEventTyped      (W1)
 #   * stream.Client.AddCertNotificationTyped  (W2)
+#   * stream.Client.AddRefundInitiateTyped    (W3 — 钱相关 / D5 退款入口)
+#   * stream.Client.AddRefundRetryTyped       (W3 — 钱相关 / D5 retry ladder)
 #
 # 受保护的 stream 名 (出现在 XAdd Stream 参数里就报警):
-#   * "probe.results"      (W1)
-#   * "monitor.events"     (W1)
-#   * "cert:notifications" (W2 — 钱相关 / 合规相关)
+#   * "probe.results"          (W1)
+#   * "monitor.events"         (W1)
+#   * "cert:notifications"     (W2 — 钱相关 / 合规相关)
+#   * "refund_initiate_queue"  (W3 — Self-Verify → refund-worker)
+#   * "refund_retry_queue"     (W3 — PaymentHub webhook → refund-worker)
 #
 # 旧代码渐进迁移: 在调用上一行加注释 `// LINT-IGNORE: stream-payload-legacy`,
 # 脚本会跳过, CI 不阻塞。每次迁移一个 caller 就删掉注释。
@@ -54,6 +58,24 @@ cert_candidates=$(
 )
 if [ -n "$cert_candidates" ]; then
   candidates="${candidates}${cert_candidates}"$'\n'
+fi
+
+# 额外检查 refund_initiate_queue + refund_retry_queue (W3) — 类似 W2,
+# 这两条流没有非 Typed 的 stream.Client 方法。任何 raw rdb.XAdd 对这两条
+# 流的引用一律触发, 除了 lint-ignore 注释或 AddRefund*Typed 包装。
+refund_candidates=$(
+  grep -rn -E -F -e 'refund_initiate_queue' -e 'refund_retry_queue' \
+    --include='*.go' \
+    --exclude-dir='lib/shared/stream' \
+    --exclude-dir='lib/shared/contracts' \
+    "$REPO_ROOT" 2>/dev/null \
+  | grep -E 'XAdd\(' \
+  | grep -v -E 'AddRefundInitiateTyped|AddRefundRetryTyped' \
+  | grep -v '_test\.go:' \
+  || true
+)
+if [ -n "$refund_candidates" ]; then
+  candidates="${candidates}${refund_candidates}"$'\n'
 fi
 
 if [ -z "$candidates" ]; then

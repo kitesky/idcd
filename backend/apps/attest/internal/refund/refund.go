@@ -43,6 +43,8 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+
+	"github.com/kite365/idcd/lib/shared/contracts"
 )
 
 // MaxAttempts is the cap on automatic PaymentHub refund retries. D5: after
@@ -100,7 +102,7 @@ type Order struct {
 	Status         string
 	OwnerID        string
 	UserEmail      string
-	ExtOrderID  string
+	ExtOrderID     string
 	PriceCNYYuan   float64
 	Currency       string
 	RefundAttempts int
@@ -360,12 +362,18 @@ func parseScheduledAt(s string) (time.Time, error) {
 // redelivered message resolves to a no-op when the previous delivery
 // already advanced the state.
 func (h *Handler) HandleInitiate(ctx context.Context, fields map[string]any) error {
-	reportID := stringField(fields, "report_id")
-	reason := stringField(fields, "reason")
-	if reportID == "" {
-		h.cfg.Logger.Warn("refund: initiate entry missing report_id")
+	// P0-4 W3: decode via the typed contract so field-name drift between
+	// producer (apps/attest/cmd/verifier) and consumer fails at compile
+	// time on the producer side and at parse time here. Parse errors are
+	// malformed-message conditions — we ACK + log rather than block the
+	// stream (a malformed entry never becomes well-formed on redelivery).
+	evt, err := contracts.ParseRefundInitiateEvent(fields)
+	if err != nil {
+		h.cfg.Logger.Warn("refund: initiate entry malformed", "err", err)
 		return nil
 	}
+	reportID := evt.ReportID
+	reason := evt.Reason
 
 	order, err := h.cfg.Orders.GetByReportID(ctx, reportID)
 	if err != nil {
@@ -410,27 +418,19 @@ func (h *Handler) HandleInitiate(ctx context.Context, fields map[string]any) err
 // path failed; we translate that producer hint into a delay-zone
 // entry and ACK. All retry work then funnels through the tick goroutine.
 func (h *Handler) HandleRetryEnqueue(ctx context.Context, fields map[string]any) error {
-	orderID := stringField(fields, "order_id")
-	if orderID == "" {
-		h.cfg.Logger.Warn("refund: retry entry missing order_id")
-		return nil
-	}
-	attemptStr := stringField(fields, "attempt")
-	attempt, err := strconv.Atoi(attemptStr)
-	if err != nil || attempt < 1 {
-		// Producer guarantees attempt="1" on first hop; anything else is
-		// a malformed entry that we cannot safely retry. ACK + log.
-		h.cfg.Logger.Warn("refund: retry entry has bad attempt",
-			"order_id", orderID, "attempt_raw", attemptStr)
-		return nil
-	}
-	scheduledRaw := stringField(fields, "scheduled_at")
-	scheduledAt, err := parseScheduledAt(scheduledRaw)
+	// P0-4 W3: decode via the typed contract. Parse errors (missing
+	// order_id, attempt < 1, malformed scheduled_at) are malformed-message
+	// conditions — ACK + log so the bad entry doesn't block the stream.
+	// Producer guarantees attempt=1 on first hop; the contract enforces
+	// >= 1 + valid RFC3339Nano timestamp.
+	evt, err := contracts.ParseRefundRetryEvent(fields)
 	if err != nil {
-		h.cfg.Logger.Warn("refund: retry entry has bad scheduled_at",
-			"order_id", orderID, "scheduled_at_raw", scheduledRaw, "err", err)
+		h.cfg.Logger.Warn("refund: retry entry malformed", "err", err)
 		return nil
 	}
+	orderID := evt.OrderID
+	attempt := evt.Attempt
+	scheduledAt := evt.ScheduledAt
 	if err := h.scheduleRetry(ctx, orderID, attempt, scheduledAt); err != nil {
 		return fmt.Errorf("refund retry enqueue %s: %w", orderID, err)
 	}

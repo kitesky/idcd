@@ -213,6 +213,9 @@ jobs:
       - name: Run attestation words check
         run: bash backend/scripts/lint-attestation-words.sh
 
+      - name: Run stream payload check (P0-4 contracts)
+        run: bash backend/scripts/lint-stream-payload.sh
+
   openapi-coverage:
     name: OpenAPI Coverage
     runs-on: ubuntu-latest

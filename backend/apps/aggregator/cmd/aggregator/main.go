@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
@@ -87,7 +88,7 @@ func main() {
 	if cfg.Config != nil && cfg.Observability.PrometheusPort > 0 {
 		metricsPort = cfg.Observability.PrometheusPort
 	}
-	metricsSrv := startMetricsServer(metricsPort, rdb, logger)
+	metricsSrv := startMetricsServer(metricsPort, rdb, pool, logger)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -149,7 +150,12 @@ func main() {
 // startMetricsServer exposes Prometheus default-registry metrics on
 // :<port>/metrics. The listener must NOT be exposed to public traffic (bind to
 // the internal VPC / loopback).
-func startMetricsServer(port int, rdb redis.UniversalClient, logger *slog.Logger) *http.Server {
+//
+// /readyz pings both Redis (stream source) and PostgreSQL (write sink). Either
+// failing flips the endpoint to 503 so an orchestrator stops sending traffic
+// before messages start piling up in PEL — Redis-only readiness used to mask
+// a PG outage and let the consumer accept work it could not persist.
+func startMetricsServer(port int, rdb redis.UniversalClient, pool *pgxpool.Pool, logger *slog.Logger) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
 	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
@@ -162,6 +168,11 @@ func startMetricsServer(port int, rdb redis.UniversalClient, logger *slog.Logger
 		if err := rdb.Ping(ctx).Err(); err != nil {
 			w.WriteHeader(http.StatusServiceUnavailable)
 			fmt.Fprintf(w, "redis ping failed: %v", err)
+			return
+		}
+		if err := pool.Ping(ctx); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "postgres ping failed: %v", err)
 			return
 		}
 		w.WriteHeader(http.StatusOK)

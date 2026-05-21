@@ -49,7 +49,7 @@ seed:
 	fi
 
 # ── Lint ─────────────────────────────────────────────────────
-lint: lint-go lint-sql lint-attestation lint-openapi-coverage lint-ts
+lint: lint-go lint-sql lint-attestation lint-stream-payload lint-openapi-coverage lint-ts
 
 lint-go:
 	@echo "$(BOLD)→ golangci-lint$(RESET)"
@@ -62,6 +62,10 @@ lint-sql:
 lint-attestation:
 	@echo "$(BOLD)→ attestation words check (D-Concern1)$(RESET)"
 	@bash scripts/lint-attestation-words.sh
+
+lint-stream-payload:
+	@echo "$(BOLD)→ stream payload typed-contract check (P0-4)$(RESET)"
+	@bash scripts/lint-stream-payload.sh
 
 lint-openapi-coverage:
 	@echo "$(BOLD)→ OpenAPI ↔ chi router coverage (P0-5)$(RESET)"

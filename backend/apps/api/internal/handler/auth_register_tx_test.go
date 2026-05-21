@@ -167,13 +167,12 @@ func TestRegister_Tx_RollbackOnOTPFailure(t *testing.T) {
 	}
 }
 
-// TestRegister_Tx_RollbackOnSessionFailure asserts that issueToken failing
-// (the LAST step inside the tx) still rolls the whole unit back — proving
-// the rollback covers both the users row AND the user_otp row. This is the
-// concrete dirty-data scenario the architecture review called out: without
-// the tx the user would be permanently locked out (email taken, can't log
-// in because session creation failed, can't re-register because email taken).
-func TestRegister_Tx_RollbackOnSessionFailure(t *testing.T) {
+// TestRegister_Tx_SessionFailure_PostCommit pins the outbox-lite contract:
+// session.Store (Redis) runs after the pg tx commits, so a Redis blip leaves
+// the user row persisted and surfaces as 5xx. The user recovers via /login.
+// Email is not enqueued because we don't want "account created" + "login
+// broken" arriving together.
+func TestRegister_Tx_SessionFailure_PostCommit(t *testing.T) {
 	q := newMockAuthQuerier()
 	mockPool, err := pgxmock.NewPool()
 	if err != nil {
@@ -188,7 +187,7 @@ func TestRegister_Tx_RollbackOnSessionFailure(t *testing.T) {
 	h = h.WithEnqueuer(eq)
 
 	mockPool.ExpectBegin()
-	mockPool.ExpectRollback()
+	mockPool.ExpectCommit()
 
 	body := `{"email":"tx-sess-fail@example.com","password":"Password123"}`
 	req := httptest.NewRequest("POST", "/v1/auth/register", strings.NewReader(body))
@@ -201,13 +200,18 @@ func TestRegister_Tx_RollbackOnSessionFailure(t *testing.T) {
 		t.Fatalf("expected 5xx on session-store failure, got %d: %s", rr.Code, rr.Body.String())
 	}
 	if err := mockPool.ExpectationsWereMet(); err != nil {
-		t.Fatalf("pgxmock expectations (tx must roll back): %v", err)
+		t.Fatalf("pgxmock expectations (tx must commit BEFORE session step): %v", err)
 	}
 	if sess.storeCalls != 1 {
-		t.Errorf("expected sess.Store called once, got %d", sess.storeCalls)
+		t.Errorf("expected sess.Store called once (after commit), got %d", sess.storeCalls)
 	}
 	if len(eq.tasks) != 0 {
-		t.Errorf("verification email must NOT be enqueued when tx rolls back, got %d tasks", len(eq.tasks))
+		t.Errorf("verification email must NOT be enqueued when post-commit step fails, got %d tasks", len(eq.tasks))
+	}
+	// The pg row is committed — that's the explicit contract trade-off. The
+	// user can recover by signing in once Redis is healthy.
+	if _, ok := q.users["tx-sess-fail@example.com"]; !ok {
+		t.Errorf("expected user row to remain committed after Redis-side failure")
 	}
 }
 

@@ -229,6 +229,26 @@ func (c *Client) AddRefundRetryTyped(ctx context.Context, e contracts.RefundRetr
 	return c.Add(ctx, RefundRetryQueue, e.ToStreamValues())
 }
 
+// AddProbeTaskTyped writes a probe task with a strongly-typed payload.
+//
+// 新代码必须使用此 API. P0-4 W5 — probe.tasks 是 scheduler→gateway 派发任务的
+// 关键流, 且承载 P0-2 split-brain 防御所需的 "epoch" 字段. 字段拼错 →
+// fencing token 校验静默失效 → 旧 leader 派的任务被当作合法任务转发给 agent.
+// 编译期发现字段错误 > 运行时静默静默丢失安全语义.
+// SchemaVer 自动注入为 contracts.ProbeTaskSchemaV1.
+//
+// Wire 兼容性: ToStreamValues 输出的 stream key 集合是历史 scheduler /
+// api/probe.go 手写 map 的并集 (按 producer 角色取子集 — scheduler 写 epoch
+// 但不写 target_normalized, api 反过来), 字段名一字未改. 加上 schema_ver
+// 顶层后旧 gateway dispatcher 仍能直接 read msg.Values["node_id"] / ["epoch"]
+// — 不需要 consumer 端代码变更.
+func (c *Client) AddProbeTaskTyped(ctx context.Context, t contracts.ProbeTask) (string, error) {
+	if t.SchemaVer == 0 {
+		t.SchemaVer = contracts.ProbeTaskSchemaV1
+	}
+	return c.Add(ctx, ProbeTasks, t.ToStreamValues())
+}
+
 // AddAlertEvent writes an alert event.
 //
 // Deprecated: 使用 AddAlertEventTyped(ctx, contracts.AlertEvent{...}) 替代.

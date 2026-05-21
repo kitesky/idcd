@@ -19,6 +19,7 @@ import (
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
+	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/idgen"
 	"github.com/kite365/idcd/lib/shared/stream"
 )
@@ -317,19 +318,20 @@ func (h *ProbeHandler) createProbeTask(
 		return "", fmt.Errorf("insert probe_task: %w", err)
 	}
 
-	// Push to Redis Stream stream.ProbeTasks ("probe.tasks").
-	streamData := map[string]any{
-		"task_id":           taskID,
-		"type":              probeType,
-		"target":            target,
-		"target_normalized": targetNormalized,
-		"params":            string(paramsJSON),
-		"node_id":           nodeID,
-		"node_selection":    string(nodeSelectionJSON),
-		"created_at":        time.Now().Unix(),
+	// Push to probe.tasks via the typed contract. Ad-hoc tool probes carry
+	// no fencing-token epoch (they don't run under leader election); the
+	// scheduler producer is the only path that sets Epoch. See P0-4 W5.
+	pt := contracts.ProbeTask{
+		TaskID:            taskID,
+		Type:              probeType,
+		Target:            target,
+		TargetNormalized:  targetNormalized,
+		NodeID:            nodeID,
+		NodeSelectionJSON: string(nodeSelectionJSON),
+		ParamsJSON:        string(paramsJSON),
+		CreatedAt:         time.Now().Unix(),
 	}
-
-	if _, err := h.streamClient.Add(ctx, stream.ProbeTasks, streamData); err != nil {
+	if _, err := h.streamClient.AddProbeTaskTyped(ctx, pt); err != nil {
 		return "", fmt.Errorf("push to stream: %w", err)
 	}
 

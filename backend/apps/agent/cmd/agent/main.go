@@ -673,7 +673,12 @@ func version() string {
 var buildVersion string
 
 // startHealthServer runs a minimal HTTP health endpoint on :9101
-// (or AGENT_HEALTH_PORT if set). Used by idcd-agent-ctl and monitoring.
+// (or AGENT_HEALTH_PORT if set). Used by idcd-agent-ctl and the systemd
+// unit's ExecStartPost smoke-check.
+//
+// Loopback-only bind: the agent is outbound-only, and /health returns
+// node_id + version. Container orchestration probes should run via a
+// sidecar or unix-socket exporter rather than rebinding 0.0.0.0.
 func startHealthServer(nodeID string, ws *agentws.Client) {
 	port := os.Getenv("AGENT_HEALTH_PORT")
 	if port == "" {

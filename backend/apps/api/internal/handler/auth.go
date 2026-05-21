@@ -261,13 +261,13 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 
 	// Outputs captured from inside the tx for use after commit.
 	var (
-		user        idcdmain.User
-		issuedToken string
-		otpID       string
-		otpCode     string
+		user    idcdmain.User
+		otpID   string
+		otpCode string
 	)
 	emailWanted := h.enqueuer != nil
 
+	// PG-bound writes only. Session.Store (Redis) is post-commit below.
 	doWrites := func(q AuthQuerier) error {
 		u, err := q.CreateUser(ctx, createParams)
 		if err != nil {
@@ -283,11 +283,6 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 			otpID, otpCode = id, code
 		}
 
-		token, _, err := h.issueToken(ctx, u.ID, u.Locale)
-		if err != nil {
-			return fmt.Errorf("issue token: %w", err)
-		}
-		issuedToken = token
 		return nil
 	}
 
@@ -313,6 +308,16 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		}
 		apimetrics.RegistrationAttempts.WithLabelValues("internal").Inc()
 		response.Error(w, r, apperr.Internal("failed to register user", txErr))
+		return
+	}
+
+	// Post-commit: session.Store writes Redis, which can't honour a pg tx
+	// rollback. Failures here leave the user row committed; the user
+	// recovers via /v1/auth/login.
+	issuedToken, _, err := h.issueToken(ctx, user.ID, user.Locale)
+	if err != nil {
+		apimetrics.RegistrationAttempts.WithLabelValues("internal").Inc()
+		response.Error(w, r, apperr.Internal("failed to issue session token", err))
 		return
 	}
 

@@ -9,6 +9,7 @@
 #   * stream.Client.AddRefundInitiateTyped    (W3 — 钱相关 / D5 退款入口)
 #   * stream.Client.AddRefundRetryTyped       (W3 — 钱相关 / D5 retry ladder)
 #   * stream.Client.AddAlertEventTyped        (W4 — 告警通知)
+#   * stream.Client.AddProbeTaskTyped         (W5 — scheduler 派任务流, 含 P0-2 fencing token)
 #
 # 受保护的 stream 名 (出现在 XAdd Stream 参数里就报警):
 #   * "probe.results"          (W1)
@@ -17,6 +18,7 @@
 #   * "refund_initiate_queue"  (W3 — Self-Verify → refund-worker)
 #   * "refund_retry_queue"     (W3 — PaymentHub webhook → refund-worker)
 #   * "alert.events"           (W4 — 告警通知, 字段拼写错 → 用户漏收告警)
+#   * "probe.tasks"            (W5 — scheduler→gateway, epoch 字段名错 → P0-2 失效)
 #
 # 旧代码渐进迁移: 在调用上一行加注释 `// LINT-IGNORE: stream-payload-legacy`,
 # 脚本会跳过, CI 不阻塞。每次迁移一个 caller 就删掉注释。
@@ -95,6 +97,26 @@ alert_candidates=$(
 )
 if [ -n "$alert_candidates" ]; then
   candidates="${candidates}${alert_candidates}"$'\n'
+fi
+
+# 额外检查 probe.tasks (W5) — 关键流, 含 P0-2 fencing token 的 "epoch" 字段.
+# 任何 stream.Client.Add(ctx, ProbeTasks, ...) 或 rdb.XAdd("probe.tasks", ...)
+# 都视为违规, 必须改用 AddProbeTaskTyped. dev 脚本 (clear-probe-pel /
+# diag-probe-stream / reset-dev-dispatch-group) 是只读 / 维护性质, 单独豁免。
+task_candidates=$(
+  grep -rn -E '(stream\.ProbeTasks|"probe\.tasks")' \
+    --include='*.go' \
+    --exclude-dir='lib/shared/stream' \
+    --exclude-dir='lib/shared/contracts' \
+    "$REPO_ROOT" 2>/dev/null \
+  | grep -E '\.Add\(|XAdd\(' \
+  | grep -v 'AddProbeTaskTyped' \
+  | grep -v 'backend/scripts/' \
+  | grep -v '_test\.go:' \
+  || true
+)
+if [ -n "$task_candidates" ]; then
+  candidates="${candidates}${task_candidates}"$'\n'
 fi
 
 if [ -z "$candidates" ]; then

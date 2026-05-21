@@ -23,6 +23,7 @@ import (
 
 	"github.com/kite365/idcd/apps/scheduler/internal/leader"
 	"github.com/kite365/idcd/apps/scheduler/internal/queue"
+	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/idgen"
 	"github.com/kite365/idcd/lib/shared/stream"
 )
@@ -376,24 +377,22 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		}
 		task.NodeID = nodeID
 
-		// LINT-IGNORE: stream-payload-legacy
-		// probe.tasks has no typed contract yet (only ProbeResult / MonitorEvent
-		// are typed under lib/shared/contracts). When that contract lands we
-		// will fold "epoch" into the strongly-typed payload — for now it
-		// rides as a plain string field next to the other map values.
-		// "epoch" is the scheduler fencing token; see leader.AcquireEpoch and
-		// the consumer-side check in gateway dispatcher.
-		vals := map[string]any{
-			"task_id":    taskID,
-			"type":       probeType,
-			"target":     m.Target,
-			"node_id":    nodeID,
-			"priority":   queue.P2,
-			"monitor_id": m.ID,
-			"params":     string(paramsJSON),
-			"epoch":      s.epoch.String(),
+		// Epoch is the fencing token from leader.AcquireEpoch — gateway
+		// dispatcher uses it to reject writes from a deposed leader (P0-2).
+		// Always non-nil on the scheduler path; ad-hoc api/probe.go leaves
+		// Epoch nil.
+		epoch := s.epoch.Int64()
+		pt := contracts.ProbeTask{
+			TaskID:     taskID,
+			Type:       probeType,
+			Target:     m.Target,
+			NodeID:     nodeID,
+			Priority:   queue.P2,
+			MonitorID:  m.ID,
+			ParamsJSON: string(paramsJSON),
+			Epoch:      &epoch,
 		}
-		if _, err := s.stream.Add(ctx, ProbeTasksStream, vals); err != nil {
+		if _, err := s.stream.AddProbeTaskTyped(ctx, pt); err != nil {
 			MetricsDispatchedTasks.WithLabelValues(probeType, "stream_push_fail").Inc()
 			s.logger.Error("dispatch monitor task: push to stream failed", "monitor_id", m.ID, "err", err)
 		} else {

@@ -222,6 +222,8 @@ idcd/
 
 ### 3.4 Self-Verify Worker 独立部署(D6 / CRITICAL GAP)
 
+> 📌 **S1 阶段现状(2026-05-21 SG staging 核实)**:attest 全套服务**未部署**(无 container、`docker-compose.prod.yml` 无 service 定义、`attest.idcd.com` 未解析、nginx 无对应 server 块),**但代码与 idcd_attest DB schema 已就绪**。这是有意简化,符合 D6 与 S2 时间线 — 详 `docs/prd/attest-deploy-plan.md`。本节描述的物理隔离 4 层是 S2 启用时的目标态。
+
 **为什么**:若 Self-verify 与 Generator 共用代码 / 配置 / KMS 客户端,bug 互盖 = 自检失效 = 信任根失守。
 
 **实施**(物理隔离 4 层):
@@ -363,11 +365,14 @@ idcd/
 
 **关键点**:
 - 所有 core service 同机 docker compose(`backend/infra/docker/docker-compose.core.yml`)
+- **attest 全套服务 S1 阶段不部署**(代码 + idcd_attest DB schema 已就绪,等 S2 Evidence pipeline 上线时启用,详 `docs/prd/attest-deploy-plan.md`)
 - 国内/海外用户走 Cloudflare 就近接入
 - 主→备 流式复制(streaming replication,< 30s lag)
 - 100+ 节点纯 Ansible + Terraform
 
 ### 4.2 S2 部署(M5-M8,Evidence 上线)
+
+> 📌 attest 启用前的前置清单 + 步骤 + 验证 / 回滚 详 `docs/prd/attest-deploy-plan.md`(基于 2026-05-21 现场核实编写)。
 
 新增:
 - **attest.idcd.com 独立 docker compose 栈**(`backend/infra/docker/docker-compose.attest.yml` + `docker-compose.attest-verify.yml`)

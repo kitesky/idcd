@@ -14,6 +14,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/lib/shared/contracts"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 // Default MAXLEN for all streams (approximate trim, efficient).
@@ -92,7 +93,15 @@ func NewFromConfig(addr, password string, db int) (*Client, *redis.Client) {
 
 // Add appends a message to stream with MAXLEN ~ DefaultMaxLen (D18).
 // Returns the message ID assigned by Redis.
+//
+// P1-5: 在写入 Redis 前把 OTel trace context (W3C traceparent/tracestate)
+// inject 进 values, 让消费端 (aggregator / gateway dispatcher) Extract 出来后
+// 子 span 自动挂回原 trace, 跨进程异步链路保持同一个 trace_id。
+// 业务字段不需要改, 也不需要在 contracts.ProbeResult/MonitorEvent 里加 trace 字段
+// (trace 是 stream-level 元数据, 不进 typed contract)。
+// 没有 active span 时 Inject 是 no-op, 不破坏 vals。
 func (c *Client) Add(ctx context.Context, stream string, values map[string]any) (string, error) {
+	telemetry.InjectStream(ctx, values)
 	id, err := c.rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: stream,
 		MaxLen: c.maxLen,

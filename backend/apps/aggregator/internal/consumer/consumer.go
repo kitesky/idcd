@@ -17,6 +17,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/aggregator/internal/metrics"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 // Default tunables for periodic reclaim + DLQ behaviour. Exported so tests can
@@ -145,7 +146,12 @@ func (c *Consumer) Run(ctx context.Context) error {
 			// MessagesProcessed counter remains the per-stream tally.
 			procStart := time.Now()
 			probeType := probeTypeFromValues(msg.Values)
-			if err := c.processor.Process(ctx, msg.ID, msg.Values); err != nil {
+			// P1-5: pull producer-side trace context out of the stream payload
+			// so subsequent processor work (and any logger.With(trace_id=...)
+			// hooks) attach to the upstream HTTP / scheduler trace instead of
+			// starting a fresh disconnected one. Inject happens in stream.Client.Add.
+			msgCtx := telemetry.ExtractStream(ctx, msg.Values)
+			if err := c.processor.Process(msgCtx, msg.ID, msg.Values); err != nil {
 				c.logger.Error("consumer: process failed",
 					"consumer", c.consumerName, "msg_id", msg.ID, "err", err)
 				metrics.MessagesFailed.WithLabelValues(c.stream, c.consumerName).Inc()
@@ -309,7 +315,10 @@ func (c *Consumer) reclaimPending(ctx context.Context) error {
 		metrics.ReclaimedMessages.WithLabelValues(c.stream, c.consumerName).Inc()
 		c.logger.Info("reclaiming pending message",
 			"consumer", c.consumerName, "msg_id", msg.ID)
-		if err := c.processor.Process(ctx, msg.ID, msg.Values); err != nil {
+		// P1-5: preserve producer-side trace context on reclaim too — a message
+		// rescued from PEL still belongs to the original trace.
+		msgCtx := telemetry.ExtractStream(ctx, msg.Values)
+		if err := c.processor.Process(msgCtx, msg.ID, msg.Values); err != nil {
 			c.logger.Error("consumer: reclaim process failed",
 				"consumer", c.consumerName, "msg_id", msg.ID, "err", err)
 			metrics.MessagesFailed.WithLabelValues(c.stream, c.consumerName).Inc()

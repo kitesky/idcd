@@ -25,6 +25,7 @@ import (
 
 	"github.com/kite365/idcd/apps/gateway/internal/hub"
 	"github.com/kite365/idcd/lib/shared/stream"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 // Dispatcher tuning constants. 这些是 dispatcher 内部的批处理 / 超时参数，
@@ -174,6 +175,13 @@ func (d *Dispatcher) Run(ctx context.Context) {
 //     return value couldn't provide on its own (that only signalled "queued
 //     in process buffer", not "wrote to socket").
 func (d *Dispatcher) dispatchAndAck(ctx context.Context, msg redis.XMessage) {
+	// P1-5: pull the scheduler-side trace context out of the stream payload
+	// so logs / metrics / future spans inside this dispatch (including the
+	// epoch-drop path below) carry the original trace_id. No-op for messages
+	// from legacy producers that never ran InjectStream — falls back to the
+	// parent ctx unchanged.
+	ctx = telemetry.ExtractStream(ctx, msg.Values)
+
 	// Fencing-token gate: any message whose epoch is below our high-water
 	// mark came from a deposed scheduler leader (see epoch_validator.go and
 	// docs/prd/ARCHITECTURE-REVIEW-2026-05-21.md P0-2). Drop + ACK so the

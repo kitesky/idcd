@@ -7,9 +7,14 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/kite365/idcd/lib/shared/contracts"
 	"github.com/kite365/idcd/lib/shared/stream"
+	"github.com/kite365/idcd/lib/shared/telemetry"
 )
 
 // newTestClient spins up a miniredis instance and returns a stream.Client.
@@ -325,6 +330,121 @@ func TestAddMonitorEventTyped(t *testing.T) {
 	}
 	if got.TsMs == 0 {
 		t.Error("expected TsMs to be auto-set by ToStreamValues")
+	}
+}
+
+// setupTracingGlobals installs an always-sample TracerProvider + W3C/Baggage
+// propagator for the duration of the test, restoring globals on cleanup.
+// Mirrors the helper in telemetry/stream_carrier_test.go so this file remains
+// self-contained.
+func setupTracingGlobals(t *testing.T) trace.Tracer {
+	t.Helper()
+	prevTP := otel.GetTracerProvider()
+	prevProp := otel.GetTextMapPropagator()
+	tp := sdktrace.NewTracerProvider(sdktrace.WithSampler(sdktrace.AlwaysSample()))
+	otel.SetTracerProvider(tp)
+	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(
+		propagation.TraceContext{},
+		propagation.Baggage{},
+	))
+	t.Cleanup(func() {
+		_ = tp.Shutdown(context.Background())
+		otel.SetTracerProvider(prevTP)
+		otel.SetTextMapPropagator(prevProp)
+	})
+	return tp.Tracer("stream-test")
+}
+
+// TestAddPropagatesTraceContext: P1-5 — stream.Client.Add must inject the
+// active OTel trace context into the XAdd values so the consumer side can
+// Extract it and continue the same trace.
+func TestAddPropagatesTraceContext(t *testing.T) {
+	tracer := setupTracingGlobals(t)
+	c, rdb := newTestClientWithRDB(t)
+
+	ctx, span := tracer.Start(context.Background(), "producer")
+	defer span.End()
+	wantTraceID := span.SpanContext().TraceID()
+
+	_, err := c.Add(ctx, "trace.stream", map[string]any{"task_id": "pt_trace"})
+	if err != nil {
+		t.Fatalf("Add: %v", err)
+	}
+	msgs, err := rdb.XRange(ctx, "trace.stream", "-", "+").Result()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message, got %d", len(msgs))
+	}
+
+	// Round-trip through ExtractStream — the consumer-side helper — and
+	// confirm trace_id continuity.
+	gotCtx := telemetry.ExtractStream(context.Background(), msgs[0].Values)
+	gotSC := trace.SpanContextFromContext(gotCtx)
+	if !gotSC.IsValid() {
+		t.Fatal("ExtractStream produced invalid SpanContext (no traceparent on the message)")
+	}
+	if gotSC.TraceID() != wantTraceID {
+		t.Errorf("trace_id drift across stream: got %s, want %s",
+			gotSC.TraceID(), wantTraceID)
+	}
+	// Business field still present.
+	if msgs[0].Values["task_id"] != "pt_trace" {
+		t.Errorf("business field clobbered by trace inject: %v", msgs[0].Values)
+	}
+}
+
+// TestAddProbeResultTyped_PropagatesTrace: typed Add paths go through Add()
+// at the bottom, so they get inject for free. Spot-check that this is true
+// in practice.
+func TestAddProbeResultTyped_PropagatesTrace(t *testing.T) {
+	tracer := setupTracingGlobals(t)
+	c, rdb := newTestClientWithRDB(t)
+	ctx, span := tracer.Start(context.Background(), "producer-typed")
+	defer span.End()
+
+	r := contracts.ProbeResult{TaskID: "pt_typed", NodeID: "nd_typed", DurationMs: 5}
+	if _, err := c.AddProbeResultTyped(ctx, r); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(ctx, stream.Probe, "-", "+").Result()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message")
+	}
+	gotCtx := telemetry.ExtractStream(context.Background(), msgs[0].Values)
+	gotSC := trace.SpanContextFromContext(gotCtx)
+	if !gotSC.IsValid() || gotSC.TraceID() != span.SpanContext().TraceID() {
+		t.Errorf("AddProbeResultTyped did not propagate trace context: span_ctx=%v", gotSC)
+	}
+	// Typed parse must still succeed — trace fields are stream-level metadata,
+	// not part of the contract, so ParseProbeResult ignores them.
+	parsed, err := contracts.ParseProbeResult(msgs[0].Values)
+	if err != nil {
+		t.Fatalf("ParseProbeResult after trace inject failed: %v", err)
+	}
+	if parsed.TaskID != "pt_typed" {
+		t.Errorf("Parse drift: %+v", parsed)
+	}
+}
+
+func TestAdd_NoActiveSpan_NoTraceparent(t *testing.T) {
+	setupTracingGlobals(t)
+	c, rdb := newTestClientWithRDB(t)
+	// Bare ctx with no active span — Inject is a no-op, no traceparent field
+	// should appear on the message.
+	if _, err := c.Add(context.Background(), "no.trace.stream", map[string]any{"k": "v"}); err != nil {
+		t.Fatal(err)
+	}
+	msgs, _ := rdb.XRange(context.Background(), "no.trace.stream", "-", "+").Result()
+	if len(msgs) != 1 {
+		t.Fatalf("expected 1 message")
+	}
+	if _, ok := msgs[0].Values["traceparent"]; ok {
+		t.Errorf("traceparent should not be present without active span: %v", msgs[0].Values)
+	}
+	if msgs[0].Values["k"] != "v" {
+		t.Errorf("business field lost: %v", msgs[0].Values)
 	}
 }
 

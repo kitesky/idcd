@@ -202,7 +202,10 @@ func (h *StatusPageDomainHandler) SetStatusPageDomain(w http.ResponseWriter, r *
 		return
 	}
 
-	go h.asyncVerifyDNS(updated.ID, domain)
+	// P1-12: pass request ctx so trace_id rides into the goroutine; cancellation
+	// is shed by context.WithoutCancel inside asyncVerifyDNS so a client
+	// disconnect during the response write doesn't kill the DNS probe.
+	go h.asyncVerifyDNS(r.Context(), updated.ID, domain)
 
 	instructions := "Please add a CNAME record: " + domain + " → status.idcd.com"
 	response.JSON(w, r, http.StatusOK, DomainResponse{
@@ -266,7 +269,13 @@ func (h *StatusPageDomainHandler) VerifyStatusPageDomain(w http.ResponseWriter, 
 // asyncVerifyDNS attempts a background DNS check and marks the domain verified if it passes.
 // Errors are silently ignored — the user can trigger manual verification via the verify endpoint.
 // asyncVerifySem caps concurrency; the 15-second context prevents indefinite blocking.
-func (h *StatusPageDomainHandler) asyncVerifyDNS(statusPageID, domain string) {
+//
+// P1-12: parentCtx is the originating request context. We use
+// context.WithoutCancel so the OTel trace_id / log correlation propagates into
+// this background work, but a request cancellation (client disconnect, handler
+// return) does NOT cancel the bookkeeping DNS verify. The 15s WithTimeout below
+// still bounds the DNS lookup so the process can shut down cleanly.
+func (h *StatusPageDomainHandler) asyncVerifyDNS(parentCtx context.Context, statusPageID, domain string) {
 	select {
 	case asyncVerifySem <- struct{}{}:
 		defer func() { <-asyncVerifySem }()
@@ -274,7 +283,7 @@ func (h *StatusPageDomainHandler) asyncVerifyDNS(statusPageID, domain string) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(parentCtx), 15*time.Second)
 	defer cancel()
 
 	cname, err := h.lookupCNAME(ctx, domain)

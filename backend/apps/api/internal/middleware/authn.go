@@ -235,7 +235,7 @@ func OptionalAuthnWithTokens(
 							ctx = context.WithValue(ctx, authMethodKey, AuthMethodPAT)
 							ctx = context.WithValue(ctx, patIDKey, info.ID)
 							if shouldTouch(&patTouchMu, patTouchLast, info.ID) {
-								go touchLastUsedPAT(patSvc, info.ID)
+								go touchLastUsedPAT(r.Context(), patSvc, info.ID)
 							}
 						}
 					}
@@ -250,7 +250,7 @@ func OptionalAuthnWithTokens(
 							ctx = context.WithValue(ctx, authMethodKey, AuthMethodAPIKey)
 							ctx = context.WithValue(ctx, apiKeyIDKey, info.ID)
 							if shouldTouch(&apiKeyTouchMu, apiKeyTouchLast, info.ID) {
-								go touchLastUsedAPIKey(apiKeySvc, info.ID)
+								go touchLastUsedAPIKey(r.Context(), apiKeySvc, info.ID)
 							}
 						}
 					}
@@ -315,12 +315,14 @@ func verifyPAT(w http.ResponseWriter, r *http.Request, patSvc PATVerifier, rawTo
 	ctx = context.WithValue(ctx, authMethodKey, AuthMethodPAT)
 	ctx = context.WithValue(ctx, patIDKey, info.ID)
 
-	// Fire-and-forget last_used update. Detached from request context so a
-	// caller cancellation doesn't drop the write. Bounded timeout prevents
-	// leaks if the backend is slow. Coalesced per token so a burst of
-	// requests doesn't spawn one goroutine per hit.
+	// Fire-and-forget last_used update. Detached from request *cancellation*
+	// via context.WithoutCancel inside touchLastUsedPAT (P1-12) so a caller
+	// disconnect doesn't drop the write, but trace_id / baggage still ride
+	// along — the bookkeeping update shows up in the same trace as the
+	// request that triggered it. Coalesced per token so a burst of requests
+	// doesn't spawn one goroutine per hit.
 	if shouldTouch(&patTouchMu, patTouchLast, info.ID) {
-		go touchLastUsedPAT(patSvc, info.ID)
+		go touchLastUsedPAT(r.Context(), patSvc, info.ID)
 	}
 
 	return ctx, true
@@ -349,7 +351,9 @@ func verifyAPIKey(w http.ResponseWriter, r *http.Request, apiKeySvc APIKeyVerifi
 	ctx = context.WithValue(ctx, apiKeyIDKey, info.ID)
 
 	if shouldTouch(&apiKeyTouchMu, apiKeyTouchLast, info.ID) {
-		go touchLastUsedAPIKey(apiKeySvc, info.ID)
+		// P1-12: see touchLastUsedPAT call site for rationale (WithoutCancel
+		// inside the helper keeps trace_id but ignores request cancellation).
+		go touchLastUsedAPIKey(r.Context(), apiKeySvc, info.ID)
 	}
 
 	return ctx, true
@@ -357,14 +361,23 @@ func verifyAPIKey(w http.ResponseWriter, r *http.Request, apiKeySvc APIKeyVerifi
 
 // touchLastUsedPAT updates last_used_at out-of-band. Errors are swallowed
 // because failing to bump the timestamp must not block authenticated requests.
-func touchLastUsedPAT(svc PATVerifier, patID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), lastUsedUpdateTimeout)
+//
+// P1-12: parent ctx is the request context. We use context.WithoutCancel so
+// the OTel trace_id / baggage / logging-correlation values ride along into
+// this goroutine, but a client disconnect / handler return does NOT cancel
+// the bookkeeping write — touching last_used must succeed even after the
+// response has flushed. The bounded timeout below caps the write so process
+// shutdown doesn't wait on a stuck DB.
+func touchLastUsedPAT(parentCtx context.Context, svc PATVerifier, patID string) {
+	ctx := context.WithoutCancel(parentCtx)
+	ctx, cancel := context.WithTimeout(ctx, lastUsedUpdateTimeout)
 	defer cancel()
 	_ = svc.TouchLastUsed(ctx, patID)
 }
 
-func touchLastUsedAPIKey(svc APIKeyVerifier, apiKeyID string) {
-	ctx, cancel := context.WithTimeout(context.Background(), lastUsedUpdateTimeout)
+func touchLastUsedAPIKey(parentCtx context.Context, svc APIKeyVerifier, apiKeyID string) {
+	ctx := context.WithoutCancel(parentCtx)
+	ctx, cancel := context.WithTimeout(ctx, lastUsedUpdateTimeout)
 	defer cancel()
 	_ = svc.TouchLastUsed(ctx, apiKeyID)
 }

@@ -13,6 +13,7 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
+	apimetrics "github.com/kite365/idcd/apps/api/internal/metrics"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/shared/apperr"
@@ -158,6 +159,9 @@ func (h *PATHandler) Create(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("failed to create token", err))
 		return
 	}
+
+	// P1-11: count PAT issuance under the unified TokensIssued counter.
+	apimetrics.TokensIssued.WithLabelValues("pat").Inc()
 
 	resp := patCreateResponse{
 		patResponse: toPATResponse(result),

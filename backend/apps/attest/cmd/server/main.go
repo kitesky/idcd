@@ -32,11 +32,17 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
 	"github.com/kite365/idcd/apps/attest/internal/handler/paymenthub"
 	"github.com/kite365/idcd/apps/attest/internal/handler/verify"
+	// P1-11: importing the metrics package side-effects the promauto
+	// registration onto the default registry, so /metrics below picks them
+	// up without any additional wiring. The verdict orchestrator + refund
+	// worker also import this package directly to record signal events.
+	_ "github.com/kite365/idcd/apps/attest/internal/metrics"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/lib/attest/sign"
 	"github.com/kite365/idcd/lib/attest/sign/alikms"
@@ -103,6 +109,11 @@ func main() {
 	mux.HandleFunc("GET /healthz", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte("ok"))
 	})
+	// P1-11: Prometheus business metrics live on the default registry; the
+	// metrics package import (above) registers them via promauto. Same
+	// process exposes them at /metrics so Prometheus can scrape the
+	// attest-server alongside the other idcd services.
+	mux.Handle("/metrics", promhttp.Handler())
 	// Mount verify at both "/verify" (POST) and "/verify/" (GET by id).
 	// ServeHTTP does internal path normalisation; the trailing-slash
 	// pattern catches everything under /verify/<id>.

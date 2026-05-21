@@ -86,6 +86,87 @@ var RenewalJobsTotal = promauto.NewCounterVec(prometheus.CounterOpts{
 	Help: "Renewal job outcomes by terminal status.",
 }, []string{"status"})
 
+// ----------------------------------------------------------------------
+// P1-11 Phase 1: idcd-namespaced order/issuance metrics.
+//
+// These augment the legacy cert_* metrics above (which are kept for the
+// existing Grafana dashboards) with handler-level counters that surface
+// orders that never even reach the orchestrator — bad CAA, abuse blocks,
+// daily-quota exhaustion — so we can answer "how many issuance attempts
+// did we reject before they entered the pipeline?" without joining over
+// HTTP request logs.
+// ----------------------------------------------------------------------
+
+// IssueAttempts is the handler-level counter incremented on every
+// POST /v1/orders, partitioned by outcome.
+//
+//	outcome — "accepted"           order row inserted, enqueued
+//	          "idempotent_replay"  ON CONFLICT path returned existing
+//	          "invalid_input"      SAN normalisation / size / challenge
+//	          "quota_exceeded"     dailyOrderQuota cap reached
+//	          "abuse_blocked"      service.ErrAccountBanned / ErrAbuseBlocked
+//	          "caa_forbid"         CAA records reject the target CA
+//	          "credential_invalid" dns credential lookup / ownership / revoked
+//	          "internal"           db / repo failures
+//	ca      — "lets-encrypt" | "zerossl" | "buypass" | "unknown"
+var IssueAttempts = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_cert",
+	Subsystem: "issue",
+	Name:      "attempts_total",
+	Help:      "证书签发尝试次数 (按 outcome + ca 分类, handler 层)",
+}, []string{"outcome", "ca"})
+
+// LERateLimitHits counts how often we observed Let's Encrypt rate-limit
+// rejection. This is a narrow alias over ACMEErrorsTotal{ca="lets-encrypt",
+// error_type="rate_limited"} but cheap to maintain and removes one
+// PromQL multiplication step in alert rules.
+var LERateLimitHits = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: "idcd_cert",
+	Subsystem: "le",
+	Name:      "rate_limit_hits_total",
+	Help:      "Let's Encrypt rate-limit hits (alias for cert_acme_errors_total{ca=lets-encrypt,error_type=rate_limited}).",
+})
+
+// DNSChallengeFailures counts DNS-01 challenge failures by classified
+// reason. Complements cert_acme_errors_total by exposing the granular
+// reason set we already maintain in caa_check / dns code.
+//
+//	reason — "txt_propagation"   the _acme-challenge TXT was missing or stale
+//	         "authorization_invalid" ACME returned authorization invalid
+//	         "credential_error"  upstream provider API rejected our creds
+//	         "unknown"           caller passed an unmapped error string
+var DNSChallengeFailures = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_cert",
+	Subsystem: "dns",
+	Name:      "challenge_failures_total",
+	Help:      "DNS-01 challenge failures (按 reason 分类)",
+}, []string{"reason"})
+
+// RecordIssueAttempt is the single hook each createOrder branch calls.
+// We keep label normalisation in one place so unknown CAs collapse to
+// "unknown" rather than blowing up the cardinality.
+func RecordIssueAttempt(outcome, ca string) {
+	IssueAttempts.WithLabelValues(normalizeLabel(outcome), normalizeLabel(ca)).Inc()
+}
+
+// RecordDNSChallengeFailure normalises the reason set so callers can pass
+// arbitrary strings without polluting Prometheus with unbounded labels.
+func RecordDNSChallengeFailure(reason string) {
+	DNSChallengeFailures.WithLabelValues(classifyDNSChallengeFailure(reason)).Inc()
+}
+
+// classifyDNSChallengeFailure pins the reason vocabulary. Add a new
+// branch here when you introduce a new failure class — the linter
+// won't catch silent misspellings.
+func classifyDNSChallengeFailure(s string) string {
+	switch s {
+	case "txt_propagation", "authorization_invalid", "credential_error":
+		return s
+	default:
+		return "unknown"
+	}
+}
+
 // RecordOrderResult is the single hook called by the orchestrator when an
 // order reaches a terminal state. It bumps OrdersTotal and observes the
 // duration histogram in one place so we cannot accidentally drift the

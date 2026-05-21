@@ -51,3 +51,50 @@ var MetricsPollDuration = promauto.NewHistogram(prometheus.HistogramOpts{
 	Help:    "Wall-clock duration of scheduler.pollMonitors invocations.",
 	Buckets: prometheus.DefBuckets,
 })
+
+// ----------------------------------------------------------------------
+// P1-11 Phase 1: idcd-namespaced scheduler metrics.
+//
+// These augment the legacy scheduler_* metrics above (kept untouched so
+// existing dashboards continue to work). The new metrics surface dispatch
+// lag and per-(probe_type, status) outcomes — the two things D12's SLA
+// dashboard needs to track the "did we dispatch on time?" question.
+// ----------------------------------------------------------------------
+
+// MetricsDispatchLag observes the wall-clock gap between "monitor became
+// due" (scheduled_at) and "scheduler dispatched a probe task". This is
+// the headline SLI for the scheduler's responsibility — a sustained
+// shift in the histogram tail means we are falling behind.
+//
+// Buckets cover the realistic range: sub-second (healthy), ~10s (one
+// missed tick), >60s (leader churn / DB slow), 5min+ (alerting territory).
+var MetricsDispatchLag = promauto.NewHistogram(prometheus.HistogramOpts{
+	Namespace: "idcd_scheduler",
+	Subsystem: "dispatch",
+	Name:      "lag_seconds",
+	Help:      "派发任务时刻 - 计划时刻的差 (秒), 监控调度健康度",
+	Buckets:   []float64{0.1, 0.5, 1, 2, 5, 10, 30, 60, 300, 600},
+})
+
+// MetricsDispatchedTasks counts every successful XADD onto probe.tasks.
+//
+//	probe_type — "http" | "ping" | "tcp" | "dns" | ...
+//	status     — "ok"     XADD succeeded
+//	             "select_node_fail"
+//	             "stream_push_fail"
+var MetricsDispatchedTasks = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_scheduler",
+	Subsystem: "dispatch",
+	Name:      "tasks_total",
+	Help:      "派发的 probe task 数 (按 probe_type + status 分类)",
+}, []string{"probe_type", "status"})
+
+// MetricsEpochCurrent exposes the scheduler's currently-held fencing
+// token. Labelled by node so multi-replica deployments can chart leader
+// handoff via the epoch increment.
+var MetricsEpochCurrent = promauto.NewGaugeVec(prometheus.GaugeOpts{
+	Namespace: "idcd_scheduler",
+	Subsystem: "leader",
+	Name:      "epoch_current",
+	Help:      "当前 leader 持有的 epoch (fencing token, 路径 D)",
+}, []string{"node"})

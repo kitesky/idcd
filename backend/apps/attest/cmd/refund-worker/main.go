@@ -33,6 +33,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"strings"
@@ -43,14 +44,20 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/attest/internal/config"
+	attestmetrics "github.com/kite365/idcd/apps/attest/internal/metrics"
 	"github.com/kite365/idcd/apps/attest/internal/refund"
 	"github.com/kite365/idcd/apps/attest/internal/repo"
 	"github.com/kite365/idcd/apps/attest/internal/streamconsumer"
 	"github.com/kite365/idcd/lib/shared/asynqtask"
 )
+
+// metricsListenAddr is the address the refund worker exposes /metrics on.
+// Override via env if the default collides with another local service.
+const metricsListenAddr = ":9095"
 
 // apologyTaskType — 真值集中在 lib/shared/asynqtask.TaskRefundApology，
 // 由 apps/notifier 端 worker 消费。两端必须一致。
@@ -185,6 +192,45 @@ func main() {
 		defer wg.Done()
 		runTickLoop(ctx, handler, refund.DefaultTickInterval, log)
 	}()
+	// P1-11: separate goroutine samples the delay-zone backlog gauge so
+	// the queue length is observable even on ticks where TickDelayZone
+	// finds nothing eligible (e.g. all members are scheduled in the
+	// future). Shares the tick interval to keep the resolution uniform.
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		runQueueLengthSampler(ctx, rdb, cfg.RefundDelayZoneKey, refund.DefaultTickInterval, log)
+	}()
+
+	// P1-11: serve /metrics on a dedicated port so Prometheus can scrape
+	// the refund-worker's gauges + counters. Failure to bind logs but is
+	// not fatal — the worker's primary duty is still to drain queues.
+	metricsAddr := metricsListenAddr
+	if override := strings.TrimSpace(os.Getenv("ATTEST_REFUND_METRICS_ADDR")); override != "" {
+		metricsAddr = override
+	}
+	metricsSrv := &http.Server{
+		Addr:              metricsAddr,
+		Handler:           promhttp.Handler(),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		log.Info("attest-refund-worker: serving /metrics", "addr", metricsAddr)
+		if err := metricsSrv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Warn("metrics server exited with error", "err", err)
+		}
+	}()
+	// Stop the metrics server when ctx is cancelled so the worker exits
+	// cleanly. Done in a goroutine so wg.Wait() below still drives the
+	// shutdown ordering.
+	go func() {
+		<-ctx.Done()
+		shutCtx, shutCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer shutCancel()
+		_ = metricsSrv.Shutdown(shutCtx)
+	}()
 
 	wg.Wait()
 
@@ -219,6 +265,43 @@ func runTickLoop(ctx context.Context, h *refund.Handler, interval time.Duration,
 			}
 		}
 	}
+}
+
+// runQueueLengthSampler periodically samples ZCARD on the delay-zone key
+// and publishes the result to the idcd_attest_refund_retry_queue_length
+// gauge. Runs on the same cadence as the retry tick so the gauge
+// movement lines up with retry activity in Grafana.
+//
+// Errors are logged but never fatal — a Redis blip must not bring down
+// the refund worker; the next tick will refresh the gauge.
+func runQueueLengthSampler(ctx context.Context, rdb *redis.Client, key string, interval time.Duration, log *slog.Logger) {
+	if strings.TrimSpace(key) == "" {
+		key = refund.DefaultDelayZoneKey
+	}
+	t := time.NewTicker(interval)
+	defer t.Stop()
+	// Take one sample immediately so the gauge isn't stuck at 0 until the
+	// first tick fires.
+	sampleQueueLength(ctx, rdb, key, log)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+			sampleQueueLength(ctx, rdb, key, log)
+		}
+	}
+}
+
+func sampleQueueLength(ctx context.Context, rdb *redis.Client, key string, log *slog.Logger) {
+	zcardCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+	n, err := rdb.ZCard(zcardCtx, key).Result()
+	if err != nil {
+		log.Warn("queue length sampler: ZCARD failed", "key", key, "err", err)
+		return
+	}
+	attestmetrics.SetRefundRetryQueueLength(int(n))
 }
 
 func newLogger(level string) *slog.Logger {

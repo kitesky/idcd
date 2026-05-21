@@ -122,3 +122,55 @@ func TestClassifyACMEError(t *testing.T) {
 	assert.Equal(t, "other", classifyACMEError("anything else"))
 	assert.Equal(t, "other", classifyACMEError(""))
 }
+
+// --- P1-11 Phase 1: idcd-namespaced issuance metrics ---
+
+func TestRecordIssueAttempt(t *testing.T) {
+	IssueAttempts.Reset()
+
+	RecordIssueAttempt("accepted", "lets-encrypt")
+	RecordIssueAttempt("accepted", "lets-encrypt")
+	RecordIssueAttempt("quota_exceeded", "lets-encrypt")
+	RecordIssueAttempt("abuse_blocked", "")    // ca empty → "unknown"
+	RecordIssueAttempt("", "lets-encrypt")     // outcome empty → "unknown"
+
+	assert.Equal(t, float64(2),
+		testutil.ToFloat64(IssueAttempts.WithLabelValues("accepted", "lets-encrypt")))
+	assert.Equal(t, float64(1),
+		testutil.ToFloat64(IssueAttempts.WithLabelValues("quota_exceeded", "lets-encrypt")))
+	assert.Equal(t, float64(1),
+		testutil.ToFloat64(IssueAttempts.WithLabelValues("abuse_blocked", "unknown")))
+	assert.Equal(t, float64(1),
+		testutil.ToFloat64(IssueAttempts.WithLabelValues("unknown", "lets-encrypt")))
+}
+
+func TestRecordDNSChallengeFailure(t *testing.T) {
+	DNSChallengeFailures.Reset()
+
+	RecordDNSChallengeFailure("txt_propagation")
+	RecordDNSChallengeFailure("authorization_invalid")
+	RecordDNSChallengeFailure("credential_error")
+	RecordDNSChallengeFailure("something-novel") // → "unknown"
+	RecordDNSChallengeFailure("")                // → "unknown"
+
+	assert.Equal(t, float64(1),
+		testutil.ToFloat64(DNSChallengeFailures.WithLabelValues("txt_propagation")))
+	assert.Equal(t, float64(1),
+		testutil.ToFloat64(DNSChallengeFailures.WithLabelValues("authorization_invalid")))
+	assert.Equal(t, float64(1),
+		testutil.ToFloat64(DNSChallengeFailures.WithLabelValues("credential_error")))
+	assert.Equal(t, float64(2),
+		testutil.ToFloat64(DNSChallengeFailures.WithLabelValues("unknown")))
+}
+
+func TestLERateLimitHits(t *testing.T) {
+	if LERateLimitHits == nil {
+		t.Fatal("LERateLimitHits is nil — promauto registration failed")
+	}
+	LERateLimitHits.Inc()
+	LERateLimitHits.Inc()
+	// Don't assert specific value (promauto default registry → cross-suite shared);
+	// just confirm Inc() does not panic and the collector exposes a non-negative
+	// sample.
+	assert.GreaterOrEqual(t, testutil.ToFloat64(LERateLimitHits), float64(2))
+}

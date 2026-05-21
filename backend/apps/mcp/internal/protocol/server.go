@@ -13,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	mcpmetrics "github.com/kite365/idcd/apps/mcp/internal/metrics"
 )
 
 type ToolHandler func(ctx context.Context, args map[string]any) (string, error)
@@ -158,6 +160,9 @@ func (s *Server) handleToolsList(req Request) *Response {
 func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 	var params ToolCallParams
 	if err := json.Unmarshal(req.Params, &params); err != nil {
+		// Don't bump ToolInvocations here — we don't know which tool the
+		// caller meant, and labelling by "unknown" would conflate this
+		// with legitimate handler-side miscounts.
 		return &Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -167,6 +172,9 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 
 	handler, ok := s.handlers[params.Name]
 	if !ok {
+		// Tool unknown — count under the requested name so an alert can
+		// flag clients calling deprecated/non-existent tools.
+		mcpmetrics.RecordToolInvocation(params.Name, "method_not_found", 0)
 		return &Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -174,13 +182,18 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 		}
 	}
 
+	// P1-11: time every handler call so the duration histogram captures
+	// real-world latency. Outcome is determined after the call returns.
+	start := time.Now()
 	text, err := handler(ctx, params.Arguments)
+	durSec := time.Since(start).Seconds()
 	if err != nil {
 		// Tool-level failure (wrapped ErrToolFailure) → MCP IsError result.
 		// The call itself succeeded at the protocol layer; the tool reports
 		// a recoverable problem in-band so the client can show it to the
 		// user without retrying the JSON-RPC envelope.
 		if errors.Is(err, ErrToolFailure) {
+			mcpmetrics.RecordToolInvocation(params.Name, "tool_failure", durSec)
 			msg := err.Error()
 			// Strip the "mcp tool: failure: " prefix that errors.Wrap
 			// produces — the sentinel is for routing, not display.
@@ -195,6 +208,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 			}
 		}
 		// Unexpected (panic-class) failure → JSON-RPC protocol error.
+		mcpmetrics.RecordToolInvocation(params.Name, "internal_error", durSec)
 		return &Response{
 			JSONRPC: "2.0",
 			ID:      req.ID,
@@ -202,6 +216,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req Request) *Response {
 		}
 	}
 
+	mcpmetrics.RecordToolInvocation(params.Name, "ok", durSec)
 	return &Response{
 		JSONRPC: "2.0",
 		ID:      req.ID,
@@ -340,6 +355,13 @@ func sseHandler(s *Server, cfgFn func() HTTPConfig) http.Handler {
 		w.Header().Set("Connection", "keep-alive")
 		// Defence-in-depth: forbid iframe / cross-site embedding.
 		w.Header().Set("X-Content-Type-Options", "nosniff")
+
+		// P1-11: bump the SSE gauge while this handler is alive. The
+		// matching Dec runs in defer so any exit path (client hang-up,
+		// heartbeat write error, ctx cancellation) releases the slot.
+		// D13 capacity bound: 10k connections per instance.
+		mcpmetrics.SSEConnections.Inc()
+		defer mcpmetrics.SSEConnections.Dec()
 
 		flusher, _ := w.(http.Flusher)
 		fmt.Fprintf(w, "event: endpoint\ndata: /messages\n\n")

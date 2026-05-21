@@ -10,6 +10,8 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -137,10 +139,17 @@ func (c *Consumer) Run(ctx context.Context) error {
 		}
 
 		for _, msg := range msgs {
+			// P1-11: time the processor run so the new
+			// idcd_aggregator_results_processing_duration_seconds histogram
+			// captures latency partitioned by probe_type. The legacy
+			// MessagesProcessed counter remains the per-stream tally.
+			procStart := time.Now()
+			probeType := probeTypeFromValues(msg.Values)
 			if err := c.processor.Process(ctx, msg.ID, msg.Values); err != nil {
 				c.logger.Error("consumer: process failed",
 					"consumer", c.consumerName, "msg_id", msg.ID, "err", err)
 				metrics.MessagesFailed.WithLabelValues(c.stream, c.consumerName).Inc()
+				metrics.ProcessedResults.WithLabelValues("downstream_error", probeType).Inc()
 				// Do not ACK — message stays in PEL for reclaim.
 				continue
 			}
@@ -149,8 +158,57 @@ func (c *Consumer) Run(ctx context.Context) error {
 					"consumer", c.consumerName, "msg_id", msg.ID, "err", err)
 			}
 			metrics.MessagesProcessed.WithLabelValues(c.stream, c.consumerName).Inc()
+			metrics.ProcessedResults.WithLabelValues("ok", probeType).Inc()
+			metrics.ProcessingDuration.WithLabelValues(probeType).Observe(time.Since(procStart).Seconds())
+			// Sample end-to-end lag from the stream-ID ms prefix. A parse
+			// failure leaves the gauge untouched rather than poisoning it
+			// with a misleading zero.
+			if lag, ok := streamIDLagSeconds(msg.ID, time.Now()); ok {
+				metrics.StreamConsumerLag.WithLabelValues(c.stream).Set(lag)
+			}
 		}
 	}
+}
+
+// probeTypeFromValues extracts the "type" or "probe_type" field from a
+// stream entry. Returns "unknown" so the label cardinality stays bounded
+// even when an upstream producer drifts.
+func probeTypeFromValues(values map[string]any) string {
+	for _, key := range []string{"type", "probe_type"} {
+		if v, ok := values[key]; ok {
+			switch s := v.(type) {
+			case string:
+				if s != "" {
+					return s
+				}
+			case []byte:
+				if len(s) > 0 {
+					return string(s)
+				}
+			}
+		}
+	}
+	return "unknown"
+}
+
+// streamIDLagSeconds parses a Redis stream ID ("<unix-ms>-<seq>") and
+// returns (now - ms_prefix) in seconds. Returns (0, false) on any parse
+// failure so the caller can skip the metric update instead of polluting
+// the gauge with an outlier.
+func streamIDLagSeconds(id string, now time.Time) (float64, bool) {
+	dash := strings.IndexByte(id, '-')
+	if dash <= 0 {
+		return 0, false
+	}
+	ms, err := strconv.ParseInt(id[:dash], 10, 64)
+	if err != nil || ms <= 0 {
+		return 0, false
+	}
+	lag := now.Sub(time.UnixMilli(ms)).Seconds()
+	if lag < 0 {
+		return 0, false
+	}
+	return lag, true
 }
 
 // RunMaintenance runs the periodic reclaim + DLQ + PEL-gauge sampling loop.

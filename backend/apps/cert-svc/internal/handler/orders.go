@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/kite365/idcd/apps/cert-svc/internal/metrics"
 	"github.com/kite365/idcd/apps/cert-svc/internal/repo"
 	"github.com/kite365/idcd/apps/cert-svc/internal/service"
 	"github.com/kite365/idcd/lib/shared/pagination"
@@ -61,14 +62,17 @@ func createOrder(deps Deps) http.HandlerFunc {
 
 		var req createOrderRequest
 		if !readJSON(w, r, &req) {
+			metrics.RecordIssueAttempt("invalid_input", req.CA)
 			return
 		}
 		if len(req.SANs) == 0 {
+			metrics.RecordIssueAttempt("invalid_input", req.CA)
 			writeErr(w, http.StatusBadRequest, codeDomainInvalid,
 				"sans is required", nil)
 			return
 		}
 		if len(req.SANs) > 10 {
+			metrics.RecordIssueAttempt("invalid_input", req.CA)
 			writeErr(w, http.StatusBadRequest, codeDomainInvalid,
 				"at most 10 SANs per order", nil)
 			return
@@ -77,6 +81,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 			req.Challenge = challengeDNS01
 		}
 		if req.Challenge != challengeDNS01 {
+			metrics.RecordIssueAttempt("invalid_input", req.CA)
 			writeErr(w, http.StatusBadRequest, codeBadRequest,
 				"only dns-01 challenge supported in S1", nil)
 			return
@@ -104,6 +109,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 		ascii = dedupePreserveOrder(ascii)
 		unicode = dedupePreserveOrder(unicode)
 		if len(ascii) == 0 {
+			metrics.RecordIssueAttempt("invalid_input", req.CA)
 			writeErr(w, http.StatusBadRequest, codeDomainInvalid,
 				"no valid SAN survived normalisation", nil)
 			return
@@ -114,20 +120,24 @@ func createOrder(deps Deps) http.HandlerFunc {
 			cred, err := deps.Repos.DNSCredentials.GetByID(r.Context(), *req.DNSCredentialID)
 			if err != nil {
 				if errors.Is(err, repo.ErrNotFound) {
+					metrics.RecordIssueAttempt("credential_invalid", req.CA)
 					writeErr(w, http.StatusUnprocessableEntity, codeCredentialInvalid,
 						"dns credential not found", nil)
 					return
 				}
+				metrics.RecordIssueAttempt("internal", req.CA)
 				writeErr(w, http.StatusInternalServerError, codeInternal,
 					"dns credential lookup failed", nil)
 				return
 			}
 			if cred.AccountID != accountID {
+				metrics.RecordIssueAttempt("credential_invalid", req.CA)
 				writeErr(w, http.StatusForbidden, codeForbidden,
 					"dns credential does not belong to this account", nil)
 				return
 			}
 			if cred.RevokedAt != nil {
+				metrics.RecordIssueAttempt("credential_invalid", req.CA)
 				writeErr(w, http.StatusUnprocessableEntity, codeCredentialInvalid,
 					"dns credential has been revoked", nil)
 				return
@@ -139,6 +149,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 		// schema-level COUNT query so S1 keeps the repo surface small.
 		if used, err := dailyOrderCount(r.Context(), deps.Repos.Orders, accountID); err == nil {
 			if used >= dailyOrderQuota {
+				metrics.RecordIssueAttempt("quota_exceeded", req.CA)
 				writeErr(w, http.StatusTooManyRequests, codeQuotaExceeded,
 					"daily order quota exhausted", nil)
 				return
@@ -155,11 +166,13 @@ func createOrder(deps Deps) http.HandlerFunc {
 		if abuse := deps.Service.Abuse; abuse != nil {
 			if err := abuse.Check(r.Context(), accountID, ascii); err != nil {
 				if errors.Is(err, service.ErrAccountBanned) {
+					metrics.RecordIssueAttempt("abuse_blocked", ca)
 					writeErr(w, http.StatusForbidden, codeAccountBanned,
 						err.Error(), nil)
 					return
 				}
 				if errors.Is(err, service.ErrAbuseBlocked) {
+					metrics.RecordIssueAttempt("abuse_blocked", ca)
 					writeErr(w, http.StatusForbidden, codeAbuseBlocked,
 						err.Error(), nil)
 					return
@@ -170,6 +183,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 		}
 		if err := deps.Service.CheckCAA(r.Context(), ascii, ca); err != nil {
 			if errors.Is(err, service.ErrCAAForbidden) {
+				metrics.RecordIssueAttempt("caa_forbid", ca)
 				writeErr(w, http.StatusUnprocessableEntity, codeCAAForbid,
 					"CAA records forbid the target CA: "+err.Error(),
 					map[string]string{
@@ -207,12 +221,14 @@ func createOrder(deps Deps) http.HandlerFunc {
 		if err != nil {
 			if errors.Is(err, repo.ErrConflict) && id > 0 {
 				// Idempotent replay — return the existing order with 200.
+				metrics.RecordIssueAttempt("idempotent_replay", ca)
 				writeJSON(w, http.StatusOK, createOrderResponse{
 					OrderID: id,
 					Status:  string(repo.OrderStatusDraft),
 				})
 				return
 			}
+			metrics.RecordIssueAttempt("internal", ca)
 			writeErr(w, http.StatusInternalServerError, codeInternal,
 				"order insert failed", nil)
 			return
@@ -223,6 +239,7 @@ func createOrder(deps Deps) http.HandlerFunc {
 		// sweep; the client still sees a 201.
 		_ = deps.Service.EnqueueOrder(r.Context(), id)
 
+		metrics.RecordIssueAttempt("accepted", ca)
 		writeJSON(w, http.StatusCreated, createOrderResponse{
 			OrderID: id,
 			Status:  string(repo.OrderStatusDraft),

@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	apimetrics "github.com/kite365/idcd/apps/api/internal/metrics"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/db/gen/idcdmain"
@@ -156,6 +157,8 @@ func (h *APIKeyHandler) CreateAPIKey(w http.ResponseWriter, r *http.Request) {
 		response.Error(w, r, apperr.Internal("failed to create api key", err))
 		return
 	}
+	// P1-11: track api_key issuance under the unified TokensIssued counter.
+	apimetrics.TokensIssued.WithLabelValues("api_key").Inc()
 
 	pfx := apiKeyLivePrefix
 	if ktype == keyTypeTest {

@@ -53,3 +53,51 @@ var MetricsActiveNodes = promauto.NewGauge(prometheus.GaugeOpts{
 	Name: "gateway_active_nodes",
 	Help: "Current number of registered agent nodes.",
 })
+
+// ----------------------------------------------------------------------
+// P1-11 Phase 1: idcd-namespaced gateway counters.
+//
+// These augment the existing gateway_* and idcd_gateway_stale_epoch_total
+// metrics. The new counter captures agent reconnect cadence — a key
+// signal for diagnosing network flapping or LB churn.
+// ----------------------------------------------------------------------
+
+// MetricsAgentReconnects counts every time the hub's Register code path
+// observed an existing connection for the same node_id and replaced it.
+// This is a near-synonym of gateway_disconnects_total{reason="replaced"}
+// but exposed under the new idcd_gateway_* namespace so the alert rule
+// (and future status-page metric) reads a single intuitive counter.
+var MetricsAgentReconnects = promauto.NewCounter(prometheus.CounterOpts{
+	Namespace: "idcd_gateway",
+	Subsystem: "agent",
+	Name:      "reconnects_total",
+	Help:      "agent 重连次数 (因 Register 触发的旧连接替换)",
+})
+
+// MetricsAgentConnections counts WS connection attempts under the new
+// namespace, partitioned by outcome. The fine-grained breakdown by
+// rejection reason here complements the legacy
+// gateway_ws_connections_total which collapses everything into
+// accepted/rejected/disconnected/replaced.
+//
+//	outcome — "accepted"        handshake + register succeeded
+//	          "rejected_enroll" node not enrolled
+//	          "rejected_auth"   api_key / token invalid
+var MetricsAgentConnections = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_gateway",
+	Subsystem: "agent",
+	Name:      "connections_total",
+	Help:      "agent WS 连接尝试 (按 outcome 分类)",
+}, []string{"outcome"})
+
+// MetricsWSMessagesReceived counts inbound messages by protocol type.
+// Mirrors the legacy gateway_node_messages_total under the new namespace
+// so dashboards can migrate without losing label fidelity.
+//
+//	type — "task_ack" | "result" | "heartbeat" | "error" | "unknown"
+var MetricsWSMessagesReceived = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_gateway",
+	Subsystem: "ws",
+	Name:      "messages_received_total",
+	Help:      "agent → gateway 入站消息数 (按 type 分类)",
+}, []string{"type"})

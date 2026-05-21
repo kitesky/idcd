@@ -52,3 +52,39 @@ var MetricsSendDuration = promauto.NewHistogramVec(prometheus.HistogramOpts{
 	Help:    "Wall-clock duration of notifier delivery attempts.",
 	Buckets: prometheus.DefBuckets,
 }, []string{"channel"})
+
+// ----------------------------------------------------------------------
+// P1-11 Phase 1: idcd-namespaced notifier counters. The legacy
+// notifier_* counters above keep working; this counter exposes
+// per-(provider, template) outcome so the Grafana dashboard can pivot
+// on either dimension without doing a multiplied PromQL join over
+// notifier_emails_sent_total and a separate template label that didn't
+// exist before.
+// ----------------------------------------------------------------------
+
+// EmailSent counts each Sender.Send call partitioned by outcome /
+// provider / template. This is a denormalised duplicate of the legacy
+// MetricsEmailsSent — the difference is the "template" label, which
+// upgrades the signal from "emails are flowing" to "verify-email
+// emails are flowing".
+//
+//	outcome  — "ok" | "fail"
+//	provider — "ses" | "smtp" | "unknown"
+//	template — "verify_email" | "reset_password" | "refund_apology" | ...
+var EmailSent = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_notifier",
+	Subsystem: "email",
+	Name:      "sent_total",
+	Help:      "邮件发送计数 (按 outcome + provider + template)",
+}, []string{"outcome", "provider", "template"})
+
+// EmailRetries counts retry decisions made by the notifier worker.
+//
+//	reason — "transient_smtp" | "ses_throttled" | "rate_limited" |
+//	         "unknown"
+var EmailRetries = promauto.NewCounterVec(prometheus.CounterOpts{
+	Namespace: "idcd_notifier",
+	Subsystem: "email",
+	Name:      "retries_total",
+	Help:      "邮件发送重试计数 (按 reason 分类)",
+}, []string{"reason"})

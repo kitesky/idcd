@@ -152,6 +152,9 @@ func (h *Hub) Register(nodeID string, conn *websocket.Conn) *Connection {
 		// Spec-compliant metric: gateway_ws_connections_total{outcome="replaced"}
 		// counts the close-old half of a connection-replacement event.
 		MetricsWSConnections.WithLabelValues("replaced").Inc()
+		// P1-11: same event under the new idcd_gateway_* namespace — agent
+		// reconnect cadence is a key network-health signal.
+		MetricsAgentReconnects.Inc()
 		old.Close()
 		h.logger.Info("connection replaced",
 			"node_id", nodeID,
@@ -171,6 +174,8 @@ func (h *Hub) Register(nodeID string, conn *websocket.Conn) *Connection {
 	// dashboards can migrate without losing data.
 	MetricsActiveNodes.Set(float64(len(h.connections)))
 	MetricsWSConnections.WithLabelValues("accepted").Inc()
+	// P1-11: same event under the new idcd_gateway_* namespace.
+	MetricsAgentConnections.WithLabelValues("accepted").Inc()
 
 	h.logger.Info("node registered",
 		"node_id", nodeID,
@@ -275,6 +280,8 @@ func (h *Hub) UpdateHeartbeat(nodeID string) bool {
 	// observes heartbeats (other message types are dispatched in the WS
 	// handler), so heartbeat is the only label populated from this path.
 	MetricsNodeMessages.WithLabelValues("heartbeat").Inc()
+	// P1-11: same event under the new idcd_gateway_* namespace.
+	MetricsWSMessagesReceived.WithLabelValues("heartbeat").Inc()
 	return true
 }
 

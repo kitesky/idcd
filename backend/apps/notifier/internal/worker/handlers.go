@@ -657,17 +657,64 @@ func (h *Handlers) HandleRefundApology(ctx context.Context, task *asynq.Task) er
 // the outcome counter and the send-duration histogram. Centralising the
 // instrumentation here keeps the existing logging / error handling at each
 // call site untouched.
+//
+// P1-11: callers may pre-extract the template name via templateFromSubject
+// or pass it in directly through sendEmailTemplate; the un-templated
+// sendEmail still works and records the new idcd_notifier_email_sent_total
+// counter with template="unknown".
 func (h *Handlers) sendEmail(ctx context.Context, msg email.Message) error {
+	return h.sendEmailTemplate(ctx, msg, templateFromSubject(msg.Subject))
+}
+
+// sendEmailTemplate is the version called by handlers that know the
+// template name up front (cleaner than re-deriving it from the subject).
+func (h *Handlers) sendEmailTemplate(ctx context.Context, msg email.Message, templateName string) error {
 	provider := emailProviderLabel(h.sender)
 	start := time.Now()
 	err := h.sender.Send(ctx, msg)
 	MetricsSendDuration.WithLabelValues("email").Observe(time.Since(start).Seconds())
+	tpl := templateName
+	if tpl == "" {
+		tpl = "unknown"
+	}
 	if err != nil {
 		MetricsEmailsSent.WithLabelValues(provider, "fail").Inc()
+		EmailSent.WithLabelValues("fail", provider, tpl).Inc()
 		return err
 	}
 	MetricsEmailsSent.WithLabelValues(provider, "ok").Inc()
+	EmailSent.WithLabelValues("ok", provider, tpl).Inc()
 	return nil
+}
+
+// templateFromSubject is a best-effort classifier: every notifier-side
+// handler hard-codes one of a small number of subject strings via the
+// i18n catalog, so a substring lookup is sufficient. Unknown subjects
+// collapse to "unknown" — better than blowing up label cardinality with
+// raw user-visible subject lines.
+//
+// The English keywords are matched case-insensitively (so "Welcome to
+// idcd" still classifies as "welcome"); the CJK keywords are matched
+// literally because Chinese has no concept of case.
+func templateFromSubject(subject string) string {
+	s := strings.ToLower(subject)
+	switch {
+	case strings.Contains(s, "verify") || strings.Contains(subject, "验证"):
+		return "verify_email"
+	case strings.Contains(s, "reset") || strings.Contains(subject, "密码"):
+		return "reset_password"
+	case strings.Contains(s, "welcome") || strings.Contains(subject, "欢迎"):
+		return "welcome"
+	case strings.Contains(s, "refund") || strings.Contains(subject, "退款"):
+		return "refund_apology"
+	case strings.Contains(s, "billing") || strings.Contains(s, "invoice") ||
+		strings.Contains(subject, "账单") || strings.Contains(subject, "发票"):
+		return "billing"
+	case strings.Contains(s, "alert") || strings.Contains(subject, "告警"):
+		return "alert"
+	default:
+		return "unknown"
+	}
 }
 
 // emailProviderLabel maps a concrete Sender to its provider label. Anything

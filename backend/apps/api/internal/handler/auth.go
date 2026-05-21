@@ -21,6 +21,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/api/internal/errcode"
+	apimetrics "github.com/kite365/idcd/apps/api/internal/metrics"
 	"github.com/kite365/idcd/apps/api/internal/middleware"
 	"github.com/kite365/idcd/apps/api/internal/response"
 	"github.com/kite365/idcd/lib/auth/password"
@@ -214,21 +215,25 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req registerRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apimetrics.RegistrationAttempts.WithLabelValues("invalid_input").Inc()
 		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 
 	if req.Email == "" {
+		apimetrics.RegistrationAttempts.WithLabelValues("invalid_input").Inc()
 		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, map[string]any{"field": "email"})
 		return
 	}
 	if err := password.ValidatePassword(req.Password, req.Email); err != nil {
+		apimetrics.RegistrationAttempts.WithLabelValues("weak_password").Inc()
 		response.ErrorCode(ctx, w, r, errcode.AuthPasswordWeak, map[string]any{"detail": err.Error()})
 		return
 	}
 
 	hash, err := password.Hash(req.Password)
 	if err != nil {
+		apimetrics.RegistrationAttempts.WithLabelValues("internal").Inc()
 		response.Error(w, r, apperr.Internal("failed to hash password", err))
 		return
 	}
@@ -302,12 +307,19 @@ func (h *AuthHandler) Register(w http.ResponseWriter, r *http.Request) {
 		// errors.Is walks the wrap chain, so issueOTP / issueToken wrapping
 		// preserves repository.ErrDuplicate from CreateUser.
 		if errors.Is(txErr, repository.ErrDuplicate) {
+			apimetrics.RegistrationAttempts.WithLabelValues("duplicate_email").Inc()
 			response.ErrorCode(ctx, w, r, errcode.AccountEmailTaken, map[string]any{"email": req.Email})
 			return
 		}
+		apimetrics.RegistrationAttempts.WithLabelValues("internal").Inc()
 		response.Error(w, r, apperr.Internal("failed to register user", txErr))
 		return
 	}
+
+	apimetrics.RegistrationAttempts.WithLabelValues("success").Inc()
+	// Each successful Register issues exactly one session token (see issueToken
+	// above) so the counter tracks 1:1 with successful registrations.
+	apimetrics.TokensIssued.WithLabelValues("session").Inc()
 
 	if req.ReferralCode != "" && h.referralPool != nil {
 		h.recordReferral(ctx, req.ReferralCode, user.ID)
@@ -374,11 +386,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		apimetrics.LoginAttempts.WithLabelValues("invalid_input").Inc()
 		response.ErrorCode(ctx, w, r, errcode.RequestBodyBad, nil)
 		return
 	}
 
 	if req.Email == "" || req.Password == "" {
+		apimetrics.LoginAttempts.WithLabelValues("invalid_input").Inc()
 		response.ErrorCode(ctx, w, r, errcode.ValidationFailed, nil)
 		return
 	}
@@ -386,14 +400,17 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	user, err := h.q.GetUserByEmail(ctx, req.Email)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
+			apimetrics.LoginAttempts.WithLabelValues("invalid_credentials").Inc()
 			response.ErrorCode(ctx, w, r, errcode.AuthCredentialsInvalid, nil)
 			return
 		}
+		apimetrics.LoginAttempts.WithLabelValues("internal").Inc()
 		response.Error(w, r, apperr.Internal("failed to fetch user", err))
 		return
 	}
 
 	if user.PasswordHash == nil || !password.Verify(req.Password, *user.PasswordHash) {
+		apimetrics.LoginAttempts.WithLabelValues("invalid_credentials").Inc()
 		response.ErrorCode(ctx, w, r, errcode.AuthCredentialsInvalid, nil)
 		return
 	}
@@ -401,6 +418,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	// users.status enum: active / locked / pending_deletion / deleted.
 	// Anything other than 'active' must be rejected.
 	if user.Status != "active" {
+		apimetrics.LoginAttempts.WithLabelValues("account_disabled").Inc()
 		response.ErrorCode(ctx, w, r, errcode.AuthAccountDisabled, map[string]any{"status": user.Status})
 		return
 	}
@@ -408,9 +426,12 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if h.mfaPool != nil && h.mfaRedis != nil && h.userHas2FA(ctx, user.ID) {
 		mfaToken := idgen.New("mfa")
 		if err := h.mfaRedis.Set(ctx, mfaPendingKeyPrefix+mfaToken, user.ID, mfaPendingTTL).Err(); err != nil {
+			apimetrics.LoginAttempts.WithLabelValues("internal").Inc()
 			response.Error(w, r, apperr.Internal("failed to create mfa session", err))
 			return
 		}
+		apimetrics.LoginAttempts.WithLabelValues("mfa_required").Inc()
+		apimetrics.TokensIssued.WithLabelValues("two_factor_session").Inc()
 		response.JSON(w, r, http.StatusOK, map[string]any{
 			"mfa_required": true,
 			"mfa_token":    mfaToken,
@@ -420,12 +441,15 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	token, _, err := h.issueToken(ctx, user.ID, user.Locale)
 	if err != nil {
+		apimetrics.LoginAttempts.WithLabelValues("internal").Inc()
 		response.Error(w, r, apperr.Internal("failed to issue token", err))
 		return
 	}
 
 	_ = h.q.UpdateUserLastLogin(ctx, idcdmain.UpdateUserLastLoginParams{ID: user.ID})
 
+	apimetrics.LoginAttempts.WithLabelValues("success").Inc()
+	apimetrics.TokensIssued.WithLabelValues("session").Inc()
 	writeAuthSuccess(w, r, http.StatusOK, token, user.ID)
 }
 
@@ -786,31 +810,42 @@ func (h *AuthHandler) issueOTPWithQ(ctx context.Context, q AuthQuerier, userID, 
 // verifyOTPCoded validates an OTP and returns (codeName, params) when
 // validation fails, or ("", nil) on success. Handlers translate the
 // errcode through response.ErrorCode so the user sees a localized message.
+//
+// Centralising the OTP verify outcome counter here means every flow
+// (verify-email / forgot-password / 2FA) feeds a single metric — we never
+// need to remember to instrument the per-flow handler call sites.
 func (h *AuthHandler) verifyOTPCoded(ctx context.Context, userID, otpID, code, otpType string) (errcode.Code, map[string]any) {
 	otp, err := h.q.GetUserOTPByIDAndType(ctx, idcdmain.GetUserOTPByIDAndTypeParams{
 		ID:   otpID,
 		Type: otpType,
 	})
 	if err != nil {
+		apimetrics.OTPVerifyAttempts.WithLabelValues("invalid", otpType).Inc()
 		return errcode.AuthOTPInvalid, nil
 	}
 	if otp.UserID != userID {
+		apimetrics.OTPVerifyAttempts.WithLabelValues("invalid", otpType).Inc()
 		return errcode.AuthOTPInvalid, nil
 	}
 	if otp.UsedAt.Valid {
+		apimetrics.OTPVerifyAttempts.WithLabelValues("invalid", otpType).Inc()
 		return errcode.AuthOTPInvalid, nil
 	}
 	if otp.Attempts >= otpMaxAttempts {
+		apimetrics.OTPVerifyAttempts.WithLabelValues("attempts_exceeded", otpType).Inc()
 		return errcode.AuthOTPAttemptsExceeded, nil
 	}
 	if otp.ExpiresAt.Valid && time.Now().After(otp.ExpiresAt.Time) {
+		apimetrics.OTPVerifyAttempts.WithLabelValues("expired", otpType).Inc()
 		return errcode.AuthOTPExpired, nil
 	}
 	if h.hashOTP(code) != otp.CodeHash {
 		_ = h.q.IncrementUserOTPAttempts(ctx, otp.ID)
+		apimetrics.OTPVerifyAttempts.WithLabelValues("invalid", otpType).Inc()
 		return errcode.AuthOTPInvalid, nil
 	}
 	_ = h.q.MarkUserOTPUsed(ctx, otp.ID)
+	apimetrics.OTPVerifyAttempts.WithLabelValues("success", otpType).Inc()
 	return "", nil
 }
 

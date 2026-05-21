@@ -126,7 +126,7 @@ func New(cfg Config) *Scheduler {
 	if lg == nil {
 		lg = slog.Default().With("component", "scheduler")
 	}
-	return &Scheduler{
+	s := &Scheduler{
 		leader:       cfg.Leader,
 		selector:     cfg.Selector,
 		stream:       cfg.Stream,
@@ -136,6 +136,17 @@ func New(cfg Config) *Scheduler {
 		logger:       lg,
 		epoch:        cfg.Epoch,
 	}
+	// P1-11: publish the fencing token to Prometheus so an alerting rule
+	// can fire on "epoch_current never increased after a leader change"
+	// (the path-D failure mode). Static at startup; if the scheduler
+	// re-acquires an epoch mid-run we will need to update this in-place,
+	// but that path doesn't exist today.
+	nodeLabel := cfg.NodeID
+	if nodeLabel == "" {
+		nodeLabel = "unknown"
+	}
+	MetricsEpochCurrent.WithLabelValues(nodeLabel).Set(float64(cfg.Epoch))
+	return s
 }
 
 // SetLogger swaps the scheduler's structured logger. Useful for tests or for
@@ -343,6 +354,11 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		}
 
 		taskID := idgen.ProbeTask()
+		// P1-11: dispatch latency is "monitor became due → task hits the
+		// stream". We don't have scheduled_at on DueMonitor today (the
+		// monitor store only flags "next_check_at <= NOW()"), so measure
+		// the time spent inside this loop body as the closest proxy.
+		dispatchStart := time.Now()
 
 		// Select a node via the configured NodeSelector.
 		task := &queue.ProbeTask{
@@ -354,6 +370,7 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 		}
 		nodeID, err := s.selector.SelectNode(ctx, task)
 		if err != nil {
+			MetricsDispatchedTasks.WithLabelValues(probeType, "select_node_fail").Inc()
 			s.logger.Error("dispatch monitor task: select node failed", "monitor_id", m.ID, "err", err)
 			continue
 		}
@@ -377,7 +394,11 @@ func (s *Scheduler) dispatchMonitorTask(ctx context.Context, m DueMonitor) error
 			"epoch":      s.epoch.String(),
 		}
 		if _, err := s.stream.Add(ctx, ProbeTasksStream, vals); err != nil {
+			MetricsDispatchedTasks.WithLabelValues(probeType, "stream_push_fail").Inc()
 			s.logger.Error("dispatch monitor task: push to stream failed", "monitor_id", m.ID, "err", err)
+		} else {
+			MetricsDispatchedTasks.WithLabelValues(probeType, "ok").Inc()
+			MetricsDispatchLag.Observe(time.Since(dispatchStart).Seconds())
 		}
 	}
 	return nil

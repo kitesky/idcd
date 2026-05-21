@@ -12,8 +12,14 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"github.com/kite365/idcd/apps/mcp/internal/apiclient"
+	// P1-11: side-effect import — promauto registration lives in the
+	// metrics package; importing it here ensures /metrics returns the
+	// SSE / tool-invocation collectors even if no live request has yet
+	// touched the protocol package.
+	_ "github.com/kite365/idcd/apps/mcp/internal/metrics"
 	"github.com/kite365/idcd/apps/mcp/internal/protocol"
 	"github.com/kite365/idcd/apps/mcp/internal/tools"
 	"github.com/kite365/idcd/lib/shared/config"
@@ -148,6 +154,12 @@ func runHTTP(port int) error {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	})
+	// P1-11: business + runtime metrics on the same port as /sse so the
+	// existing scrape config (Prometheus pointing at the mcp server's
+	// HTTP port) picks them up without an additional listener. /metrics
+	// is unauthenticated — D13 acceptance was "metrics endpoint is
+	// internal anyway"; if mcp ever lands on a public LB, revisit.
+	mux.Handle("/metrics", promhttp.Handler())
 
 	addr := fmt.Sprintf(":%d", port)
 	return http.ListenAndServe(addr, mux)

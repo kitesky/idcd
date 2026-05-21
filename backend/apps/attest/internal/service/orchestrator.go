@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	attestmetrics "github.com/kite365/idcd/apps/attest/internal/metrics"
 	"github.com/kite365/idcd/lib/attest/pdfsign"
 	attestrec "github.com/kite365/idcd/lib/attest/record"
 )
@@ -212,6 +213,10 @@ func (s *Service) GenerateVerdict(ctx context.Context, orderID string) error {
 		)
 	}
 
+	// P1-11: count committed verdict — pipeline reached its terminal write
+	// path (SetDelivered + WORM archive). A SetDelivered error is logged
+	// above but does not invalidate the verdict.
+	attestmetrics.RecordVerdict("committed")
 	return nil
 }
 
@@ -234,8 +239,22 @@ func (s *Service) runSignStep(ctx context.Context, replayer *attestrec.Replayer,
 	defer cancel()
 	digest := sha256Bytes(pdfBytes)
 	idemKey := fmt.Sprintf("%s:signed", reportID)
+	signStart := time.Now()
 	sig, err := s.cfg.Signer.Sign(signCtx, digest, idemKey)
+	signDuration := time.Since(signStart).Seconds()
 	if err != nil {
+		// P1-11: D11 SOP indicator — every KMS sign failure both bumps the
+		// outcome counter and, because the orchestrator's enclosing retry
+		// loop will re-enter runSignStep on the next pass, the retry
+		// counter. We classify the failure type narrowly: anything that
+		// hit the SignTimeout deadline is a "timeout", everything else is
+		// a "kms_error" (transport / quota / signature failure).
+		outcome := "kms_error"
+		if signCtx.Err() == context.DeadlineExceeded {
+			outcome = "timeout"
+		}
+		attestmetrics.RecordKMSSign(outcome, signDuration)
+		attestmetrics.RecordKMSSignRetry()
 		if recErr := replayer.Record(ctx, reportID, attestrec.ActionSigned, attestrec.StatusFailure, "", err.Error()); recErr != nil {
 			s.cfg.Logger.Warn("attest/service: WAL record failure write failed",
 				slog.String("action", string(attestrec.ActionSigned)),
@@ -244,6 +263,7 @@ func (s *Service) runSignStep(ctx context.Context, replayer *attestrec.Replayer,
 		}
 		return nil, err
 	}
+	attestmetrics.RecordKMSSign("success", signDuration)
 	if recErr := replayer.Record(ctx, reportID, attestrec.ActionSigned, attestrec.StatusSuccess, hex.EncodeToString(sig), ""); recErr != nil {
 		// Success was written to KMS but not to WAL. Returning the
 		// signature is safe (next replay will dedupe via KMS
@@ -338,6 +358,10 @@ func (s *Service) failPipeline(ctx context.Context, order *Order, step string, e
 			slog.String("err", setErr.Error()),
 		)
 	}
+	// P1-11: a verdict that hit failPipeline never gets delivered to the
+	// user. Track separately from "committed" so the dashboard can chart
+	// the rejection rate.
+	attestmetrics.RecordVerdict("rejected")
 	return fmt.Errorf("pipeline failed at %s: %w", step, err)
 }
 

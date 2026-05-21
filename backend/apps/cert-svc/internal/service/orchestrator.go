@@ -252,7 +252,24 @@ func (s *Service) driveIssue(ctx context.Context, order *repo.Order) error {
 			_ = s.repos().Orders.UpdateStatus(ctx, order.ID, repo.OrderStatusIssuing, repo.OrderStatusFailed, &errStr)
 			_ = s.repos().Orders.IncrementRetryCount(ctx, order.ID)
 			metrics.RecordOrderResult("failed", state.CAName, order.Tier, time.Since(order.CreatedAt))
-			metrics.RecordACMEError(state.CAName, classifyOrchestratorErr(err))
+			class := classifyOrchestratorErr(err)
+			metrics.RecordACMEError(state.CAName, class)
+			// P1-11: idcd_cert_le_rate_limit_hits_total is a narrow alias
+			// over cert_acme_errors_total{ca=lets-encrypt,error_type=rate_limited}
+			// so the LE-quota dashboard / alert can read a single counter
+			// instead of a multiplied PromQL filter.
+			if state.CAName == "lets-encrypt" && class == "rate_limited" {
+				metrics.LERateLimitHits.Inc()
+			}
+			// Translate the orchestrator classification into the DNS-01
+			// challenge taxonomy on the new idcd_cert_dns_challenge_failures_total
+			// counter. Non-DNS failures don't fire here.
+			switch class {
+			case "dns_propagation":
+				metrics.RecordDNSChallengeFailure("txt_propagation")
+			case "challenge_failed":
+				metrics.RecordDNSChallengeFailure("authorization_invalid")
+			}
 			logger.Error("acme request failed", "error", err)
 			return fmt.Errorf("acme request: %w", err)
 		}

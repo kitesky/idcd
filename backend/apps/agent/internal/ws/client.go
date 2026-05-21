@@ -314,6 +314,13 @@ func (c *Client) getConn() *websocket.Conn {
 	return c.conn
 }
 
+// IsConnected reports whether the WebSocket connection is currently open.
+func (c *Client) IsConnected() bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.conn != nil
+}
+
 func (c *Client) closeConn() {
 	c.mu.Lock()
 	defer c.mu.Unlock()

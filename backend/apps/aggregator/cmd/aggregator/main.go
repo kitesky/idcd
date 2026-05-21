@@ -15,6 +15,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/redis/go-redis/v9"
 
 	"github.com/kite365/idcd/apps/aggregator/internal/config"
 	"github.com/kite365/idcd/apps/aggregator/internal/consumer"
@@ -86,7 +87,7 @@ func main() {
 	if cfg.Config != nil && cfg.Observability.PrometheusPort > 0 {
 		metricsPort = cfg.Observability.PrometheusPort
 	}
-	metricsSrv := startMetricsServer(metricsPort, logger)
+	metricsSrv := startMetricsServer(metricsPort, rdb, logger)
 	defer func() {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
@@ -148,9 +149,24 @@ func main() {
 // startMetricsServer exposes Prometheus default-registry metrics on
 // :<port>/metrics. The listener must NOT be exposed to public traffic (bind to
 // the internal VPC / loopback).
-func startMetricsServer(port int, logger *slog.Logger) *http.Server {
+func startMetricsServer(port int, rdb redis.UniversalClient, logger *slog.Logger) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", promhttp.Handler())
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 2*time.Second)
+		defer cancel()
+		if err := rdb.Ping(ctx).Err(); err != nil {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprintf(w, "redis ping failed: %v", err)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	})
 	srv := &http.Server{
 		Addr:        fmt.Sprintf(":%d", port),
 		Handler:     mux,

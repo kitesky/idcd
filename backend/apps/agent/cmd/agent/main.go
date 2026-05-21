@@ -116,7 +116,7 @@ func main() {
 	defer cancel()
 
 	go agent.Run(ctx)
-	go startHealthServer(cfg.NodeID)
+	go startHealthServer(cfg.NodeID, agent.ws)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -674,7 +674,7 @@ var buildVersion string
 
 // startHealthServer runs a minimal HTTP health endpoint on :9101
 // (or AGENT_HEALTH_PORT if set). Used by idcd-agent-ctl and monitoring.
-func startHealthServer(nodeID string) {
+func startHealthServer(nodeID string, ws *agentws.Client) {
 	port := os.Getenv("AGENT_HEALTH_PORT")
 	if port == "" {
 		port = "9101"
@@ -686,6 +686,19 @@ func startHealthServer(nodeID string) {
 	})
 	mux.HandleFunc("/health/live", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
+	})
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	})
+	mux.HandleFunc("/readyz", func(w http.ResponseWriter, _ *http.Request) {
+		if !ws.IsConnected() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			fmt.Fprint(w, "websocket not connected")
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
 	})
 	srv := &http.Server{
 		// Bind to loopback only — the health endpoint is for local tools (idcd-agent-ctl)

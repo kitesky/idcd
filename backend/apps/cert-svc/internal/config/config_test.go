@@ -2,10 +2,21 @@ package config
 
 import (
 	"encoding/base64"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
+// noYAML suppresses YAML loading for tests that only exercise env-var logic.
+// Setting CERT_SVC_CONFIG="" causes yamlConfigPath to return "" which
+// causes applyYAML to skip loading entirely.
+func noYAML(t *testing.T) {
+	t.Helper()
+	t.Setenv("CERT_SVC_CONFIG", "")
+}
+
 func TestLoad_Defaults(t *testing.T) {
+	noYAML(t)
 	// Make sure no env is leaking into the test.
 	for _, k := range []string{envPort, envDB, envRedis, envLogLevel, envEnv} {
 		t.Setenv(k, "")
@@ -36,6 +47,7 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_EnvOverrides(t *testing.T) {
+	noYAML(t)
 	t.Setenv(envPort, "9090")
 	t.Setenv(envDB, "postgres://u:p@db:5432/cert")
 	t.Setenv(envRedis, "redis://cache:6380/3")
@@ -67,6 +79,7 @@ func TestLoad_EnvOverrides(t *testing.T) {
 }
 
 func TestLoad_AdminToken(t *testing.T) {
+	noYAML(t)
 	if cfg, err := Load(); err != nil || cfg.AdminToken != "" {
 		t.Fatalf("default AdminToken should be empty; got %q err=%v", cfg.AdminToken, err)
 	}
@@ -238,6 +251,7 @@ func TestLoad_WhitespaceTrimmed(t *testing.T) {
 }
 
 func TestLoad_VaultBackendDefault(t *testing.T) {
+	noYAML(t)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -377,6 +391,7 @@ func TestLoad_VaultBackendHashiVault_MissingToken(t *testing.T) {
 }
 
 func TestLoad_MetricsPort_Default(t *testing.T) {
+	noYAML(t)
 	t.Setenv(envMetricsPort, "")
 	cfg, err := Load()
 	if err != nil {
@@ -405,6 +420,7 @@ func TestLoad_MetricsPort_Override(t *testing.T) {
 }
 
 func TestLoad_MetricsPort_Invalid(t *testing.T) {
+	noYAML(t)
 	cases := []struct {
 		name string
 		val  string
@@ -420,5 +436,116 @@ func TestLoad_MetricsPort_Invalid(t *testing.T) {
 				t.Errorf("Load() with %s=%q expected error, got nil", envMetricsPort, tc.val)
 			}
 		})
+	}
+}
+
+func TestLoad_YAMLOverlay(t *testing.T) {
+	// Write a minimal cert_svc YAML to a temp file and verify it is applied.
+	const yamlContent = `
+cert_svc:
+  port: 8181
+  metrics_port: 9191
+  env: "staging"
+  log_level: "warn"
+  database:
+    dsn: "postgres://cert:pw@yaml-db:5432/cert"
+  redis:
+    addr: "yaml-redis:6379"
+    password: "yaml-pass"
+  vault:
+    backend: "alikms"
+    alikms:
+      region_id: "cn-shanghai"
+      access_key_id: "yaml-ak"
+      access_key_secret: "yaml-sk"
+      key_id: "alias/yaml-key"
+  zerossl_eab_kid: "yaml-kid"
+  zerossl_eab_hmac_key: "yaml-hmac"
+  buypass_env: "staging"
+`
+	tmp := filepath.Join(t.TempDir(), "test.yaml")
+	if err := os.WriteFile(tmp, []byte(yamlContent), 0600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	t.Setenv("CERT_SVC_CONFIG", tmp)
+	// Must provide all required AliKMS fields so validation passes.
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Port != 8181 {
+		t.Errorf("Port = %d, want 8181", cfg.Port)
+	}
+	if cfg.MetricsPort != 9191 {
+		t.Errorf("MetricsPort = %d, want 9191", cfg.MetricsPort)
+	}
+	if cfg.Env != "staging" {
+		t.Errorf("Env = %q, want staging", cfg.Env)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Errorf("LogLevel = %q, want warn", cfg.LogLevel)
+	}
+	if cfg.DatabaseDSN != "postgres://cert:pw@yaml-db:5432/cert" {
+		t.Errorf("DatabaseDSN = %q", cfg.DatabaseDSN)
+	}
+	if cfg.RedisAddr != "yaml-redis:6379" {
+		t.Errorf("RedisAddr = %q", cfg.RedisAddr)
+	}
+	if cfg.RedisPassword != "yaml-pass" {
+		t.Errorf("RedisPassword = %q", cfg.RedisPassword)
+	}
+	if cfg.VaultBackend != VaultBackendAliKMS {
+		t.Errorf("VaultBackend = %q, want %q", cfg.VaultBackend, VaultBackendAliKMS)
+	}
+	if cfg.AliKMSRegionID != "cn-shanghai" {
+		t.Errorf("AliKMSRegionID = %q", cfg.AliKMSRegionID)
+	}
+	if cfg.ZeroSSLEABKID != "yaml-kid" {
+		t.Errorf("ZeroSSLEABKID = %q", cfg.ZeroSSLEABKID)
+	}
+	if cfg.ZeroSSLEABHMACKey != "yaml-hmac" {
+		t.Errorf("ZeroSSLEABHMACKey = %q", cfg.ZeroSSLEABHMACKey)
+	}
+	if cfg.BuypassEnv != "staging" {
+		t.Errorf("BuypassEnv = %q", cfg.BuypassEnv)
+	}
+}
+
+func TestLoad_YAMLEnvVarOverridesYAML(t *testing.T) {
+	// Env var should win over YAML value.
+	const yamlContent = `
+cert_svc:
+  port: 8181
+  database:
+    dsn: "postgres://from-yaml"
+`
+	tmp := filepath.Join(t.TempDir(), "test.yaml")
+	if err := os.WriteFile(tmp, []byte(yamlContent), 0600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	t.Setenv("CERT_SVC_CONFIG", tmp)
+	t.Setenv(envPort, "9999")
+	t.Setenv(envDB, "postgres://from-env")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Port != 9999 {
+		t.Errorf("Port = %d; env var should beat YAML", cfg.Port)
+	}
+	if cfg.DatabaseDSN != "postgres://from-env" {
+		t.Errorf("DatabaseDSN = %q; env var should beat YAML", cfg.DatabaseDSN)
+	}
+}
+
+func TestLoad_YAMLMissingFileSkipped(t *testing.T) {
+	t.Setenv("CERT_SVC_CONFIG", "/nonexistent/path/cert-svc.yaml")
+	// A missing file must NOT be an error — operators that rely purely
+	// on env vars should not need to create a YAML file.
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v; missing YAML should be silently skipped", err)
 	}
 }

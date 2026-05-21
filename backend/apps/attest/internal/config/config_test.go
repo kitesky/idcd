@@ -1,8 +1,19 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// noYAML suppresses YAML loading for tests that only exercise env-var logic.
+func noYAML(t *testing.T) {
+	t.Helper()
+	t.Setenv("ATTEST_CONFIG", "")
+}
 
 func TestLoad_Defaults(t *testing.T) {
+	noYAML(t)
 	cfg, err := Load()
 	if err != nil {
 		t.Fatalf("Load() error = %v", err)
@@ -261,5 +272,118 @@ func TestLoad_SignBackendAliyun_MissingFields(t *testing.T) {
 				t.Fatal("expected error for partial aliyun config")
 			}
 		})
+	}
+}
+
+func TestLoad_YAMLOverlay(t *testing.T) {
+	const yamlContent = `
+attest:
+  port: 8282
+  env: "staging"
+  log_level: "warn"
+  database:
+    dsn: "postgres://attest:pw@yaml-db:5432/attest"
+  redis:
+    addr: "yaml-redis:6379"
+    password: "yaml-pass"
+  sign_backend: "aliyun"
+  alikms:
+    region_id: "cn-beijing"
+    access_key_id: "yaml-ak"
+    access_key_secret: "yaml-sk"
+    key_id: "alias/yaml-key"
+  tsa:
+    providers:
+      - "globalsign"
+      - "digicert"
+  s3:
+    bucket: "yaml-bucket"
+    region: "us-east-1"
+  verify_endpoint: "https://verify.example"
+  refund:
+    initiate_stream: "yaml_initiate"
+    retry_stream: "yaml_retry"
+    group: "yaml-group"
+`
+	tmp := filepath.Join(t.TempDir(), "test.yaml")
+	if err := os.WriteFile(tmp, []byte(yamlContent), 0600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	t.Setenv("ATTEST_CONFIG", tmp)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Port != 8282 {
+		t.Errorf("Port = %d, want 8282", cfg.Port)
+	}
+	if cfg.Env != "staging" {
+		t.Errorf("Env = %q, want staging", cfg.Env)
+	}
+	if cfg.LogLevel != "warn" {
+		t.Errorf("LogLevel = %q, want warn", cfg.LogLevel)
+	}
+	if cfg.DatabaseDSN != "postgres://attest:pw@yaml-db:5432/attest" {
+		t.Errorf("DatabaseDSN = %q", cfg.DatabaseDSN)
+	}
+	if cfg.RedisAddr != "yaml-redis:6379" {
+		t.Errorf("RedisAddr = %q", cfg.RedisAddr)
+	}
+	if cfg.SignBackend != SignBackendAliyun {
+		t.Errorf("SignBackend = %q", cfg.SignBackend)
+	}
+	if cfg.AliKMSRegionID != "cn-beijing" {
+		t.Errorf("AliKMSRegionID = %q", cfg.AliKMSRegionID)
+	}
+	if len(cfg.TSAProviders) != 2 || cfg.TSAProviders[0] != "globalsign" {
+		t.Errorf("TSAProviders = %v", cfg.TSAProviders)
+	}
+	if cfg.S3Bucket != "yaml-bucket" {
+		t.Errorf("S3Bucket = %q", cfg.S3Bucket)
+	}
+	if cfg.VerifyEndpoint != "https://verify.example" {
+		t.Errorf("VerifyEndpoint = %q", cfg.VerifyEndpoint)
+	}
+	if cfg.RefundInitiateStream != "yaml_initiate" {
+		t.Errorf("RefundInitiateStream = %q", cfg.RefundInitiateStream)
+	}
+	if cfg.RefundGroup != "yaml-group" {
+		t.Errorf("RefundGroup = %q", cfg.RefundGroup)
+	}
+}
+
+func TestLoad_YAMLEnvVarOverridesYAML(t *testing.T) {
+	const yamlContent = `
+attest:
+  port: 8282
+  database:
+    dsn: "postgres://from-yaml"
+`
+	tmp := filepath.Join(t.TempDir(), "test.yaml")
+	if err := os.WriteFile(tmp, []byte(yamlContent), 0600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	t.Setenv("ATTEST_CONFIG", tmp)
+	t.Setenv(envPort, "9999")
+	t.Setenv(envDB, "postgres://from-env")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Port != 9999 {
+		t.Errorf("Port = %d; env var should beat YAML", cfg.Port)
+	}
+	if cfg.DatabaseDSN != "postgres://from-env" {
+		t.Errorf("DatabaseDSN = %q; env var should beat YAML", cfg.DatabaseDSN)
+	}
+}
+
+func TestLoad_YAMLMissingFileSkipped(t *testing.T) {
+	t.Setenv("ATTEST_CONFIG", "/nonexistent/path/attest.yaml")
+	_, err := Load()
+	if err != nil {
+		t.Fatalf("Load() error = %v; missing YAML should be silently skipped", err)
 	}
 }

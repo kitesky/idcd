@@ -34,6 +34,146 @@ type Config struct {
 	// stub handlers in apps/api/internal/handler/cert.go take over
 	// (list endpoints return empty arrays, mutations return 501).
 	CertSvcURL string `yaml:"cert_svc_url"`
+
+	// CertSvc holds non-secret runtime settings for apps/cert-svc.
+	// cert-svc reads this section when CERT_SVC_CONFIG or IDCD_CONFIG
+	// points at this file. Individual values are overridable via CERT_* env vars.
+	CertSvc CertSvcServiceConfig `yaml:"cert_svc"`
+
+	// Attest holds non-secret runtime settings for apps/attest.
+	// attest reads this section when ATTEST_CONFIG or IDCD_CONFIG
+	// points at this file. Individual values are overridable via ATTEST_* env vars.
+	Attest AttestServiceConfig `yaml:"attest"`
+}
+
+// ── Service-specific config sections ──────────────────────────────────────
+
+// CertSvcServiceConfig holds non-secret runtime settings for apps/cert-svc.
+type CertSvcServiceConfig struct {
+	Port         int    `yaml:"port"`
+	MetricsPort  int    `yaml:"metrics_port"`
+	Env          string `yaml:"env"`
+	LEEnv        string `yaml:"le_env"`
+	LogLevel     string `yaml:"log_level"`
+	AccountEmail string `yaml:"acme_account_email"`
+	// Database holds cert-svc's own Postgres DSN (separate from the shared api DB).
+	Database     ServiceDBConfig  `yaml:"database"`
+	// Redis holds cert-svc's Redis settings (may differ from api Redis instance).
+	Redis        RedisConfig      `yaml:"redis"`
+	// Vault selects the KMS backend for certificate private-key operations.
+	Vault        KMSVaultConfig   `yaml:"vault"`
+	// ZeroSSLEABKID is the External Account Binding key ID issued by ZeroSSL.
+	// Both ZeroSSLEABKID and ZeroSSLEABHMACKey must be set to enable the adapter.
+	ZeroSSLEABKID    string `yaml:"zerossl_eab_kid"`
+	ZeroSSLEABHMACKey string `yaml:"zerossl_eab_hmac_key"`
+	// BuypassEnv enables the Buypass Go SSL CA: "production" | "staging" | "".
+	BuypassEnv string `yaml:"buypass_env"`
+}
+
+// AttestServiceConfig holds non-secret runtime settings for apps/attest.
+type AttestServiceConfig struct {
+	Port         int    `yaml:"port"`
+	Env          string `yaml:"env"`
+	LogLevel     string `yaml:"log_level"`
+	// Database holds attest-svc's own Postgres DSN.
+	Database     ServiceDBConfig `yaml:"database"`
+	// Redis holds attest-svc's Redis settings.
+	Redis        RedisConfig     `yaml:"redis"`
+	// SignBackend selects the KMS signing adapter: "aws" | "aliyun" | "local".
+	SignBackend  string          `yaml:"sign_backend"`
+	AWSKMS       AWSKMSConfig    `yaml:"awskms"`
+	AliKMS       AliKMSConfig    `yaml:"alikms"`
+	// LocalKeyPath is the PEM file path for SignBackend=local (dev-only).
+	LocalKeyPath    string `yaml:"local_key_path"`
+	LocalAlgorithm  string `yaml:"local_algorithm"`
+	// TSA configures time-stamping authority providers.
+	TSA          TSAConfig       `yaml:"tsa"`
+	// S3 configures the WORM object-storage archival bucket.
+	S3           S3Config        `yaml:"s3"`
+	// VerifyEndpoint is the URL of the Self-Verify Worker (D6).
+	VerifyEndpoint string `yaml:"verify_endpoint"`
+	// ArchiverBackend selects the verdict archive storage: "local" (default) | "s3".
+	ArchiverBackend string `yaml:"archiver_backend"`
+	// LocalArchiveDir is the directory for the local archiver (default /var/lib/attest/archive).
+	LocalArchiveDir string `yaml:"local_archive_dir"`
+	// Refund holds Redis Stream keys for the D5 refund worker.
+	Refund       AttestRefundConfig `yaml:"refund"`
+}
+
+// ServiceDBConfig holds the database DSN for a service with its own schema.
+type ServiceDBConfig struct {
+	DSN string `yaml:"dsn"`
+}
+
+// KMSVaultConfig picks the vault backend for cert-svc certificate key operations.
+type KMSVaultConfig struct {
+	// Backend selects the implementation: "envmaster" | "alikms" | "awskms" | "hashivault".
+	Backend    string              `yaml:"backend"`
+	AliKMS     AliKMSConfig        `yaml:"alikms"`
+	AWSKMS     AWSKMSConfig        `yaml:"awskms"`
+	HashiVault HashiVaultKMSConfig `yaml:"hashivault"`
+}
+
+// AliKMSConfig holds Aliyun KMS credentials and key reference.
+type AliKMSConfig struct {
+	RegionID        string `yaml:"region_id"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	AccessKeySecret string `yaml:"access_key_secret"`
+	KeyID           string `yaml:"key_id"`
+	// Algorithm is optional (default "ECDSA_SHA_256" for attest).
+	Algorithm string `yaml:"algorithm"`
+}
+
+// AWSKMSConfig holds AWS KMS credentials and key reference.
+type AWSKMSConfig struct {
+	Region          string `yaml:"region"`
+	AccessKeyID     string `yaml:"access_key_id"`
+	SecretAccessKey string `yaml:"secret_access_key"`
+	KeyID           string `yaml:"key_id"`
+	// Algorithm is optional (default "ECDSA_SHA_256" for attest).
+	Algorithm string `yaml:"algorithm"`
+}
+
+// HashiVaultKMSConfig holds HashiCorp Vault transit-engine settings.
+type HashiVaultKMSConfig struct {
+	Address    string `yaml:"address"`
+	Token      string `yaml:"token"`
+	Namespace  string `yaml:"namespace"`
+	KeyName    string `yaml:"key_name"`
+	// MountPath defaults to "transit" in the adapter.
+	MountPath string `yaml:"mount_path"`
+}
+
+// TSAConfig holds time-stamping authority configuration for attest-svc.
+type TSAConfig struct {
+	// Providers is an ordered list of TSA provider names: digicert, globalsign, freetsa.
+	// Primary provider first; Multi-TSA tries in order.
+	Providers []string `yaml:"providers"`
+}
+
+// S3Config holds object-storage settings for WORM archival in attest-svc.
+type S3Config struct {
+	Endpoint  string `yaml:"endpoint"`
+	Bucket    string `yaml:"bucket"`
+	Region    string `yaml:"region"`
+	AccessKey string `yaml:"access_key"`
+	SecretKey string `yaml:"secret_key"`
+	// Object-lock retention fields (attest WORM archive only).
+	ObjectLockMode string `yaml:"object_lock_mode"` // "COMPLIANCE" | "GOVERNANCE"; default "COMPLIANCE"
+	ObjectLockDays int    `yaml:"object_lock_days"` // retention days; default 3650 (10 years)
+	KeyPrefix      string `yaml:"key_prefix"`       // optional object key prefix
+}
+
+// AttestRefundConfig holds Redis Stream keys for the D5 refund-worker process.
+type AttestRefundConfig struct {
+	InitiateStream string `yaml:"initiate_stream"`
+	RetryStream    string `yaml:"retry_stream"`
+	DelayZoneKey   string `yaml:"delay_zone_key"`
+	Group          string `yaml:"group"`
+	Consumer       string `yaml:"consumer"`
+	// NotifierAddr is the asynq broker used for apology-email enqueue (empty = disabled).
+	NotifierAddr  string `yaml:"notifier_addr"`
+	NotifierQueue string `yaml:"notifier_queue"`
 }
 
 // StatusProbeConfig drives the idcd.com/status data collector. The collector
@@ -270,6 +410,25 @@ func parseDuration(s string) (time.Duration, error) {
 		}
 	}
 	return time.ParseDuration(s)
+}
+
+// LoadRaw reads and parses YAML at path without validating required fields.
+// Use when a service only needs its own named section (e.g. cert_svc: or
+// attest:) and does not consume the shared database / redis / jwt fields.
+func LoadRaw(path string) (*Config, error) {
+	f, err := os.Open(path)
+	if err != nil {
+		return nil, fmt.Errorf("config: open %q: %w", path, err)
+	}
+	defer f.Close()
+
+	var cfg Config
+	dec := yaml.NewDecoder(f)
+	dec.KnownFields(false)
+	if err := dec.Decode(&cfg); err != nil {
+		return nil, fmt.Errorf("config: decode %q: %w", path, err)
+	}
+	return &cfg, nil
 }
 
 // Load reads and parses the YAML config file at path.

@@ -165,7 +165,7 @@ func main() {
 	}
 
 	// --- Archiver ----------------------------------------------------
-	archiver, err := wireArchiver(log)
+	archiver, err := wireArchiver(cfg, log)
 	if err != nil {
 		log.Error("attest-generator: archiver init", "err", err)
 		os.Exit(1)
@@ -175,7 +175,8 @@ func main() {
 	// Owned by main() and Close()d on shutdown — D1 cross-schema reads
 	// go through this dedicated pool rather than reusing the attest
 	// repos.New(pool) which talks to idcd_attest.
-	obsPool, err := service.NewObservationPoolFromEnv(ctx)
+	// P1-8: use DSN from config (attest.database.dsn or ATTEST_DB_DSN).
+	obsPool, err := service.NewObservationPoolFromDSN(ctx, cfg.DatabaseDSN)
 	if err != nil {
 		log.Error("attest-generator: observation pool init", "err", err)
 		os.Exit(1)

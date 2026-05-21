@@ -43,23 +43,13 @@ func newS3Fetcher(api s3GetObjectAPI) *s3Fetcher {
 	return &s3Fetcher{api: api, maxBytes: defaultS3MaxBytes}
 }
 
-// newS3FetcherFromEnv builds a production fetcher from the same env-var
-// contract used by apps/attest/cmd/generator/s3archiver.go:
-//
-//	ATTEST_S3_REGION    required
-//	ATTEST_S3_ENDPOINT  optional S3-compatible endpoint (MinIO / LocalStack)
-//	AWS_*               standard AWS credential chain
-//
-// ATTEST_S3_BUCKET is NOT required here: the bucket comes from the s3://
-// URL on each Fetch call, so the verifier can read whichever bucket the
-// generator archived to without re-wiring on a bucket change.
-func newS3FetcherFromEnv(ctx context.Context) (*s3Fetcher, error) {
-	region := strings.TrimSpace(os.Getenv("ATTEST_S3_REGION"))
+// newS3FetcherFromRegion builds a production fetcher with an explicit region
+// and optional endpoint. Use this when S3 config comes from the YAML config
+// (P1-8 migration). The bucket comes from the s3:// URL on each Fetch call.
+func newS3FetcherFromRegion(ctx context.Context, region, endpoint string) (*s3Fetcher, error) {
 	if region == "" {
-		return nil, fmt.Errorf("s3 fetcher: ATTEST_S3_REGION is required")
+		return nil, fmt.Errorf("s3 fetcher: region is required")
 	}
-	endpoint := strings.TrimSpace(os.Getenv("ATTEST_S3_ENDPOINT"))
-
 	cfg, err := awsconfig.LoadDefaultConfig(ctx, awsconfig.WithRegion(region))
 	if err != nil {
 		return nil, fmt.Errorf("s3 fetcher: load AWS config: %w", err)
@@ -71,6 +61,18 @@ func newS3FetcherFromEnv(ctx context.Context) (*s3Fetcher, error) {
 		}
 	})
 	return newS3Fetcher(client), nil
+}
+
+// newS3FetcherFromEnv builds a production fetcher from ATTEST_S3_REGION /
+// ATTEST_S3_ENDPOINT env vars. Kept for backward compat and tests; prefer
+// newS3FetcherFromRegion when the config is already loaded.
+func newS3FetcherFromEnv(ctx context.Context) (*s3Fetcher, error) {
+	region := strings.TrimSpace(os.Getenv("ATTEST_S3_REGION"))
+	if region == "" {
+		return nil, fmt.Errorf("s3 fetcher: ATTEST_S3_REGION is required")
+	}
+	endpoint := strings.TrimSpace(os.Getenv("ATTEST_S3_ENDPOINT"))
+	return newS3FetcherFromRegion(ctx, region, endpoint)
 }
 
 // parseS3URL splits s3://{bucket}/{key} into its parts. Returns an error

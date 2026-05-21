@@ -1,17 +1,22 @@
-// Package config loads cert-svc settings from environment variables.
+// Package config loads cert-svc settings with a two-layer strategy:
 //
-// Unlike apps/api (which uses lib/shared/config + YAML), cert-svc is a
-// fresh service and reads CERT_* env vars directly to keep its boot
-// surface small. The S2 milestone may revisit and merge into the shared
-// config tree once it stabilises.
+//  1. YAML file (cert_svc: section of the shared YAML; path from
+//     CERT_SVC_CONFIG, then IDCD_CONFIG, then "config/dev.env.yaml").
+//  2. CERT_* environment variables override individual YAML values.
+//
+// Secrets (CERT_JWT_SECRET, CERT_MASTER_KEY, CERT_DOWNLOAD_SECRET,
+// CERT_ADMIN_TOKEN) are intentionally not in YAML and remain env-only.
 package config
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
 	"strings"
+
+	sharedconfig "github.com/kite365/idcd/lib/shared/config"
 )
 
 const (
@@ -175,9 +180,131 @@ type Config struct {
 	HashiVaultMountPath string
 }
 
-// Load reads CERT_* env vars and returns a populated Config.
-// Unset vars fall back to sensible local-dev defaults; the only validation
-// failure today is a non-numeric CERT_SVC_PORT.
+// yamlConfigPath returns the YAML file cert-svc should load for its
+// cert_svc: section.  Priority: CERT_SVC_CONFIG > IDCD_CONFIG >
+// "config/dev.env.yaml".  Returns "" when an empty explicit var is set,
+// which suppresses YAML loading (useful in unit tests).
+func yamlConfigPath() string {
+	if v, ok := os.LookupEnv("CERT_SVC_CONFIG"); ok {
+		return v
+	}
+	if v, ok := os.LookupEnv("IDCD_CONFIG"); ok {
+		return v
+	}
+	return "config/dev.env.yaml"
+}
+
+// applyYAML overlays non-zero values from the cert_svc: YAML section onto
+// cfg.  Missing file is silently ignored; any other parse error is fatal.
+func applyYAML(cfg *Config, path string) error {
+	if path == "" {
+		return nil
+	}
+	raw, err := sharedconfig.LoadRaw(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
+		return err
+	}
+	y := raw.CertSvc
+	if y.Port != 0 {
+		cfg.Port = y.Port
+	}
+	if y.MetricsPort != 0 {
+		cfg.MetricsPort = y.MetricsPort
+	}
+	if y.Database.DSN != "" {
+		cfg.DatabaseDSN = y.Database.DSN
+	}
+	if y.Redis.Addr != "" {
+		cfg.RedisAddr = y.Redis.Addr
+	}
+	if y.Redis.Password != "" {
+		cfg.RedisPassword = y.Redis.Password
+	}
+	if y.Redis.DB != 0 {
+		cfg.RedisDB = y.Redis.DB
+	}
+	if y.Redis.MasterName != "" {
+		cfg.RedisMasterName = y.Redis.MasterName
+	}
+	if len(y.Redis.SentinelAddrs) > 0 {
+		cfg.RedisSentinelAddrs = y.Redis.SentinelAddrs
+	}
+	if y.Redis.SentinelPassword != "" {
+		cfg.RedisSentinelPassword = y.Redis.SentinelPassword
+	}
+	if y.Env != "" {
+		cfg.Env = y.Env
+	}
+	if y.LEEnv != "" {
+		cfg.LEEnv = y.LEEnv
+	}
+	if y.LogLevel != "" {
+		cfg.LogLevel = strings.ToLower(y.LogLevel)
+	}
+	if y.AccountEmail != "" {
+		cfg.AccountEmail = y.AccountEmail
+	}
+	if y.Vault.Backend != "" {
+		cfg.VaultBackend = y.Vault.Backend
+	}
+	if y.Vault.AliKMS.RegionID != "" {
+		cfg.AliKMSRegionID = y.Vault.AliKMS.RegionID
+	}
+	if y.Vault.AliKMS.AccessKeyID != "" {
+		cfg.AliKMSAccessKeyID = y.Vault.AliKMS.AccessKeyID
+	}
+	if y.Vault.AliKMS.AccessKeySecret != "" {
+		cfg.AliKMSAccessKeySecret = y.Vault.AliKMS.AccessKeySecret
+	}
+	if y.Vault.AliKMS.KeyID != "" {
+		cfg.AliKMSKeyID = y.Vault.AliKMS.KeyID
+	}
+	if y.Vault.AWSKMS.Region != "" {
+		cfg.AWSKMSRegion = y.Vault.AWSKMS.Region
+	}
+	if y.Vault.AWSKMS.AccessKeyID != "" {
+		cfg.AWSKMSAccessKeyID = y.Vault.AWSKMS.AccessKeyID
+	}
+	if y.Vault.AWSKMS.SecretAccessKey != "" {
+		cfg.AWSKMSSecretAccessKey = y.Vault.AWSKMS.SecretAccessKey
+	}
+	if y.Vault.AWSKMS.KeyID != "" {
+		cfg.AWSKMSKeyID = y.Vault.AWSKMS.KeyID
+	}
+	if y.Vault.HashiVault.Address != "" {
+		cfg.HashiVaultAddress = y.Vault.HashiVault.Address
+	}
+	if y.Vault.HashiVault.Token != "" {
+		cfg.HashiVaultToken = y.Vault.HashiVault.Token
+	}
+	if y.Vault.HashiVault.Namespace != "" {
+		cfg.HashiVaultNamespace = y.Vault.HashiVault.Namespace
+	}
+	if y.Vault.HashiVault.KeyName != "" {
+		cfg.HashiVaultKeyName = y.Vault.HashiVault.KeyName
+	}
+	if y.Vault.HashiVault.MountPath != "" {
+		cfg.HashiVaultMountPath = y.Vault.HashiVault.MountPath
+	}
+	if y.ZeroSSLEABKID != "" {
+		cfg.ZeroSSLEABKID = y.ZeroSSLEABKID
+	}
+	if y.ZeroSSLEABHMACKey != "" {
+		cfg.ZeroSSLEABHMACKey = y.ZeroSSLEABHMACKey
+	}
+	if y.BuypassEnv != "" {
+		cfg.BuypassEnv = y.BuypassEnv
+	}
+	return nil
+}
+
+// Load builds the cert-svc Config with three layers:
+//  1. Hard-coded defaults (safe local-dev values).
+//  2. YAML overlay from the cert_svc: section (path resolved by yamlConfigPath).
+//  3. CERT_* environment variables (override YAML; secrets stay env-only).
 func Load() (*Config, error) {
 	cfg := &Config{
 		Port:         defaultPort,
@@ -189,6 +316,11 @@ func Load() (*Config, error) {
 		Env:          defaultEnv,
 		LEEnv:        defaultLEEnv,
 		AccountEmail: defaultAccountEmail,
+		VaultBackend: VaultBackendEnvMaster,
+	}
+
+	if err := applyYAML(cfg, yamlConfigPath()); err != nil {
+		return nil, fmt.Errorf("config: yaml overlay: %w", err)
 	}
 
 	if v := strings.TrimSpace(os.Getenv(envPort)); v != "" {
@@ -302,7 +434,6 @@ func Load() (*Config, error) {
 		cfg.BuypassEnv = v
 	}
 
-	cfg.VaultBackend = VaultBackendEnvMaster
 	if v := strings.TrimSpace(os.Getenv(envVaultBackend)); v != "" {
 		cfg.VaultBackend = strings.ToLower(v)
 	}

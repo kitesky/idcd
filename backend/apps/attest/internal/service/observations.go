@@ -48,12 +48,33 @@ var _ ObservationPool = (*pgxpool.Pool)(nil)
 // rather than a nil-pointer panic.
 var ErrObservationPoolNotConfigured = errors.New("attest/service: ObservationPool is not configured")
 
+// NewObservationPoolFromDSN constructs a pgxpool.Pool against the
+// idcd_main TimescaleDB using the provided DSN. The returned pool
+// satisfies ObservationPool. Callers (cmd/generator) own the pool's
+// lifecycle and MUST Close it on shutdown.
+//
+// Empty dsn returns ErrObservationPoolNotConfigured so the caller can
+// decide whether to abort startup or run in a degraded mode.
+func NewObservationPoolFromDSN(ctx context.Context, dsn string) (*pgxpool.Pool, error) {
+	if dsn == "" {
+		return nil, fmt.Errorf("%w: dsn is empty", ErrObservationPoolNotConfigured)
+	}
+	pool, err := pgxpool.New(ctx, dsn)
+	if err != nil {
+		return nil, fmt.Errorf("attest/service: pgxpool.New: %w", err)
+	}
+	return pool, nil
+}
+
 // NewObservationPoolFromEnv constructs a pgxpool.Pool against the
 // idcd_main TimescaleDB, picking the DSN from IDCD_MAIN_DB_DSN with
 // fallback to ATTEST_DB_DSN (single-node dev). The returned pool
 // satisfies ObservationPool. Callers (cmd/generator) own the pool's
 // lifecycle and MUST Close it on shutdown — there is no longer a
 // process-singleton.
+//
+// Prefer NewObservationPoolFromDSN when the DSN is already available
+// from the loaded config (P1-8 migration).
 //
 // Both env vars unset returns ErrObservationPoolNotConfigured so the
 // caller can decide whether to abort startup or run in a degraded mode
@@ -63,14 +84,7 @@ func NewObservationPoolFromEnv(ctx context.Context) (*pgxpool.Pool, error) {
 	if dsn == "" {
 		dsn = os.Getenv("ATTEST_DB_DSN")
 	}
-	if dsn == "" {
-		return nil, fmt.Errorf("%w: neither IDCD_MAIN_DB_DSN nor ATTEST_DB_DSN is set", ErrObservationPoolNotConfigured)
-	}
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		return nil, fmt.Errorf("attest/service: pgxpool.New: %w", err)
-	}
-	return pool, nil
+	return NewObservationPoolFromDSN(ctx, dsn)
 }
 
 // fetchObservations pulls raw probe points for one Verdict order out of

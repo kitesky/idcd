@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -12,51 +10,48 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	s3types "github.com/aws/aws-sdk-go-v2/service/s3/types"
 
+	"github.com/kite365/idcd/apps/attest/internal/config"
 	"github.com/kite365/idcd/apps/attest/internal/service"
 )
 
 // defaultObjectLockDays defines the WORM retention floor (docs/prd/18
-// §3.3). Override via ATTEST_S3_OBJECT_LOCK_DAYS only with explicit
-// legal sign-off.
+// §3.3). Override via attest.s3.object_lock_days in YAML (or
+// ATTEST_S3_OBJECT_LOCK_DAYS env var) only with explicit legal sign-off.
 const defaultObjectLockDays = 3650 // 10 years
 
 // s3ArchiverInfo captures fields the wiring layer logs when the S3
 // backend is selected. The S3 implementation lives in
 // apps/attest/internal/service/s3archiver.go; this file only adapts the
-// constructor signature to wireArchiver and exposes the env-var contract
-// in one place.
+// constructor signature to wireArchiver and exposes the config contract.
 type s3ArchiverInfo struct {
 	Bucket         string
 	Region         string
 	ObjectLockMode string
 }
 
-// newS3ArchiverFromEnv constructs an S3+ObjectLock archiver from the
-// ATTEST_S3_* environment variables and the standard AWS credential
-// chain.
+// newS3ArchiverFromConfig constructs an S3+ObjectLock archiver from the
+// config fields (P1-8 migration). Falls back to the standard AWS
+// credential chain (env vars AWS_* / IRSA / instance profile).
 //
-// Env vars (documented here, consumed by the constructor):
+// Config fields consumed:
 //
-//	ATTEST_S3_BUCKET              required
-//	ATTEST_S3_REGION              required
-//	ATTEST_S3_OBJECT_LOCK_MODE    "COMPLIANCE" (default) | "GOVERNANCE"
-//	ATTEST_S3_OBJECT_LOCK_DAYS    int days (default 3650 = 10y)
-//	ATTEST_S3_KEY_PREFIX          optional prefix for the object key
-//	ATTEST_S3_ENDPOINT            optional S3-compatible endpoint
-//	                              (MinIO / LocalStack)
-//	AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY / AWS_SESSION_TOKEN
-//	                              standard AWS SDK credential chain
-func newS3ArchiverFromEnv() (service.Archiver, s3ArchiverInfo, error) {
-	bucket := strings.TrimSpace(os.Getenv("ATTEST_S3_BUCKET"))
+//	cfg.S3Bucket              required
+//	cfg.S3Region              required
+//	cfg.S3ObjectLockMode      "COMPLIANCE" (default) | "GOVERNANCE"
+//	cfg.S3ObjectLockDays      int days (default 3650 = 10y)
+//	cfg.S3KeyPrefix           optional object key prefix
+//	cfg.S3Endpoint            optional S3-compatible endpoint (MinIO/LocalStack)
+func newS3ArchiverFromConfig(cfg *config.Config) (service.Archiver, s3ArchiverInfo, error) {
+	bucket := strings.TrimSpace(cfg.S3Bucket)
 	if bucket == "" {
-		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: ATTEST_S3_BUCKET is required")
+		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: attest.s3.bucket (or ATTEST_S3_BUCKET) is required")
 	}
-	region := strings.TrimSpace(os.Getenv("ATTEST_S3_REGION"))
+	region := strings.TrimSpace(cfg.S3Region)
 	if region == "" {
-		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: ATTEST_S3_REGION is required")
+		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: attest.s3.region (or ATTEST_S3_REGION) is required")
 	}
 
-	modeStr := strings.ToUpper(strings.TrimSpace(os.Getenv("ATTEST_S3_OBJECT_LOCK_MODE")))
+	modeStr := strings.ToUpper(strings.TrimSpace(cfg.S3ObjectLockMode))
 	if modeStr == "" {
 		modeStr = "COMPLIANCE"
 	}
@@ -67,36 +62,25 @@ func newS3ArchiverFromEnv() (service.Archiver, s3ArchiverInfo, error) {
 	case "GOVERNANCE":
 		mode = s3types.ObjectLockModeGovernance
 	default:
-		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: invalid ATTEST_S3_OBJECT_LOCK_MODE %q (want COMPLIANCE or GOVERNANCE)", modeStr)
+		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: invalid object_lock_mode %q (want COMPLIANCE or GOVERNANCE)", modeStr)
 	}
 
-	days := defaultObjectLockDays
-	if v := strings.TrimSpace(os.Getenv("ATTEST_S3_OBJECT_LOCK_DAYS")); v != "" {
-		n, err := strconv.Atoi(v)
-		if err != nil {
-			return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: ATTEST_S3_OBJECT_LOCK_DAYS = %q: %w", v, err)
-		}
-		if n <= 0 {
-			return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: ATTEST_S3_OBJECT_LOCK_DAYS must be > 0, got %d", n)
-		}
-		days = n
+	days := cfg.S3ObjectLockDays
+	if days <= 0 {
+		days = defaultObjectLockDays
 	}
 
-	prefix := os.Getenv("ATTEST_S3_KEY_PREFIX") // preserve leading/trailing whitespace? no — but allow trailing /
-	prefix = strings.TrimLeft(prefix, " \t")
+	prefix := strings.TrimLeft(cfg.S3KeyPrefix, " \t")
+	endpoint := strings.TrimSpace(cfg.S3Endpoint)
 
-	endpoint := strings.TrimSpace(os.Getenv("ATTEST_S3_ENDPOINT"))
-
-	cfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(region))
+	awsCfg, err := awsconfig.LoadDefaultConfig(context.Background(), awsconfig.WithRegion(region))
 	if err != nil {
 		return nil, s3ArchiverInfo{}, fmt.Errorf("s3 archiver: load AWS config: %w", err)
 	}
 
-	client := s3.NewFromConfig(cfg, func(o *s3.Options) {
+	client := s3.NewFromConfig(awsCfg, func(o *s3.Options) {
 		if endpoint != "" {
 			o.BaseEndpoint = &endpoint
-			// S3-compatible endpoints (MinIO / LocalStack) typically
-			// require path-style addressing.
 			o.UsePathStyle = true
 		}
 	})

@@ -96,9 +96,11 @@ func main() {
 	}
 
 	fetcher := &urlFetcher{
-		log:    log,
-		http:   &httpFetcher{client: httpClient},
-		s3Once: &sync.Once{},
+		log:        log,
+		http:       &httpFetcher{client: httpClient},
+		s3Once:     &sync.Once{},
+		s3Region:   cfg.S3Region,
+		s3Endpoint: cfg.S3Endpoint,
 	}
 
 	// Refund-on-failure hand-off (D5). When the Redis addr is unset the
@@ -207,18 +209,30 @@ func (l *pendingReportsLister) ListPendingSelfVerify(ctx context.Context, limit 
 // ---------------------------------------------------------------------
 
 type urlFetcher struct {
-	log    *slog.Logger
-	http   *httpFetcher
-	s3Once *sync.Once
-	s3     *s3Fetcher
-	s3Err  error
+	log        *slog.Logger
+	http       *httpFetcher
+	s3Once     *sync.Once
+	s3         *s3Fetcher
+	s3Err      error
+	s3Region   string // from config (P1-8)
+	s3Endpoint string // from config (P1-8)
 }
 
 func (f *urlFetcher) Fetch(ctx context.Context, pdfURL string) ([]byte, error) {
 	switch {
 	case strings.HasPrefix(pdfURL, "s3://"):
 		f.s3Once.Do(func() {
-			s, err := newS3FetcherFromEnv(ctx)
+			// Prefer config-driven region/endpoint; fall back to env vars
+			// for backward compat when config is not set.
+			region := f.s3Region
+			endpoint := f.s3Endpoint
+			var s *s3Fetcher
+			var err error
+			if region != "" {
+				s, err = newS3FetcherFromRegion(ctx, region, endpoint)
+			} else {
+				s, err = newS3FetcherFromEnv(ctx)
+			}
 			if err != nil {
 				f.s3Err = err
 				return
